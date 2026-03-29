@@ -44,6 +44,16 @@ DEFAULT_MESHTASTIC_OPERATION_TIMEOUT: Final[int] = 30  # seconds
 # Initial delay before starting the first connection health check
 INITIAL_HEALTH_CHECK_DELAY: Final[int] = 5  # seconds
 
+# Default heartbeat interval for health checks
+DEFAULT_HEARTBEAT_INTERVAL_SECS: Final[int] = 60  # seconds
+
+# Connection retry backoff policy
+CONNECTION_RETRY_BACKOFF_BASE: Final[int] = 2
+CONNECTION_RETRY_BACKOFF_MAX_SECS: Final[int] = 60
+
+# Matrix message limits
+MATRIX_MESSAGE_FETCH_LIMIT: Final[int] = 100
+
 # Matrix client timeouts
 MATRIX_EARLY_SYNC_TIMEOUT: Final[int] = 2000  # milliseconds
 MATRIX_MAIN_SYNC_TIMEOUT: Final[int] = 5000  # milliseconds
@@ -51,6 +61,10 @@ MATRIX_ROOM_SEND_TIMEOUT: Final[float] = 10.0  # seconds
 MATRIX_TO_DEVICE_TIMEOUT: Final[float] = 10.0  # seconds
 MATRIX_LOGIN_TIMEOUT: Final[float] = 30.0  # seconds
 MATRIX_SYNC_OPERATION_TIMEOUT: Final[float] = 60.0  # seconds
+# Initial Matrix sync retry policy.
+# 0 means retry indefinitely (recommended for unattended service restarts).
+MATRIX_INITIAL_SYNC_MAX_ATTEMPTS: Final[int] = 0
+MATRIX_INITIAL_SYNC_RETRY_MAX_DELAY_SECS: Final[float] = 60.0
 
 # BLE-specific constants
 BLE_FUTURE_WATCHDOG_SECS: Final[float] = 120.0
@@ -83,3 +97,58 @@ BLE_CONNECT_TIMEOUT_SECS: Final[float] = 30.0
 # When executor recovery cycles orphan this many workers, we stop
 # silently recovering and require explicit reconnect/restart.
 EXECUTOR_ORPHAN_THRESHOLD: Final[int] = 5
+
+# ACK polling interval
+ACK_POLL_INTERVAL_SECS: Final[float] = 0.1
+
+# BLE timing constants
+BLE_FUTURE_STALE_GRACE_SECS: Final[float] = 2.0
+BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS: Final[float] = 90.0
+BLE_DISCONNECT_MAX_RETRIES: Final[int] = 3
+BLE_DISCONNECT_TIMEOUT_SECS: Final[float] = 3.0
+BLE_DISCONNECT_SETTLE_SECS: Final[float] = 2.0
+BLE_RETRY_DELAY_SECS: Final[float] = 0.5
+# Cover full disconnect retry budget plus one final cleanup pass:
+# retries * (disconnect + settle) + inter-retry sleeps + final (disconnect + settle)
+STALE_DISCONNECT_TIMEOUT_SECS: Final[float] = (
+    BLE_DISCONNECT_MAX_RETRIES
+    * (BLE_DISCONNECT_TIMEOUT_SECS + BLE_DISCONNECT_SETTLE_SECS)
+    + max(BLE_DISCONNECT_MAX_RETRIES - 1, 0) * BLE_RETRY_DELAY_SECS
+    + (BLE_DISCONNECT_TIMEOUT_SECS + BLE_DISCONNECT_SETTLE_SECS)
+)
+HEALTH_PROBE_TRACK_GRACE_SECS: Final[float] = 60.0
+
+# Future/cancel timing
+FUTURE_CANCEL_TIMEOUT_SECS: Final[float] = 0.2
+
+# Plugin timeout
+DEFAULT_PLUGIN_TIMEOUT_SECS: Final[float] = 5.0
+
+# Close timeouts
+MATRIX_CLIENT_CLOSE_TIMEOUT_SECS: Final[float] = 10.0
+MESHTASTIC_CLOSE_TIMEOUT_SECS: Final[float] = 10.0
+# Backward-compatible alias for legacy imports.
+MESHTASTIC_CLOSE_TIMEOUT_SECONDS: Final[float] = MESHTASTIC_CLOSE_TIMEOUT_SECS
+
+# Sync and retry timing
+MATRIX_SYNC_RETRY_DELAY_SECS: Final[float] = 5.0
+NODEDB_BACKOFF_INITIAL_SECS: Final[float] = 1.0
+NODEDB_BACKOFF_MAX_SECS: Final[float] = 30.0
+NODEDB_SHUTDOWN_TIMEOUT_SECS: Final[float] = 10.0
+
+# Process check timeouts
+PROCESS_CHECK_TIMEOUT_SECS: Final[float] = 5.0
+PROCESS_CHECK_SHORT_TIMEOUT_SECS: Final[float] = 2.0
+
+# HTTP status codes
+HTTP_SERVER_ERROR_CODES: Final[tuple[int, ...]] = tuple(range(500, 600))
+HTTP_STATUS_UNAUTHORIZED: Final[int] = 401
+HTTP_STATUS_FORBIDDEN: Final[int] = 403
+
+# Hostname validation limits
+MAX_HOSTNAME_LENGTH: Final[int] = 253
+MAX_HOSTNAME_LABEL_LENGTH: Final[int] = 63
+
+# Meshtastic channel limits
+MESHTASTIC_CHANNEL_MIN: Final[int] = 0
+MESHTASTIC_CHANNEL_MAX: Final[int] = 7

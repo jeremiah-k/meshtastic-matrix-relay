@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.plugins.telemetry_plugin import Plugin
 
 
@@ -237,7 +238,7 @@ class TestTelemetryPlugin(unittest.TestCase):
         """
         packet = {
             "fromId": "!12345678",
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "Hello world"},
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "Hello world"},
         }
 
         async def run_test():
@@ -289,6 +290,31 @@ class TestTelemetryPlugin(unittest.TestCase):
             self.assertFalse(result)
 
             # Should not store any data
+            self.plugin.set_node_data.assert_not_called()
+
+        import asyncio
+
+        asyncio.run(run_test())
+
+    def test_handle_meshtastic_message_missing_from_id(self):
+        """Telemetry packets without fromId should be ignored without raising."""
+        packet = {
+            "decoded": {
+                "portnum": "TELEMETRY_APP",
+                "telemetry": {
+                    "time": 1642248000,
+                    "deviceMetrics": {"batteryLevel": 80},
+                },
+            },
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "longname", "meshnet_name"
+            )
+
+            self.assertFalse(result)
+            self.plugin.get_node_data.assert_not_called()
             self.plugin.set_node_data.assert_not_called()
 
         import asyncio

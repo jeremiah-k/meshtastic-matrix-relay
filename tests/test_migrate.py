@@ -11,11 +11,18 @@ import pytest
 
 import mmrelay.migrate as migrate_module
 import mmrelay.paths as paths_module
+from mmrelay.constants.app import (
+    CONFIG_FILENAME,
+    CREDENTIALS_FILENAME,
+    DATABASE_FILENAME,
+)
+from mmrelay.constants.migration import MIGRATION_BACKUP_DIRNAME
 from mmrelay.migrate import (
     _backup_file,
     _dir_has_entries,
     _find_legacy_data,
     _get_most_recent_database,
+    _looks_like_matrix_credentials,
     _path_is_within_home,
     is_migration_needed,
     migrate_config,
@@ -26,6 +33,7 @@ from mmrelay.migrate import (
     migrate_plugins,
     migrate_store,
     perform_migration,
+    rollback_migration,
 )
 
 
@@ -197,7 +205,7 @@ class TestFindLegacyData:
         """Test finds credentials.json file."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        creds = legacy_root / "credentials.json"
+        creds = legacy_root / CREDENTIALS_FILENAME
         creds.write_text("{}")
 
         findings = _find_legacy_data(legacy_root)
@@ -210,14 +218,13 @@ class TestFindLegacyData:
         """Test finds main database file."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        db = legacy_root / "meshtastic.sqlite"
+        db = legacy_root / DATABASE_FILENAME
         db.write_text("fake db")
 
         findings = _find_legacy_data(legacy_root)
 
         assert any(
-            f["type"] == "database" and "meshtastic.sqlite" in f["path"]
-            for f in findings
+            f["type"] == "database" and DATABASE_FILENAME in f["path"] for f in findings
         )
 
     def test_finds_database_in_data_subdir(self, tmp_path: Path) -> None:
@@ -226,20 +233,21 @@ class TestFindLegacyData:
         legacy_root.mkdir()
         data_dir = legacy_root / "data"
         data_dir.mkdir()
-        db = data_dir / "meshtastic.sqlite"
+        db = data_dir / DATABASE_FILENAME
         db.write_text("fake db")
 
         findings = _find_legacy_data(legacy_root)
 
         assert any(
-            f["type"] == "database" and "meshtastic.sqlite" in f["path"]
-            for f in findings
+            f["type"] == "database" and DATABASE_FILENAME in f["path"] for f in findings
         )
 
     def test_finds_database_wal_sidecar(self, tmp_path: Path) -> None:
-        """Test finds database WAL sidecar file."""
+        """Test finds database WAL sidecar file when main database exists."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
+        db = legacy_root / DATABASE_FILENAME
+        db.write_text("fake db")
         wal = legacy_root / "meshtastic.sqlite-wal"
         wal.write_text("fake wal")
 
@@ -250,9 +258,11 @@ class TestFindLegacyData:
         )
 
     def test_finds_database_shm_sidecar(self, tmp_path: Path) -> None:
-        """Test finds database SHM sidecar file."""
+        """Test finds database SHM sidecar file when main database exists."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
+        db = legacy_root / DATABASE_FILENAME
+        db.write_text("fake db")
         shm = legacy_root / "meshtastic.sqlite-shm"
         shm.write_text("fake shm")
 
@@ -335,8 +345,8 @@ class TestFindLegacyData:
         """Test finds multiple artifacts without duplicates."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        (legacy_root / "credentials.json").write_text("{}")
-        db = legacy_root / "meshtastic.sqlite"
+        (legacy_root / CREDENTIALS_FILENAME).write_text("{}")
+        db = legacy_root / DATABASE_FILENAME
         db.write_text("fake db")
         logs_dir = legacy_root / "logs"
         logs_dir.mkdir()
@@ -463,6 +473,30 @@ class TestGetMostRecentDatabase:
 class TestMigrateCredentials:
     """Tests for migrate_credentials function (lines 416-494)."""
 
+    def test_looks_like_matrix_credentials_accepts_missing_user_id(
+        self, tmp_path: Path
+    ) -> None:
+        """Credential detection should align with runtime-required fields only."""
+        creds = tmp_path / CREDENTIALS_FILENAME
+        creds.write_text(
+            '{"homeserver":"https://matrix.tchncs.de","access_token":"syt_token"}',
+            encoding="utf-8",
+        )
+
+        assert _looks_like_matrix_credentials(creds) is True
+
+    def test_looks_like_matrix_credentials_rejects_missing_access_token(
+        self, tmp_path: Path
+    ) -> None:
+        """Credential detection should still reject files missing required fields."""
+        creds = tmp_path / CREDENTIALS_FILENAME
+        creds.write_text(
+            '{"homeserver":"https://matrix.tchncs.de","user_id":"@bot:tchncs.de"}',
+            encoding="utf-8",
+        )
+
+        assert _looks_like_matrix_credentials(creds) is False
+
     def test_no_credentials_found(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -483,7 +517,7 @@ class TestMigrateCredentials:
         """Test dry run mode doesn't modify files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        creds = legacy_root / "credentials.json"
+        creds = legacy_root / CREDENTIALS_FILENAME
         creds.write_text("{}")
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -492,7 +526,7 @@ class TestMigrateCredentials:
 
         assert result["success"] is True
         assert result["dry_run"] is True
-        assert not (new_home / "matrix" / "credentials.json").exists()
+        assert not (new_home / "matrix" / CREDENTIALS_FILENAME).exists()
 
     def test_fallback_home_root_credentials_migrates_when_valid(
         self, tmp_path: Path
@@ -505,7 +539,7 @@ class TestMigrateCredentials:
 
         fake_home = tmp_path / "fake_home"
         fake_home.mkdir()
-        home_creds = fake_home / "credentials.json"
+        home_creds = fake_home / CREDENTIALS_FILENAME
         home_creds.write_text(
             '{"homeserver":"https://matrix.tchncs.de","user_id":"@bot:tchncs.de","access_token":"syt_token"}'
         )
@@ -515,7 +549,34 @@ class TestMigrateCredentials:
 
         assert result["success"] is True
         assert result["action"] == "move"
-        assert (new_home / "matrix" / "credentials.json").exists()
+        assert (new_home / "matrix" / CREDENTIALS_FILENAME).exists()
+        assert not home_creds.exists()
+
+    def test_fallback_home_root_credentials_migrates_without_user_id(
+        self, tmp_path: Path
+    ) -> None:
+        """
+        Test ~/credentials.json fallback migration accepts runtime-valid credentials
+        when user_id is absent.
+        """
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        fake_home = tmp_path / "fake_home"
+        fake_home.mkdir()
+        home_creds = fake_home / CREDENTIALS_FILENAME
+        home_creds.write_text(
+            '{"homeserver":"https://matrix.tchncs.de","access_token":"syt_token"}'
+        )
+
+        with patch("mmrelay.migrate.Path.home", return_value=fake_home):
+            result = migrate_credentials([legacy_root], new_home)
+
+        assert result["success"] is True
+        assert result["action"] == "move"
+        assert (new_home / "matrix" / CREDENTIALS_FILENAME).exists()
         assert not home_creds.exists()
 
     def test_fallback_home_root_credentials_ignored_when_invalid(
@@ -529,7 +590,7 @@ class TestMigrateCredentials:
 
         fake_home = tmp_path / "fake_home"
         fake_home.mkdir()
-        home_creds = fake_home / "credentials.json"
+        home_creds = fake_home / CREDENTIALS_FILENAME
         home_creds.write_text('{"token":"not-matrix-creds"}')
 
         with patch("mmrelay.migrate.Path.home", return_value=fake_home):
@@ -538,7 +599,7 @@ class TestMigrateCredentials:
         assert result["success"] is True
         assert result["action"] == "not_found"
         assert home_creds.exists()
-        assert not (new_home / "matrix" / "credentials.json").exists()
+        assert not (new_home / "matrix" / CREDENTIALS_FILENAME).exists()
 
     def test_migrate_credentials_success(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -546,7 +607,7 @@ class TestMigrateCredentials:
         """Test moves credentials to new location."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        creds = legacy_root / "credentials.json"
+        creds = legacy_root / CREDENTIALS_FILENAME
         creds.write_text('{"token": "test"}')
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -555,10 +616,10 @@ class TestMigrateCredentials:
 
         assert result["success"] is True
         assert result["action"] == "move"
-        assert (new_home / "matrix" / "credentials.json").exists()
+        assert (new_home / "matrix" / CREDENTIALS_FILENAME).exists()
         assert not creds.exists()  # Original moved
         assert (
-            new_home / "matrix" / "credentials.json"
+            new_home / "matrix" / CREDENTIALS_FILENAME
         ).read_text() == '{"token": "test"}'
 
     def test_backup_existing_credentials(
@@ -567,13 +628,13 @@ class TestMigrateCredentials:
         """Test backs up existing credentials."""
         legacy_root_dir = tmp_path / "legacy_root"
         legacy_root_dir.mkdir()
-        creds = legacy_root_dir / "credentials.json"
+        creds = legacy_root_dir / CREDENTIALS_FILENAME
         creds.write_text('{"token": "new"}')
         new_home = tmp_path / "home"
         new_home.mkdir()
         matrix_dir = new_home / "matrix"
         matrix_dir.mkdir()
-        existing_creds = matrix_dir / "credentials.json"
+        existing_creds = matrix_dir / CREDENTIALS_FILENAME
         existing_creds.write_text('{"token": "old"}')
 
         # force=True is needed to trigger migration when destination exists
@@ -581,7 +642,7 @@ class TestMigrateCredentials:
 
         assert result["success"] is True
         # Backup should be created in .migration_backups
-        backup_dir = matrix_dir / ".migration_backups"
+        backup_dir = matrix_dir / MIGRATION_BACKUP_DIRNAME
         assert backup_dir.exists()
         backups = list(backup_dir.glob("credentials.json.bak.*"))
         assert len(backups) == 1
@@ -592,20 +653,20 @@ class TestMigrateCredentials:
         """Test force mode creates backup for safety."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        creds = legacy_root / "credentials.json"
+        creds = legacy_root / CREDENTIALS_FILENAME
         creds.write_text('{"token": "new"}')
         new_home = tmp_path / "home"
         new_home.mkdir()
         matrix_dir = new_home / "matrix"
         matrix_dir.mkdir()
-        existing_creds = matrix_dir / "credentials.json"
+        existing_creds = matrix_dir / CREDENTIALS_FILENAME
         existing_creds.write_text('{"token": "old"}')
 
         result = migrate_credentials([legacy_root], new_home, force=True)
 
         assert result["success"] is True
         # Backup should be created even in force mode for safety
-        backup_dir = matrix_dir / ".migration_backups"
+        backup_dir = matrix_dir / MIGRATION_BACKUP_DIRNAME
         assert backup_dir.exists()
         backups = list(backup_dir.glob("credentials.json.bak.*"))
         assert len(backups) == 1
@@ -616,7 +677,7 @@ class TestMigrateCredentials:
         """Test handles OSError on move."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        creds = legacy_root / "credentials.json"
+        creds = legacy_root / CREDENTIALS_FILENAME
         creds.write_text("{}")
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -635,13 +696,13 @@ class TestMigrateCredentials:
         """Test logs warning on backup OSError."""
         legacy_root_dir = tmp_path / "legacy_root"
         legacy_root_dir.mkdir()
-        creds = legacy_root_dir / "credentials.json"
+        creds = legacy_root_dir / CREDENTIALS_FILENAME
         creds.write_text('{"token": "new"}')
         new_home = tmp_path / "home"
         new_home.mkdir()
         matrix_dir = new_home / "matrix"
         matrix_dir.mkdir()
-        existing_creds = matrix_dir / "credentials.json"
+        existing_creds = matrix_dir / CREDENTIALS_FILENAME
         existing_creds.write_text('{"token": "old"}')
 
         def mock_copy_oserror(src, dst, *args, **kwargs):
@@ -687,7 +748,7 @@ class TestMigrateConfig:
         """Test dry run mode doesn't modify files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        config_file = legacy_root / "config.yaml"
+        config_file = legacy_root / CONFIG_FILENAME
         config_file.write_text("matrix: {}")
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -696,13 +757,13 @@ class TestMigrateConfig:
 
         assert result["success"] is True
         assert result["dry_run"] is True
-        assert not (new_home / "config.yaml").exists()
+        assert not (new_home / CONFIG_FILENAME).exists()
 
     def test_migrate_config_success(self, tmp_path: Path) -> None:
         """Test moves config.yaml to new location."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        config_file = legacy_root / "config.yaml"
+        config_file = legacy_root / CONFIG_FILENAME
         config_file.write_text("matrix: {}")
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -711,25 +772,25 @@ class TestMigrateConfig:
 
         assert result["success"] is True
         assert result["action"] == "move"
-        assert (new_home / "config.yaml").exists()
+        assert (new_home / CONFIG_FILENAME).exists()
         assert not config_file.exists()
 
     def test_backup_existing_config(self, tmp_path: Path) -> None:
         """Test backs up existing config.yaml."""
         legacy_root_dir = tmp_path / "legacy_root"
         legacy_root_dir.mkdir()
-        config_file = legacy_root_dir / "config.yaml"
+        config_file = legacy_root_dir / CONFIG_FILENAME
         config_file.write_text("matrix: {}")
         new_home = tmp_path / "home"
         new_home.mkdir()
-        existing_config = new_home / "config.yaml"
+        existing_config = new_home / CONFIG_FILENAME
         existing_config.write_text("old: true")
 
         result = migrate_config([legacy_root_dir], new_home, force=True)
 
         assert result["success"] is True
         # Backup should be created in .migration_backups
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         assert backup_dir.exists()
         backups = list(backup_dir.glob("config.yaml.bak.*"))
         assert len(backups) == 1
@@ -758,7 +819,7 @@ class TestMigrateDatabase:
         """Test dry run mode doesn't modify files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        db = legacy_root / "meshtastic.sqlite"
+        db = legacy_root / DATABASE_FILENAME
         db.write_text("content")
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -775,7 +836,7 @@ class TestMigrateDatabase:
         """Test moves database."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        db = legacy_root / "meshtastic.sqlite"
+        db = legacy_root / DATABASE_FILENAME
         conn = sqlite3.connect(db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.execute("INSERT INTO test VALUES (1)")
@@ -788,7 +849,7 @@ class TestMigrateDatabase:
 
         assert result["success"] is True
         assert result["action"] == "move"
-        assert (new_home / "database" / "meshtastic.sqlite").exists()
+        assert (new_home / "database" / DATABASE_FILENAME).exists()
         assert not db.exists()
 
     def test_integrity_check_failure_prevents_data_loss(
@@ -797,7 +858,7 @@ class TestMigrateDatabase:
         """Test that migration failure on integrity check failure prevents data loss."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        db_path = legacy_root / "meshtastic.sqlite"
+        db_path = legacy_root / DATABASE_FILENAME
         # Create corrupt database
         db_path.write_bytes(b"corrupt data")
         new_home = tmp_path / "home"
@@ -809,7 +870,7 @@ class TestMigrateDatabase:
             migrate_database([legacy_root], new_home)
 
         assert db_path.exists(), "Source database was deleted - data loss!"
-        dest_db = new_home / "database" / "meshtastic.sqlite"
+        dest_db = new_home / "database" / DATABASE_FILENAME
         assert not dest_db.exists(), "Corrupted database was left at destination"
 
     def test_integrity_check_corrupted_prevents_data_loss(
@@ -818,7 +879,7 @@ class TestMigrateDatabase:
         """Test that integrity check returning corrupted prevents data loss."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        db_path = legacy_root / "meshtastic.sqlite"
+        db_path = legacy_root / DATABASE_FILENAME
         conn = sqlite3.connect(db_path)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.commit()
@@ -837,7 +898,7 @@ class TestMigrateDatabase:
                 migrate_database([legacy_root], new_home)
 
         assert db_path.exists(), "Source database was deleted - data loss!"
-        dest_db = new_home / "database" / "meshtastic.sqlite"
+        dest_db = new_home / "database" / DATABASE_FILENAME
         assert not dest_db.exists(), "Corrupted database was left at destination"
 
     def test_most_recent_database_selected(
@@ -850,7 +911,7 @@ class TestMigrateDatabase:
         data_dir.mkdir()
 
         # Create old database
-        old_db = legacy_root / "meshtastic.sqlite"
+        old_db = legacy_root / DATABASE_FILENAME
         conn = sqlite3.connect(old_db)
         conn.execute("CREATE TABLE old_table (id INTEGER)")
         conn.execute("INSERT INTO old_table VALUES (1)")
@@ -863,7 +924,7 @@ class TestMigrateDatabase:
         new_ts = base_time
 
         # Create newer database in data subdirectory
-        new_db = data_dir / "meshtastic.sqlite"
+        new_db = data_dir / DATABASE_FILENAME
         conn = sqlite3.connect(new_db)
         conn.execute("CREATE TABLE new_table (id INTEGER)")
         conn.execute("INSERT INTO new_table VALUES (2)")
@@ -881,7 +942,7 @@ class TestMigrateDatabase:
 
         # Should migrate the newer database
         assert result["success"] is True
-        migrated_db = new_home / "database" / "meshtastic.sqlite"
+        migrated_db = new_home / "database" / DATABASE_FILENAME
         assert migrated_db.exists()
         # Verify it has the new table
         conn = sqlite3.connect(migrated_db)
@@ -898,7 +959,7 @@ class TestMigrateDatabase:
         new_home.mkdir()
         db_dir = new_home / "database"
         db_dir.mkdir()
-        db_path = db_dir / "meshtastic.sqlite"
+        db_path = db_dir / DATABASE_FILENAME
         db_path.write_text("content")
 
         result = migrate_database([new_home], new_home)
@@ -913,13 +974,13 @@ class TestMigrateDatabase:
         """Test skips database migration if target exists and force=False."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        (legacy_root / "meshtastic.sqlite").write_text("legacy")
+        (legacy_root / DATABASE_FILENAME).write_text("legacy")
 
         new_home = tmp_path / "home"
         new_home.mkdir()
         db_dir = new_home / "database"
         db_dir.mkdir()
-        db_path = db_dir / "meshtastic.sqlite"
+        db_path = db_dir / DATABASE_FILENAME
         db_path.write_text("existing")
 
         result = migrate_database([legacy_root], new_home, force=False)
@@ -1277,7 +1338,7 @@ class TestMigrateGpxtracker:
         """Test handles invalid YAML in config."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        config = legacy_root / "config.yaml"
+        config = legacy_root / CONFIG_FILENAME
         config.write_text("invalid: yaml: [unclosed")
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -1293,7 +1354,7 @@ class TestMigrateGpxtracker:
         """Test returns success when gpx_directory not configured."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        config = legacy_root / "config.yaml"
+        config = legacy_root / CONFIG_FILENAME
         config.write_text("community-plugins:\n  other:\n    active: true")
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -1309,7 +1370,7 @@ class TestMigrateGpxtracker:
         """Test handles non-existent configured gpx_directory."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        config = legacy_root / "config.yaml"
+        config = legacy_root / CONFIG_FILENAME
         config.write_text(
             "community-plugins:\n  gpxtracker:\n    gpx_directory: /nonexistent/path"
         )
@@ -1327,7 +1388,7 @@ class TestMigrateGpxtracker:
         """Test dry run mode doesn't modify files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        config = legacy_root / "config.yaml"
+        config = legacy_root / CONFIG_FILENAME
         config.write_text("community-plugins:\n  gpxtracker:\n    gpx_directory: ~/gpx")
         gpx_dir = tmp_path / "gpx"
         gpx_dir.mkdir()
@@ -1350,7 +1411,7 @@ class TestMigrateGpxtracker:
         """Test moves GPX files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        config = legacy_root / "config.yaml"
+        config = legacy_root / CONFIG_FILENAME
         config.write_text("community-plugins:\n  gpxtracker:\n    gpx_directory: ~/gpx")
         gpx_dir = tmp_path / "gpx"
         gpx_dir.mkdir()
@@ -1388,7 +1449,7 @@ class TestIsMigrationNeeded:
         # In v1.3, is_migration_needed uses verify_migration instead of a flag file
         # We simulate a "completed" migration by having no legacy data and credentials present
         (home / "matrix").mkdir(parents=True)
-        (home / "matrix" / "credentials.json").write_text("{}")
+        (home / "matrix" / CREDENTIALS_FILENAME).write_text("{}")
 
         monkeypatch.setattr(paths_module, "get_home_dir", lambda: home)
         monkeypatch.setattr(
@@ -1397,7 +1458,7 @@ class TestIsMigrationNeeded:
             lambda: {
                 "home": str(home),
                 "legacy_sources": [],
-                "credentials_path": str(home / "matrix" / "credentials.json"),
+                "credentials_path": str(home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(home / "database"),
                 "logs_dir": str(home / "logs"),
                 "plugins_dir": str(home / "plugins"),
@@ -1417,7 +1478,7 @@ class TestIsMigrationNeeded:
         home.mkdir()
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        (legacy_root / "credentials.json").write_text("{}")
+        (legacy_root / CREDENTIALS_FILENAME).write_text("{}")
 
         monkeypatch.setattr(paths_module, "get_home_dir", lambda: home)
         monkeypatch.setattr(
@@ -1426,7 +1487,7 @@ class TestIsMigrationNeeded:
             lambda: {
                 "home": str(home),
                 "legacy_sources": [str(legacy_root)],
-                "credentials_path": str(home / "matrix" / "credentials.json"),
+                "credentials_path": str(home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(home / "database"),
                 "logs_dir": str(home / "logs"),
                 "plugins_dir": str(home / "plugins"),
@@ -1446,7 +1507,7 @@ class TestIsMigrationNeeded:
         home.mkdir()
         # Credentials must exist for verify_migration to report 'ok'
         (home / "matrix").mkdir(parents=True)
-        (home / "matrix" / "credentials.json").write_text("{}")
+        (home / "matrix" / CREDENTIALS_FILENAME).write_text("{}")
 
         monkeypatch.setattr(paths_module, "get_home_dir", lambda: home)
         monkeypatch.setattr(
@@ -1455,7 +1516,7 @@ class TestIsMigrationNeeded:
             lambda: {
                 "home": str(home),
                 "legacy_sources": [],
-                "credentials_path": str(home / "matrix" / "credentials.json"),
+                "credentials_path": str(home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(home / "database"),
                 "logs_dir": str(home / "logs"),
                 "plugins_dir": str(home / "plugins"),
@@ -1477,7 +1538,7 @@ class TestPerformMigration:
         """Test dry run mode."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        (legacy_root / "credentials.json").write_text("{}")
+        (legacy_root / CREDENTIALS_FILENAME).write_text("{}")
         new_home = tmp_path / "home"
         new_home.mkdir()
 
@@ -1488,7 +1549,7 @@ class TestPerformMigration:
             lambda: {
                 "home": str(new_home),
                 "legacy_sources": [str(legacy_root)],
-                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "credentials_path": str(new_home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(new_home / "database"),
                 "logs_dir": str(new_home / "logs"),
                 "plugins_dir": str(new_home / "plugins"),
@@ -1508,7 +1569,7 @@ class TestPerformMigration:
         new_home = tmp_path / "home"
         new_home.mkdir()
         (new_home / "matrix").mkdir()
-        (new_home / "matrix" / "credentials.json").write_text("{}")
+        (new_home / "matrix" / CREDENTIALS_FILENAME).write_text("{}")
 
         monkeypatch.setenv("MMRELAY_HOME", str(new_home))
         monkeypatch.setattr(
@@ -1517,7 +1578,7 @@ class TestPerformMigration:
             lambda: {
                 "home": str(new_home),
                 "legacy_sources": [],
-                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "credentials_path": str(new_home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(new_home / "database"),
                 "logs_dir": str(new_home / "logs"),
                 "plugins_dir": str(new_home / "plugins"),
@@ -1537,8 +1598,8 @@ class TestPerformMigration:
         """Test complete migration with all components."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        (legacy_root / "credentials.json").write_text("{}")
-        db = legacy_root / "meshtastic.sqlite"
+        (legacy_root / CREDENTIALS_FILENAME).write_text("{}")
+        db = legacy_root / DATABASE_FILENAME
         conn = sqlite3.connect(db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.commit()
@@ -1555,11 +1616,20 @@ class TestPerformMigration:
             lambda: {
                 "home": str(new_home),
                 "legacy_sources": [str(legacy_root)],
-                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "credentials_path": str(new_home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(new_home / "database"),
                 "logs_dir": str(new_home / "logs"),
                 "plugins_dir": str(new_home / "plugins"),
                 "store_dir": str(new_home / "matrix" / "store"),
+            },
+        )
+        monkeypatch.setattr(
+            migrate_module,
+            "migrate_service",
+            lambda *args, **kwargs: {
+                "success": True,
+                "action": "not_applicable",
+                "message": "Service migration skipped in test",
             },
         )
 
@@ -1575,7 +1645,7 @@ class TestPerformMigration:
         """Test creates home directory if it doesn't exist."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        (legacy_root / "credentials.json").write_text("{}")
+        (legacy_root / CREDENTIALS_FILENAME).write_text("{}")
         new_home = tmp_path / "home"
 
         monkeypatch.setenv("MMRELAY_HOME", str(new_home))
@@ -1585,11 +1655,20 @@ class TestPerformMigration:
             lambda: {
                 "home": str(new_home),
                 "legacy_sources": [str(legacy_root)],
-                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "credentials_path": str(new_home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(new_home / "database"),
                 "logs_dir": str(new_home / "logs"),
                 "plugins_dir": str(new_home / "plugins"),
                 "store_dir": str(new_home / "matrix" / "store"),
+            },
+        )
+        monkeypatch.setattr(
+            migrate_module,
+            "migrate_service",
+            lambda *args, **kwargs: {
+                "success": True,
+                "action": "not_applicable",
+                "message": "Service migration skipped in test",
             },
         )
 
@@ -1896,18 +1975,18 @@ class TestMigrationRealWorldScenarios:
         # Simulate old Windows install location (what the installer creates)
         old_install = tmp_path / "old_install"
         old_install.mkdir()
-        (old_install / "config.yaml").write_text(
+        (old_install / CONFIG_FILENAME).write_text(
             "matrix:\n  homeserver: https://example.com"
         )
         # Create a proper SQLite database (not just text)
-        db_path = old_install / "meshtastic.sqlite"
+        db_path = old_install / DATABASE_FILENAME
         conn = sqlite3.connect(db_path)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.commit()
         conn.close()
         matrix_dir = old_install / "matrix"
         matrix_dir.mkdir()
-        (matrix_dir / "credentials.json").write_text('{"user": "legacy"}')
+        (matrix_dir / CREDENTIALS_FILENAME).write_text('{"user": "legacy"}')
 
         # New home would be platformdirs default on Windows
         new_home = tmp_path / "new_home"
@@ -1925,7 +2004,7 @@ class TestMigrationRealWorldScenarios:
             lambda: {
                 "home": str(new_home),
                 "legacy_sources": [str(old_install)],
-                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "credentials_path": str(new_home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(new_home / "database"),
                 "logs_dir": str(new_home / "logs"),
                 "plugins_dir": str(new_home / "plugins"),
@@ -1956,10 +2035,10 @@ class TestMigrationRealWorldScenarios:
         legacy_root.mkdir()
 
         # Create all legacy artifacts
-        (legacy_root / "config.yaml").write_text("config")
+        (legacy_root / CONFIG_FILENAME).write_text("config")
         matrix_dir = legacy_root / "matrix"
         matrix_dir.mkdir()
-        (matrix_dir / "credentials.json").write_text('{"user": "test"}')
+        (matrix_dir / CREDENTIALS_FILENAME).write_text('{"user": "test"}')
         logs_dir = legacy_root / "logs"
         logs_dir.mkdir()
         (logs_dir / "app.log").write_text("log content")
@@ -1979,7 +2058,7 @@ class TestMigrationRealWorldScenarios:
             lambda: {
                 "home": str(new_home),
                 "legacy_sources": [str(legacy_root)],
-                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "credentials_path": str(new_home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(new_home / "database"),
                 "logs_dir": str(new_home / "logs"),
                 "plugins_dir": str(new_home / "plugins"),
@@ -1989,10 +2068,10 @@ class TestMigrationRealWorldScenarios:
 
         # First migration - simulate partial success by manually creating some migrated files
         # Simulate config and credentials already migrated
-        (new_home / "config.yaml").write_text("config")
+        (new_home / CONFIG_FILENAME).write_text("config")
         new_matrix = new_home / "matrix"
         new_matrix.mkdir()
-        (new_matrix / "credentials.json").write_text('{"user": "test"}')
+        (new_matrix / CREDENTIALS_FILENAME).write_text('{"user": "test"}')
 
         # Now run migration - it should skip already-migrated items
         # and migrate the remaining ones (logs)
@@ -2015,8 +2094,8 @@ class TestMigrationRealWorldScenarios:
         legacy_root.mkdir()
 
         # Create legacy artifacts - credentials at legacy root (not in matrix subdir)
-        (legacy_root / "config.yaml").write_text("config")
-        (legacy_root / "credentials.json").write_text('{"user": "test"}')
+        (legacy_root / CONFIG_FILENAME).write_text("config")
+        (legacy_root / CREDENTIALS_FILENAME).write_text('{"user": "test"}')
 
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -2033,7 +2112,7 @@ class TestMigrationRealWorldScenarios:
             lambda: {
                 "home": str(new_home),
                 "legacy_sources": [str(legacy_root)],
-                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "credentials_path": str(new_home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(new_home / "database"),
                 "logs_dir": str(new_home / "logs"),
                 "plugins_dir": str(new_home / "plugins"),
@@ -2050,9 +2129,9 @@ class TestMigrationRealWorldScenarios:
         assert result2["success"] is True
 
         # Verify data wasn't corrupted
-        assert (new_home / "config.yaml").read_text() == "config"
+        assert (new_home / CONFIG_FILENAME).read_text() == "config"
         assert (
-            new_home / "matrix" / "credentials.json"
+            new_home / "matrix" / CREDENTIALS_FILENAME
         ).read_text() == '{"user": "test"}'
 
     def test_ensure_directories_creates_empty_dirs_migration_still_works(
@@ -2071,15 +2150,15 @@ class TestMigrationRealWorldScenarios:
         legacy_root.mkdir()
 
         # Config
-        (legacy_root / "config.yaml").write_text(
+        (legacy_root / CONFIG_FILENAME).write_text(
             "matrix:\n  homeserver: https://example.com"
         )
 
         # Credentials - at legacy root (not in matrix subdir)
-        (legacy_root / "credentials.json").write_text('{"user": "legacy"}')
+        (legacy_root / CREDENTIALS_FILENAME).write_text('{"user": "legacy"}')
 
         # Database - create a proper SQLite database
-        db_path = legacy_root / "meshtastic.sqlite"
+        db_path = legacy_root / DATABASE_FILENAME
         conn = sqlite3.connect(db_path)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.commit()
@@ -2116,7 +2195,7 @@ class TestMigrationRealWorldScenarios:
             lambda: {
                 "home": str(new_home),
                 "legacy_sources": [str(legacy_root)],
-                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "credentials_path": str(new_home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(new_home / "database"),
                 "logs_dir": str(new_home / "logs"),
                 "plugins_dir": str(new_home / "plugins"),
@@ -2131,7 +2210,50 @@ class TestMigrationRealWorldScenarios:
         assert result["success"] is True
 
         # Verify actual migration happened
-        assert (new_home / "config.yaml").exists()
-        assert (new_home / "matrix" / "credentials.json").exists()
-        assert (new_home / "database" / "meshtastic.sqlite").exists()
+        assert (new_home / CONFIG_FILENAME).exists()
+        assert (new_home / "matrix" / CREDENTIALS_FILENAME).exists()
+        assert (new_home / "database" / DATABASE_FILENAME).exists()
         assert any((new_home / "logs").glob("*.log"))
+
+
+def test_rollback_database_sidecar_only_restore_keeps_main_db(tmp_path: Path) -> None:
+    """Rollback should not delete migrated main DB when only sidecars were backed up."""
+    new_home = tmp_path / "new-home"
+    db_dir = new_home / "database"
+    db_dir.mkdir(parents=True)
+
+    main_db = db_dir / DATABASE_FILENAME
+    main_db.write_text("migrated-main-db", encoding="utf-8")
+    migrated_shm = db_dir / "meshtastic.sqlite-shm"
+    migrated_shm.write_text("migrated-shm", encoding="utf-8")
+
+    backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
+    backup_dir.mkdir()
+    backup_wal = backup_dir / "meshtastic.sqlite-wal.backup"
+    backup_wal.write_text("backup-wal", encoding="utf-8")
+
+    migrations = [
+        {
+            "type": "database",
+            "result": {
+                "action": "migrated",
+                "new_path": str(main_db),
+                "backed_up_files": [
+                    {
+                        "backup_path": str(backup_wal),
+                        "restore_path": str(db_dir / "meshtastic.sqlite-wal"),
+                    }
+                ],
+                "migrated_files": [str(main_db), str(migrated_shm)],
+            },
+        }
+    ]
+
+    report = rollback_migration(["database"], migrations, new_home)
+
+    assert report["success"] is True
+    assert main_db.exists()
+    assert migrated_shm.exists()
+    assert (db_dir / "meshtastic.sqlite-wal").read_text(
+        encoding="utf-8"
+    ) == "backup-wal"

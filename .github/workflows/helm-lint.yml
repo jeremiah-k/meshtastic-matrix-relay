@@ -15,8 +15,76 @@ jobs:
     runs-on: ubuntu-latest
     env:
       KUBECONFORM_VERSION: 0.7.0
+      HELM_IMAGE: alpine/helm:3.14.2
+      HELM_IMAGE_CACHE_VERSION: 1
     steps:
       - uses: actions/checkout@v6
+
+      - name: Derive Helm image cache metadata
+        id: helm-image-cache-meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          digest="${HELM_IMAGE##*@sha256:}"
+          if [[ "${digest}" == "${HELM_IMAGE}" ]]; then
+            resolved_digest=""
+            if command -v docker >/dev/null 2>&1; then
+              # Resolve the manifest digest when available so cache keys track image content.
+              resolved_digest_raw="$(
+                docker buildx imagetools inspect "${HELM_IMAGE}" --format '{{.Manifest.Digest}}' 2>/dev/null || true
+              )"
+              # Some docker/buildx versions may ignore --format and emit a multi-line report.
+              # Extract only a strict sha256 digest token so GITHUB_OUTPUT remains valid.
+              resolved_digest="$(
+                printf '%s\n' "${resolved_digest_raw}" \
+                  | tr -d '\r' \
+                  | grep -Eo 'sha256:[a-f0-9]{64}' \
+                  | head -n1 || true
+              )"
+            fi
+            resolved_digest="${resolved_digest#sha256:}"
+            if [[ -n "${resolved_digest}" ]]; then
+              digest="${resolved_digest}"
+            else
+              digest="$(printf '%s' "${HELM_IMAGE}" | sha256sum | awk '{print $1}')"
+            fi
+          fi
+          cache_dir="${RUNNER_TEMP}/helm-image-cache"
+          cache_path="${cache_dir}/${digest}.tar"
+          {
+            echo "digest=${digest}"
+            echo "cache_key=${RUNNER_OS}-helm-image-v${HELM_IMAGE_CACHE_VERSION}-${digest}"
+            echo "cache_path=${cache_path}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Restore cached Helm image
+        id: helm-image-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.helm-image-cache-meta.outputs.cache_path }}
+          key: ${{ steps.helm-image-cache-meta.outputs.cache_key }}
+
+      - name: Load cached Helm image
+        if: ${{ steps.helm-image-cache.outputs.cache-hit == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v podman >/dev/null 2>&1; then
+            podman load -i "${{ steps.helm-image-cache-meta.outputs.cache_path }}"
+          elif command -v docker >/dev/null 2>&1; then
+            docker load -i "${{ steps.helm-image-cache-meta.outputs.cache_path }}"
+          else
+            echo "ERROR: No container runtime (podman or docker) found"
+            exit 1
+          fi
+
+      - name: Log in to Docker Hub
+        if: ${{ success() && steps.helm-image-cache.outputs.cache-hit != 'true' }}
+        continue-on-error: true
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Install kubeconform
         run: |
@@ -76,6 +144,38 @@ jobs:
       - name: Run Helm Validation
         run: |
           bash scripts/ci/helm_render_validate.sh
+
+      - name: Save Helm image tar
+        id: helm-image-tar
+        if: ${{ always() && steps.helm-image-cache.outputs.cache-hit != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_path="${{ steps.helm-image-cache-meta.outputs.cache_path }}"
+          mkdir -p "$(dirname "${cache_path}")"
+          if command -v podman >/dev/null 2>&1; then
+            if podman image exists "${HELM_IMAGE}" >/dev/null 2>&1; then
+              podman save -o "${cache_path}" "${HELM_IMAGE}"
+              echo "saved=true" >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+          fi
+          if command -v docker >/dev/null 2>&1; then
+            if docker image inspect "${HELM_IMAGE}" >/dev/null 2>&1; then
+              docker save "${HELM_IMAGE}" -o "${cache_path}"
+              echo "saved=true" >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+          fi
+          echo "saved=false" >> "${GITHUB_OUTPUT}"
+          echo "Helm image not present locally; skipping cache archive."
+
+      - name: Persist cached Helm image
+        if: ${{ always() && steps.helm-image-cache.outputs.cache-hit != 'true' && steps.helm-image-tar.outputs.saved == 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.helm-image-cache-meta.outputs.cache_path }}
+          key: ${{ steps.helm-image-cache-meta.outputs.cache_key }}
 
       - name: Check for legacy patterns
         run: |

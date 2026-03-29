@@ -11,7 +11,11 @@ from nio import (
     RoomMessageText,
 )
 
+from mmrelay.constants.plugins import LOW_BATTERY_THRESHOLD_PERCENT
+from mmrelay.log_utils import get_logger
 from mmrelay.plugins.base_plugin import BasePlugin
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from meshtastic.mesh_interface import MeshInterface
@@ -35,13 +39,13 @@ class Plugin(BasePlugin):
         r"""
         Produce a concise multi-line health summary for the mesh using metrics reported by discovered Meshtastic nodes.
 
-        The returned text reports total node count and, when available, average and median values for battery percentage, air utilization (tx), and SNR, plus a count of nodes with battery <= 10%.
+        The returned text reports total node count and, when available, average and median values for battery percentage, air utilization (tx), and SNR, plus a count of nodes with battery <= configured threshold (LOW_BATTERY_THRESHOLD_PERCENT, percent).
 
         Returns:
             str: A multi-line human-readable summary. Typical content:
                 - Nodes: total number of nodes
                 - Battery: average% / median% (avg / median) or "Battery: N/A"
-                - Nodes with Low Battery (<= 10): count (0 if no battery data)
+                - Nodes with Low Battery (<= threshold%): count (0 if no battery data)
                 - Air Util: average / median (avg / median) or "Air Util: N/A"
                 - SNR: average / median (avg / median) or "SNR: N/A"
             Special return values:
@@ -53,6 +57,7 @@ class Plugin(BasePlugin):
 
         meshtastic_client: MeshInterface | None = connect_meshtastic()
         if meshtastic_client is None:
+            logger.warning("Failed to connect to Meshtastic device for health check")
             return "Unable to connect to Meshtastic device."
         battery_levels = []
         air_util_tx = []
@@ -80,7 +85,9 @@ class Plugin(BasePlugin):
             radios = len(meshtastic_client.nodes)
             return f"Nodes: {radios}\nNo nodes with health metrics found."
 
-        low_battery = len([n for n in battery_levels if n <= 10])
+        low_battery = len(
+            [n for n in battery_levels if n <= LOW_BATTERY_THRESHOLD_PERCENT]
+        )
         radios = len(meshtastic_client.nodes)
         avg_battery = statistics.mean(battery_levels) if battery_levels else 0
         mdn_battery = statistics.median(battery_levels) if battery_levels else 0
@@ -107,11 +114,10 @@ class Plugin(BasePlugin):
             )
         else:
             battery_line = "Battery: N/A"
-            low_battery = 0  # No low battery nodes if no battery data
 
         return f"""Nodes: {radios}
  {battery_line}
- Nodes with Low Battery (<= 10): {low_battery}
+ Nodes with Low Battery (<= {LOW_BATTERY_THRESHOLD_PERCENT}%): {low_battery}
  {air_util_line}
  {snr_line}"""
 

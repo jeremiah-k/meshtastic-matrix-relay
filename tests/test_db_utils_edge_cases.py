@@ -19,6 +19,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from mmrelay.constants.app import DATABASE_FILENAME
 from mmrelay.db_utils import (
     _reset_db_manager,
     clear_db_path_cache,
@@ -75,7 +76,7 @@ class TestDBUtilsEdgeCases:
             ):
                 # Should still return a path even if directory creation fails
                 result = get_db_path()
-                assert "meshtastic.sqlite" in result
+                assert DATABASE_FILENAME in result
 
     def test_get_db_path_custom_config_invalid_path(self):
         """
@@ -396,8 +397,8 @@ class TestDBUtilsEdgeCases:
         with tempfile.TemporaryDirectory() as temp_dir:
             base_dir = os.path.join(temp_dir, "base")
             data_dir = os.path.join(base_dir, "data")
-            default_path = os.path.join(data_dir, "meshtastic.sqlite")
-            legacy_path = os.path.join(base_dir, "meshtastic.sqlite")
+            default_path = os.path.join(data_dir, DATABASE_FILENAME)
+            legacy_path = os.path.join(base_dir, DATABASE_FILENAME)
 
             os.makedirs(data_dir, exist_ok=True)
 
@@ -428,8 +429,8 @@ class TestDBUtilsEdgeCases:
         with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = os.path.join(temp_dir, "data")
             base_dir = temp_dir
-            default_path = os.path.join(data_dir, "meshtastic.sqlite")
-            legacy_base_path = os.path.join(base_dir, "meshtastic.sqlite")
+            default_path = os.path.join(data_dir, DATABASE_FILENAME)
+            legacy_base_path = os.path.join(base_dir, DATABASE_FILENAME)
             # Note: default_path and base_dir/data/meshtastic.sqlite are the same when
             # data_dir = base_dir/data
             # So we need to create files at 2 locations but they appear as 3 candidates
@@ -475,8 +476,8 @@ class TestDBUtilsEdgeCases:
         with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = os.path.join(temp_dir, "data")
             base_dir = temp_dir
-            default_path = os.path.join(data_dir, "meshtastic.sqlite")
-            legacy_base_path = os.path.join(base_dir, "meshtastic.sqlite")
+            default_path = os.path.join(data_dir, DATABASE_FILENAME)
+            legacy_base_path = os.path.join(base_dir, DATABASE_FILENAME)
 
             os.makedirs(data_dir, exist_ok=True)
 
@@ -516,9 +517,9 @@ class TestDBUtilsEdgeCases:
         with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = os.path.join(temp_dir, "data")
             base_dir = temp_dir
-            default_path = os.path.join(data_dir, "meshtastic.sqlite")
+            default_path = os.path.join(data_dir, DATABASE_FILENAME)
             # Use legacy_base_path which is at base_dir, not inside data/ subdirectory
-            legacy_base_path = os.path.join(base_dir, "meshtastic.sqlite")
+            legacy_base_path = os.path.join(base_dir, DATABASE_FILENAME)
 
             os.makedirs(data_dir, exist_ok=True)
 

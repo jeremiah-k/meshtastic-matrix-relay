@@ -2,9 +2,24 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
+from mmrelay.constants.app import PROC_COMM_PATH_TEMPLATE, PROC_SELF_STATUS_PATH
+from mmrelay.constants.formats import DEFAULT_TEXT_ENCODING
 from mmrelay.constants.network import SYSTEMD_INIT_SYSTEM
+
+_logger: logging.Logger | None = None
+
+
+def _get_logger() -> logging.Logger:
+    """Get or create the module logger lazily to avoid import cycles."""
+    global _logger
+    if _logger is None:
+        from mmrelay.log_utils import get_logger
+
+        _logger = get_logger(__name__)
+    return _logger
 
 
 def is_running_as_service() -> bool:
@@ -23,13 +38,20 @@ def is_running_as_service() -> bool:
         return True
 
     try:
-        with open("/proc/self/status", encoding="utf-8") as status_file:
+        with open(PROC_SELF_STATUS_PATH, encoding=DEFAULT_TEXT_ENCODING) as status_file:
             for line in status_file:
                 if line.startswith("PPid:"):
                     ppid = int(line.split()[1])
-                    with open(f"/proc/{ppid}/comm", encoding="utf-8") as comm_file:
+                    with open(
+                        PROC_COMM_PATH_TEMPLATE.format(ppid=ppid),
+                        encoding=DEFAULT_TEXT_ENCODING,
+                    ) as comm_file:
                         return comm_file.read().strip() == SYSTEMD_INIT_SYSTEM
-    except (FileNotFoundError, PermissionError, ValueError):
-        pass
+    except (FileNotFoundError, PermissionError, ValueError, IndexError) as e:
+        _get_logger().debug(
+            "Service detection failed via proc filesystem",
+            exc_info=True,
+            extra={"error_type": type(e).__name__},
+        )
 
     return False

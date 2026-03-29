@@ -8,15 +8,28 @@ import threading
 from collections.abc import Collection
 from typing import Any, Callable, NamedTuple, cast
 
+from mmrelay.constants.app import DATABASE_FILENAME, LEGACY_DATA_SUBDIR
+from mmrelay.constants.config import (
+    CONFIG_SECTION_DATABASE,
+    CONFIG_SECTION_DATABASE_LEGACY,
+    ENV_BOOL_FALSE_VALUES,
+    ENV_BOOL_TRUE_VALUES,
+)
 from mmrelay.constants.database import (
+    DEBUG_ID_SAMPLE_LIMIT,
     DEFAULT_BUSY_TIMEOUT_MS,
     DEFAULT_ENABLE_WAL,
     DEFAULT_EXTRA_PRAGMAS,
     DEFAULT_NAME_PRUNE_CHUNK_SIZE,
+    LEGACY_DATABASE_SUBDIR,
+    MESSAGE_MAP_COLUMNS,
+    MESSAGE_MAP_TABLE,
     NAMES_FIELD_LONGNAME,
     NAMES_FIELD_SHORTNAME,
     NAMES_TABLE_LONGNAMES,
     NAMES_TABLE_SHORTNAMES,
+    PLUGIN_DATA_COLUMNS,
+    PLUGIN_DATA_TABLE,
     PROTO_NODE_NAME_LONG,
     PROTO_NODE_NAME_SHORT,
     PragmaValue,
@@ -35,6 +48,48 @@ class _InvalidNamesTableError(ValueError):
 
     def __init__(self, table: str) -> None:
         super().__init__(f"Invalid table name: {table}")
+
+
+_MESSAGE_MAP_LEGACY_TABLE = f"{MESSAGE_MAP_TABLE}_legacy"
+_MESSAGE_MAP_TEMP_TABLE = f"{MESSAGE_MAP_TABLE}_old_temp"
+_MESSAGE_MAP_STALE_TEMP_TABLE = f"{MESSAGE_MAP_TABLE}_stale_temp"
+
+_VALID_TABLE_NAMES: frozenset[str] = frozenset(
+    {
+        "message_map",
+        "message_map_legacy",
+        "message_map_old_temp",
+        "message_map_stale_temp",
+        "plugin_data",
+        "longnames",
+        "shortnames",
+    }
+)
+
+_VALID_COLUMN_NAMES: frozenset[str] = frozenset(
+    {
+        "meshtastic_id",
+        "matrix_event_id",
+        "matrix_room_id",
+        "meshtastic_text",
+        "meshtastic_meshnet",
+        "plugin_name",
+        "data",
+        "longname",
+        "shortname",
+    }
+)
+
+
+def _validate_identifier(name: str, allowlist: frozenset[str]) -> str:
+    """
+    Validate that a SQL identifier matches a known-safe allowlist.
+
+    Raises ValueError if the identifier is not in the allowlist.
+    """
+    if name not in allowlist:
+        raise ValueError(f"Invalid SQL identifier: {name}")
+    return name
 
 
 # Global config variable that will be set from main.py
@@ -62,7 +117,7 @@ class NodeNameEntry(NamedTuple):
 NodeNameState = tuple[NodeNameEntry, ...]
 
 _CONFLICT_SENTINEL = object()
-_NODE_NAME_DEBUG_ID_SAMPLE_LIMIT = 20
+_NODE_NAME_DEBUG_ID_SAMPLE_LIMIT = DEBUG_ID_SAMPLE_LIMIT
 
 # Table name to singular field-name mapping used for logging and column lookup.
 _NAME_FIELD_BY_TABLE = {
@@ -141,6 +196,169 @@ _CREATE_TABLE_NAMES_SHORT_SQL = (
     "CREATE TABLE IF NOT EXISTS shortnames "
     "(meshtastic_id TEXT PRIMARY KEY, shortname TEXT)"
 )
+_CREATE_TABLE_PLUGIN_DATA_SQL = (
+    "CREATE TABLE IF NOT EXISTS plugin_data "
+    "(plugin_name TEXT, meshtastic_id TEXT, data TEXT, "
+    "PRIMARY KEY (plugin_name, meshtastic_id))"
+)
+_CREATE_TABLE_MESSAGE_MAP_SQL = (
+    "CREATE TABLE IF NOT EXISTS message_map "
+    "(meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, "
+    "matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+)
+_UPSERT_PLUGIN_DATA_SQL = (
+    "INSERT INTO plugin_data (plugin_name, meshtastic_id, data) VALUES (?, ?, ?) "
+    "ON CONFLICT (plugin_name, meshtastic_id) DO UPDATE SET data = excluded.data"
+)
+_DELETE_PLUGIN_DATA_SQL = (
+    "DELETE FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?"
+)
+_GET_PLUGIN_DATA_SQL = (
+    "SELECT data FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?"
+)
+_GET_ALL_PLUGIN_DATA_SQL = "SELECT data FROM plugin_data WHERE plugin_name=?"
+_UPSERT_MESSAGE_MAP_SQL = (
+    "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    "VALUES (?, ?, ?, ?, ?) "
+    "ON CONFLICT(matrix_event_id) DO UPDATE SET "
+    "meshtastic_id=excluded.meshtastic_id, "
+    "matrix_room_id=excluded.matrix_room_id, "
+    "meshtastic_text=excluded.meshtastic_text, "
+    "meshtastic_meshnet=excluded.meshtastic_meshnet"
+)
+_GET_MESSAGE_MAP_BY_MESHTASTIC_ID_SQL = (
+    "SELECT matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+    "FROM message_map WHERE meshtastic_id=?"
+)
+_GET_MESSAGE_MAP_BY_MATRIX_EVENT_ID_SQL = (
+    "SELECT meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+    "FROM message_map WHERE matrix_event_id=?"
+)
+_ALTER_TABLE_MESSAGE_MAP_ADD_MESH_SQL = (
+    "ALTER TABLE message_map ADD COLUMN meshtastic_meshnet TEXT"
+)
+_PRAGMA_MESSAGE_MAP_INFO_SQL = "PRAGMA table_info(message_map)"
+_PRAGMA_MESSAGE_MAP_LEGACY_INFO_SQL = "PRAGMA table_info(message_map_legacy)"
+_PRAGMA_MESSAGE_MAP_TEMP_INFO_SQL = "PRAGMA table_info(message_map_old_temp)"
+_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL = "DROP TABLE IF EXISTS message_map_legacy"
+_DROP_TABLE_MESSAGE_MAP_TEMP_SQL = "DROP TABLE IF EXISTS message_map_old_temp"
+_DROP_TABLE_MESSAGE_MAP_STALE_TEMP_SQL = (
+    f"DROP TABLE IF EXISTS {_MESSAGE_MAP_STALE_TEMP_TABLE}"
+)
+_RENAME_MESSAGE_MAP_TO_LEGACY_SQL = (
+    "ALTER TABLE message_map RENAME TO message_map_legacy"
+)
+_RENAME_MESSAGE_MAP_TO_TEMP_SQL = (
+    "ALTER TABLE message_map RENAME TO message_map_old_temp"
+)
+_RENAME_MESSAGE_MAP_TEMP_TO_STALE_TEMP_SQL = (
+    f"ALTER TABLE message_map_old_temp RENAME TO {_MESSAGE_MAP_STALE_TEMP_TABLE}"
+)
+_RENAME_MESSAGE_MAP_STALE_TEMP_TO_TEMP_SQL = (
+    f"ALTER TABLE {_MESSAGE_MAP_STALE_TEMP_TABLE} RENAME TO {_MESSAGE_MAP_TEMP_TABLE}"
+)
+_CREATE_TABLE_MESSAGE_MAP_FROM_SCRATCH_SQL = (
+    "CREATE TABLE message_map "
+    "(meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, "
+    "matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+)
+_INSERT_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL = (
+    "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+    "FROM message_map_legacy"
+)
+_INSERT_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL = (
+    "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, NULL "
+    "FROM message_map_legacy"
+)
+_INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL = (
+    "INSERT OR IGNORE INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+    "FROM message_map_legacy"
+)
+_INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL = (
+    "INSERT OR IGNORE INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, NULL "
+    "FROM message_map_legacy"
+)
+_INSERT_OR_IGNORE_MESSAGE_MAP_FROM_TEMP_SQL = (
+    "INSERT OR IGNORE INTO message_map "
+    "(meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    "SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+    "FROM message_map_old_temp"
+)
+_INSERT_OR_IGNORE_MESSAGE_MAP_TEMP_FROM_STALE_TEMP_WITH_MESH_SQL = (
+    "INSERT OR IGNORE INTO message_map_old_temp "
+    "(meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    "SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+    "FROM message_map_stale_temp"
+)
+_INSERT_OR_IGNORE_MESSAGE_MAP_TEMP_FROM_STALE_TEMP_WITHOUT_MESH_SQL = (
+    "INSERT OR IGNORE INTO message_map_old_temp "
+    "(meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text) "
+    "SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text "
+    "FROM message_map_stale_temp"
+)
+_PRAGMA_MESSAGE_MAP_STALE_TEMP_INFO_SQL = (
+    f"PRAGMA table_info({_MESSAGE_MAP_STALE_TEMP_TABLE})"
+)
+_INSERT_OR_IGNORE_MESSAGE_MAP_FROM_STALE_TEMP_WITH_MESH_SQL = (
+    f"INSERT OR IGNORE INTO message_map "  # nosec B608
+    f"(meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    f"SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+    f"FROM {_MESSAGE_MAP_STALE_TEMP_TABLE}"
+)
+_INSERT_OR_IGNORE_MESSAGE_MAP_FROM_STALE_TEMP_WITHOUT_MESH_SQL = (
+    f"INSERT OR IGNORE INTO message_map "  # nosec B608
+    f"(meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    f"SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, NULL "
+    f"FROM {_MESSAGE_MAP_STALE_TEMP_TABLE}"
+)
+_CREATE_INDEX_MESSAGE_MAP_ID_SQL = (
+    "CREATE INDEX IF NOT EXISTS idx_message_map_meshtastic_id "
+    "ON message_map (meshtastic_id)"
+)
+_DELETE_FROM_MESSAGE_MAP_SQL = "DELETE FROM message_map"
+_SELECT_COUNT_MESSAGE_MAP_SQL = "SELECT COUNT(*) FROM message_map"
+_DELETE_OLDEST_MESSAGE_MAP_SQL = (
+    "DELETE FROM message_map WHERE rowid IN "
+    "(SELECT rowid FROM message_map ORDER BY rowid ASC LIMIT ?)"
+)
+
+if MESSAGE_MAP_TABLE != "message_map":
+    raise RuntimeError(
+        "Message-map constants changed; update static SQL literals in db_utils."
+    )
+if _MESSAGE_MAP_TEMP_TABLE != "message_map_old_temp":
+    raise RuntimeError(
+        "Message-map temp-table constant changed; update static SQL literals in db_utils."
+    )
+if _MESSAGE_MAP_STALE_TEMP_TABLE != "message_map_stale_temp":
+    raise RuntimeError(
+        "Message-map stale-temp constant changed; update static SQL literals in db_utils."
+    )
+
+if (PLUGIN_DATA_TABLE, *PLUGIN_DATA_COLUMNS) != (
+    "plugin_data",
+    "plugin_name",
+    "meshtastic_id",
+    "data",
+):
+    raise RuntimeError(
+        "Plugin-data constants changed; update static SQL literals in db_utils."
+    )
+
+if tuple(MESSAGE_MAP_COLUMNS) != (
+    "meshtastic_id",
+    "matrix_event_id",
+    "matrix_room_id",
+    "meshtastic_text",
+    "meshtastic_meshnet",
+):
+    raise RuntimeError(
+        "Message-map column constants changed; update static SQL literals in db_utils."
+    )
 
 if (
     NAMES_TABLE_LONGNAMES,
@@ -218,8 +436,12 @@ def _build_database_config_signature(raw_config: Any) -> str | None:
     if not isinstance(raw_config, dict):
         return None
     db_config = {
-        "database": _normalize_database_section(raw_config.get("database")),
-        "db": _normalize_database_section(raw_config.get("db")),
+        CONFIG_SECTION_DATABASE: _normalize_database_section(
+            raw_config.get(CONFIG_SECTION_DATABASE)
+        ),
+        CONFIG_SECTION_DATABASE_LEGACY: _normalize_database_section(
+            raw_config.get(CONFIG_SECTION_DATABASE_LEGACY)
+        ),
     }
     signature_payload = _canonicalize_signature_value(db_config)
     return json.dumps(
@@ -258,8 +480,12 @@ def get_db_path() -> str:
 
     # Check if config is available
     if isinstance(config, dict):
-        database_section = _normalize_database_section(config.get("database"))
-        legacy_db_section = _normalize_database_section(config.get("db"))
+        database_section = _normalize_database_section(
+            config.get(CONFIG_SECTION_DATABASE)
+        )
+        legacy_db_section = _normalize_database_section(
+            config.get(CONFIG_SECTION_DATABASE_LEGACY)
+        )
 
         # Check if database path is specified in config (preferred format)
         if "path" in database_section:
@@ -328,7 +554,7 @@ def get_db_path() -> str:
         logger.warning("Could not create database directory %s: %s", database_dir, e)
         # Continue anyway - the database connection will fail later if needed
 
-    default_path = os.path.join(database_dir, "meshtastic.sqlite")
+    default_path = os.path.join(database_dir, DATABASE_FILENAME)
 
     # If default path doesn't exist, check legacy locations
     if not os.path.exists(default_path) and is_deprecation_window_active():
@@ -336,9 +562,9 @@ def get_db_path() -> str:
         for legacy_dir in legacy_dirs:
             # Check various possible legacy locations
             candidates = [
-                os.path.join(legacy_dir, "meshtastic.sqlite"),
-                os.path.join(legacy_dir, "data", "meshtastic.sqlite"),
-                os.path.join(legacy_dir, "database", "meshtastic.sqlite"),
+                os.path.join(legacy_dir, DATABASE_FILENAME),
+                os.path.join(legacy_dir, LEGACY_DATA_SUBDIR, DATABASE_FILENAME),
+                os.path.join(legacy_dir, LEGACY_DATABASE_SUBDIR, DATABASE_FILENAME),
             ]
             for candidate in candidates:
                 if os.path.exists(candidate):
@@ -404,9 +630,9 @@ def _parse_bool(value: Any, default: bool) -> bool:
         return value
     if isinstance(value, str):
         lowered = value.strip().lower()
-        if lowered in {"1", "true", "yes", "on"}:
+        if lowered in ENV_BOOL_TRUE_VALUES:
             return True
-        if lowered in {"0", "false", "no", "off"}:
+        if lowered in ENV_BOOL_FALSE_VALUES:
             return False
     return default
 
@@ -440,12 +666,16 @@ def _resolve_database_options() -> tuple[bool, int, dict[str, PragmaValue]]:
         extra_pragmas (dict): Mapping of pragma names to values, starting from DEFAULT_EXTRA_PRAGMAS and overridden by config-provided pragmas.
     """
     raw_database_cfg: Any = (
-        config.get("database", {}) if isinstance(config, dict) else {}
+        config.get(CONFIG_SECTION_DATABASE, {}) if isinstance(config, dict) else {}
     )
     database_cfg: dict[str, Any] = (
         raw_database_cfg if isinstance(raw_database_cfg, dict) else {}
     )
-    raw_legacy_cfg: Any = config.get("db", {}) if isinstance(config, dict) else {}
+    raw_legacy_cfg: Any = (
+        config.get(CONFIG_SECTION_DATABASE_LEGACY, {})
+        if isinstance(config, dict)
+        else {}
+    )
     legacy_cfg: dict[str, Any] = (
         raw_legacy_cfg if isinstance(raw_legacy_cfg, dict) else {}
     )
@@ -565,77 +795,192 @@ def initialize_database() -> None:
         """
         cursor.execute(_CREATE_TABLE_NAMES_LONG_SQL)
         cursor.execute(_CREATE_TABLE_NAMES_SHORT_SQL)
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS plugin_data (plugin_name TEXT, meshtastic_id TEXT, data TEXT, PRIMARY KEY (plugin_name, meshtastic_id))"
-        )
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS message_map (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
-        )
-        # Attempt schema adjustments for upgrades
-        try:
-            cursor.execute("ALTER TABLE message_map ADD COLUMN meshtastic_meshnet TEXT")
-        except sqlite3.OperationalError:
-            pass
+        cursor.execute(_CREATE_TABLE_PLUGIN_DATA_SQL)
+        cursor.execute(_CREATE_TABLE_MESSAGE_MAP_SQL)
+        _legacy_table = _MESSAGE_MAP_LEGACY_TABLE
+        _validate_identifier(_legacy_table, _VALID_TABLE_NAMES)
+        _col_id, _col_evt, _col_room, _col_text, _col_mesh = MESSAGE_MAP_COLUMNS
+        for _c in MESSAGE_MAP_COLUMNS:
+            _validate_identifier(_c, _VALID_COLUMN_NAMES)
 
-        # Migrate legacy message_map schema where meshtastic_id used INTEGER affinity.
-        cursor.execute("PRAGMA table_info(message_map)")
+        cursor.execute(_PRAGMA_MESSAGE_MAP_INFO_SQL)
         columns = cursor.fetchall()
         column_map = {column[1]: column for column in columns}
-        meshtastic_column = column_map.get("meshtastic_id")
-        meshnet_column = column_map.get("meshtastic_meshnet")
+        if _col_mesh not in column_map:
+            cursor.execute(_ALTER_TABLE_MESSAGE_MAP_ADD_MESH_SQL)
+            cursor.execute(_PRAGMA_MESSAGE_MAP_INFO_SQL)
+            columns = cursor.fetchall()
+            column_map = {column[1]: column for column in columns}
+        meshtastic_column = column_map.get(_col_id)
+        meshnet_column = column_map.get(_col_mesh)
+        _temp_table = _MESSAGE_MAP_TEMP_TABLE
+        _validate_identifier(_temp_table, _VALID_TABLE_NAMES)
         cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_legacy'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (_temp_table,),
+        )
+        temp_exists = cursor.fetchone() is not None
+        stale_temp_exists = False
+        _validate_identifier(_MESSAGE_MAP_STALE_TEMP_TABLE, _VALID_TABLE_NAMES)
+
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (_MESSAGE_MAP_STALE_TEMP_TABLE,),
+        )
+        stale_table_exists = cursor.fetchone() is not None
+        if stale_table_exists and not temp_exists:
+            cursor.execute(_RENAME_MESSAGE_MAP_STALE_TEMP_TO_TEMP_SQL)
+            temp_exists = True
+            stale_table_exists = False
+            logger.info(
+                "Recovered stale temporary table %s as %s",
+                _MESSAGE_MAP_STALE_TEMP_TABLE,
+                _temp_table,
+            )
+        elif stale_table_exists and temp_exists:
+            cursor.execute(_PRAGMA_MESSAGE_MAP_TEMP_INFO_SQL)
+            temp_columns = {column[1] for column in cursor.fetchall()}
+            cursor.execute(_PRAGMA_MESSAGE_MAP_STALE_TEMP_INFO_SQL)
+            stale_columns = {column[1] for column in cursor.fetchall()}
+            merge_target = _temp_table
+            if _col_mesh in temp_columns:
+                if _col_mesh in stale_columns:
+                    cursor.execute(
+                        _INSERT_OR_IGNORE_MESSAGE_MAP_TEMP_FROM_STALE_TEMP_WITH_MESH_SQL
+                    )
+                else:
+                    cursor.execute(
+                        _INSERT_OR_IGNORE_MESSAGE_MAP_TEMP_FROM_STALE_TEMP_WITHOUT_MESH_SQL
+                    )
+            else:
+                if _col_mesh in stale_columns:
+                    # Preserve meshnet values by merging directly into message_map when
+                    # the destination temp schema does not yet contain meshtastic_meshnet.
+                    cursor.execute(
+                        _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_STALE_TEMP_WITH_MESH_SQL
+                    )
+                    merge_target = MESSAGE_MAP_TABLE
+                else:
+                    cursor.execute(
+                        _INSERT_OR_IGNORE_MESSAGE_MAP_TEMP_FROM_STALE_TEMP_WITHOUT_MESH_SQL
+                    )
+            cursor.execute(_DROP_TABLE_MESSAGE_MAP_STALE_TEMP_SQL)
+            stale_table_exists = False
+            logger.info(
+                "Merged rows from stale temporary table %s into %s",
+                _MESSAGE_MAP_STALE_TEMP_TABLE,
+                merge_target,
+            )
+
+        if (
+            temp_exists
+            and meshtastic_column
+            and str(meshtastic_column[2]).upper() == "TEXT"
+        ):
+            cursor.execute(_PRAGMA_MESSAGE_MAP_TEMP_INFO_SQL)
+            temp_column_map = {column[1]: column for column in cursor.fetchall()}
+            insert_sql = (
+                _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL
+                if _col_mesh in temp_column_map
+                else _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL
+            ).replace("message_map_legacy", _temp_table)
+            if "message_map_legacy" in insert_sql:
+                raise RuntimeError("SQL replacement failed")
+            cursor.execute(insert_sql)
+            cursor.execute(_DROP_TABLE_MESSAGE_MAP_TEMP_SQL)
+            temp_exists = False
+
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (_legacy_table,),
         )
         legacy_exists = cursor.fetchone() is not None
 
         if legacy_exists and (
             not meshtastic_column or str(meshtastic_column[2]).upper() == "TEXT"
         ):
-            # Recover from a previously interrupted migration by merging legacy rows.
-            cursor.execute("PRAGMA table_info(message_map_legacy)")
+            cursor.execute(_PRAGMA_MESSAGE_MAP_LEGACY_INFO_SQL)
             legacy_columns = {column[1]: column for column in cursor.fetchall()}
-            if "meshtastic_meshnet" in legacy_columns:
-                cursor.execute(
-                    "INSERT OR IGNORE INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
-                    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
-                    "FROM message_map_legacy"
-                )
+            if _col_mesh in legacy_columns:
+                cursor.execute(_INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL)
             else:
                 cursor.execute(
-                    "INSERT OR IGNORE INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
-                    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, NULL "
-                    "FROM message_map_legacy"
+                    _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL
                 )
-            cursor.execute("DROP TABLE message_map_legacy")
+            cursor.execute(_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL)
             legacy_exists = False
 
         if meshtastic_column and str(meshtastic_column[2]).upper() != "TEXT":
-            if legacy_exists:
-                cursor.execute("DROP TABLE message_map_legacy")
-            cursor.execute("ALTER TABLE message_map RENAME TO message_map_legacy")
-            cursor.execute(
-                "CREATE TABLE message_map (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
-            )
+            if temp_exists:
+                cursor.execute(_DROP_TABLE_MESSAGE_MAP_STALE_TEMP_SQL)
+                logger.warning(
+                    "Preserving stale temporary table %s with incompatible schema for merge during message_map rebuild",
+                    _temp_table,
+                )
+                cursor.execute(_RENAME_MESSAGE_MAP_TEMP_TO_STALE_TEMP_SQL)
+                temp_exists = False
+                stale_temp_exists = True
+            cursor.execute(_RENAME_MESSAGE_MAP_TO_TEMP_SQL)
+            cursor.execute(_CREATE_TABLE_MESSAGE_MAP_FROM_SCRATCH_SQL)
             if meshnet_column:
-                cursor.execute(
-                    "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
-                    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
-                    "FROM message_map_legacy"
+                insert_sql = _INSERT_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL.replace(
+                    "message_map_legacy", _temp_table
                 )
+                if "message_map_legacy" in insert_sql:
+                    raise RuntimeError("SQL replacement failed")
+                cursor.execute(insert_sql)
             else:
-                cursor.execute(
-                    "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
-                    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, NULL "
-                    "FROM message_map_legacy"
+                insert_sql = _INSERT_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL.replace(
+                    "message_map_legacy", _temp_table
                 )
-            cursor.execute("DROP TABLE message_map_legacy")
+                if "message_map_legacy" in insert_sql:
+                    raise RuntimeError("SQL replacement failed")
+                cursor.execute(insert_sql)
+            if legacy_exists:
+                cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                    (_legacy_table,),
+                )
+                if cursor.fetchone():
+                    cursor.execute(_PRAGMA_MESSAGE_MAP_LEGACY_INFO_SQL)
+                    legacy_columns_local = {
+                        column[1]: column for column in cursor.fetchall()
+                    }
+                    if _col_mesh in legacy_columns_local:
+                        cursor.execute(
+                            _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL
+                        )
+                    else:
+                        cursor.execute(
+                            _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL
+                        )
+            cursor.execute(_DROP_TABLE_MESSAGE_MAP_TEMP_SQL)
+            if stale_temp_exists:
+                merged_stale_temp = False
+                try:
+                    cursor.execute(_PRAGMA_MESSAGE_MAP_STALE_TEMP_INFO_SQL)
+                    stale_columns = {col[1] for col in cursor.fetchall()}
+                    if _col_mesh in stale_columns:
+                        cursor.execute(
+                            _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_STALE_TEMP_WITH_MESH_SQL
+                        )
+                    else:
+                        cursor.execute(
+                            _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_STALE_TEMP_WITHOUT_MESH_SQL
+                        )
+                    merged_stale_temp = True
+                    logger.info(
+                        "Merged rows from preserved stale temporary table into rebuilt message_map"
+                    )
+                except sqlite3.Error as e:
+                    logger.warning(
+                        "Failed to merge preserved stale temporary table data: %s", e
+                    )
+                if merged_stale_temp:
+                    cursor.execute(_DROP_TABLE_MESSAGE_MAP_STALE_TEMP_SQL)
+            cursor.execute(_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL)
 
-        try:
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_message_map_meshtastic_id ON message_map (meshtastic_id)"
-            )
-        except sqlite3.OperationalError:
-            pass
+        cursor.execute(_CREATE_INDEX_MESSAGE_MAP_ID_SQL)
 
     try:
         manager.run_sync(_initialize, write=True)
@@ -676,11 +1021,7 @@ def store_plugin_data(plugin_name: str, meshtastic_id: int | str, data: Any) -> 
         Parameters:
             cursor (sqlite3.Cursor): Open database cursor used to execute the insert/update statement.
         """
-        cursor.execute(
-            "INSERT INTO plugin_data (plugin_name, meshtastic_id, data) VALUES (?, ?, ?) "
-            "ON CONFLICT (plugin_name, meshtastic_id) DO UPDATE SET data = excluded.data",
-            (plugin_name, id_key, payload),
-        )
+        cursor.execute(_UPSERT_PLUGIN_DATA_SQL, (plugin_name, id_key, payload))
 
     try:
         manager.run_sync(_store, write=True)
@@ -710,10 +1051,7 @@ def delete_plugin_data(plugin_name: str, meshtastic_id: int | str) -> None:
         Parameters:
             cursor (sqlite3.Cursor): Cursor on which the DELETE is executed; must be part of the caller's transaction.
         """
-        cursor.execute(
-            "DELETE FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?",
-            (plugin_name, id_key),
-        )
+        cursor.execute(_DELETE_PLUGIN_DATA_SQL, (plugin_name, id_key))
 
     try:
         manager.run_sync(_delete, write=True)
@@ -748,10 +1086,7 @@ def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> Any:
         Returns:
             `tuple[Any, ...]` with the `data` column for the matched row, or `None` if no row matches.
         """
-        cursor.execute(
-            "SELECT data FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?",
-            (plugin_name, id_key),
-        )
+        cursor.execute(_GET_PLUGIN_DATA_SQL, (plugin_name, id_key))
         return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
@@ -799,9 +1134,7 @@ def get_plugin_data(plugin_name: str) -> list[tuple[Any, ...]]:
         Returns:
             list[tuple[Any, ...]]: List of rows; each row is a single-item tuple containing the stored `data` value.
         """
-        cursor.execute(
-            "SELECT data FROM plugin_data WHERE plugin_name=?", (plugin_name,)
-        )
+        cursor.execute(_GET_ALL_PLUGIN_DATA_SQL, (plugin_name,))
         return cursor.fetchall()
 
     try:
@@ -1948,12 +2281,7 @@ def _store_message_map_core(
         meshtastic_meshnet (str | None): Optional meshnet flag or value associated with the Meshtastic message.
     """
     cursor.execute(
-        "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) VALUES (?, ?, ?, ?, ?) "
-        "ON CONFLICT(matrix_event_id) DO UPDATE SET "
-        "meshtastic_id=excluded.meshtastic_id, "
-        "matrix_room_id=excluded.matrix_room_id, "
-        "meshtastic_text=excluded.meshtastic_text, "
-        "meshtastic_meshnet=excluded.meshtastic_meshnet",
+        _UPSERT_MESSAGE_MAP_SQL,
         (
             meshtastic_id,
             matrix_event_id,
@@ -2029,10 +2357,7 @@ def get_message_map_by_meshtastic_id(
         Returns:
             `(matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)` tuple if a row exists, `None` otherwise.
         """
-        cursor.execute(
-            "SELECT matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE meshtastic_id=?",
-            (id_key,),
-        )
+        cursor.execute(_GET_MESSAGE_MAP_BY_MESHTASTIC_ID_SQL, (id_key,))
         return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
@@ -2082,10 +2407,7 @@ def get_message_map_by_matrix_event_id(
         Returns:
             tuple[Any, ...] | None: Tuple (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) if a matching row is found, `None` otherwise.
         """
-        cursor.execute(
-            "SELECT meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE matrix_event_id=?",
-            (matrix_event_id,),
-        )
+        cursor.execute(_GET_MESSAGE_MAP_BY_MATRIX_EVENT_ID_SQL, (matrix_event_id,))
         return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
@@ -2124,7 +2446,7 @@ def wipe_message_map() -> None:
         Parameters:
             cursor (sqlite3.Cursor): Cursor used to execute the deletion.
         """
-        cursor.execute("DELETE FROM message_map")
+        cursor.execute(_DELETE_FROM_MESSAGE_MAP_SQL)
 
     try:
         manager.run_sync(_wipe, write=True)
@@ -2140,16 +2462,13 @@ def _prune_message_map_core(cursor: sqlite3.Cursor, msgs_to_keep: int) -> int:
     Returns:
         int: Number of rows deleted (0 if no rows were removed).
     """
-    cursor.execute("SELECT COUNT(*) FROM message_map")
+    cursor.execute(_SELECT_COUNT_MESSAGE_MAP_SQL)
     row = cursor.fetchone()
     total = row[0] if row else 0
 
     if total > msgs_to_keep:
         to_delete = total - msgs_to_keep
-        cursor.execute(
-            "DELETE FROM message_map WHERE rowid IN (SELECT rowid FROM message_map ORDER BY rowid ASC LIMIT ?)",
-            (to_delete,),
-        )
+        cursor.execute(_DELETE_OLDEST_MESSAGE_MAP_SQL, (to_delete,))
         return to_delete
     return 0
 
@@ -2195,7 +2514,6 @@ async def async_store_message_map(
         meshtastic_text (str): Text content of the Meshtastic message.
         meshtastic_meshnet (str | None): Optional meshnet identifier associated with the message.
     """
-    manager = await asyncio.to_thread(_get_db_manager)
     # Normalize IDs to a consistent string form to match other DB helpers.
     id_key = str(meshtastic_id)
 
@@ -2208,6 +2526,7 @@ async def async_store_message_map(
             meshtastic_text,
             meshtastic_meshnet,
         )
+        manager = await asyncio.to_thread(_get_db_manager)
         await manager.run_async(
             lambda cursor: _store_message_map_core(
                 cursor,
@@ -2230,9 +2549,8 @@ async def async_prune_message_map(msgs_to_keep: int) -> None:
     Parameters:
         msgs_to_keep (int): Number of most recent rows to retain; older rows will be deleted.
     """
-    manager = await asyncio.to_thread(_get_db_manager)
-
     try:
+        manager = await asyncio.to_thread(_get_db_manager)
         pruned = await manager.run_async(
             lambda cursor: _prune_message_map_core(cursor, msgs_to_keep),
             write=True,

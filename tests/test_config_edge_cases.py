@@ -21,6 +21,8 @@ import warnings
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
+from mmrelay.constants.app import CONFIG_FILENAME, CREDENTIALS_FILENAME
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -117,7 +119,7 @@ class TestConfigEdgeCases(unittest.TestCase):
             ):
                 paths = get_config_paths()
                 self.assertIn(
-                    "/home/test/.mmrelay/config.yaml",
+                    f"/home/test/.mmrelay/{CONFIG_FILENAME}",
                     [os.path.normpath(p) for p in paths],
                 )
 
@@ -399,19 +401,19 @@ class TestConfigEdgeCases(unittest.TestCase):
             )
 
             # Should append credentials.json to directory
-            self.assertTrue(any("credentials.json" in path for path in result))
+            self.assertTrue(any(CREDENTIALS_FILENAME in path for path in result))
 
     def test_get_credentials_search_paths_with_config_paths(self):
         """Test get_credentials_search_paths with config file paths."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = os.path.join(temp_dir, "config.yaml")
+            config_path = os.path.join(temp_dir, CONFIG_FILENAME)
 
             result = get_credentials_search_paths(
                 config_paths=[config_path], include_base_data=False
             )
 
             # Should include credentials.json in same dir as config
-            expected_creds = os.path.join(temp_dir, "credentials.json")
+            expected_creds = os.path.join(temp_dir, CREDENTIALS_FILENAME)
             self.assertIn(expected_creds, result)
 
     def test_get_explicit_credentials_path_no_config(self):
@@ -509,7 +511,7 @@ class TestConfigEdgeCases(unittest.TestCase):
     def test_save_credentials_writes_to_file(self):
         """Test save_credentials actually writes JSON to file."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            creds_path = os.path.join(temp_dir, "credentials.json")
+            creds_path = os.path.join(temp_dir, CREDENTIALS_FILENAME)
             credentials = {
                 "user_id": "@test:matrix.org",
                 "access_token": "secret_token",

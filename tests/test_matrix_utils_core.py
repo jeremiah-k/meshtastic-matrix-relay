@@ -123,6 +123,54 @@ def test_get_interaction_settings_none_config():
     assert result == expected
 
 
+def test_get_interaction_settings_invalid_meshtastic_section_type() -> None:
+    """Invalid meshtastic config types should disable interactions."""
+    config = {"meshtastic": False}
+
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        result = get_interaction_settings(config)
+
+    assert result == {"reactions": False, "replies": False}
+    assert mock_logger.warning.called
+
+
+def test_get_interaction_settings_invalid_message_interactions_type() -> None:
+    """Non-mapping message_interactions values should disable interactions."""
+    config = {"meshtastic": {"message_interactions": True}}
+
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        result = get_interaction_settings(config)
+
+    assert result == {"reactions": False, "replies": False}
+    assert mock_logger.warning.called
+
+
+def test_get_interaction_settings_non_bool_interaction_values() -> None:
+    """Only explicit booleans should be honored in message_interactions."""
+    config = {
+        "meshtastic": {"message_interactions": {"reactions": "yes", "replies": 1}}
+    }
+
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        result = get_interaction_settings(config)
+
+    assert result == {"reactions": False, "replies": False}
+    warning_messages = [call.args[0] for call in mock_logger.warning.call_args_list]
+    assert any("message_interactions.reactions" in msg for msg in warning_messages)
+    assert any("message_interactions.replies" in msg for msg in warning_messages)
+
+
+def test_get_interaction_settings_legacy_non_bool_value_disables_reactions() -> None:
+    """Invalid legacy relay_reactions values should be treated as disabled."""
+    config = {"meshtastic": {"relay_reactions": "true"}}
+
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        result = get_interaction_settings(config)
+
+    assert result == {"reactions": False, "replies": False}
+    assert mock_logger.warning.called
+
+
 def test_message_storage_enabled_true():
     """
     Test that message storage is enabled when either reactions or replies are enabled in the interaction settings.

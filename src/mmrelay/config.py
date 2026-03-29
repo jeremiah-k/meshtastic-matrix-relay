@@ -14,15 +14,35 @@ import yaml
 from yaml.loader import SafeLoader
 
 import mmrelay.paths as paths_module
-from mmrelay.constants.app import CREDENTIALS_FILENAME, MATRIX_DIRNAME
+from mmrelay.constants.app import (
+    CREDENTIALS_FILENAME,
+    MATRIX_DIRNAME,
+    SECURE_FILE_PERMISSIONS,
+)
 
 # Import application constants
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
     CONFIG_KEY_BOT_USER_ID,
+    CONFIG_KEY_DEVICE_ID,
     CONFIG_KEY_HOMESERVER,
     CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
+    CONFIG_KEY_PASSWORD,
+    CONFIG_SECTION_COMMUNITY_PLUGINS,
+    CONFIG_SECTION_CUSTOM_PLUGINS,
     CONFIG_SECTION_MATRIX,
+    CONFIG_SECTION_MESHTASTIC,
+    DEPRECATION_VERSIONS,
+    ENV_BOOL_FALSE_VALUES,
+    ENV_BOOL_TRUE_VALUES,
+    JSON_INDENT_STANDARD,
+    NORMALIZABLE_CONFIG_SECTIONS,
+    REQUIRED_CREDENTIALS_KEYS,
+)
+from mmrelay.constants.plugins import (
+    PLUGIN_TYPE_COMMUNITY,
+    PLUGIN_TYPE_CORE,
+    PLUGIN_TYPE_CUSTOM,
 )
 
 # Import new path resolution system
@@ -64,6 +84,16 @@ def _expand_path(path: str) -> str:
     return os.path.abspath(os.path.expanduser(path))
 
 
+def _emit_legacy_credentials_warning(credentials_path: str) -> None:
+    logger.warning(
+        "Credentials found in legacy location: %s. "
+        "Please run 'mmrelay migrate' to move to new unified structure. "
+        "Support for legacy credentials will be removed in v%s.",
+        credentials_path,
+        DEPRECATION_VERSIONS[1],
+    )
+
+
 @functools.lru_cache(maxsize=None)
 def _warn_deprecated(_name: str) -> None:
     """
@@ -73,21 +103,25 @@ def _warn_deprecated(_name: str) -> None:
         _name (str): Ignored; included so callers can cache or key warnings (e.g., with lru_cache).
     """
     warnings.warn(
-        "Use paths.get_home_dir() instead. Support will be removed in v1.4.",
+        f"Use paths.get_home_dir() instead. Support will be removed in v{DEPRECATION_VERSIONS[1]}.",  # [1] is the removal version
         DeprecationWarning,
         stacklevel=3,
     )
 
 
-def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:
+def set_secure_file_permissions(
+    file_path: str, mode: int = SECURE_FILE_PERMISSIONS
+) -> None:
     """
     Set restrictive Unix permission bits on a file to limit access.
 
-    On Linux/macOS attempts to set the file's mode (default 0o600). No action is performed on other platforms; failures are logged and not raised.
+    On Linux/macOS attempts to set the file's mode (defaults to
+    SECURE_FILE_PERMISSIONS). No action is performed on other platforms;
+    failures are logged and not raised.
 
     Parameters:
         file_path (str): Path to the file to modify.
-        mode (int): Unix permission bits to apply (default 0o600).
+        mode (int): Unix permission bits to apply (defaults to SECURE_FILE_PERMISSIONS).
     """
     if sys.platform in ["linux", "darwin"]:
         try:
@@ -189,7 +223,7 @@ def get_credentials_search_paths(
             _add(normalized_path)
         else:
             normalized_dir = os.path.normpath(expanded_path)
-            _add(os.path.join(normalized_dir, "credentials.json"))
+            _add(os.path.join(normalized_dir, CREDENTIALS_FILENAME))
 
     if include_base_data:
         # Unified credentials path has HIGHEST priority (above legacy paths and config-adjacent paths)
@@ -202,16 +236,16 @@ def get_credentials_search_paths(
             if not config_path:
                 continue
             config_dir = os.path.dirname(os.path.abspath(config_path))
-            _add(os.path.join(config_dir, "credentials.json"))
-            _add(os.path.join(config_dir, MATRIX_DIRNAME, "credentials.json"))
+            _add(os.path.join(config_dir, CREDENTIALS_FILENAME))
+            _add(os.path.join(config_dir, MATRIX_DIRNAME, CREDENTIALS_FILENAME))
 
     # Compatibility fallback for pre-1.3 credentials location (deprecated, lower priority)
     _add(os.path.join(str(get_home_dir()), CREDENTIALS_FILENAME))
 
     if is_deprecation_window_active():
         for legacy_dir in get_legacy_dirs():
-            _add(os.path.join(legacy_dir, "credentials.json"))
-            _add(os.path.join(legacy_dir, MATRIX_DIRNAME, "credentials.json"))
+            _add(os.path.join(legacy_dir, CREDENTIALS_FILENAME))
+            _add(os.path.join(legacy_dir, MATRIX_DIRNAME, CREDENTIALS_FILENAME))
 
     return candidate_paths
 
@@ -280,7 +314,7 @@ def get_explicit_credentials_path(config: Mapping[str, Any] | None) -> str | Non
         if not isinstance(explicit_path, str):
             raise InvalidCredentialsPathTypeError()
         return explicit_path
-    matrix_section = config.get("matrix")
+    matrix_section = config.get(CONFIG_SECTION_MATRIX)
     if isinstance(matrix_section, dict):
         credentials_path = matrix_section.get("credentials_path")
         if credentials_path is not None and not isinstance(credentials_path, str):
@@ -333,14 +367,14 @@ def get_plugin_data_dir(
     # If a plugin name is provided, create and return a plugin-specific directory
     if plugin_name:
         if plugin_type is None and isinstance(relay_config, dict):
-            community_plugins = relay_config.get("community-plugins") or {}
-            custom_plugins = relay_config.get("custom-plugins") or {}
+            community_plugins = relay_config.get(CONFIG_SECTION_COMMUNITY_PLUGINS) or {}
+            custom_plugins = relay_config.get(CONFIG_SECTION_CUSTOM_PLUGINS) or {}
             if isinstance(community_plugins, dict) and plugin_name in community_plugins:
-                plugin_type = "community"
+                plugin_type = PLUGIN_TYPE_COMMUNITY
             elif isinstance(custom_plugins, dict) and plugin_name in custom_plugins:
-                plugin_type = "custom"
+                plugin_type = PLUGIN_TYPE_CUSTOM
             else:
-                plugin_type = "core"
+                plugin_type = PLUGIN_TYPE_CORE
 
         plugin_data_dir = get_unified_plugin_data_dir(
             plugin_name, subdir=subdir, plugin_type=plugin_type
@@ -423,9 +457,9 @@ def _convert_env_bool(value: str, var_name: str) -> bool:
     Raises:
         ValueError: If `value` is not a recognized boolean representation; the error message includes `var_name`.
     """
-    if value.lower() in ("true", "1", "yes", "on"):
+    if value.lower() in ENV_BOOL_TRUE_VALUES:
         return True
-    elif value.lower() in ("false", "0", "no", "off"):
+    elif value.lower() in ENV_BOOL_FALSE_VALUES:
         return False
     else:
         raise ValueError(
@@ -591,7 +625,7 @@ def is_e2ee_enabled(config: dict[str, Any] | None) -> bool:
     if not config:
         return False
 
-    matrix_cfg = config.get("matrix", {}) or {}
+    matrix_cfg = config.get(CONFIG_SECTION_MATRIX, {}) or {}
     if not isinstance(matrix_cfg, dict) or not matrix_cfg:
         return False
 
@@ -700,16 +734,7 @@ def apply_env_config_overrides(config: dict[str, Any] | None) -> dict[str, Any]:
     else:
         _normalize_optional_dict_sections(
             config,
-            (
-                "matrix",
-                "meshtastic",
-                "logging",
-                "database",
-                "db",
-                "plugins",
-                "custom-plugins",
-                "community-plugins",
-            ),
+            NORMALIZABLE_CONFIG_SECTIONS,
         )
 
     # Apply Meshtastic configuration overrides
@@ -754,7 +779,7 @@ def load_credentials() -> dict[str, Any] | None:
     Searches an explicit credentials path (from environment or configuration) followed by prioritized candidate locations and returns the first readable, valid credentials mapping. Emits a migration/deprecation warning when credentials are discovered in legacy locations. Files that are unreadable, invalid JSON, not an object, or missing required keys are ignored.
 
     Returns:
-        Parsed credentials mapping containing at least the keys 'homeserver', 'access_token', and 'user_id' if a valid credentials.json is found; `None` otherwise.
+        Parsed credentials mapping containing at least the keys 'homeserver' and 'access_token' if a valid credentials.json is found; `user_id` may be absent in legacy credentials and can be recovered later via Matrix whoami.
     """
     try:
         explicit_path = get_explicit_credentials_path(relay_config)
@@ -799,13 +824,16 @@ def load_credentials() -> dict[str, Any] | None:
         credentials = cast(dict[str, Any], loaded)
         missing_required = [
             key
-            for key in ("homeserver", "access_token", "user_id")
+            for key in REQUIRED_CREDENTIALS_KEYS
             if not isinstance(credentials.get(key), str)
             or not credentials.get(key, "").strip()
         ]
-        if not credentials.get("device_id"):
+        device_id = credentials.get(CONFIG_KEY_DEVICE_ID)
+        if not isinstance(device_id, str) or not device_id.strip():
+            credentials[CONFIG_KEY_DEVICE_ID] = None
             logger.warning(
-                "credentials.json is missing 'device_id': %s. This is recommended for v1.3+.",
+                "credentials.json is missing or has an invalid 'device_id': %s. "
+                "Having a valid 'device_id' is recommended for v1.3+.",
                 credentials_path,
             )
         if missing_required:
@@ -816,23 +844,25 @@ def load_credentials() -> dict[str, Any] | None:
             )
             continue
 
+        # Legacy credentials detection: check (1) is_primary = matches primary_credentials_path,
+        # (2) legacy dirs = creds_dir is in legacy_dirs list, (3) legacy subdirs = creds_dir
+        # matches a MATRIX_DIRNAME subdirectory under any legacy_dir.
         creds_dir = os.path.abspath(os.path.dirname(credentials_path))
-        if creds_dir in legacy_dirs:
-            _get_config_logger().warning(
-                "Credentials found in legacy location: %s. "
-                "Please run 'mmrelay migrate' to move to new unified structure. "
-                "Support for legacy credentials will be removed in v1.4.",
-                credentials_path,
+        is_primary = os.path.abspath(credentials_path) == primary_credentials_path
+        is_legacy = not is_primary and (
+            creds_dir in legacy_dirs
+            or any(
+                creds_dir == os.path.abspath(os.path.join(legacy_dir, MATRIX_DIRNAME))
+                for legacy_dir in legacy_dirs
             )
+        )
+        if is_legacy:
+            _emit_legacy_credentials_warning(credentials_path)
         elif (
             os.path.abspath(credentials_path) == legacy_home_credentials
             and os.path.abspath(credentials_path) != primary_credentials_path
         ):
-            _get_config_logger().warning(
-                "Credentials found in legacy location: %s. "
-                "Please run 'mmrelay migrate' to move to new unified structure.",
-                credentials_path,
-            )
+            _emit_legacy_credentials_warning(credentials_path)
         logger.debug("Successfully loaded credentials from %s", credentials_path)
         return credentials
 
@@ -862,7 +892,7 @@ async def async_load_credentials() -> dict[str, Any] | None:
     Searches configured and legacy credentials locations, validates that required keys are present, and returns the parsed credentials mapping when a readable, valid credentials file is found.
 
     Returns:
-        dict[str, Any]: Loaded credentials containing at minimum `homeserver`, `access_token`, and `user_id`. `device_id` may be absent.
+        dict[str, Any]: Loaded credentials containing at minimum `homeserver` and `access_token`; `user_id` and `device_id` may be absent.
         None: If no readable/valid credentials file is found.
     """
     return await asyncio.to_thread(load_credentials)
@@ -909,7 +939,7 @@ def save_credentials(
         or (path_module.altsep and raw_target_path.endswith(path_module.altsep))
     ):
         target_path = path_module.join(
-            path_module.normpath(target_path), "credentials.json"
+            path_module.normpath(target_path), CREDENTIALS_FILENAME
         )
 
     # Ensure target directory exists
@@ -928,7 +958,7 @@ def save_credentials(
     try:
         logger.info("Saving credentials to: %s", target_path)
         with open(target_path, "w", encoding="utf-8") as f:
-            json.dump(credentials, f, indent=2)
+            json.dump(credentials, f, indent=JSON_INDENT_STANDARD)
     except (OSError, PermissionError):
         logger.exception("Error writing credentials.json to %s", target_path)
         raise
@@ -1067,18 +1097,22 @@ _DATABASE_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [
 _MATRIX_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [
     {
         "env_var": "MMRELAY_MATRIX_HOMESERVER",
-        "config_key": "homeserver",
+        "config_key": CONFIG_KEY_HOMESERVER,
         "type": "string",
     },
     {
         "env_var": "MMRELAY_MATRIX_BOT_USER_ID",
-        "config_key": "bot_user_id",
+        "config_key": CONFIG_KEY_BOT_USER_ID,
         "type": "string",
     },
-    {"env_var": "MMRELAY_MATRIX_PASSWORD", "config_key": "password", "type": "string"},
+    {
+        "env_var": "MMRELAY_MATRIX_PASSWORD",
+        "config_key": CONFIG_KEY_PASSWORD,
+        "type": "string",
+    },
     {
         "env_var": "MMRELAY_MATRIX_ACCESS_TOKEN",
-        "config_key": "access_token",
+        "config_key": CONFIG_KEY_ACCESS_TOKEN,
         "type": "string",
     },
 ]
@@ -1342,7 +1376,7 @@ def _resolve_credentials_path(
         if not candidate:
             candidate = relay_config.get("credentials_path")
         if not candidate:
-            matrix_config = relay_config.get("matrix", {})
+            matrix_config = relay_config.get(CONFIG_SECTION_MATRIX, {})
             if isinstance(matrix_config, dict):
                 candidate = matrix_config.get("credentials_path")
 
@@ -1493,7 +1527,9 @@ def get_meshtastic_config_value(
     Raises:
         KeyError: If `required` is True and the requested key is missing.
     """
-    section = config.get("meshtastic", {}) if isinstance(config, dict) else {}
+    section = (
+        config.get(CONFIG_SECTION_MESHTASTIC, {}) if isinstance(config, dict) else {}
+    )
     if not isinstance(section, dict):
         section = {}
     try:

@@ -9,7 +9,18 @@ import os
 import sys
 from typing import Any, Optional, cast
 
-from mmrelay.constants.app import WINDOWS_PLATFORM
+from mmrelay.constants.app import (
+    MIN_PYTHON_VERSION,
+    WINDOWS_PATH_LENGTH_WARNING,
+    WINDOWS_PLATFORM,
+    WINDOWS_STD_ERROR_HANDLE,
+    WINDOWS_STD_OUTPUT_HANDLE,
+    WINDOWS_VTP_FLAG,
+)
+from mmrelay.constants.formats import DEFAULT_TEXT_ENCODING
+from mmrelay.log_utils import get_logger
+
+logger = get_logger(__name__)
 
 
 def is_windows() -> bool:
@@ -39,24 +50,26 @@ def setup_windows_console() -> None:
     try:
         # Enable UTF-8 output on Windows
         if hasattr(sys.stdout, "reconfigure"):
-            cast(Any, sys.stdout).reconfigure(encoding="utf-8")
+            cast(Any, sys.stdout).reconfigure(encoding=DEFAULT_TEXT_ENCODING)
         if hasattr(sys.stderr, "reconfigure"):
-            cast(Any, sys.stderr).reconfigure(encoding="utf-8")
+            cast(Any, sys.stderr).reconfigure(encoding=DEFAULT_TEXT_ENCODING)
 
         # Enable ANSI color codes on Windows 10+
         import ctypes
 
         kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-        ENABLE_VTP = 0x0004  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
-        for handle in (-11, -12):  # STD_OUTPUT_HANDLE, STD_ERROR_HANDLE
+        for handle in (WINDOWS_STD_OUTPUT_HANDLE, WINDOWS_STD_ERROR_HANDLE):
             h = kernel32.GetStdHandle(handle)
             if h is not None and h != -1:
                 mode = ctypes.c_uint()
                 if kernel32.GetConsoleMode(h, ctypes.byref(mode)):
-                    kernel32.SetConsoleMode(h, mode.value | ENABLE_VTP)
+                    kernel32.SetConsoleMode(h, mode.value | WINDOWS_VTP_FLAG)
     except (OSError, AttributeError):
         # If console setup fails, continue without it
         # This is expected on non-Windows systems or older Windows versions
+        logger.debug(
+            "Windows console setup failed (expected on non-Windows or older Windows)"
+        )
         return
 
 
@@ -134,9 +147,9 @@ def check_windows_requirements() -> Optional[str]:
     Report Windows environment compatibility issues as a multi-line warning string.
 
     When running on Windows, performs these checks and accumulates user-facing warnings:
-    - Python version is older than 3.10.
+    - Python version is older than MIN_PYTHON_VERSION.
     - Process does not appear to be running inside a virtual environment (venv/pipx).
-    - Current working directory path length exceeds 200 characters.
+    - Current working directory path length exceeds WINDOWS_PATH_LENGTH_WARNING characters.
 
     Returns:
         Optional[str]: Multi-line warning message prefixed with "Windows compatibility warnings:" and bullet points for each detected issue; `None` if no issues are detected or when not running on Windows.
@@ -147,8 +160,10 @@ def check_windows_requirements() -> Optional[str]:
     warnings = []
 
     # Check Python version for Windows compatibility
-    if sys.version_info < (3, 10):
-        warnings.append("Python 3.10+ is required for this application")
+    if sys.version_info < MIN_PYTHON_VERSION:
+        warnings.append(
+            f"Python {MIN_PYTHON_VERSION[0]}.{MIN_PYTHON_VERSION[1]}+ is required for this application"
+        )
 
     # Check if running in a virtual environment
     if not hasattr(sys, "real_prefix") and not (
@@ -159,7 +174,7 @@ def check_windows_requirements() -> Optional[str]:
         )
 
     # Check for common Windows path issues
-    if len(os.getcwd()) > 200:
+    if len(os.getcwd()) > WINDOWS_PATH_LENGTH_WARNING:
         warnings.append(
             "Current directory path is very long - this may cause issues on Windows"
         )
@@ -266,11 +281,7 @@ def test_config_generation_windows(args: Any = None) -> dict[str, Any]:
             results["directory_creation"] = {"status": "error", "details": str(e)}
 
         # Determine overall status
-        error_count = sum(
-            1
-            for r in results.values()
-            if isinstance(r, dict) and r.get("status") == "error"
-        )
+        error_count = _count_error_results(results)
         if error_count == 0:
             results["overall_status"] = "ok"
         elif error_count < 3:  # If at least one fallback works
@@ -283,6 +294,23 @@ def test_config_generation_windows(args: Any = None) -> dict[str, Any]:
         results["error"] = str(e)
 
     return results
+
+
+def _count_error_results(results: dict[str, Any]) -> int:
+    """
+    Count diagnostic checks in `results` that reported status="error".
+
+    Parameters:
+        results: Diagnostic result mapping from test_config_generation_windows().
+
+    Returns:
+        int: Number of nested diagnostic result dictionaries marked as errors.
+    """
+    return sum(
+        1
+        for result in results.values()
+        if isinstance(result, dict) and result.get("status") == "error"
+    )
 
 
 def get_windows_install_guidance() -> str:

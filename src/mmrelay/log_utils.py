@@ -9,7 +9,8 @@ if TYPE_CHECKING:
     from rich.console import Console
 
 # Import logging configuration helpers and constants.
-from mmrelay.constants.app import APP_DISPLAY_NAME
+from mmrelay.constants.app import APP_DISPLAY_NAME, LOG_FILENAME
+from mmrelay.constants.formats import DATETIME_FORMAT_WITH_TZ, RICH_LOG_TIME_FORMAT
 from mmrelay.constants.messages import (
     DEFAULT_LOG_BACKUP_COUNT,
     DEFAULT_LOG_SIZE_MB,
@@ -208,7 +209,7 @@ def _resolve_log_file(args: argparse.Namespace | None) -> str:
     if isinstance(config_log_file, str) and config_log_file:
         return config_log_file
 
-    return os.path.join(get_log_dir(), "mmrelay.log")
+    return os.path.join(get_log_dir(), LOG_FILENAME)
 
 
 class LogsDirTypeError(TypeError):
@@ -300,7 +301,7 @@ def _configure_logger(
                     show_level=True,
                     show_path=False,
                     markup=True,
-                    log_time_format="%Y-%m-%d %H:%M:%S",
+                    log_time_format=RICH_LOG_TIME_FORMAT,
                     omit_repeated_times=False,
                 )
             )
@@ -311,7 +312,7 @@ def _configure_logger(
             console_handler.setFormatter(
                 logging.Formatter(
                     fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
-                    datefmt="%Y-%m-%d %H:%M:%S %z",
+                    datefmt=DATETIME_FORMAT_WITH_TZ,
                 )
             )
         logger.addHandler(console_handler)
@@ -374,7 +375,7 @@ def _configure_logger(
         file_handler.setFormatter(
             logging.Formatter(
                 fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S %z",
+                datefmt=DATETIME_FORMAT_WITH_TZ,
             )
         )
         logger.addHandler(file_handler)

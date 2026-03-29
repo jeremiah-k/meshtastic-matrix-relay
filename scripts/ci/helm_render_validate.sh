@@ -58,6 +58,40 @@ helm_in_container() {
 		echo -e "${RED}ERROR: Helm container unavailable${NC}"
 		return 1
 	fi
+	local image_present=1
+	if [[ ${CONTAINER_CMD} == "podman" ]]; then
+		if podman image exists "${HELM_IMAGE}" >/dev/null 2>&1; then
+			image_present=0
+		fi
+	elif [[ ${CONTAINER_CMD} == "docker" ]]; then
+		if docker image inspect "${HELM_IMAGE}" >/dev/null 2>&1; then
+			image_present=0
+		fi
+	fi
+
+	if [[ ${image_present} -ne 0 ]]; then
+		# Pull with retry to handle transient Docker Hub rate limiting
+		local pull_retries=3
+		local pull_delay=5
+		local pull_attempt=0
+		local pull_output
+		while [[ ${pull_attempt} -lt ${pull_retries} ]]; do
+			if pull_output=$(${CONTAINER_CMD} pull "${HELM_IMAGE}" 2>&1); then
+				break
+			fi
+			pull_attempt=$((pull_attempt + 1))
+			if [[ ${pull_attempt} -lt ${pull_retries} ]]; then
+				echo -e "${YELLOW}Container pull attempt $((pull_attempt)) failed, retrying in ${pull_delay}s (attempt $((pull_attempt + 1))/${pull_retries})...${NC}" >&2
+				sleep "${pull_delay}"
+				pull_delay=$((pull_delay * 2))
+			else
+				echo -e "${RED}Failed to pull ${HELM_IMAGE} after ${pull_retries} attempts${NC}" >&2
+				echo "Error output:" >&2
+				echo "${pull_output}" >&2
+				return 1
+			fi
+		done
+	fi
 	local workdir
 	workdir="$(pwd)"
 	${CONTAINER_CMD} run --rm \

@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
+from mmrelay.constants.app import CONFIG_FILENAME, CREDENTIALS_FILENAME
 from mmrelay.migrate import MigrationError, perform_migration
 
 
@@ -18,7 +19,7 @@ class TestMigrationAutomaticRollback:
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         # Create credentials file to ensure first step succeeds
-        (legacy_root / "credentials.json").write_text('{"token": "test"}')
+        (legacy_root / CREDENTIALS_FILENAME).write_text('{"token": "test"}')
         new_home = tmp_path / "home"
 
         # Mock path resolution
@@ -28,7 +29,7 @@ class TestMigrationAutomaticRollback:
             lambda: {
                 "home": str(new_home),
                 "legacy_sources": [str(legacy_root)],
-                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "credentials_path": str(new_home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(new_home / "database"),
                 "logs_dir": str(new_home / "logs"),
                 "plugins_dir": str(new_home / "plugins"),
@@ -74,7 +75,7 @@ class TestMigrationAutomaticRollback:
         """Verify rollback is NOT triggered during dry-run."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        (legacy_root / "credentials.json").write_text('{"token": "test"}')
+        (legacy_root / CREDENTIALS_FILENAME).write_text('{"token": "test"}')
         new_home = tmp_path / "home"
 
         monkeypatch.setenv("MMRELAY_HOME", str(new_home))
@@ -83,7 +84,7 @@ class TestMigrationAutomaticRollback:
             lambda: {
                 "home": str(new_home),
                 "legacy_sources": [str(legacy_root)],
-                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "credentials_path": str(new_home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(new_home / "database"),
                 "logs_dir": str(new_home / "logs"),
                 "plugins_dir": str(new_home / "plugins"),
@@ -112,10 +113,10 @@ class TestMigrationAutomaticRollback:
         # Verify no rollback report in main report
         assert "rollback" not in result
 
-    def test_perform_migration_no_rollback_when_no_steps_completed(
+    def test_perform_migration_no_rollback_when_all_steps_are_noop(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Verify rollback only triggers if steps were completed."""
+        """Verify rollback is not triggered when migration succeeds with no-op actions."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         # Don't create any files so first step (credentials) fails immediately
@@ -127,7 +128,7 @@ class TestMigrationAutomaticRollback:
             lambda: {
                 "home": str(new_home),
                 "legacy_sources": [str(legacy_root)],
-                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "credentials_path": str(new_home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(new_home / "database"),
                 "logs_dir": str(new_home / "logs"),
                 "plugins_dir": str(new_home / "plugins"),
@@ -136,7 +137,18 @@ class TestMigrationAutomaticRollback:
         )
 
         # Mock rollback_migration - it should NOT be called
-        with patch("mmrelay.migrate.rollback_migration") as mock_rollback:
+        with (
+            patch("mmrelay.migrate.rollback_migration") as mock_rollback,
+            patch(
+                "mmrelay.migrate.migrate_service",
+                return_value={
+                    "success": True,
+                    "new_path": str(new_home),
+                    "action": "skip_no_service_changes",
+                    "message": "No service update needed for this test scenario",
+                },
+            ),
+        ):
             result = perform_migration(force=True)
 
         # Verify migration succeeds with no-op actions when nothing exists
@@ -145,7 +157,7 @@ class TestMigrationAutomaticRollback:
         # Verify no-op migration still records all migration steps, including service
         assert len(result["completed_steps"]) == 8
 
-        # Verify rollback was NOT called when no steps completed
+        # Verify rollback was NOT called when migration succeeded (all no-ops)
         mock_rollback.assert_not_called()
 
         # Verify no rollback report in main report
@@ -158,8 +170,8 @@ class TestMigrationAutomaticRollback:
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         # Create credentials and config files so first two steps succeed
-        (legacy_root / "credentials.json").write_text('{"token": "test"}')
-        (legacy_root / "config.yaml").write_text("test: config")
+        (legacy_root / CREDENTIALS_FILENAME).write_text('{"token": "test"}')
+        (legacy_root / CONFIG_FILENAME).write_text("test: config")
         new_home = tmp_path / "home"
 
         monkeypatch.setenv("MMRELAY_HOME", str(new_home))
@@ -168,7 +180,7 @@ class TestMigrationAutomaticRollback:
             lambda: {
                 "home": str(new_home),
                 "legacy_sources": [str(legacy_root)],
-                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "credentials_path": str(new_home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(new_home / "database"),
                 "logs_dir": str(new_home / "logs"),
                 "plugins_dir": str(new_home / "plugins"),
@@ -222,8 +234,8 @@ class TestMigrationAutomaticRollback:
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         # Create files for first 3 steps to succeed
-        (legacy_root / "credentials.json").write_text('{"token": "test"}')
-        (legacy_root / "config.yaml").write_text("test: config")
+        (legacy_root / CREDENTIALS_FILENAME).write_text('{"token": "test"}')
+        (legacy_root / CONFIG_FILENAME).write_text("test: config")
         (legacy_root / "nodes.db").write_text("sqlite database")
         new_home = tmp_path / "home"
 
@@ -233,7 +245,7 @@ class TestMigrationAutomaticRollback:
             lambda: {
                 "home": str(new_home),
                 "legacy_sources": [str(legacy_root)],
-                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "credentials_path": str(new_home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(new_home / "database"),
                 "logs_dir": str(new_home / "logs"),
                 "plugins_dir": str(new_home / "plugins"),
@@ -294,7 +306,7 @@ class TestMigrationAutomaticRollback:
         """Test that rollback failure is still recorded in the report."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
-        (legacy_root / "credentials.json").write_text('{"token": "test"}')
+        (legacy_root / CREDENTIALS_FILENAME).write_text('{"token": "test"}')
         new_home = tmp_path / "home"
 
         monkeypatch.setenv("MMRELAY_HOME", str(new_home))
@@ -303,7 +315,7 @@ class TestMigrationAutomaticRollback:
             lambda: {
                 "home": str(new_home),
                 "legacy_sources": [str(legacy_root)],
-                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "credentials_path": str(new_home / "matrix" / CREDENTIALS_FILENAME),
                 "database_dir": str(new_home / "database"),
                 "logs_dir": str(new_home / "logs"),
                 "plugins_dir": str(new_home / "plugins"),

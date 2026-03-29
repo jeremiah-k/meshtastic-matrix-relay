@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.plugins import LOW_BATTERY_THRESHOLD_PERCENT
 from mmrelay.plugins.health_plugin import Plugin
 
 
@@ -100,8 +101,10 @@ class TestHealthPlugin(unittest.TestCase):
         self.assertIn("Battery: 56.8%", response)  # Rounded to 1 decimal
         self.assertIn("65.0%", response)  # Median
 
-        # Should contain low battery count (<= 10%)
-        self.assertIn("Nodes with Low Battery (<= 10): 1", response)
+        # Should contain low battery count (<= threshold)
+        self.assertIn(
+            f"Nodes with Low Battery (<= {LOW_BATTERY_THRESHOLD_PERCENT}%): 1", response
+        )
 
         # Should contain air util statistics
         # Air util: [12.5, 8.3, 15.7] -> avg=12.17, median=12.5
@@ -205,7 +208,9 @@ class TestHealthPlugin(unittest.TestCase):
 
         result = self.plugin.generate_response()
         self.assertIn("Nodes:", result)
-        self.assertIn("Nodes with Low Battery (<= 10): 2", result)
+        self.assertIn(
+            f"Nodes with Low Battery (<= {LOW_BATTERY_THRESHOLD_PERCENT}%): 2", result
+        )
         self.assertIn("Battery: 6.5% / 6.5%", result)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")

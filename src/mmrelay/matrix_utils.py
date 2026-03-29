@@ -83,19 +83,36 @@ from mmrelay.config import (
 )
 from mmrelay.constants.app import WINDOWS_PLATFORM
 from mmrelay.constants.config import (
+    CONFIG_KEY_ACCESS_TOKEN,
+    CONFIG_KEY_BOT_USER_ID,
+    CONFIG_KEY_DEVICE_ID,
+    CONFIG_KEY_HOMESERVER,
+    CONFIG_KEY_PASSWORD,
+    CONFIG_KEY_USER_ID,
+    CONFIG_SECTION_DATABASE,
+    CONFIG_SECTION_DATABASE_LEGACY,
     CONFIG_SECTION_MATRIX,
+    CONFIG_SECTION_MESHTASTIC,
     DEFAULT_BROADCAST_ENABLED,
     DEFAULT_DETECTION_SENSOR,
     E2EE_KEY_REQUEST_BASE_DELAY,
     E2EE_KEY_REQUEST_MAX_ATTEMPTS,
     E2EE_KEY_REQUEST_MAX_DELAY,
     E2EE_KEY_SHARING_DELAY_SECONDS,
+    REQUIRED_CREDENTIALS_KEYS,
 )
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
 from mmrelay.constants.formats import (
     DEFAULT_MATRIX_PREFIX,
     DEFAULT_MESHTASTIC_PREFIX,
+    DEFAULT_TEXT_ENCODING,
     DETECTION_SENSOR_APP,
+    ENCODING_ERROR_IGNORE,
+    HTML_TAG_REGEX,
+    MARKDOWN_ESCAPE_REGEX,
+    OBJECT_REPR_REGEX,
+    PREFIX_DEFINITION_REGEX,
 )
 from mmrelay.constants.messages import (
     DEFAULT_MESSAGE_TRUNCATE_BYTES,
@@ -103,14 +120,20 @@ from mmrelay.constants.messages import (
     MAX_TRUNCATION_LENGTH,
     MESHNET_NAME_ABBREVIATION_LENGTH,
     MESSAGE_PREVIEW_LENGTH,
+    MSG_MATRIX_SYNC_FAILED,
+    MSG_MATRIX_SYNC_TIMEOUT,
+    MSG_MISSING_MATRIX_ROOMS,
     PORTNUM_DETECTION_SENSOR_APP,
     SHORTNAME_FALLBACK_LENGTH,
 )
 from mmrelay.constants.network import (
     MATRIX_EARLY_SYNC_TIMEOUT,
+    MATRIX_INITIAL_SYNC_MAX_ATTEMPTS,
+    MATRIX_INITIAL_SYNC_RETRY_MAX_DELAY_SECS,
     MATRIX_LOGIN_TIMEOUT,
     MATRIX_ROOM_SEND_TIMEOUT,
     MATRIX_SYNC_OPERATION_TIMEOUT,
+    MATRIX_SYNC_RETRY_DELAY_SECS,
     MATRIX_TO_DEVICE_TIMEOUT,
     MILLISECONDS_PER_SECOND,
 )
@@ -187,6 +210,15 @@ SYNC_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
     *NIO_COMM_EXCEPTIONS,
     JSONSCHEMA_VALIDATION_ERROR,
 )
+# Exception tuple for login whoami fallback when resolving user_id post-login.
+WHOAMI_USER_ID_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *NIO_COMM_EXCEPTIONS,
+    OSError,
+    AttributeError,
+    TypeError,
+    ValueError,
+    RuntimeError,
+)
 # Exception handling strategy:
 # Catch only expected nio/network/timeouts so programming errors surface during testing.
 
@@ -200,7 +232,7 @@ class MissingMatrixRoomsError(ValueError):
         """
         Exception raised when the Matrix rooms configuration is missing.
         """
-        super().__init__("Missing required matrix_rooms configuration")
+        super().__init__(MSG_MISSING_MATRIX_ROOMS)
 
 
 class MatrixSyncTimeoutError(ConnectionError):
@@ -212,7 +244,7 @@ class MatrixSyncTimeoutError(ConnectionError):
 
         The exception's message is set to "Matrix sync timed out".
         """
-        super().__init__("Matrix sync timed out")
+        super().__init__(MSG_MATRIX_SYNC_TIMEOUT)
 
 
 class MatrixSyncFailedError(ConnectionError):
@@ -224,7 +256,7 @@ class MatrixSyncFailedError(ConnectionError):
 
         Sets the exception message to "Matrix sync failed".
         """
-        super().__init__("Matrix sync failed")
+        super().__init__(MSG_MATRIX_SYNC_FAILED)
 
 
 class MatrixSyncFailedDetailsError(ConnectionError):
@@ -241,7 +273,7 @@ class MatrixSyncFailedDetailsError(ConnectionError):
         Notes:
             The exception message is formatted as "Matrix sync failed: {error_type} - {error_details}" and both values are stored on the instance as `error_type` and `error_details`.
         """
-        super().__init__(f"Matrix sync failed: {error_type} - {error_details}")
+        super().__init__(f"{MSG_MATRIX_SYNC_FAILED}: {error_type} - {error_details}")
         self.error_type = error_type
         self.error_details = error_details
 
@@ -559,6 +591,16 @@ def _display_room_channel_mappings(
                     logger.info(f"    ✅ {room_name}")
 
 
+def _first_nonblank_str(*values: Any) -> str | None:
+    """Return the first non-blank string value after stripping whitespace."""
+    for value in values:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped:
+                return stripped
+    return None
+
+
 def _can_auto_create_credentials(matrix_config: Dict[str, Any] | None) -> bool:
     """
     Determine whether the Matrix configuration contains the fields required to create credentials automatically.
@@ -571,9 +613,12 @@ def _can_auto_create_credentials(matrix_config: Dict[str, Any] | None) -> bool:
     """
     if not isinstance(matrix_config, dict):
         return False
-    homeserver = matrix_config.get("homeserver")
-    user = matrix_config.get("bot_user_id") or matrix_config.get("user_id")
-    password = matrix_config.get("password")
+    homeserver = matrix_config.get(CONFIG_KEY_HOMESERVER)
+    user = _first_nonblank_str(
+        matrix_config.get(CONFIG_KEY_BOT_USER_ID),
+        matrix_config.get(CONFIG_KEY_USER_ID),
+    )
+    password = matrix_config.get(CONFIG_KEY_PASSWORD)
     return all(isinstance(v, str) and v.strip() for v in (homeserver, user, password))
 
 
@@ -676,11 +721,13 @@ def _get_msgs_to_keep_config(config_override: dict[str, Any] | None = None) -> i
         candidate = section.get("msg_map")
         return candidate if isinstance(candidate, dict) else None
 
-    msg_map_config = _get_msg_map_config(effective_config.get("database"))
+    msg_map_config = _get_msg_map_config(effective_config.get(CONFIG_SECTION_DATABASE))
 
     # If not found in database config, check legacy db config
     if msg_map_config is None:
-        msg_map_config = _get_msg_map_config(effective_config.get("db"))
+        msg_map_config = _get_msg_map_config(
+            effective_config.get(CONFIG_SECTION_DATABASE_LEGACY)
+        )
         if msg_map_config is not None:
             logger.warning(
                 "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
@@ -717,8 +764,8 @@ def _get_detailed_matrix_error_message(matrix_response: Any) -> str:
             bool: `true` if the string appears to be an unhelpful error message (contains an object memory-address repr, a lone HTML-like tag, or the phrase "unknown error"), `false` otherwise.
         """
         return (
-            re.search(r"<.+? object at 0x[0-9a-fA-F]+>", error_str) is not None
-            or re.search(r"<[a-zA-Z/][^>]*>", error_str) is not None
+            OBJECT_REPR_REGEX.search(error_str) is not None
+            or HTML_TAG_REGEX.search(error_str) is not None
             or "unknown error" in error_str.lower()
         )
 
@@ -726,7 +773,7 @@ def _get_detailed_matrix_error_message(matrix_response: Any) -> str:
         # Handle bytes/bytearray types by converting to string
         if isinstance(matrix_response, (bytes, bytearray)):
             try:
-                matrix_response = matrix_response.decode("utf-8")
+                matrix_response = matrix_response.decode(DEFAULT_TEXT_ENCODING)
             except UnicodeDecodeError:
                 return "Network connectivity issue or server unreachable (binary data)"
 
@@ -744,7 +791,7 @@ def _get_detailed_matrix_error_message(matrix_response: Any) -> str:
             # Handle if message is bytes/bytearray
             if isinstance(message, (bytes, bytearray)):
                 try:
-                    message = message.decode("utf-8")
+                    message = message.decode(DEFAULT_TEXT_ENCODING)
                 except UnicodeDecodeError:
                     return "Network connectivity issue or server unreachable"
             if isinstance(message, str):
@@ -860,19 +907,55 @@ def get_interaction_settings(config: dict[str, Any] | None) -> dict[str, bool]:
     if config is None:
         return {"reactions": False, "replies": False}
 
-    meshtastic_config = config.get("meshtastic", {})
+    meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC, {})
+    if not isinstance(meshtastic_config, dict):
+        logger.warning(
+            "Invalid '%s' configuration type (%s); disabling reactions and replies.",
+            CONFIG_SECTION_MESHTASTIC,
+            type(meshtastic_config).__name__,
+        )
+        return {"reactions": False, "replies": False}
 
     # Check for new structured configuration first
-    if "message_interactions" in meshtastic_config:
-        interactions = meshtastic_config["message_interactions"]
+    interactions = meshtastic_config.get("message_interactions")
+    if interactions is not None:
+        if not isinstance(interactions, dict):
+            logger.warning(
+                "Invalid '%s.message_interactions' value (%s); disabling reactions and replies.",
+                CONFIG_SECTION_MESHTASTIC,
+                type(interactions).__name__,
+            )
+            return {"reactions": False, "replies": False}
+
+        reactions = interactions.get("reactions", False)
+        replies = interactions.get("replies", False)
+        if "reactions" in interactions and not isinstance(reactions, bool):
+            logger.warning(
+                "Invalid '%s.message_interactions.reactions' value (%s); treating as False.",
+                CONFIG_SECTION_MESHTASTIC,
+                type(reactions).__name__,
+            )
+        if "replies" in interactions and not isinstance(replies, bool):
+            logger.warning(
+                "Invalid '%s.message_interactions.replies' value (%s); treating as False.",
+                CONFIG_SECTION_MESHTASTIC,
+                type(replies).__name__,
+            )
         return {
-            "reactions": interactions.get("reactions", False),
-            "replies": interactions.get("replies", False),
+            "reactions": reactions if isinstance(reactions, bool) else False,
+            "replies": replies if isinstance(replies, bool) else False,
         }
 
     # Fall back to legacy relay_reactions setting
     if "relay_reactions" in meshtastic_config:
-        enabled = meshtastic_config["relay_reactions"]
+        enabled_value = meshtastic_config.get("relay_reactions")
+        enabled = enabled_value if isinstance(enabled_value, bool) else False
+        if not isinstance(enabled_value, bool):
+            logger.warning(
+                "Invalid '%s.relay_reactions' value (%s); treating as False.",
+                CONFIG_SECTION_MESHTASTIC,
+                type(enabled_value).__name__,
+            )
         logger.warning(
             "Configuration setting 'relay_reactions' is deprecated. "
             "Please use 'message_interactions: {reactions: bool, replies: bool}' instead. "
@@ -919,11 +1002,6 @@ def _add_truncated_vars(
         format_vars[f"{prefix}{i}"] = truncated_value
 
 
-_PREFIX_DEFINITION_PATTERN = re.compile(r"^\[(.+?)\]:(\s*)")
-# Escape underscores, asterisks, backticks, tildes, backslashes, and brackets inside prefixes
-_MARKDOWN_ESCAPE_PATTERN = re.compile(r"([*_`~\\\[\]])")
-
-
 def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
     """
     Prevent a leading reference-style Markdown link definition from being interpreted by escaping its bracketed prefix.
@@ -933,13 +1011,13 @@ def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
     Returns:
         tuple[str, bool]: `(safe_message, escaped)` where `safe_message` is the possibly-escaped message and `escaped` is `True` if an escape was performed, `False` otherwise.
     """
-    match = _PREFIX_DEFINITION_PATTERN.match(message)
+    match = PREFIX_DEFINITION_REGEX.match(message)
     if not match:
         return message, False
 
     prefix_text = match.group(1)
     spacing = match.group(2)
-    escaped_prefix = _MARKDOWN_ESCAPE_PATTERN.sub(r"\\\1", prefix_text)
+    escaped_prefix = MARKDOWN_ESCAPE_REGEX.sub(r"\\\1", prefix_text)
     escaped = f"\\[{escaped_prefix}]:{spacing}"
     return escaped + message[match.end() :], True
 
@@ -979,7 +1057,7 @@ def get_meshtastic_prefix(
     Returns:
         str: The formatted prefix string when enabled, or an empty string if prefixing is disabled.
     """
-    meshtastic_config = config.get("meshtastic", {})
+    meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC, {})
 
     # Check if prefixes are enabled
     if not meshtastic_config.get("prefix_enabled", True):
@@ -1119,6 +1197,9 @@ bot_start_time = int(
 
 
 matrix_client = None
+
+# Serialize connect_matrix startup publication and invite-state monkey patching.
+_MATRIX_STARTUP_SYNC_LOCK = asyncio.Lock()
 
 
 async def get_displayname(user_id: str) -> str | None:
@@ -1292,7 +1373,7 @@ async def _handle_detection_sensor_packet(
 
     success = queue_message(
         meshtastic_interface.sendData,
-        data=text.encode("utf-8"),
+        data=text.encode(DEFAULT_TEXT_ENCODING, ENCODING_ERROR_IGNORE),
         channelIndex=meshtastic_channel,
         portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
         description=f"Detection sensor data from {full_display_name}",
@@ -1357,12 +1438,12 @@ def _missing_credentials_keys(credentials: dict[str, Any]) -> list[str]:
     Returns:
         list[str]: List of required keys that are not present or are empty in `credentials`.
     """
-    return [
-        key
-        for key in ("homeserver", "access_token", "user_id")
-        if not isinstance(credentials.get(key), str)
-        or not credentials.get(key, "").strip()
-    ]
+    missing_keys: list[str] = []
+    for key in REQUIRED_CREDENTIALS_KEYS:
+        value = credentials.get(key)
+        if not isinstance(value, str) or not value.strip():
+            missing_keys.append(key)
+    return missing_keys
 
 
 async def _resolve_and_load_credentials(
@@ -1412,14 +1493,26 @@ async def _resolve_and_load_credentials(
             credentials = None
         else:
             credentials_path = candidate_path
-            matrix_homeserver = credentials["homeserver"]
-            matrix_access_token = credentials["access_token"]
-            bot_user_id = credentials["user_id"]
-            e2ee_device_id = _get_valid_device_id(credentials.get("device_id"))
+            matrix_homeserver = credentials[CONFIG_KEY_HOMESERVER]
+            matrix_access_token = credentials[CONFIG_KEY_ACCESS_TOKEN]
+            raw_user_id = _first_nonblank_str(
+                credentials.get(CONFIG_KEY_USER_ID),
+                credentials.get(CONFIG_KEY_BOT_USER_ID),
+            )
+            normalized_user_id = (
+                _normalize_bot_user_id(matrix_homeserver, raw_user_id)
+                if raw_user_id
+                else None
+            )
+            bot_user_id = normalized_user_id or ""
+            e2ee_device_id = _get_valid_device_id(credentials.get(CONFIG_KEY_DEVICE_ID))
 
             logger.debug(f"Using Matrix credentials (device: {e2ee_device_id})")
 
-            if isinstance(matrix_section, dict) and "access_token" in matrix_section:
+            if (
+                isinstance(matrix_section, dict)
+                and CONFIG_KEY_ACCESS_TOKEN in matrix_section
+            ):
                 logger.info(
                     "NOTE: Ignoring Matrix login details in config.yaml in favor of credentials.json"
                 )
@@ -1439,11 +1532,14 @@ async def _resolve_and_load_credentials(
             "No credentials.json found, but config.yaml has password field. Attempting automatic login..."
         )
 
-        homeserver = matrix_section["homeserver"]
-        username = matrix_section.get("bot_user_id") or matrix_section.get("user_id")
+        homeserver = matrix_section[CONFIG_KEY_HOMESERVER]
+        username = _first_nonblank_str(
+            matrix_section.get(CONFIG_KEY_BOT_USER_ID),
+            matrix_section.get(CONFIG_KEY_USER_ID),
+        )
         if username:
             username = _normalize_bot_user_id(homeserver, username)
-        password = matrix_section["password"]
+        password = matrix_section[CONFIG_KEY_PASSWORD]
 
         try:
             success = await login_matrix_bot(
@@ -1474,10 +1570,15 @@ async def _resolve_and_load_credentials(
                 credentials_path = await asyncio.to_thread(
                     _resolve_credentials_save_path, config_data
                 )
-                matrix_homeserver = credentials["homeserver"]
-                matrix_access_token = credentials["access_token"]
-                bot_user_id = credentials["user_id"]
-                e2ee_device_id = _get_valid_device_id(credentials.get("device_id"))
+                matrix_homeserver = credentials[CONFIG_KEY_HOMESERVER]
+                matrix_access_token = credentials[CONFIG_KEY_ACCESS_TOKEN]
+                raw_user_id = credentials.get(CONFIG_KEY_USER_ID)
+                bot_user_id = (
+                    raw_user_id.strip() if isinstance(raw_user_id, str) else ""
+                )
+                e2ee_device_id = _get_valid_device_id(
+                    credentials.get(CONFIG_KEY_DEVICE_ID)
+                )
 
                 return MatrixAuthInfo(
                     homeserver=matrix_homeserver,
@@ -1520,16 +1621,25 @@ async def _resolve_and_load_credentials(
         logger.error(msg_require_auth_login())
         return None
 
-    matrix_access_token = matrix_section.get("access_token")
+    matrix_access_token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
     if not isinstance(matrix_access_token, str) or not matrix_access_token.strip():
-        auth_keys = ("access_token", "password", "homeserver", "bot_user_id", "user_id")
+        auth_keys = (
+            CONFIG_KEY_ACCESS_TOKEN,
+            CONFIG_KEY_PASSWORD,
+            CONFIG_KEY_HOMESERVER,
+            CONFIG_KEY_BOT_USER_ID,
+            CONFIG_KEY_USER_ID,
+        )
         present_auth_keys: list[str] = []
         for key in auth_keys:
             value = matrix_section.get(key)
             if isinstance(value, str) and value.strip():
                 present_auth_keys.append(key)
         if present_auth_keys:
-            logger.error("Matrix section is missing required field: access_token")
+            logger.error(
+                "Matrix section is missing required field: '%s'",
+                CONFIG_KEY_ACCESS_TOKEN,
+            )
         else:
             logger.error(
                 "Matrix section contains non-auth settings only (for example E2EE options), "
@@ -1538,17 +1648,24 @@ async def _resolve_and_load_credentials(
         logger.error(msg_require_auth_login())
         return None
 
-    matrix_homeserver = matrix_section.get("homeserver")
+    matrix_homeserver = matrix_section.get(CONFIG_KEY_HOMESERVER)
     if not isinstance(matrix_homeserver, str) or not matrix_homeserver.strip():
-        logger.error("Matrix section is missing required field: homeserver")
+        logger.error(
+            "Matrix section is missing required field: '%s'",
+            CONFIG_KEY_HOMESERVER,
+        )
         return None
 
-    raw_user_id = matrix_section.get("bot_user_id") or matrix_section.get("user_id")
+    raw_user_id = _first_nonblank_str(
+        matrix_section.get(CONFIG_KEY_BOT_USER_ID),
+        matrix_section.get(CONFIG_KEY_USER_ID),
+    )
     if isinstance(raw_user_id, str) and raw_user_id.strip():
-        bot_user_id = _normalize_bot_user_id(matrix_homeserver, raw_user_id)
-        if bot_user_id is None:
+        normalized_user_id = _normalize_bot_user_id(matrix_homeserver, raw_user_id)
+        if normalized_user_id is None:
             logger.error("Matrix section has invalid bot_user_id")
             return None
+        bot_user_id = normalized_user_id
     else:
         logger.warning(
             "Matrix section missing bot_user_id; continuing with access_token-only configuration"
@@ -1725,6 +1842,7 @@ def _initialize_matrix_client(
     Returns:
         AsyncClient: A configured AsyncClient instance ready for login and synchronization.
     """
+    # max_limit_exceeded=0, max_timeouts=0 are NIO client params - keep inline
     client_config = AsyncClientConfig(
         max_limit_exceeded=0,
         max_timeouts=0,
@@ -1735,14 +1853,17 @@ def _initialize_matrix_client(
     if device_id:
         logger.debug(f"Device ID from credentials: {device_id}")
 
-    return AsyncClient(
-        homeserver=homeserver,
-        user=user_id,
-        device_id=device_id,
-        store_path=e2ee_store_path if e2ee_enabled else None,
-        config=client_config,
-        ssl=cast(Any, ssl_context),
-    )
+    client_kwargs: dict[str, Any] = {
+        "homeserver": homeserver,
+        "user": user_id,
+        "store_path": e2ee_store_path if e2ee_enabled else None,
+        "config": client_config,
+        "ssl": cast(Any, ssl_context),
+    }
+    if device_id:
+        client_kwargs["device_id"] = device_id
+
+    return AsyncClient(**client_kwargs)
 
 
 async def _perform_matrix_login(
@@ -1795,7 +1916,7 @@ async def _perform_matrix_login(
                     client.user_id = user_id
                     auth_info.user_id = user_id
                     if auth_info.credentials is not None:
-                        auth_info.credentials["user_id"] = user_id
+                        auth_info.credentials[CONFIG_KEY_USER_ID] = user_id
                         credentials_updated = True
 
                 discovered_device_id = getattr(whoami_response, "device_id", None)
@@ -1805,7 +1926,7 @@ async def _perform_matrix_login(
                     logger.info(f"Discovered device_id from whoami: {e2ee_device_id}")
 
                     if auth_info.credentials is not None:
-                        auth_info.credentials["device_id"] = e2ee_device_id
+                        auth_info.credentials[CONFIG_KEY_DEVICE_ID] = e2ee_device_id
                         credentials_updated = True
 
                 if credentials_updated and auth_info.credentials is not None:
@@ -1848,7 +1969,7 @@ async def _perform_matrix_login(
                         logger.debug(
                             "whoami confirmed existing device_id and user_id; no credential updates needed"
                         )
-            except NIO_COMM_EXCEPTIONS as e:
+            except WHOAMI_USER_ID_FALLBACK_EXCEPTIONS as e:
                 logger.warning(f"Failed to discover device_id via whoami: {e}")
                 logger.warning("E2EE may not work properly without a device_id")
     else:
@@ -1943,162 +2064,201 @@ async def _perform_initial_sync(
     invite_safe_filter: dict[str, Any] = {"room": {"invite": {"limit": 0}}}
     sync_response: Any | None = None
 
-    try:
-        sync_response = await asyncio.wait_for(
-            client.sync(timeout=MATRIX_EARLY_SYNC_TIMEOUT, full_state=True),
-            timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
-        )
-    except asyncio.TimeoutError:
-        logger.exception(
-            f"Initial sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds"
-        )
-        logger.error(
-            "This indicates a network connectivity issue or slow Matrix server."
-        )
-        logger.error("Troubleshooting steps:")
-        logger.error("1. Check your internet connection")
-        logger.error(f"2. Verify the homeserver is accessible: {matrix_homeserver}")
-        logger.error(
-            "3. Try again in a few minutes - the server may be temporarily overloaded"
-        )
-        logger.error(
-            "4. Consider using a different Matrix homeserver if the problem persists"
-        )
-        raise MatrixSyncTimeoutError() from None
-    except asyncio.CancelledError:
-        logger.exception("Initial sync cancelled")
-        raise
-    except JSONSCHEMA_VALIDATION_ERROR as exc:
-        logger.exception("Initial sync response failed schema validation.")
-        logger.warning(
-            "This usually indicates a non-compliant homeserver or proxy response."
-        )
-        logger.warning(
-            "Retrying initial sync without invites to tolerate invalid invite_state payloads."
-        )
+    max_sync_attempts = MATRIX_INITIAL_SYNC_MAX_ATTEMPTS
+    sync_attempt = 1
+    retry_delay = MATRIX_SYNC_RETRY_DELAY_SECS
+
+    while True:
         try:
             sync_response = await asyncio.wait_for(
-                client.sync(
-                    timeout=MATRIX_EARLY_SYNC_TIMEOUT,
-                    full_state=False,
-                    sync_filter=invite_safe_filter,
-                ),
+                client.sync(timeout=MATRIX_EARLY_SYNC_TIMEOUT, full_state=True),
                 timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
             )
-            cast(Any, client).mmrelay_sync_filter = invite_safe_filter
-            cast(Any, client).mmrelay_first_sync_filter = invite_safe_filter
-            logger.info(
-                "Initial sync completed after invite-safe retry. "
-                "Invite handling is disabled for subsequent syncs."
+            break
+        except asyncio.TimeoutError:
+            reached_attempt_limit = (
+                max_sync_attempts > 0 and sync_attempt >= max_sync_attempts
             )
-        except JSONSCHEMA_VALIDATION_ERROR:
-            logger.exception("Invite-safe sync retry failed")
+            if not reached_attempt_limit:
+                attempt_display = (
+                    f"{sync_attempt}/{max_sync_attempts}"
+                    if max_sync_attempts > 0
+                    else f"{sync_attempt}/∞"
+                )
+                logger.warning(
+                    "Initial sync timed out after %.1f seconds (attempt %s); retrying in %.1fs",
+                    MATRIX_SYNC_OPERATION_TIMEOUT,
+                    attempt_display,
+                    retry_delay,
+                )
+                await asyncio.sleep(retry_delay)
+                sync_attempt += 1
+                retry_delay = min(
+                    retry_delay * 2.0, MATRIX_INITIAL_SYNC_RETRY_MAX_DELAY_SECS
+                )
+                continue
+
+            logger.exception(
+                "Initial sync timed out after %.1f seconds (final attempt %d/%d)",
+                MATRIX_SYNC_OPERATION_TIMEOUT,
+                sync_attempt,
+                max_sync_attempts,
+            )
+            logger.error(
+                "This indicates a network connectivity issue or slow Matrix server."
+            )
+            logger.error("Troubleshooting steps:")
+            logger.error("1. Check your internet connection")
+            logger.error(f"2. Verify the homeserver is accessible: {matrix_homeserver}")
+            logger.error(
+                "3. Try again in a few minutes - the server may be temporarily overloaded"
+            )
+            logger.error(
+                "4. Consider using a different Matrix homeserver if the problem persists"
+            )
+            raise MatrixSyncTimeoutError() from None
+        except asyncio.CancelledError:
+            logger.exception("Initial sync cancelled")
+            raise
+        except JSONSCHEMA_VALIDATION_ERROR as exc:
+            logger.exception("Initial sync response failed schema validation.")
             logger.warning(
-                "Invite-safe sync retry failed schema validation; "
-                "attempting to ignore invalid invite_state payloads."
+                "This usually indicates a non-compliant homeserver or proxy response."
             )
-
-            async def _sync_ignore_invalid_invites() -> Any:
-                """
-                Perform a Matrix sync using an invite-safe filter while ignoring malformed or schema-invalid invite_state payloads.
-
-                Temporarily treats invalid invite_state values as empty for the duration of the sync to avoid schema validation failures, then restores the original nio SyncResponse behavior.
-
-                Returns:
-                    The sync response object (typically a `nio.responses.SyncResponse`).
-                """
-                import nio.responses as nio_responses
-
-                original_descriptor = vars(nio_responses.SyncResponse).get(
-                    "_get_invite_state"
-                )
-                original_callable = getattr(
-                    nio_responses.SyncResponse, "_get_invite_state", None
-                )
-
-                def _safe_get_invite_state(parsed_dict: Any) -> list[Any]:
-                    """
-                    Extract invite-state events from a parsed invite payload.
-
-                    Parameters:
-                        parsed_dict (Any): Parsed invite payload; expected to be a dict containing an "events" key.
-
-                    Returns:
-                        list[Any]: The list of invite-state events if present and successfully processed, otherwise an empty list.
-                    """
-                    if not isinstance(parsed_dict, dict) or "events" not in parsed_dict:
-                        return []
-                    try:
-                        if callable(original_callable):
-                            return cast(
-                                list[Any],
-                                original_callable(parsed_dict),
-                            )
-                    except JSONSCHEMA_VALIDATION_ERROR:
-                        logger.warning(
-                            "Invalid invite_state payload; ignoring invite_state events."
-                        )
-                        return []
-                    return []
-
-                try:
-                    nio_responses.SyncResponse._get_invite_state = staticmethod(  # pyright: ignore[reportAttributeAccessIssue]  # type: ignore[misc]
-                        _safe_get_invite_state
-                    )
-                    return await asyncio.wait_for(
-                        client.sync(
-                            timeout=MATRIX_EARLY_SYNC_TIMEOUT,
-                            full_state=False,
-                            sync_filter=invite_safe_filter,
-                        ),
-                        timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
-                    )
-                finally:
-                    if original_descriptor is not None:
-                        nio_responses.SyncResponse._get_invite_state = (
-                            original_descriptor
-                        )
-                    else:
-                        # Descriptor didn't exist in class dict; remove it if we added it.
-                        # This avoids leaking the patch if it was shadowing a base class.
-                        if "_get_invite_state" in nio_responses.SyncResponse.__dict__:
-                            try:
-                                del nio_responses.SyncResponse._get_invite_state
-                            except (AttributeError, TypeError):
-                                pass
-
+            logger.warning(
+                "Retrying initial sync without invites to tolerate invalid invite_state payloads."
+            )
             try:
-                sync_response = await _sync_ignore_invalid_invites()
+                sync_response = await asyncio.wait_for(
+                    client.sync(
+                        timeout=MATRIX_EARLY_SYNC_TIMEOUT,
+                        full_state=False,
+                        sync_filter=invite_safe_filter,
+                    ),
+                    timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
+                )
                 cast(Any, client).mmrelay_sync_filter = invite_safe_filter
                 cast(Any, client).mmrelay_first_sync_filter = invite_safe_filter
                 logger.info(
-                    "Initial sync completed after invite-safe retry "
-                    "with invalid invite_state payloads ignored."
+                    "Initial sync completed after invite-safe retry. "
+                    "Invite handling is disabled for subsequent syncs."
                 )
-            except (ImportError, AttributeError):
-                logger.debug("Invite-safe sync retry handler failed", exc_info=True)
-            except asyncio.CancelledError:
-                logger.exception("Invite-ignoring sync retry cancelled")
-                raise
-            except SYNC_RETRY_EXCEPTIONS:
-                logger.exception("Invite-ignoring sync retry failed")
-        except asyncio.TimeoutError:
-            logger.exception(
-                "Invite-safe sync retry timed out after %s seconds",
-                MATRIX_SYNC_OPERATION_TIMEOUT,
-            )
-        except asyncio.CancelledError:
-            logger.exception("Invite-safe sync retry cancelled")
-            raise
-        except NIO_COMM_EXCEPTIONS:
-            logger.exception("Invite-safe sync retry failed")
+            except JSONSCHEMA_VALIDATION_ERROR:
+                logger.exception("Invite-safe sync retry failed")
+                logger.warning(
+                    "Invite-safe sync retry failed schema validation; "
+                    "attempting to ignore invalid invite_state payloads."
+                )
 
-        if sync_response is None:
+                async def _sync_ignore_invalid_invites() -> Any:
+                    """
+                    Perform a Matrix sync using an invite-safe filter while ignoring malformed or schema-invalid invite_state payloads.
+
+                    Temporarily treats invalid invite_state values as empty for the duration of the sync to avoid schema validation failures, then restores the original nio SyncResponse behavior.
+
+                    Returns:
+                        The sync response object (typically a `nio.responses.SyncResponse`).
+                    """
+                    import nio.responses as nio_responses
+
+                    original_descriptor = vars(nio_responses.SyncResponse).get(
+                        "_get_invite_state"
+                    )
+                    original_callable = getattr(
+                        nio_responses.SyncResponse, "_get_invite_state", None
+                    )
+
+                    def _safe_get_invite_state(parsed_dict: Any) -> list[Any]:
+                        """
+                        Extract invite-state events from a parsed invite payload.
+
+                        Parameters:
+                            parsed_dict (Any): Parsed invite payload; expected to be a dict containing an "events" key.
+
+                        Returns:
+                            list[Any]: The list of invite-state events if present and successfully processed, otherwise an empty list.
+                        """
+                        if (
+                            not isinstance(parsed_dict, dict)
+                            or "events" not in parsed_dict
+                        ):
+                            return []
+                        try:
+                            if callable(original_callable):
+                                return cast(
+                                    list[Any],
+                                    original_callable(parsed_dict),
+                                )
+                        except JSONSCHEMA_VALIDATION_ERROR:
+                            logger.warning(
+                                "Invalid invite_state payload; ignoring invite_state events."
+                            )
+                            return []
+                        return []
+
+                    async with _MATRIX_STARTUP_SYNC_LOCK:
+                        try:
+                            nio_responses.SyncResponse._get_invite_state = staticmethod(  # pyright: ignore[reportAttributeAccessIssue]  # type: ignore[misc]
+                                _safe_get_invite_state
+                            )
+                            return await asyncio.wait_for(
+                                client.sync(
+                                    timeout=MATRIX_EARLY_SYNC_TIMEOUT,
+                                    full_state=False,
+                                    sync_filter=invite_safe_filter,
+                                ),
+                                timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
+                            )
+                        finally:
+                            if original_descriptor is not None:
+                                nio_responses.SyncResponse._get_invite_state = (
+                                    original_descriptor
+                                )
+                            else:
+                                # Descriptor didn't exist in class dict; remove it if we added it.
+                                # This avoids leaking the patch if it was shadowing a base class.
+                                if (
+                                    "_get_invite_state"
+                                    in nio_responses.SyncResponse.__dict__
+                                ):
+                                    try:
+                                        del nio_responses.SyncResponse._get_invite_state
+                                    except (AttributeError, TypeError):
+                                        pass
+
+                try:
+                    sync_response = await _sync_ignore_invalid_invites()
+                    cast(Any, client).mmrelay_sync_filter = invite_safe_filter
+                    cast(Any, client).mmrelay_first_sync_filter = invite_safe_filter
+                    logger.info(
+                        "Initial sync completed after invite-safe retry "
+                        "with invalid invite_state payloads ignored."
+                    )
+                except (ImportError, AttributeError):
+                    logger.debug("Invite-safe sync retry handler failed", exc_info=True)
+                except asyncio.CancelledError:
+                    logger.exception("Invite-ignoring sync retry cancelled")
+                    raise
+                except SYNC_RETRY_EXCEPTIONS:
+                    logger.exception("Invite-ignoring sync retry failed")
+            except asyncio.TimeoutError:
+                logger.exception(
+                    "Invite-safe sync retry timed out after %s seconds",
+                    MATRIX_SYNC_OPERATION_TIMEOUT,
+                )
+            except asyncio.CancelledError:
+                logger.exception("Invite-safe sync retry cancelled")
+                raise
+            except NIO_COMM_EXCEPTIONS:
+                logger.exception("Invite-safe sync retry failed")
+
+            if sync_response is None:
+                logger.exception("Matrix sync failed")
+                raise MatrixSyncFailedError() from exc
+            break
+        except NIO_COMM_EXCEPTIONS as exc:
             logger.exception("Matrix sync failed")
             raise MatrixSyncFailedError() from exc
-    except NIO_COMM_EXCEPTIONS as exc:
-        logger.exception("Matrix sync failed")
-        raise MatrixSyncFailedError() from exc
 
     return sync_response
 
@@ -2316,15 +2476,19 @@ async def connect_matrix(
         )
         bot_user_id = ""
 
-    # Use local variable during initialization to avoid exposing half-initialized client
-    client = _initialize_matrix_client(
-        homeserver=matrix_homeserver,
-        user_id=bot_user_id,
-        device_id=e2ee_device_id,
-        e2ee_enabled=e2ee_enabled,
-        e2ee_store_path=e2ee_store_path,
-        ssl_context=ssl_context,
-    )
+    async with _MATRIX_STARTUP_SYNC_LOCK:
+        if matrix_client:
+            return matrix_client
+
+        # Use local variable during initialization to avoid exposing half-initialized client
+        client = _initialize_matrix_client(
+            homeserver=matrix_homeserver,
+            user_id=bot_user_id,
+            device_id=e2ee_device_id,
+            e2ee_enabled=e2ee_enabled,
+            e2ee_store_path=e2ee_store_path,
+            ssl_context=ssl_context,
+        )
 
     try:
         await _perform_matrix_login(client, auth_info)
@@ -2360,9 +2524,16 @@ async def connect_matrix(
         await _close_matrix_client_after_failure(client, "connect_matrix setup")
         raise
     else:
-        # Only assign to global after successful initialization
-        matrix_client = client
-        return matrix_client
+        # Only assign to global after successful initialization.
+        # Another concurrent connect_matrix() may have published a client while we initialized.
+        async with _MATRIX_STARTUP_SYNC_LOCK:
+            if matrix_client is not None:
+                await _close_matrix_client_after_failure(
+                    client, "connect_matrix duplicate setup"
+                )
+                return matrix_client
+            matrix_client = client
+            return matrix_client
 
 
 async def login_matrix_bot(
@@ -2396,6 +2567,7 @@ async def login_matrix_bot(
             logging.getLogger("aiohttp").setLevel(logging.DEBUG)
 
         prompted_for_credentials = False
+        username_included_serverpart = False
 
         # Get homeserver URL
         if not homeserver:
@@ -2478,9 +2650,11 @@ async def login_matrix_bot(
         # Get username
         if not username:
             username = input(
-                "Enter Matrix username or full user ID (e.g., bot or @bot:example.com): "
+                "Enter Matrix username (localpart, e.g., bot) or full user ID (e.g., @bot:example.com): "
             )
             prompted_for_credentials = True
+        raw_username = username.strip() if isinstance(username, str) else ""
+        username_included_serverpart = ":" in raw_username.lstrip("@")
 
         # Format username correctly using the original homeserver domain
         # This ensures the username uses the domain the user expects, not the discovered one
@@ -2578,13 +2752,24 @@ async def login_matrix_bot(
                 existing_creds = await asyncio.to_thread(
                     _load_direct, existing_credentials_path
                 )
-                if (
-                    existing_creds
-                    and "device_id" in existing_creds
-                    and existing_creds.get("user_id") == username
-                ):
-                    existing_device_id = existing_creds["device_id"]
-                    logger.info(f"Reusing existing device_id: {existing_device_id}")
+                if existing_creds:
+                    existing_user_id = _first_nonblank_str(
+                        existing_creds.get(CONFIG_KEY_USER_ID),
+                        existing_creds.get(CONFIG_KEY_BOT_USER_ID),
+                    )
+                    if existing_user_id:
+                        existing_user_id = _normalize_bot_user_id(
+                            original_domain or homeserver, existing_user_id
+                        )
+                    user_id_match = existing_user_id == username
+                    if user_id_match:
+                        existing_device_id = _get_valid_device_id(
+                            existing_creds.get(CONFIG_KEY_DEVICE_ID)
+                        )
+                        if existing_device_id:
+                            logger.info(
+                                "Reusing existing device_id: %s", existing_device_id
+                            )
         except (OSError, JSONDecodeError, KeyError, TypeError) as e:
             logger.debug(f"Could not load existing credentials: {e}")
 
@@ -2805,30 +2990,52 @@ async def login_matrix_bot(
         if access_token:
             logger.info("Login successful!")
 
-            # Get the actual user_id from whoami() - this is the proper way
+            # Prefer user_id from whoami, fall back to response user_id if available.
+            actual_user_id = None
+            response_user_id = _first_nonblank_str(getattr(response, "user_id", None))
             try:
                 whoami_response = await client.whoami()
-                user_id = getattr(whoami_response, "user_id", None)
-                if user_id:
-                    actual_user_id = user_id
-                    logger.debug(f"Got user_id from whoami: {actual_user_id}")
-                else:
-                    # Fallback to response user_id or username
-                    actual_user_id = getattr(response, "user_id", username)
+                whoami_user_id = _first_nonblank_str(
+                    getattr(whoami_response, "user_id", None)
+                )
+                if whoami_user_id:
+                    actual_user_id = whoami_user_id
+                    logger.debug("Got user_id from whoami: %s", actual_user_id)
+                elif response_user_id:
+                    actual_user_id = response_user_id
                     logger.warning(
-                        f"whoami failed, using fallback user_id: {actual_user_id}"
+                        "whoami response did not include user_id; using login response user_id"
                     )
-            except Exception as e:
-                logger.warning(f"whoami call failed: {e}, using fallback")
-                actual_user_id = getattr(response, "user_id", username)
+                else:
+                    logger.warning(
+                        "whoami response did not include user_id and login response had no user_id; "
+                        "saving credentials without user_id"
+                    )
+            except WHOAMI_USER_ID_FALLBACK_EXCEPTIONS as e:
+                if response_user_id:
+                    actual_user_id = response_user_id
+                    logger.warning(
+                        "whoami call failed: %s; using login response user_id", e
+                    )
+                else:
+                    logger.warning(
+                        "whoami call failed: %s; login response had no user_id, "
+                        "saving credentials without user_id",
+                        e,
+                    )
 
             # Save credentials to credentials.json
+            response_device_id = _get_valid_device_id(
+                getattr(response, "device_id", None)
+            )
+            resolved_device_id = response_device_id or existing_device_id
             credentials = {
-                "homeserver": homeserver,
-                "user_id": actual_user_id,
-                "access_token": getattr(response, "access_token", None),
-                "device_id": getattr(response, "device_id", existing_device_id),
+                CONFIG_KEY_HOMESERVER: homeserver,
+                CONFIG_KEY_ACCESS_TOKEN: getattr(response, "access_token", None),
+                CONFIG_KEY_DEVICE_ID: resolved_device_id,
             }
+            if actual_user_id:
+                credentials[CONFIG_KEY_USER_ID] = actual_user_id
 
             # save_credentials() now uses unified HOME location
             credentials_path = await asyncio.to_thread(
@@ -2883,6 +3090,10 @@ async def login_matrix_bot(
                     logger.error(
                         "4. Use 'mmrelay auth login' to set up new credentials"
                     )
+                    if not username_included_serverpart:
+                        logger.error(
+                            "5. If needed, retry with a full Matrix ID (e.g., @user:example.com)."
+                        )
                 elif numeric_status == 404:
                     logger.error("User not found or homeserver not found.")
                     logger.error(
@@ -3121,7 +3332,7 @@ async def _send_matrix_message_with_retry(
             response = await asyncio.wait_for(
                 matrix_client.room_send(
                     room_id=room_id,
-                    message_type="m.room.message",
+                    message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
                     content=content,
                     ignore_unverified_devices=True,
                 ),
@@ -3499,7 +3710,9 @@ def truncate_message(text: str, max_bytes: int = DEFAULT_MESSAGE_TRUNCATE_BYTES)
     Returns:
         str: A string whose UTF-8 encoding is at most `max_bytes` bytes.
     """
-    truncated_text = text.encode("utf-8")[:max_bytes].decode("utf-8", "ignore")
+    truncated_text = text.encode(DEFAULT_TEXT_ENCODING)[:max_bytes].decode(
+        DEFAULT_TEXT_ENCODING, ENCODING_ERROR_IGNORE
+    )
     return truncated_text
 
 
@@ -4650,7 +4863,7 @@ async def send_room_image(
     if content_uri:
         await client.room_send(
             room_id=room_id,
-            message_type="m.room.message",
+            message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
             content={
                 "msgtype": "m.image",
                 "url": content_uri,

@@ -9,18 +9,27 @@ managers and async helpers for executing read/write operations.
 from __future__ import annotations
 
 import asyncio
-import re
 import sqlite3
 import threading
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import CancelledError as ConcurrentCancelledError
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from functools import lru_cache
 from typing import Any, Generator, Optional
 
 from mmrelay.constants.database import (
+    DB_EXECUTOR_MAX_WORKERS,
+    DEFAULT_BUSY_TIMEOUT_MS,
+    PRAGMA_FOREIGN_KEYS_ON,
+    PRAGMA_JOURNAL_MODE_WAL,
+    SQLITE_IN_MEMORY_PATH,
     SQLITE_JSON_EACH_PROBE_PAYLOAD,
     SQLITE_JSON_EACH_PROBE_SQL,
+    SQLITE_PRAGMA_BOOL_OFF,
+    SQLITE_PRAGMA_BOOL_ON,
+    SQLITE_PRAGMA_NAME_PATTERN,
+    SQLITE_PRAGMA_SAFE_STRING_VALUE_PATTERN,
 )
 from mmrelay.log_utils import get_logger
 
@@ -60,7 +69,7 @@ def _validate_sqlite_json_each_support() -> bool:
     Returns:
         bool: True when json_each() is available, False otherwise.
     """
-    conn = sqlite3.connect(":memory:")
+    conn = sqlite3.connect(SQLITE_IN_MEMORY_PATH)
     try:
         _probe_sqlite_json_each_support(conn)
         return True
@@ -136,7 +145,7 @@ class DatabaseManager:
         path: str,
         *,
         enable_wal: bool = True,
-        busy_timeout_ms: int = 5000,
+        busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
         extra_pragmas: Optional[dict[str, Any]] = None,
     ) -> None:
         """
@@ -169,7 +178,7 @@ class DatabaseManager:
         self._active_sync_condition = threading.Condition(self._connections_lock)
         self._active_sync_count = 0
         self._executor_lock = threading.Lock()
-        self._async_executor = ThreadPoolExecutor(max_workers=1)
+        self._async_executor = ThreadPoolExecutor(max_workers=DB_EXECUTOR_MAX_WORKERS)
         self._accepting_submissions = True
         self._closing = False
 
@@ -205,24 +214,25 @@ class DatabaseManager:
                     conn.execute(f"PRAGMA busy_timeout = {int(self._busy_timeout_ms)}")
                 if self._enable_wal:
                     # journal_mode pragma returns the applied mode; ignore result
-                    conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("PRAGMA foreign_keys=ON")
+                    conn.execute(PRAGMA_JOURNAL_MODE_WAL)
+                conn.execute(PRAGMA_FOREIGN_KEYS_ON)
                 for pragma, value in self._extra_pragmas.items():
                     # Validate pragma name to prevent injection.
-                    if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", pragma):
+                    if not SQLITE_PRAGMA_NAME_PATTERN.fullmatch(pragma):
                         raise ValueError(f"Invalid pragma name provided: {pragma}")
                     # Validate and sanitize value to prevent injection
                     if isinstance(value, str):
                         # Security: Restrict pragma string values to safe characters only.
                         # This regex allows alphanumeric, underscore, hyphen, space, comma, period, and backslash.
+                        # It also rejects "--" to block SQL-comment marker injection.
                         # We deliberately exclude forward slash and colon to prevent path injection attacks.
                         # Backslash is allowed but trailing backslashes are blocked to prevent escape sequences.
                         #
                         # Security assumption: Configuration sources are trusted, but we validate defensively
                         # to prevent accidental or malicious injection through compromised config files.
                         # This balances security with practical SQLite pragma value requirements.
-                        if not re.fullmatch(
-                            r"[a-zA-Z0-9_\-\s,.\\\\]+", value
+                        if not SQLITE_PRAGMA_SAFE_STRING_VALUE_PATTERN.fullmatch(
+                            value
                         ) or value.endswith("\\"):
                             raise ValueError(
                                 f"Invalid or unsafe pragma value provided: {value}"
@@ -230,7 +240,9 @@ class DatabaseManager:
                         conn.execute(f"PRAGMA {pragma} = '{value}'")
                     elif isinstance(value, bool):
                         # Convert boolean values to ON/OFF for SQLite pragmas
-                        conn.execute(f"PRAGMA {pragma} = {'ON' if value else 'OFF'}")
+                        conn.execute(
+                            f"PRAGMA {pragma} = {SQLITE_PRAGMA_BOOL_ON if value else SQLITE_PRAGMA_BOOL_OFF}"
+                        )
                     elif isinstance(value, (int, float)):
                         # For numeric values, ensure they're actually numeric
                         conn.execute(f"PRAGMA {pragma} = {value}")
@@ -411,21 +423,73 @@ class DatabaseManager:
                 )
             worker_future = self._async_executor.submit(executor_func)
         try:
-            return await asyncio.wrap_future(worker_future)
+            return await self._await_submitted_future(worker_future)
         except asyncio.CancelledError:
             if write:
-                try:
-                    await asyncio.shield(asyncio.wrap_future(worker_future))
-                except asyncio.CancelledError:
-                    pass
-                except BaseException:
-                    logger.warning(
-                        "Write future finished with an error after caller cancellation",
-                        exc_info=True,
-                    )
+                self._log_write_future_error_after_cancellation(worker_future)
             elif not worker_future.done():
                 worker_future.cancel()
             raise
+
+    async def _await_submitted_future(self, worker_future: Future[Any]) -> Any:
+        """
+        Await a submitted executor future without polling.
+
+        Cancellation semantics:
+        - No internal timeout is applied here; callers own timeout policy.
+        - Caller cancellation should propagate immediately.
+        - `run_async()` decides post-cancel behavior (cancel read futures, observe
+          write-future errors).
+        """
+        if worker_future.done():
+            return self._resolve_submitted_future_result(worker_future)
+
+        loop = asyncio.get_running_loop()
+        done_event = asyncio.Event()
+
+        def _signal_done(_resolved_future: Future[Any]) -> None:
+            try:
+                loop.call_soon_threadsafe(done_event.set)
+            except RuntimeError:
+                # Event loop is shutting down; caller task cancellation will handle unwind.
+                return
+
+        worker_future.add_done_callback(_signal_done)
+        await done_event.wait()
+        return self._resolve_submitted_future_result(worker_future)
+
+    @staticmethod
+    def _resolve_submitted_future_result(worker_future: Future[Any]) -> Any:
+        """
+        Return worker future result with normalized cancellation semantics.
+        """
+        try:
+            return worker_future.result()
+        except ConcurrentCancelledError as exc:
+            raise asyncio.CancelledError() from exc
+
+    def _log_write_future_error_after_cancellation(
+        self, worker_future: Future[Any]
+    ) -> None:
+        """
+        Surface write worker failures that complete after caller cancellation.
+        """
+
+        def _log_future_error(resolved_future: Future[Any]) -> None:
+            try:
+                resolved_future.result()
+            except (asyncio.CancelledError, ConcurrentCancelledError):
+                pass
+            except Exception:
+                logger.warning(
+                    "Write future finished with an error after caller cancellation",
+                    exc_info=True,
+                )
+
+        if worker_future.done():
+            _log_future_error(worker_future)
+            return
+        worker_future.add_done_callback(_log_future_error)
 
     # ------------------------------------------------------------------ #
     # Lifecycle

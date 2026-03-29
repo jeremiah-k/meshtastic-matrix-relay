@@ -12,6 +12,7 @@ Tests the SQLite database operations including:
 """
 
 import asyncio
+import importlib
 import json
 import os
 import shutil
@@ -25,12 +26,16 @@ from unittest.mock import MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.app import DATABASE_FILENAME
+from mmrelay.constants.database import DEFAULT_BUSY_TIMEOUT_MS, DEFAULT_DB_FILENAME
 from mmrelay.db_runtime import DatabaseManager
 from mmrelay.db_utils import (
     _get_db_manager,
     _parse_bool,
     _parse_int,
     _reset_db_manager,
+    _resolve_database_options,
+    _validate_identifier,
     async_prune_message_map,
     async_store_message_map,
     build_node_name_state,
@@ -139,6 +144,21 @@ class TestDbUtils(unittest.TestCase):
         path = get_db_path()
         self.assertEqual(path, self.test_db_path)
 
+    def test_resolve_database_options_rejects_boolean_busy_timeout(self):
+        """
+        Boolean busy_timeout values should fall back to the configured default.
+        """
+        import mmrelay.db_utils as db_utils_module
+
+        for cfg in (
+            {"database": {"busy_timeout_ms": False}},
+            {"db": {"busy_timeout_ms": True}},
+        ):
+            with self.subTest(cfg=cfg):
+                with patch.object(db_utils_module, "config", cfg):
+                    _, busy_timeout_ms, _ = _resolve_database_options()
+                self.assertEqual(busy_timeout_ms, DEFAULT_BUSY_TIMEOUT_MS)
+
     def test_get_db_path_caching(self):
         """
         Test that the database path returned by get_db_path() is cached after the first retrieval.
@@ -172,7 +192,7 @@ class TestDbUtils(unittest.TestCase):
                 return_value={"database_dir": temp_dir, "legacy_sources": []},
             ):
                 path = get_db_path()
-                expected_path = os.path.join(temp_dir, "meshtastic.sqlite")
+                expected_path = os.path.join(temp_dir, DEFAULT_DB_FILENAME)
                 self.assertEqual(path, expected_path)
 
     def test_get_db_path_legacy_config(self):
@@ -189,6 +209,53 @@ class TestDbUtils(unittest.TestCase):
 
         path = get_db_path()
         self.assertEqual(path, self.test_db_path)
+
+    def test_validate_identifier_rejects_unknown_name(self):
+        """_validate_identifier should reject identifiers not in allowlist."""
+        self.assertEqual(
+            _validate_identifier("message_map", frozenset({"message_map"})),
+            "message_map",
+        )
+        with self.assertRaises(ValueError):
+            _validate_identifier("DROP TABLE", frozenset({"message_map"}))
+
+    def test_db_utils_import_guard_for_message_constants(self):
+        """Changing message-map constants should fail static SQL import guard.
+
+        Note: Uses importlib.reload which can cause cross-test interference if other
+        test modules have cached imports from mmrelay.db_utils. These tests should run
+        in process isolation (e.g., pytest -x or xdist per-file mode) for reliability.
+        """
+        import mmrelay.constants.database as db_consts
+        import mmrelay.db_utils as db_utils_mod
+
+        try:
+            with patch.object(db_consts, "MESSAGE_MAP_TABLE", "changed_message_map"):
+                with self.assertRaisesRegex(
+                    RuntimeError, "Message-map constants changed"
+                ):
+                    importlib.reload(db_utils_mod)
+        finally:
+            importlib.reload(db_utils_mod)
+
+    def test_db_utils_import_guard_for_names_constants(self):
+        """Changing names-table constants should fail static SQL import guard.
+
+        Note: Uses importlib.reload which can cause cross-test interference if other
+        test modules have cached imports from mmrelay.db_utils. These tests should run
+        in process isolation (e.g., pytest -x or xdist per-file mode) for reliability.
+        """
+        import mmrelay.constants.database as db_consts
+        import mmrelay.db_utils as db_utils_mod
+
+        try:
+            with patch.object(db_consts, "NAMES_TABLE_LONGNAMES", "bad_names_table"):
+                with self.assertRaisesRegex(
+                    RuntimeError, "Names-table constants changed"
+                ):
+                    importlib.reload(db_utils_mod)
+        finally:
+            importlib.reload(db_utils_mod)
 
     def test_initialize_database(self):
         """
@@ -233,6 +300,244 @@ class TestDbUtils(unittest.TestCase):
             cursor.execute("PRAGMA table_info(message_map)")
             columns = [row[1] for row in cursor.fetchall()]
             self.assertIn("meshtastic_meshnet", columns)
+
+    def test_initialize_database_migrates_legacy_message_map_with_mesh_column(self):
+        """Legacy table with meshnet should be merged then dropped."""
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "CREATE TABLE message_map (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+            )
+            cursor.execute(
+                "CREATE TABLE message_map_legacy (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map_legacy VALUES (?, ?, ?, ?, ?)",
+                ("!123", "$evt1", "!room", "hello", "mesh-a"),
+            )
+            conn.commit()
+
+        initialize_database()
+
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT meshtastic_id, matrix_event_id, meshtastic_meshnet FROM message_map"
+            )
+            rows = cursor.fetchall()
+            self.assertEqual(rows, [("!123", "$evt1", "mesh-a")])
+
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_legacy'"
+            )
+            self.assertIsNone(cursor.fetchone())
+
+    def test_initialize_database_rebuilds_non_text_message_map_schema(self):
+        """INTEGER meshtastic_id schema should be rebuilt to TEXT with meshnet column."""
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "CREATE TABLE message_map (meshtastic_id INTEGER, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map VALUES (?, ?, ?, ?)",
+                (123, "$evt2", "!room2", "payload"),
+            )
+            # Pre-create legacy table to exercise legacy_exists cleanup in rebuild branch.
+            cursor.execute(
+                "CREATE TABLE message_map_legacy (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+            )
+            conn.commit()
+
+        initialize_database()
+
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(message_map)")
+            table_info = {row[1]: row[2].upper() for row in cursor.fetchall()}
+            self.assertEqual(table_info["meshtastic_id"], "TEXT")
+            self.assertIn("meshtastic_meshnet", table_info)
+
+            cursor.execute(
+                "SELECT meshtastic_id, matrix_event_id, meshtastic_meshnet FROM message_map"
+            )
+            rows = cursor.fetchall()
+            self.assertEqual(rows, [("123", "$evt2", None)])
+
+    def test_initialize_database_merges_stale_temp_before_non_text_rebuild(self):
+        """A stale message_map_old_temp is merged into rebuilt message_map."""
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "CREATE TABLE message_map (meshtastic_id INTEGER, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map VALUES (?, ?, ?, ?)",
+                (77, "$evt-stale", "!room", "payload"),
+            )
+            cursor.execute(
+                "CREATE TABLE message_map_old_temp (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map_old_temp VALUES (?, ?, ?, ?, ?)",
+                ("old", "$evt-old", "!room", "old-payload", "mesh-old"),
+            )
+            conn.commit()
+
+        initialize_database()
+
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(message_map)")
+            table_info = {row[1]: row[2].upper() for row in cursor.fetchall()}
+            self.assertEqual(table_info["meshtastic_id"], "TEXT")
+
+            cursor.execute(
+                "SELECT meshtastic_id, matrix_event_id, meshtastic_meshnet FROM message_map ORDER BY matrix_event_id"
+            )
+            self.assertEqual(
+                cursor.fetchall(),
+                [("old", "$evt-old", "mesh-old"), ("77", "$evt-stale", None)],
+            )
+
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_old_temp'"
+            )
+            self.assertIsNone(cursor.fetchone())
+
+    def test_initialize_database_merges_preexisting_stale_temp_into_temp(self):
+        """Pre-existing message_map_stale_temp rows are merged before rebuild."""
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "CREATE TABLE message_map (meshtastic_id INTEGER, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map VALUES (?, ?, ?, ?)",
+                (101, "$evt-main", "!room", "main-payload"),
+            )
+            cursor.execute(
+                "CREATE TABLE message_map_old_temp (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map_old_temp VALUES (?, ?, ?, ?, ?)",
+                ("temp", "$evt-temp", "!room", "temp-payload", "mesh-temp"),
+            )
+            cursor.execute(
+                "CREATE TABLE message_map_stale_temp (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map_stale_temp VALUES (?, ?, ?, ?, ?)",
+                ("stale", "$evt-stale", "!room", "stale-payload", "mesh-stale"),
+            )
+            conn.commit()
+
+        initialize_database()
+
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT meshtastic_id, matrix_event_id, meshtastic_meshnet FROM message_map ORDER BY matrix_event_id"
+            )
+            self.assertEqual(
+                cursor.fetchall(),
+                [
+                    ("101", "$evt-main", None),
+                    ("stale", "$evt-stale", "mesh-stale"),
+                    ("temp", "$evt-temp", "mesh-temp"),
+                ],
+            )
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_old_temp'"
+            )
+            self.assertIsNone(cursor.fetchone())
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_stale_temp'"
+            )
+            self.assertIsNone(cursor.fetchone())
+
+    def test_initialize_database_preserves_mesh_from_stale_temp_when_temp_lacks_mesh(
+        self,
+    ):
+        """Stale-temp meshnet values should not be dropped when temp schema is older."""
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "CREATE TABLE message_map (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map VALUES (?, ?, ?, ?)",
+                ("main", "$evt-main", "!room", "main-payload"),
+            )
+            # Older temp table schema without meshtastic_meshnet.
+            cursor.execute(
+                "CREATE TABLE message_map_old_temp (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map_old_temp VALUES (?, ?, ?, ?)",
+                ("temp", "$evt-temp", "!room", "temp-payload"),
+            )
+            # Stale temp contains meshnet data that must be preserved.
+            cursor.execute(
+                "CREATE TABLE message_map_stale_temp (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map_stale_temp VALUES (?, ?, ?, ?, ?)",
+                ("stale", "$evt-stale", "!room", "stale-payload", "mesh-stale"),
+            )
+            conn.commit()
+
+        initialize_database()
+
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT meshtastic_id, matrix_event_id, meshtastic_meshnet FROM message_map ORDER BY matrix_event_id"
+            )
+            self.assertEqual(
+                cursor.fetchall(),
+                [
+                    ("main", "$evt-main", None),
+                    ("stale", "$evt-stale", "mesh-stale"),
+                    ("temp", "$evt-temp", None),
+                ],
+            )
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_old_temp'"
+            )
+            self.assertIsNone(cursor.fetchone())
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_stale_temp'"
+            )
+            self.assertIsNone(cursor.fetchone())
+
+    def test_initialize_database_keeps_stale_temp_when_merge_fails(self):
+        """Failed stale-temp merge should keep preserved rows for future recovery."""
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "CREATE TABLE message_map (meshtastic_id INTEGER, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map VALUES (?, ?, ?, ?)",
+                (88, "$evt-main", "!room", "payload"),
+            )
+            # Deliberately incompatible schema: required message_map columns are missing.
+            cursor.execute("CREATE TABLE message_map_stale_temp (bogus TEXT)")
+            cursor.execute(
+                "INSERT INTO message_map_stale_temp VALUES (?)",
+                ("preserve-me",),
+            )
+            conn.commit()
+
+        initialize_database()
+
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_stale_temp'"
+            )
+            self.assertIsNotNone(cursor.fetchone())
 
     def test_longname_operations(self):
         """
@@ -437,6 +742,50 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(state, (("!2", "Beta", "B"),))
         self.assertEqual(get_longname("!1"), "Legacy Long")
         self.assertEqual(get_shortname("!1"), "OLD")
+
+    def test_sync_name_tables_if_changed_shortname_conflict_keeps_longname(self):
+        """
+        Short-name conflicts should still apply long-name updates.
+
+        Because duplicate conflicts mark the snapshot non-authoritative, existing
+        short-name rows are preserved to avoid unsafe deletions.
+        """
+        initialize_database()
+        save_shortname("!1", "STALE")
+        nodes = {
+            "node_first": {
+                "user": {"id": "!1", "longName": "Alpha", "shortName": "ONE"}
+            },
+            "node_second": {
+                "user": {"id": "!1", "longName": "Alpha", "shortName": "TWO"}
+            },
+        }
+
+        state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        self.assertEqual(state, (("!1", "Alpha", None),))
+        self.assertEqual(get_longname("!1"), "Alpha")
+        self.assertEqual(get_shortname("!1"), "STALE")
+
+    def test_sync_name_tables_if_changed_longname_conflict_keeps_shortname(self):
+        """
+        Long-name conflicts should still apply short-name updates.
+
+        Because duplicate conflicts mark the snapshot non-authoritative, existing
+        long-name rows are preserved to avoid unsafe deletions.
+        """
+        initialize_database()
+        save_longname("!1", "Stale Long")
+        nodes = {
+            "node_first": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+            "node_second": {"user": {"id": "!1", "longName": "Beta", "shortName": "A"}},
+        }
+
+        state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        self.assertEqual(state, (("!1", None, "A"),))
+        self.assertEqual(get_longname("!1"), "Stale Long")
+        self.assertEqual(get_shortname("!1"), "A")
 
     def test_sync_name_tables_if_changed_skips_redundant_updates(self):
         """A matching state should skip upserts while still pruning stale rows."""
@@ -1068,7 +1417,7 @@ class TestDbUtils(unittest.TestCase):
         """
         initialize_database()
 
-        manager = _get_db_manager()
+        _get_db_manager()
 
         async def exercise():
             """
@@ -1084,8 +1433,7 @@ class TestDbUtils(unittest.TestCase):
             )
             await async_prune_message_map(1)
 
-        with patch("mmrelay.db_utils._get_db_manager", return_value=manager):
-            asyncio.run(exercise())
+        asyncio.run(exercise())
 
         # Oldest entry should have been pruned
         self.assertIsNone(get_message_map_by_meshtastic_id("mesh1"))
@@ -1200,9 +1548,9 @@ class TestDbUtils(unittest.TestCase):
 
     def test_get_db_path_data_directory_creation_error(self):
         """
-        Verify get_db_path returns a default meshtastic.sqlite path and logs a warning when creating the default data directory fails.
+        Verify get_db_path returns the default database filename path and logs a warning when creating the default data directory fails.
 
-        Mocks resolve_all_paths to point to a non-existent data directory and forces os.makedirs to raise PermissionError; asserts the returned path ends with "meshtastic.sqlite" and that a single warning was logged.
+        Mocks resolve_all_paths to point to a non-existent data directory and forces os.makedirs to raise PermissionError; asserts the returned path ends with the default database filename and that a single warning was logged.
         """
         # Clear cache and remove any database config to force default path
         clear_db_path_cache()
@@ -1220,7 +1568,9 @@ class TestDbUtils(unittest.TestCase):
             with patch("os.makedirs", side_effect=PermissionError("Permission denied")):
                 with patch("mmrelay.db_utils.logger") as mock_logger:
                     path = get_db_path()
-                    self.assertTrue(path.endswith("meshtastic.sqlite"))
+                    self.assertEqual(
+                        path, os.path.join("/nonexistent/data", DEFAULT_DB_FILENAME)
+                    )
                     mock_logger.warning.assert_called_once()
 
     def test_database_manager_config_change_fallback(self):
@@ -1413,7 +1763,7 @@ class TestDbUtils(unittest.TestCase):
 
             # Create legacy database at root level
             os.makedirs(legacy_dir, exist_ok=True)
-            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
@@ -1450,7 +1800,7 @@ class TestDbUtils(unittest.TestCase):
             os.makedirs(legacy_dir, exist_ok=True)
             data_subdir = os.path.join(legacy_dir, "data")
             os.makedirs(data_subdir, exist_ok=True)
-            legacy_db_path = os.path.join(data_subdir, "meshtastic.sqlite")
+            legacy_db_path = os.path.join(data_subdir, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
@@ -1487,7 +1837,7 @@ class TestDbUtils(unittest.TestCase):
             os.makedirs(legacy_dir, exist_ok=True)
             database_subdir = os.path.join(legacy_dir, "database")
             os.makedirs(database_subdir, exist_ok=True)
-            legacy_db_path = os.path.join(database_subdir, "meshtastic.sqlite")
+            legacy_db_path = os.path.join(database_subdir, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
@@ -1536,7 +1886,7 @@ class TestDbUtils(unittest.TestCase):
                         "mmrelay.db_utils.get_legacy_dirs", return_value=[legacy_dir]
                     ):
                         path = get_db_path()
-                        expected_path = os.path.join(database_dir, "meshtastic.sqlite")
+                        expected_path = os.path.join(database_dir, DATABASE_FILENAME)
                         self.assertEqual(path, expected_path)
 
     def test_get_db_path_default_exists_skips_legacy_check(self):
@@ -1557,13 +1907,13 @@ class TestDbUtils(unittest.TestCase):
 
             # Create default database
             os.makedirs(database_dir, exist_ok=True)
-            default_db_path = os.path.join(database_dir, "meshtastic.sqlite")
+            default_db_path = os.path.join(database_dir, DATABASE_FILENAME)
             with sqlite3.connect(default_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
             # Create legacy database (should NOT be returned)
             os.makedirs(legacy_dir, exist_ok=True)
-            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
@@ -1600,7 +1950,7 @@ class TestDbUtils(unittest.TestCase):
 
             # Create legacy database (should NOT be returned when deprecation inactive)
             os.makedirs(legacy_dir, exist_ok=True)
-            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
@@ -1617,7 +1967,7 @@ class TestDbUtils(unittest.TestCase):
                     ):
                         path = get_db_path()
                         # Should return default path, NOT legacy path
-                        expected_path = os.path.join(database_dir, "meshtastic.sqlite")
+                        expected_path = os.path.join(database_dir, DATABASE_FILENAME)
                         self.assertEqual(path, expected_path)
 
     def test_get_db_path_legacy_database_logs_warning(self):
@@ -1638,7 +1988,7 @@ class TestDbUtils(unittest.TestCase):
 
             # Create legacy database
             os.makedirs(legacy_dir, exist_ok=True)
-            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
@@ -1683,12 +2033,12 @@ class TestDbUtils(unittest.TestCase):
 
             # Create databases in both legacy directories
             os.makedirs(legacy_dir1, exist_ok=True)
-            legacy_db_path1 = os.path.join(legacy_dir1, "meshtastic.sqlite")
+            legacy_db_path1 = os.path.join(legacy_dir1, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path1) as conn:
                 conn.execute("CREATE TABLE test_table1 (id INTEGER)")
 
             os.makedirs(legacy_dir2, exist_ok=True)
-            legacy_db_path2 = os.path.join(legacy_dir2, "meshtastic.sqlite")
+            legacy_db_path2 = os.path.join(legacy_dir2, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path2) as conn:
                 conn.execute("CREATE TABLE test_table2 (id INTEGER)")
 
@@ -1726,7 +2076,7 @@ class TestDbUtils(unittest.TestCase):
 
             # Create legacy database
             os.makedirs(legacy_dir, exist_ok=True)
-            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
@@ -1770,7 +2120,7 @@ class TestDbUtils(unittest.TestCase):
 
             # Create legacy database
             os.makedirs(legacy_dir, exist_ok=True)
-            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 

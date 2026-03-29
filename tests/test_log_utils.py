@@ -23,6 +23,7 @@ from unittest.mock import patch
 # Add src to path for imports before local imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.config import CONFIG_SECTION_LOGGING
 from mmrelay.log_utils import (
     configure_component_debug_logging,
     get_logger,
@@ -153,7 +154,7 @@ class TestLogUtils(unittest.TestCase):
         """
         Test that get_logger sets the logger level to DEBUG when configured with a "debug" log level.
         """
-        config = {"logging": {"level": "debug"}}
+        config = {CONFIG_SECTION_LOGGING: {"level": "debug"}}
 
         import mmrelay.log_utils
 
@@ -167,7 +168,7 @@ class TestLogUtils(unittest.TestCase):
         """
         Test that get_logger falls back to INFO level when given an invalid log level in the configuration.
         """
-        config = {"logging": {"level": "invalid_level"}}
+        config = {CONFIG_SECTION_LOGGING: {"level": "invalid_level"}}
 
         import mmrelay.log_utils
 
@@ -185,7 +186,7 @@ class TestLogUtils(unittest.TestCase):
 
         Verifies that the logger has at least one console handler and is a valid Logger instance when color output is turned off.
         """
-        config = {"logging": {"color_enabled": False}}
+        config = {CONFIG_SECTION_LOGGING: {"color_enabled": False}}
 
         import mmrelay.log_utils
 
@@ -220,7 +221,7 @@ class TestLogUtils(unittest.TestCase):
 
         with self._patched_rich(
             lu,
-            config={"logging": {"log_to_file": False}},
+            config={CONFIG_SECTION_LOGGING: {"log_to_file": False}},
             original_rich_available=original_rich_available,
             original_rich_handler=original_rich_handler,
             original_console=original_console,
@@ -290,7 +291,7 @@ class TestLogUtils(unittest.TestCase):
             lu.RICH_AVAILABLE = True
             lu.RichHandler = DummyRichHandler
             lu.console = object()
-            lu.config = {"logging": {"log_to_file": False}}
+            lu.config = {CONFIG_SECTION_LOGGING: {"log_to_file": False}}
 
             logger = get_logger(logger_name)
             handlers = [h for h in logger.handlers if isinstance(h, DummyRichHandler)]
@@ -323,7 +324,9 @@ class TestLogUtils(unittest.TestCase):
             lu.RICH_AVAILABLE = True
             lu.RichHandler = DummyRichHandler
             lu.console = object()
-            lu.config = {"logging": {"rich_tracebacks": True, "log_to_file": False}}
+            lu.config = {
+                CONFIG_SECTION_LOGGING: {"rich_tracebacks": True, "log_to_file": False}
+            }
 
             logger = get_logger(logger_name)
             handlers = [h for h in logger.handlers if isinstance(h, DummyRichHandler)]
@@ -348,7 +351,7 @@ class TestLogUtils(unittest.TestCase):
         """
         mock_get_log_dir.return_value = self.test_dir
 
-        config = {"logging": {"log_to_file": True}}
+        config = {CONFIG_SECTION_LOGGING: {"log_to_file": True}}
 
         import mmrelay.log_utils
 
@@ -381,7 +384,12 @@ class TestLogUtils(unittest.TestCase):
         """
         mock_get_log_dir.return_value = self.test_dir
 
-        config = {"logging": {"log_to_file": True, "filename": self.test_log_file}}
+        config = {
+            CONFIG_SECTION_LOGGING: {
+                "log_to_file": True,
+                "filename": self.test_log_file,
+            }
+        }
 
         import mmrelay.log_utils
 
@@ -416,7 +424,7 @@ class TestLogUtils(unittest.TestCase):
         """
         Test that a logger is created with handlers but without file handlers when file logging is disabled in the configuration.
         """
-        config = {"logging": {"log_to_file": False}}
+        config = {CONFIG_SECTION_LOGGING: {"log_to_file": False}}
 
         import mmrelay.log_utils
 
@@ -485,7 +493,7 @@ class TestLogUtils(unittest.TestCase):
         import mmrelay.log_utils as lu
 
         # Start with file logging disabled
-        lu.config = {"logging": {"log_to_file": False}}
+        lu.config = {CONFIG_SECTION_LOGGING: {"log_to_file": False}}
 
         logger_name = "test_refresh_logger"
         existing_logger = logging.getLogger(logger_name)
@@ -501,7 +509,12 @@ class TestLogUtils(unittest.TestCase):
 
         # Enable file logging and trigger a refresh
         refreshed_log_file = os.path.join(self.test_dir, "refreshed.log")
-        lu.config = {"logging": {"log_to_file": True, "filename": refreshed_log_file}}
+        lu.config = {
+            CONFIG_SECTION_LOGGING: {
+                "log_to_file": True,
+                "filename": refreshed_log_file,
+            }
+        }
         lu.refresh_all_loggers()
 
         refreshed_handlers = [
@@ -521,7 +534,12 @@ class TestLogUtils(unittest.TestCase):
 
         Verifies that mmrelay.log_utils.log_file_path is assigned to the configured filename after creating the "MMRelay" logger with file logging enabled.
         """
-        config = {"logging": {"log_to_file": True, "filename": self.test_log_file}}
+        config = {
+            CONFIG_SECTION_LOGGING: {
+                "log_to_file": True,
+                "filename": self.test_log_file,
+            }
+        }
 
         import mmrelay.log_utils
 
@@ -575,7 +593,7 @@ class TestLogUtils(unittest.TestCase):
         """
         Verify that component debug logging can be invoked multiple times to reapply configuration.
         """
-        config = {"logging": {"debug": {"matrix_nio": True}}}
+        config = {CONFIG_SECTION_LOGGING: {"debug": {"matrix_nio": True}}}
 
         import mmrelay.log_utils
 
@@ -632,7 +650,7 @@ class TestLogUtils(unittest.TestCase):
         Test that boolean true and string "debug" result in the same DEBUG level.
         """
         # Test boolean true
-        config1 = {"logging": {"debug": {"matrix_nio": True}}}
+        config1 = {CONFIG_SECTION_LOGGING: {"debug": {"matrix_nio": True}}}
         import mmrelay.log_utils
 
         mmrelay.log_utils.config = config1
@@ -641,7 +659,7 @@ class TestLogUtils(unittest.TestCase):
         boolean_level = logging.getLogger("nio").level
 
         # Reset and test string "debug"
-        config2 = {"logging": {"debug": {"matrix_nio": "debug"}}}
+        config2 = {CONFIG_SECTION_LOGGING: {"debug": {"matrix_nio": "debug"}}}
         mmrelay.log_utils.config = config2
 
         configure_component_debug_logging()
@@ -656,7 +674,9 @@ class TestLogUtils(unittest.TestCase):
         """
         Test that disabled components are completely suppressed (CRITICAL+1 level).
         """
-        config = {"logging": {"debug": {"matrix_nio": False, "bleak": False}}}
+        config = {
+            CONFIG_SECTION_LOGGING: {"debug": {"matrix_nio": False, "bleak": False}}
+        }
 
         import mmrelay.log_utils
 
@@ -854,7 +874,7 @@ class TestLogUtils(unittest.TestCase):
         logger_name = "test_logger_error_handling"
 
         # Set config to disable file logging initially
-        lu.config = {"logging": {"log_to_file": False}}
+        lu.config = {CONFIG_SECTION_LOGGING: {"log_to_file": False}}
         logger = get_logger(logger_name)
 
         # Should have at least console handler but no file handlers
@@ -984,7 +1004,6 @@ class TestLogUtils(unittest.TestCase):
             del sys.modules["mmrelay.log_utils"]
 
         with patch("mmrelay.runtime_utils.is_running_as_service", return_value=True):
-
             import mmrelay.log_utils as lu_reloaded
 
             # Verify Rich components were NOT imported

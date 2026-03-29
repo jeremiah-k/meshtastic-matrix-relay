@@ -4,7 +4,6 @@ import asyncio
 import base64
 import binascii
 import json
-import re
 from typing import Any, Iterable, cast
 
 from meshtastic import mesh_pb2
@@ -19,6 +18,14 @@ from nio import (
 )
 
 from mmrelay.constants.database import DEFAULT_MAX_DATA_ROWS_PER_NODE_MESH_RELAY
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
+from mmrelay.constants.formats import (
+    DEFAULT_TEXT_ENCODING,
+    FORMAT_PROCESSED_PACKET,
+    MATRIX_PACKET_KEY,
+    MATRIX_SUPPRESS_KEY,
+)
+from mmrelay.constants.plugins import MESH_PACKET_DEFAULT_ID, PROCESSED_PACKET_REGEX
 from mmrelay.plugins.base_plugin import BasePlugin, config
 
 
@@ -75,7 +82,7 @@ class Plugin(BasePlugin):
             if isinstance(result["decoded"]["payload"], bytes):
                 result["decoded"]["payload"] = base64.b64encode(
                     result["decoded"]["payload"]
-                ).decode("utf-8")
+                ).decode(DEFAULT_TEXT_ENCODING)
 
         return result
 
@@ -170,7 +177,7 @@ class Plugin(BasePlugin):
                 break
 
         if not channel_mapped:
-            self.logger.debug(f"Skipping message from unmapped channel {channel}")
+            self.logger.debug("Skipping message from unmapped channel %s", channel)
             return False
         if not target_room_id:
             self.logger.error(
@@ -181,12 +188,12 @@ class Plugin(BasePlugin):
 
         await matrix_client.room_send(
             room_id=target_room_id,
-            message_type="m.room.message",
+            message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
             content={
                 "msgtype": "m.text",
-                "mmrelay_suppress": True,
-                "meshtastic_packet": json.dumps(packet),
-                "body": f"Processed {packet_type} radio packet",
+                MATRIX_SUPPRESS_KEY: True,
+                MATRIX_PACKET_KEY: json.dumps(packet),
+                "body": FORMAT_PROCESSED_PACKET.format(packet_type=packet_type),
             },
         )
 
@@ -194,23 +201,59 @@ class Plugin(BasePlugin):
 
     def matches(self, event: Any) -> bool:
         """
-        Determine whether a Matrix event's message body contains the bridged-packet marker.
+        Determine whether a Matrix event is a bridged-packet marker.
 
-        Checks event.source["content"]["body"] (when it is a string) against the anchored pattern `^Processed (.+) radio packet$`.
+        Primary check: Looks for MATRIX_SUPPRESS_KEY=True in the event content.
+        Fallback: Checks event.source["content"]["body"] (when it is a string)
+        against the anchored pattern `^Processed (.+) radio packet$` for backward
+        compatibility with older messages.
+
+        Note:
+            This method has a side effect: when matching legacy packet bodies,
+            it mutates `event.source["content"]` by adding MATRIX_PACKET_KEY
+            for consistency with newer message formats.
+
+        Policy: This method prioritizes correctness over backward compatibility.
+        It will not match legacy body-only markers unless packet data can be
+        reconstructed, because handle_room_message() needs packet data to relay
+        back onto the mesh. Historical Matrix-room replay/backfill is not a
+        supported use case; current and future correctness matters more.
 
         Parameters:
-            event: Matrix event object whose `.source` mapping is expected to contain a `"content"` dict with a `"body"` string.
+            event: Matrix event object whose `.source` mapping is expected to contain a `"content"` dict.
 
         Returns:
-            True if the content body matches `^Processed (.+) radio packet$`, False otherwise.
+            True if MATRIX_SUPPRESS_KEY is True or if the content body matches the regex, False otherwise.
         """
-        # Check for the presence of necessary keys in the event
         content = event.source.get("content", {})
-        body = content.get("body", "")
 
+        # Normalize dict packet payloads to JSON string before any early returns
+        packet = content.get(MATRIX_PACKET_KEY)
+        if isinstance(packet, dict):
+            content[MATRIX_PACKET_KEY] = json.dumps(packet)
+
+        if content.get(MATRIX_SUPPRESS_KEY) is True and content.get(MATRIX_PACKET_KEY):
+            return True
+
+        body = content.get("body", "")
         if isinstance(body, str):
-            match = re.match(r"^Processed (.+) radio packet$", body)
-            return bool(match)
+            match = PROCESSED_PACKET_REGEX.match(body)
+            if match:
+                if not content.get(MATRIX_PACKET_KEY):
+                    legacy_packet = content.get("packet") or content.get(
+                        "meshtastic_packet"
+                    )
+                    if isinstance(legacy_packet, dict):
+                        content[MATRIX_PACKET_KEY] = json.dumps(legacy_packet)
+                    elif isinstance(legacy_packet, str) and legacy_packet.strip():
+                        content[MATRIX_PACKET_KEY] = legacy_packet
+                    else:
+                        legacy_body_payload = match.group(1).strip()
+                        if legacy_body_payload.startswith(
+                            "{"
+                        ) and legacy_body_payload.endswith("}"):
+                            content[MATRIX_PACKET_KEY] = legacy_body_payload
+                return bool(content.get(MATRIX_PACKET_KEY))
         return False
 
     async def handle_room_message(
@@ -247,10 +290,10 @@ class Plugin(BasePlugin):
                 break
 
         if channel is None:
-            self.logger.debug(f"Skipping message from unmapped room {room.room_id}")
+            self.logger.debug("Skipping message from unmapped room %s", room.room_id)
             return False
 
-        packet_json = event.source["content"].get("meshtastic_packet")
+        packet_json = event.source.get("content", {}).get(MATRIX_PACKET_KEY)
         if not packet_json:
             self.logger.debug("Missing embedded packet")
             return False
@@ -259,6 +302,10 @@ class Plugin(BasePlugin):
             packet = json.loads(packet_json)
         except (json.JSONDecodeError, TypeError):
             self.logger.exception("Error processing embedded packet")
+            return False
+
+        if not isinstance(packet, dict):
+            self.logger.error("Embedded packet must be a JSON object")
             return False
 
         from mmrelay.meshtastic_utils import connect_meshtastic
@@ -270,6 +317,9 @@ class Plugin(BasePlugin):
 
         try:
             decoded = packet.get("decoded", {})
+            if not isinstance(decoded, dict):
+                self.logger.error("Embedded packet decoded field must be a JSON object")
+                return False
             payload_b64 = decoded.get("payload")
             portnum = decoded.get("portnum")
             to_id = packet.get("toId")
@@ -277,12 +327,12 @@ class Plugin(BasePlugin):
                 self.logger.error("Packet missing required fields for relay")
                 return False
 
-            meshPacket = mesh_pb2.MeshPacket()
-            meshPacket.channel = channel
-            meshPacket.decoded.payload = base64.b64decode(payload_b64)
-            meshPacket.decoded.portnum = portnum
-            meshPacket.decoded.want_response = False
-            meshPacket.id = 0
+            mesh_packet = mesh_pb2.MeshPacket()
+            mesh_packet.channel = channel
+            mesh_packet.decoded.payload = base64.b64decode(payload_b64)
+            mesh_packet.decoded.portnum = portnum
+            mesh_packet.decoded.want_response = False
+            mesh_packet.id = MESH_PACKET_DEFAULT_ID
         except (TypeError, ValueError, binascii.Error):
             self.logger.exception("Error reconstructing packet")
             return False
@@ -292,7 +342,7 @@ class Plugin(BasePlugin):
         # _sendPacket is required for relaying raw MeshPacket payloads.
         # Note: this is a private API; monitor upstream Meshtastic changes.
         try:
-            meshtastic_client._sendPacket(meshPacket=meshPacket, destinationId=to_id)
+            meshtastic_client._sendPacket(meshPacket=mesh_packet, destinationId=to_id)
         except AttributeError:
             self.logger.exception(
                 "_sendPacket method not available; Meshtastic API may have changed"

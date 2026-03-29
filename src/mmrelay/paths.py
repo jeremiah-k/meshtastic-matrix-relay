@@ -18,7 +18,7 @@ The three-tier plugin data system:
 
 import os
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 import platformdirs
@@ -26,10 +26,26 @@ import platformdirs
 from mmrelay.constants.app import (
     APP_AUTHOR,
     APP_NAME,
+    CONFIG_FILENAME,
     CREDENTIALS_FILENAME,
+    DATABASE_DIRNAME,
+    DATABASE_FILENAME,
+    DOCKER_LEGACY_PATHS,
+    LEGACY_DATA_SUBDIR,
+    LOG_FILENAME,
+    LOGS_DIRNAME,
     MATRIX_DIRNAME,
+    PLUGIN_DATA_DIRNAME,
+    PLUGINS_DIRNAME,
     STORE_DIRNAME,
     WINDOWS_INSTALLER_DIR_NAME,
+    WINDOWS_PLATFORM,
+)
+from mmrelay.constants.database import PLUGIN_DB_FILENAME_TEMPLATE
+from mmrelay.constants.plugins import (
+    PLUGIN_TYPE_COMMUNITY,
+    PLUGIN_TYPE_CORE,
+    PLUGIN_TYPE_CUSTOM,
 )
 from mmrelay.log_utils import get_logger
 
@@ -69,6 +85,11 @@ _home_override_source: str | None = None
 # Track whether we've already emitted deprecation warnings to avoid duplicates
 _deprecation_warning_shown = False
 
+# When both Windows homes contain MMRelay artifacts, only switch from the
+# existing platform home to the installer home when the installer has a
+# meaningfully stronger state signal (not just logs/low-signal artifacts).
+_WINDOWS_INSTALLER_SWITCH_MARGIN = 3
+
 
 def _reset_deprecation_warning_flag() -> None:
     """
@@ -94,17 +115,136 @@ def _has_mmrelay_artifacts(root: Path) -> bool:
     Returns:
         True if any known MMRelay artifact is present in `root`, False otherwise.
     """
-    candidates = [
-        root / "config.yaml",
-        root / "credentials.json",
-        root / "matrix" / "credentials.json",
-        root / "meshtastic.sqlite",
-        root / "data" / "meshtastic.sqlite",
-        root / "database" / "meshtastic.sqlite",
-        root / "store",
-        root / "matrix" / "store",
+    file_markers = [
+        root / CONFIG_FILENAME,
+        root / CREDENTIALS_FILENAME,
+        root / MATRIX_DIRNAME / CREDENTIALS_FILENAME,
+        root / DATABASE_FILENAME,
+        root / LEGACY_DATA_SUBDIR / DATABASE_FILENAME,  # Legacy v1.2 data layout
+        root / DATABASE_DIRNAME / DATABASE_FILENAME,
+        root / LOGS_DIRNAME / LOG_FILENAME,
     ]
-    return any(candidate.exists() for candidate in candidates)
+    if any(marker.exists() for marker in file_markers):
+        return True
+
+    # Require evidence of content for directory-only markers to avoid
+    # classifying empty scaffolding as a legacy MMRelay home.
+    directory_markers = [
+        root / STORE_DIRNAME,
+        root / MATRIX_DIRNAME / STORE_DIRNAME,
+        root / LOGS_DIRNAME,
+        root / PLUGINS_DIRNAME,
+        root / MATRIX_DIRNAME / PLUGINS_DIRNAME,
+    ]
+    for marker in directory_markers:
+        if marker.is_dir():
+            try:
+                with os.scandir(marker) as entries:
+                    if next(entries, None) is not None:
+                        return True
+            except OSError:
+                continue
+    return False
+
+
+def _has_windows_installer_markers(root: Path) -> bool:
+    """
+    Detect whether a directory looks like an MMRelay Windows installer location.
+
+    This checks for installer-created launcher scripts so first-run installs can
+    still resolve to the installer home before runtime artifacts exist.
+
+    Parameters:
+        root (Path): Directory to inspect.
+
+    Returns:
+        bool: True when one or more installer marker files are present.
+    """
+    installer_markers = ("mmrelay.bat", "setup-auth.bat", "logout.bat")
+    return any((root / marker).exists() for marker in installer_markers)
+
+
+def _dir_has_entries(path: Path) -> bool:
+    """Return True when a directory exists and contains at least one entry."""
+    if not path.is_dir():
+        return False
+    try:
+        with os.scandir(path) as entries:
+            return next(entries, None) is not None
+    except OSError:
+        return False
+
+
+def _score_mmrelay_home_state(root: Path) -> int:
+    """
+    Score how strongly a directory appears to be an established MMRelay home.
+
+    Higher scores indicate stronger evidence of long-lived runtime state.
+    Critical state (config, credentials, database) is weighted higher than
+    low-signal artifacts (logs directory content).
+
+    Policy: The primary trio (config, credentials, database at 6 points each) is
+    weighted to create a "lock-in" effect. Once a home has all three (18 points),
+    it requires meaningful additional evidence (store content, plugins) in the
+    competing home to justify a home flip. A switch margin of 3 means the
+    competing home needs to score at least 4 points higher to override.
+
+    This prevents partial migrations or weak artifacts (like an installer
+    directory that only has logs) from causing surprise home flips after a
+    user has established real operational state in one location.
+
+    Parameters:
+        root (Path): Directory candidate to score.
+
+    Returns:
+        int: Non-negative score; 0 indicates no MMRelay state detected.
+    """
+    if not root.exists():
+        return 0
+
+    score = 0
+
+    has_config = (root / CONFIG_FILENAME).exists()
+    has_credentials = any(
+        path.exists()
+        for path in (
+            root / CREDENTIALS_FILENAME,
+            root / MATRIX_DIRNAME / CREDENTIALS_FILENAME,
+        )
+    )
+    has_database = any(
+        path.exists()
+        for path in (
+            root / DATABASE_FILENAME,
+            root / LEGACY_DATA_SUBDIR / DATABASE_FILENAME,
+            root / DATABASE_DIRNAME / DATABASE_FILENAME,
+        )
+    )
+    has_store_content = _dir_has_entries(root / STORE_DIRNAME) or _dir_has_entries(
+        root / MATRIX_DIRNAME / STORE_DIRNAME
+    )
+    has_plugins_content = _dir_has_entries(root / PLUGINS_DIRNAME) or _dir_has_entries(
+        root / MATRIX_DIRNAME / PLUGINS_DIRNAME
+    )
+    has_log_file = (root / LOGS_DIRNAME / LOG_FILENAME).exists()
+    has_logs_content = _dir_has_entries(root / LOGS_DIRNAME)
+
+    if has_config:
+        score += 6
+    if has_credentials:
+        score += 6
+    if has_database:
+        score += 6
+    if has_store_content:
+        score += 3
+    if has_plugins_content:
+        score += 2
+    if has_log_file:
+        score += 1
+    if has_logs_content:
+        score += 1
+
+    return score
 
 
 def set_home_override(path: str, *, source: str | None = None) -> None:
@@ -199,33 +339,84 @@ def get_home_dir() -> Path:
         return Path(env_data_dir).expanduser().absolute()
 
     # Platform defaults
-    if sys.platform != "win32":
+    if sys.platform != WINDOWS_PLATFORM:
         return Path.home() / f".{APP_NAME}"
     else:  # Windows
-        # Check if Windows installer path exists with MMRelay data
-        # This takes precedence over platformdirs for Inno Setup users
+        platform_home = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+        platform_score = _score_mmrelay_home_state(platform_home)
+        platform_has_artifacts = platform_score > 0
+
         local_app_data = os.environ.get("LOCALAPPDATA")
         if local_app_data:
             installer_path = (
                 Path(local_app_data) / "Programs" / WINDOWS_INSTALLER_DIR_NAME
             )
-            # Check if this looks like an MMRelay installation with data
-            if installer_path.exists() and _has_mmrelay_artifacts(installer_path):
-                return installer_path
+            if installer_path.exists():
+                installer_score = _score_mmrelay_home_state(installer_path)
+                installer_has_artifacts = installer_score > 0
+                installer_has_markers = _has_windows_installer_markers(installer_path)
 
-        # Fall back to platformdirs default
-        return Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+                if installer_has_artifacts and platform_has_artifacts:
+                    score_delta = installer_score - platform_score
+                    if score_delta >= _WINDOWS_INSTALLER_SWITCH_MARGIN:
+                        logger.info(
+                            "Using installer MMRelay home at %s (score=%d) over platform home %s (score=%d, margin=%d)",
+                            installer_path,
+                            installer_score,
+                            platform_home,
+                            platform_score,
+                            _WINDOWS_INSTALLER_SWITCH_MARGIN,
+                        )
+                        return installer_path
+                    logger.info(
+                        "Using existing platform MMRelay home at %s (score=%d) over installer home %s (score=%d; delta=%d < margin=%d)",
+                        platform_home,
+                        platform_score,
+                        installer_path,
+                        installer_score,
+                        score_delta,
+                        _WINDOWS_INSTALLER_SWITCH_MARGIN,
+                    )
+                    return platform_home
+
+                if installer_has_artifacts:
+                    if installer_score >= 6:
+                        logger.info(
+                            "Using installer MMRelay home at %s (score=%d) over empty platform home",
+                            installer_path,
+                            installer_score,
+                        )
+                        return installer_path
+                    logger.info(
+                        "Platform home at %s is empty; installer home at %s has only weak artifacts (score=%d); preferring platform home",
+                        platform_home,
+                        installer_path,
+                        installer_score,
+                    )
+                    return platform_home
+                if installer_has_markers:
+                    if platform_has_artifacts:
+                        logger.info(
+                            "Using existing MMRelay data home at %s instead of marker-only installer directory %s",
+                            platform_home,
+                            installer_path,
+                        )
+                        return platform_home
+                    return installer_path
+
+        return platform_home
 
 
 def get_config_paths(*, explicit: str | None = None) -> list[Path]:
     """
-    Produce an ordered list of candidate config.yaml file locations to try, from highest to lowest priority.
+    Produce an ordered list of candidate config file locations to try, from highest to lowest priority.
 
     Order:
       1. Explicit CLI path (if provided) — always included first, even if the file does not exist.
-      2. MMRELAY_HOME/config.yaml (skipped when an explicit path is provided).
-      3. ./config.yaml in the current working directory (skipped if identical to home).
-      4. Legacy ~/.{APP_NAME}/config.yaml — included only if the directory exists and is not equal to the resolved home.
+      2. MMRELAY_HOME/<config file>.
+      3. ./<config file> in the current working directory (skipped if identical to home).
+      4. Legacy ~/.{APP_NAME}/<config file> — included only if the directory exists and is not equal to the resolved home.
+      5. Platform-specific user data directory (e.g., Windows AppData) — included only if it exists and differs from the resolved home.
 
     Parameters:
         explicit (str | None): Optional explicit config file path from the CLI; when provided it is added first.
@@ -235,22 +426,22 @@ def get_config_paths(*, explicit: str | None = None) -> list[Path]:
     """
     candidates = []
 
-    # 1. Explicit CLI argument - ALWAYS add as first candidate, even if it doesn't exist
-    # This allows downstream code to report "file not found" errors appropriately
-    # rather than silently falling back to other locations.
+    # 1. Explicit CLI argument - ALWAYS add as first candidate, even if it doesn't exist.
+    # Downstream code can report a clear file-not-found error for the explicit path
+    # while still preserving normal fallback discovery behavior.
     if explicit:
         explicit_path = Path(explicit).expanduser().absolute()
         candidates.append(explicit_path)
 
-    # 2. MMRELAY_HOME/config.yaml
+    # 2. MMRELAY_HOME/<CONFIG_FILENAME>
     home = get_home_dir()
-    config_path = home / "config.yaml"
+    config_path = home / CONFIG_FILENAME
     if config_path not in candidates:
         candidates.append(config_path)
 
     # 3. Current working directory (fallback)
     cwd = Path.cwd()
-    cwd_config = cwd / "config.yaml"
+    cwd_config = cwd / CONFIG_FILENAME
     if cwd != home and cwd_config not in candidates:
         candidates.append(cwd_config)
 
@@ -258,16 +449,16 @@ def get_config_paths(*, explicit: str | None = None) -> list[Path]:
     # These are searched for migration purposes
     legacy_home = Path.home() / f".{APP_NAME}"
     if legacy_home != home and legacy_home.exists():
-        if (legacy_home / "config.yaml") not in candidates:
-            candidates.append(legacy_home / "config.yaml")
+        if (legacy_home / CONFIG_FILENAME) not in candidates:
+            candidates.append(legacy_home / CONFIG_FILENAME)
 
     # 5. Platform-specific legacy user data dir (e.g., Windows AppData)
     # This handles configs from older Windows installations
     try:
         platform_user_data = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
         if platform_user_data != home and platform_user_data.exists():
-            if (platform_user_data / "config.yaml") not in candidates:
-                candidates.append(platform_user_data / "config.yaml")
+            if (platform_user_data / CONFIG_FILENAME) not in candidates:
+                candidates.append(platform_user_data / CONFIG_FILENAME)
     except (OSError, RuntimeError):
         # platformdirs may fail in some environments, skip it
         pass
@@ -313,7 +504,7 @@ def get_database_dir() -> Path:
         Path: Path to the `database` directory inside the resolved application home.
     """
     home = get_home_dir()
-    return home / "database"
+    return home / DATABASE_DIRNAME
 
 
 def get_database_path() -> Path:
@@ -323,7 +514,7 @@ def get_database_path() -> Path:
     Returns:
         Path: Path to the file "meshtastic.sqlite" located in the application's database directory.
     """
-    return get_database_dir() / "meshtastic.sqlite"
+    return get_database_dir() / DATABASE_FILENAME
 
 
 def get_logs_dir() -> Path:
@@ -334,7 +525,7 @@ def get_logs_dir() -> Path:
         Path: Path to the logs directory located inside the resolved home (home / "logs").
     """
     home = get_home_dir()
-    return home / "logs"
+    return home / LOGS_DIRNAME
 
 
 def get_log_file() -> Path:
@@ -349,7 +540,7 @@ def get_log_file() -> Path:
     env_log = os.getenv("MMRELAY_LOG_PATH")
     if env_log:
         return Path(env_log).expanduser().absolute()
-    return get_logs_dir() / "mmrelay.log"
+    return get_logs_dir() / LOG_FILENAME
 
 
 def get_e2ee_store_dir() -> Path:
@@ -364,7 +555,7 @@ def get_e2ee_store_dir() -> Path:
     Raises:
         E2EENotSupportedError: If invoked on Windows (E2EE is not supported on Windows).
     """
-    if sys.platform == "win32":
+    if sys.platform == WINDOWS_PLATFORM:
         raise E2EENotSupportedError()
 
     return get_matrix_dir() / STORE_DIRNAME
@@ -378,7 +569,7 @@ def get_plugins_dir() -> Path:
         Path: Path to the plugins directory located inside the application home.
     """
     home = get_home_dir()
-    return home / "plugins"
+    return home / PLUGINS_DIRNAME
 
 
 def get_custom_plugins_dir() -> Path:
@@ -388,7 +579,7 @@ def get_custom_plugins_dir() -> Path:
     Returns:
         Path: Path to the `plugins/custom` directory inside the application home.
     """
-    return get_plugins_dir() / "custom"
+    return get_plugins_dir() / PLUGIN_TYPE_CUSTOM
 
 
 def get_community_plugins_dir() -> Path:
@@ -398,7 +589,7 @@ def get_community_plugins_dir() -> Path:
     Returns:
         Path: The path to the community plugins directory.
     """
-    return get_plugins_dir() / "community"
+    return get_plugins_dir() / PLUGIN_TYPE_COMMUNITY
 
 
 def get_core_plugins_dir() -> Path:
@@ -408,7 +599,7 @@ def get_core_plugins_dir() -> Path:
     Returns:
         Path: Path to the core plugins directory (MMRELAY_HOME/plugins/core).
     """
-    return get_plugins_dir() / "core"
+    return get_plugins_dir() / PLUGIN_TYPE_CORE
 
 
 def _normalize_plugin_type(plugin_type: str | None) -> str | None:
@@ -427,9 +618,38 @@ def _normalize_plugin_type(plugin_type: str | None) -> str | None:
     if plugin_type is None:
         return None
     normalized = plugin_type.strip().lower()
-    if normalized in {"custom", "community", "core"}:
+    if normalized in {PLUGIN_TYPE_CUSTOM, PLUGIN_TYPE_COMMUNITY, PLUGIN_TYPE_CORE}:
         return normalized
     raise UnknownPluginTypeError(plugin_type)
+
+
+def _validate_plugin_name(plugin_name: str) -> str:
+    """Validate plugin name to prevent path traversal and absolute-path attacks."""
+    if not plugin_name:
+        raise ValueError(f"Invalid plugin name: {plugin_name!r}")
+    for pure in (PurePosixPath(plugin_name), PureWindowsPath(plugin_name)):
+        if (
+            pure.is_absolute()
+            or pure.drive
+            or pure.root
+            or len(pure.parts) != 1
+            or pure.parts[0] in {".", ".."}
+        ):
+            raise ValueError(f"Invalid plugin name: {plugin_name!r}")
+    return plugin_name
+
+
+def _validate_plugin_subdir(subdir: str) -> str:
+    """Validate plugin subdir to prevent path traversal."""
+    for pure in (PurePosixPath(subdir), PureWindowsPath(subdir)):
+        if (
+            pure.is_absolute()
+            or pure.drive
+            or pure.root
+            or any(part in {"", ".", ".."} for part in pure.parts)
+        ):
+            raise ValueError(f"Invalid plugin subdir: {subdir!r}")
+    return subdir
 
 
 def get_plugin_code_dir(plugin_name: str, plugin_type: str | None = None) -> Path:
@@ -443,20 +663,21 @@ def get_plugin_code_dir(plugin_name: str, plugin_type: str | None = None) -> Pat
     Returns:
         Path: Filesystem path to the plugin's code directory.
     """
+    plugin_name = _validate_plugin_name(plugin_name)
     normalized_type = _normalize_plugin_type(plugin_type)
-    if normalized_type == "custom":
+    if normalized_type == PLUGIN_TYPE_CUSTOM:
         return get_custom_plugins_dir() / plugin_name
-    if normalized_type == "community":
+    if normalized_type == PLUGIN_TYPE_COMMUNITY:
         return get_community_plugins_dir() / plugin_name
-    if normalized_type == "core":
-        return Path(__file__).resolve().parent / "plugins" / plugin_name
+    if normalized_type == PLUGIN_TYPE_CORE:
+        return Path(__file__).resolve().parent / PLUGINS_DIRNAME / plugin_name
 
     for plugin_root in (get_custom_plugins_dir(), get_community_plugins_dir()):
         candidate = plugin_root / plugin_name
         if candidate.exists():
             return candidate
 
-    return Path(__file__).resolve().parent / "plugins" / plugin_name
+    return Path(__file__).resolve().parent / PLUGINS_DIRNAME / plugin_name
 
 
 def get_plugin_data_dir(
@@ -475,12 +696,13 @@ def get_plugin_data_dir(
     Returns:
         Path: Path to the plugin's data directory, or to the specified subdirectory within it.
     """
+    plugin_name = _validate_plugin_name(plugin_name)
     normalized_type = _normalize_plugin_type(plugin_type)
-    if normalized_type == "custom":
+    if normalized_type == PLUGIN_TYPE_CUSTOM:
         base_dir = get_custom_plugins_dir() / plugin_name
-    elif normalized_type == "community":
+    elif normalized_type == PLUGIN_TYPE_COMMUNITY:
         base_dir = get_community_plugins_dir() / plugin_name
-    elif normalized_type == "core":
+    elif normalized_type == PLUGIN_TYPE_CORE:
         base_dir = get_core_plugins_dir() / plugin_name
     else:
         for plugin_root in (get_custom_plugins_dir(), get_community_plugins_dir()):
@@ -491,8 +713,8 @@ def get_plugin_data_dir(
         else:
             base_dir = get_core_plugins_dir() / plugin_name
 
-    data_dir = base_dir / "data"
-    return data_dir / subdir if subdir else data_dir
+    data_dir = base_dir / PLUGIN_DATA_DIRNAME
+    return data_dir / _validate_plugin_subdir(subdir) if subdir else data_dir
 
 
 def get_plugin_database_path(plugin_name: str) -> Path:
@@ -505,9 +727,9 @@ def get_plugin_database_path(plugin_name: str) -> Path:
     Returns:
         Path: Path to the plugin database file at <home>/database/plugin_data_{plugin_name}.sqlite.
     """
-    # NOTE: MMRelay stores plugin data in the main SQLite database today.
-    # This helper exists for diagnostics and potential future per-plugin DB files.
-    return get_home_dir() / "database" / f"plugin_data_{plugin_name}.sqlite"
+    plugin_name = _validate_plugin_name(plugin_name)
+    filename = PLUGIN_DB_FILENAME_TEMPLATE.format(plugin_name=plugin_name)
+    return get_database_dir() / filename
 
 
 def ensure_directories(*, create_missing: bool = True) -> None:
@@ -524,7 +746,7 @@ def ensure_directories(*, create_missing: bool = True) -> None:
         get_matrix_dir(),
         get_database_dir(),
         get_logs_dir(),
-        get_e2ee_store_dir() if sys.platform != "win32" else None,
+        get_e2ee_store_dir() if sys.platform != WINDOWS_PLATFORM else None,
         get_plugins_dir(),
         get_custom_plugins_dir(),
         get_community_plugins_dir(),
@@ -637,7 +859,7 @@ def get_legacy_dirs() -> list[Path]:
 
     # 2b. Check Windows Inno Setup installer path (AppData\Local\Programs\MM Relay)
     # This is where the Windows installer puts the application and data
-    if sys.platform == "win32":
+    if sys.platform == WINDOWS_PLATFORM:
         try:
             local_app_data = os.environ.get("LOCALAPPDATA")
             if local_app_data:
@@ -675,12 +897,8 @@ def get_legacy_dirs() -> list[Path]:
 
     # 5. Check common Docker legacy mounts
     # These are common volume mount points in Docker deployments
-    docker_legacy_paths = [
-        Path("/data"),
-        Path("/app/data"),
-        Path("/var/lib/mmrelay"),
-    ]
-    for docker_path in docker_legacy_paths:
+    for docker_path_str in DOCKER_LEGACY_PATHS:
+        docker_path = Path(docker_path_str)
         if docker_path.exists() and _has_mmrelay_artifacts(docker_path):
             docker_str = str(docker_path.absolute())
             if docker_str != home_str and docker_str not in seen:
@@ -755,7 +973,9 @@ def resolve_all_paths() -> dict[str, Any]:
         "credentials_path": str(get_credentials_path()),
         "database_dir": str(get_database_dir()),
         "store_dir": (
-            str(get_e2ee_store_dir()) if sys.platform != "win32" else "N/A (Windows)"
+            str(get_e2ee_store_dir())
+            if sys.platform != WINDOWS_PLATFORM
+            else "N/A (Windows)"
         ),
         "logs_dir": str(get_logs_dir()),
         "log_file": str(get_log_file()),

@@ -30,7 +30,8 @@ from mmrelay.cli import (
     handle_subcommand,
     handle_verify_migration_command,
 )
-from mmrelay.constants.app import APP_DISPLAY_NAME
+from mmrelay.constants.app import APP_DISPLAY_NAME, CREDENTIALS_FILENAME, LOG_FILENAME
+from mmrelay.constants.cli import EXIT_CODE_ERROR, EXIT_CODE_SUCCESS
 
 
 def _make_paths_info(**overrides):
@@ -51,11 +52,11 @@ def _make_paths_info(**overrides):
         "home_source": "--home",
         "cli_override": None,
         "legacy_sources": [],
-        "credentials_path": "/custom/home/matrix/credentials.json",
+        "credentials_path": f"/custom/home/matrix/{CREDENTIALS_FILENAME}",
         "database_dir": "/custom/home/database",
         "store_dir": "/custom/home/matrix/store",
         "logs_dir": "/custom/home/logs",
-        "log_file": "/custom/home/logs/mmrelay.log",
+        "log_file": f"/custom/home/logs/{LOG_FILENAME}",
         "plugins_dir": "/custom/home/plugins",
         "custom_plugins_dir": "/custom/home/plugins/custom",
         "community_plugins_dir": "/custom/home/plugins/community",
@@ -221,20 +222,20 @@ class TestFindCredentialsJsonPath(unittest.TestCase):
     def test_returns_path_when_found(self, mock_exists, mock_get_paths):
         """Test returns path when credentials found by search helper."""
         mock_get_paths.return_value = [
-            "/path1/credentials.json",
-            "/path2/credentials.json",
+            f"/path1/{CREDENTIALS_FILENAME}",
+            f"/path2/{CREDENTIALS_FILENAME}",
         ]
-        mock_exists.side_effect = lambda p: p == "/path2/credentials.json"
+        mock_exists.side_effect = lambda p: p == f"/path2/{CREDENTIALS_FILENAME}"
 
         result = _find_credentials_json_path(None)
 
-        self.assertEqual(result, "/path2/credentials.json")
+        self.assertEqual(result, f"/path2/{CREDENTIALS_FILENAME}")
 
     @patch("mmrelay.config.get_credentials_search_paths")
     @patch("os.path.exists")
     def test_returns_none_when_not_found(self, mock_exists, mock_get_paths):
         """Test returns None when credentials not found anywhere."""
-        mock_get_paths.return_value = ["/path1/credentials.json"]
+        mock_get_paths.return_value = [f"/path1/{CREDENTIALS_FILENAME}"]
         mock_exists.return_value = False
 
         result = _find_credentials_json_path(None)
@@ -261,7 +262,7 @@ class TestHandleSubcommandDispatch(unittest.TestCase):
 
         result = handle_subcommand(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_service.assert_called_once_with(self.args)
 
     @patch("mmrelay.cli.handle_paths_command")
@@ -272,7 +273,7 @@ class TestHandleSubcommandDispatch(unittest.TestCase):
 
         result = handle_subcommand(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_paths.assert_called_once_with(self.args)
 
     @patch("mmrelay.cli.handle_doctor_command")
@@ -283,7 +284,7 @@ class TestHandleSubcommandDispatch(unittest.TestCase):
 
         result = handle_subcommand(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_doctor.assert_called_once_with(self.args)
 
     @patch("mmrelay.cli.handle_verify_migration_command")
@@ -294,7 +295,7 @@ class TestHandleSubcommandDispatch(unittest.TestCase):
 
         result = handle_subcommand(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_verify.assert_called_once_with(self.args)
 
     @patch("mmrelay.cli.handle_migrate_command")
@@ -305,7 +306,7 @@ class TestHandleSubcommandDispatch(unittest.TestCase):
 
         result = handle_subcommand(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_migrate.assert_called_once_with(self.args)
 
     @patch("builtins.print")
@@ -315,7 +316,7 @@ class TestHandleSubcommandDispatch(unittest.TestCase):
 
         result = handle_subcommand(self.args)
 
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_print.assert_called_once_with("Unknown command: unknown")
 
 
@@ -345,7 +346,7 @@ class TestHandleMigrateCommand(unittest.TestCase):
 
         result = handle_migrate_command(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         success_calls = [
             c for c in mock_print.call_args_list if "completed successfully" in str(c)
         ]
@@ -362,7 +363,7 @@ class TestHandleMigrateCommand(unittest.TestCase):
 
         result = handle_migrate_command(self.args)
 
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         error_calls = [
             c for c in mock_print.call_args_list if "Migration failed" in str(c)
         ]
@@ -397,7 +398,7 @@ class TestHandleMigrateCommand(unittest.TestCase):
         with patch.object(builtins, "__import__", side_effect=_block_migrate):
             result = handle_migrate_command(self.args)
 
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         error_calls = [
             c for c in mock_print.call_args_list if "Error importing" in str(c)
         ]
@@ -423,7 +424,7 @@ class TestHandleConfigPaths(unittest.TestCase):
 
         result = handle_config_paths(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         home_calls = [c for c in mock_print.call_args_list if "HOME" in str(c)]
         self.assertTrue(len(home_calls) > 0)
 
@@ -439,7 +440,7 @@ class TestHandleConfigPaths(unittest.TestCase):
 
         result = handle_config_paths(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         warning_calls = [
             c for c in mock_print.call_args_list if "Legacy data detected" in str(c)
         ]
@@ -465,7 +466,7 @@ class TestHandlePathsCommand(unittest.TestCase):
 
         result = handle_paths_command(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         header_calls = [
             c
             for c in mock_print.call_args_list
@@ -483,7 +484,7 @@ class TestHandlePathsCommand(unittest.TestCase):
 
         result = handle_paths_command(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         warning_calls = [
             c for c in mock_print.call_args_list if "Legacy data detected" in str(c)
         ]
@@ -514,7 +515,7 @@ class TestHandleDoctorMigrationStatus(unittest.TestCase):
             home="/home",
             matrix_dir="/home/matrix",
             home_source="default",
-            credentials_path="/home/matrix/credentials.json",
+            credentials_path=f"/home/matrix/{CREDENTIALS_FILENAME}",
             database_dir="/home/database",
             store_dir="/home/matrix/store",
             logs_dir="/home/logs",
@@ -525,7 +526,7 @@ class TestHandleDoctorMigrationStatus(unittest.TestCase):
 
         result = handle_doctor_command(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         warning_calls = [
             c for c in mock_print.call_args_list if "Migration RECOMMENDED" in str(c)
         ]
@@ -544,7 +545,7 @@ class TestHandleDoctorMigrationStatus(unittest.TestCase):
             home="/home",
             matrix_dir="/home/matrix",
             home_source="default",
-            credentials_path="/home/matrix/credentials.json",
+            credentials_path=f"/home/matrix/{CREDENTIALS_FILENAME}",
             database_dir="/home/database",
             store_dir="/home/matrix/store",
             logs_dir="/home/logs",
@@ -555,7 +556,7 @@ class TestHandleDoctorMigrationStatus(unittest.TestCase):
 
         result = handle_doctor_command(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         warning_calls = [
             c for c in mock_print.call_args_list if "No migration needed" in str(c)
         ]
@@ -581,7 +582,7 @@ class TestHandleConfigPathsDetails(unittest.TestCase):
 
         result = handle_config_paths(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         all_paths = [
             "Credentials",
             "Database",
@@ -618,7 +619,7 @@ class TestHandlePathsCommandDetails(unittest.TestCase):
 
         result = handle_paths_command(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         env_calls = [
             c for c in mock_print.call_args_list if "Environment Variables" in str(c)
         ]
@@ -659,7 +660,7 @@ class TestHandleMigrateCommandDetailed(unittest.TestCase):
 
         result = handle_migrate_command(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         dry_calls = [c for c in mock_print.call_args_list if "DRY RUN" in str(c)]
         self.assertTrue(len(dry_calls) > 0)
 
@@ -693,7 +694,7 @@ class TestHandleMigrateCommandDetailed(unittest.TestCase):
 
         result = handle_migrate_command(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         move_calls = [c for c in mock_print.call_args_list if "action: MOVE" in str(c)]
         copy_calls = [c for c in mock_print.call_args_list if "action: COPY" in str(c)]
         self.assertTrue(len(move_calls) > 0)
@@ -716,7 +717,7 @@ class TestHandleVerifyMigrationCommandImportGuard(unittest.TestCase):
 
         result = handle_verify_migration_command(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_verify.assert_called_once()
 
     @patch("mmrelay.migrate.print_migration_verification")
@@ -728,7 +729,7 @@ class TestHandleVerifyMigrationCommandImportGuard(unittest.TestCase):
 
         result = handle_verify_migration_command(self.args)
 
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
 
     @patch("builtins.print")
     def test_import_error_returns_1(self, mock_print):
@@ -759,7 +760,7 @@ class TestHandleVerifyMigrationCommandImportGuard(unittest.TestCase):
         with patch.object(builtins, "__import__", side_effect=_block_migrate):
             result = handle_verify_migration_command(self.args)
 
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         error_calls = [
             c for c in mock_print.call_args_list if "Error importing" in str(c)
         ]
@@ -802,7 +803,7 @@ class TestHandleDoctorCommandImportGuard(unittest.TestCase):
         with patch.object(builtins, "__import__", side_effect=_block_migrate):
             result = handle_doctor_command(self.args)
 
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         error_calls = [
             c for c in mock_print.call_args_list if "Error importing" in str(c)
         ]
@@ -820,7 +821,7 @@ class TestHandleDoctorCommandImportGuard(unittest.TestCase):
             home="/home",
             matrix_dir="/home/matrix",
             home_source="default",
-            credentials_path="/home/matrix/credentials.json",
+            credentials_path=f"/home/matrix/{CREDENTIALS_FILENAME}",
             database_dir="/home/database",
             store_dir="/home/matrix/store",
             logs_dir="/home/logs",
@@ -831,7 +832,7 @@ class TestHandleDoctorCommandImportGuard(unittest.TestCase):
 
         result = handle_doctor_command(self.args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
 
 
 if __name__ == "__main__":

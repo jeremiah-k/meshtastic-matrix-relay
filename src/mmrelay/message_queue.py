@@ -14,33 +14,27 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Callable, Optional, cast
+from typing import Any, Callable, Optional
 
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY, RECOMMENDED_MINIMUM_DELAY
 from mmrelay.constants.queue import (
+    CONNECTION_ERROR_KEYWORDS,
+    CONNECTION_RETRY_SLEEP_SEC,
     DEFAULT_MESSAGE_DELAY,
     MAX_QUEUE_SIZE,
+    QUEUE_EXECUTOR_MAX_WORKERS,
+    QUEUE_FULL_LOG_INTERVAL_SEC,
     QUEUE_HIGH_WATER_MARK,
+    QUEUE_LOG_THRESHOLD,
     QUEUE_MEDIUM_WATER_MARK,
+    QUEUE_POLL_INTERVAL_SEC,
+    QUEUE_WAIT_RETRY_SLEEP_SEC,
+    TASK_SHUTDOWN_TIMEOUT_SEC,
 )
 from mmrelay.log_utils import get_logger
 
 logger = get_logger(name="MessageQueue")
-
-# Module-level constant for connection error keywords (fallback heuristic)
-# Used when exception types don't match known connection errors.
-_CONNECTION_ERROR_KEYWORDS = frozenset(
-    [
-        "connection",
-        "not connected",
-        "disconnected",
-        "timeout",
-        "broken pipe",
-        "reset by peer",
-        "network",
-    ]
-)
 
 
 @dataclass
@@ -77,7 +71,13 @@ class MessageQueue:
         """
         self._queue: deque[QueuedMessage] = deque()  # Explicit size checks in enqueue()
         self._processor_task: Optional[asyncio.Task[None]] = None
+        # Lifecycle invariants:
+        # - _running=True means enqueue is allowed and the processor can run.
+        # - _stopping=True blocks enqueue/start while stop cleanup is in progress.
+        # - _stop_failed=True latches only after stop timeout; start remains blocked
+        #   until cleanup fully completes and state is cleared.
         self._running = False
+        self._stopping = False
         self._lock = threading.Lock()
         self._last_send_time = 0.0
         self._last_send_mono = 0.0
@@ -89,8 +89,33 @@ class MessageQueue:
         self._has_current = False
         self._dropped_messages = 0
         self._last_queue_full_log_time: float | None = None
+        self._stop_failed = False
 
-    def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY) -> None:
+    def _clear_failed_stop_state_if_recovered_locked(self) -> bool:
+        """
+        Clear failed-stop state once task/executor resources are confirmed inactive.
+
+        Returns:
+            bool: True if failed-stop state was cleared, False otherwise.
+        """
+        if not self._stop_failed:
+            return False
+        task_active = (
+            self._processor_task is not None and not self._processor_task.done()
+        )
+        executor_active = self._executor is not None
+        if self._running or task_active or executor_active:
+            return False
+        if self._processor_task is not None and self._processor_task.done():
+            self._processor_task = None
+        self._stopping = False
+        self._stop_failed = False
+        logger.warning(
+            "Message queue failed-stop state cleared automatically after cleanup completed."
+        )
+        return True
+
+    def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY) -> bool:
         """
         Activate the message queue and configure the inter-message send delay.
 
@@ -98,10 +123,21 @@ class MessageQueue:
 
         Parameters:
             message_delay (float): Desired delay between consecutive sends in seconds; may trigger a warning if less than or equal to the firmware minimum.
+
+        Returns:
+            bool: True when the queue is running or successfully started, False when startup is blocked (for example, while failed-stop cleanup is still in progress).
         """
         with self._lock:
+            self._clear_failed_stop_state_if_recovered_locked()
+            if self._stop_failed:
+                logger.error(
+                    "Message queue cannot start: previous stop timed out and cleanup has not completed yet."
+                )
+                return False
             if self._running:
-                return
+                return True
+            if self._stopping:
+                return False
 
             # Set the message delay as requested
             self._message_delay = message_delay
@@ -119,7 +155,8 @@ class MessageQueue:
             # Create dedicated executor for this MessageQueue
             if self._executor is None:
                 self._executor = ThreadPoolExecutor(
-                    max_workers=1, thread_name_prefix=f"MessageQueue-{id(self)}"
+                    max_workers=QUEUE_EXECUTOR_MAX_WORKERS,
+                    thread_name_prefix=f"MessageQueue-{id(self)}",
                 )
 
             # Start the processor in the event loop
@@ -143,6 +180,7 @@ class MessageQueue:
                 logger.debug(
                     "No event loop available, queue processor will start later"
                 )
+            return True
 
     def stop(self) -> None:
         """
@@ -150,73 +188,196 @@ class MessageQueue:
 
         Cancels the background processor task and, when possible, waits briefly for it to finish on its owning event loop; shuts down the dedicated ThreadPoolExecutor (using a background thread if called from an asyncio event loop) and clears internal state so the queue can be restarted. Thread-safe; this call may wait briefly for shutdown to complete but avoids blocking the current asyncio event loop.
         """
+        task = None
+        exec_ref = None
+        task_cleanup_error: Exception | None = None
         with self._lock:
             if not self._running:
                 return
 
             self._running = False
+            self._stopping = True
+            task = self._processor_task
+            exec_ref = self._executor
 
-            if self._processor_task:
-                self._processor_task.cancel()
+        task_cleanup_complete = threading.Event()
+        executor_cleanup_complete = threading.Event()
+        if task is None:
+            task_cleanup_complete.set()
+        if exec_ref is None:
+            executor_cleanup_complete.set()
 
-                # Wait for the task to complete on its owning loop
-                task_loop = self._processor_task.get_loop()
-                current_loop = None
-                with contextlib.suppress(RuntimeError):
-                    current_loop = asyncio.get_running_loop()
-                if task_loop.is_closed():
-                    # Owning loop is closed; nothing we can do to await it
-                    pass
-                elif current_loop is task_loop:
-                    # Avoid blocking the event loop thread; cancellation will finish naturally
-                    pass
-                elif task_loop.is_running():
-                    from asyncio import run_coroutine_threadsafe, shield
+        def _mark_stop_failed(reason: str) -> None:
+            with self._lock:
+                self._stop_failed = True
+            logger.error(
+                "Message queue stop timed out (%s). Queue remains in failed-stop state until cleanup completes.",
+                reason,
+            )
 
-                    with contextlib.suppress(Exception):
-                        fut: Any = run_coroutine_threadsafe(
-                            cast(Any, shield(self._processor_task)), task_loop
+        def _finalize_stop_state() -> None:
+            # Safe to call multiple times from different code paths; early return below ensures idempotency.
+            if not (
+                task_cleanup_complete.is_set() and executor_cleanup_complete.is_set()
+            ):
+                return
+            with self._lock:
+                if task is not None and self._processor_task is task:
+                    self._processor_task = None
+                    self._in_flight = False
+                    self._has_current = False
+                if exec_ref is not None and self._executor is exec_ref:
+                    self._executor = None
+                if self._stop_failed:
+                    if not self._clear_failed_stop_state_if_recovered_locked():
+                        logger.warning(
+                            "Message queue resources finished cleaning up, but failed-stop state remains set."
                         )
-                        # Wait for completion; ignore exceptions raised due to cancellation
-                        fut.result(timeout=1.0)
+                        return
                 else:
-                    with contextlib.suppress(
-                        asyncio.CancelledError, RuntimeError, Exception
-                    ):
-                        task_loop.run_until_complete(self._processor_task)
+                    self._stopping = False
+                logger.info("Message queue stopped")
 
-                self._processor_task = None
+        if task is not None:
+            task_loop = task.get_loop()
+            current_loop = None
+            with contextlib.suppress(RuntimeError):
+                current_loop = asyncio.get_running_loop()
 
-            # Shut down our dedicated executor without blocking the event loop
-            if self._executor:
-                on_loop_thread = False
-                with contextlib.suppress(RuntimeError):
-                    loop_chk = asyncio.get_running_loop()
-                    on_loop_thread = loop_chk.is_running()
+            def _make_cancel_handler(
+                done_event: threading.Event,
+                orig_task: asyncio.Task[None],
+            ) -> Callable[[], None]:
+                def _cancel_and_cleanup() -> None:
+                    orig_task.cancel()
+                    if orig_task.done():
+                        done_event.set()
+                        task_cleanup_complete.set()
+                        _finalize_stop_state()
+                        return
 
-                def _shutdown(exec_ref: ThreadPoolExecutor) -> None:
-                    """
-                    Shut down an executor, waiting for running tasks to finish; falls back for executors that don't support `cancel_futures`.
+                    def _on_task_done(_finished_task: asyncio.Task[Any]) -> None:
+                        done_event.set()
+                        task_cleanup_complete.set()
+                        _finalize_stop_state()
 
-                    Attempts to call executor.shutdown(wait=True, cancel_futures=True) and, if that raises a TypeError (older Python versions or executors without the `cancel_futures` parameter), retries with executor.shutdown(wait=True). This call blocks until shutdown completes.
-                    """
-                    try:
-                        exec_ref.shutdown(wait=True, cancel_futures=True)
-                    except TypeError:
-                        exec_ref.shutdown(wait=True)
+                    orig_task.add_done_callback(_on_task_done)
 
-                if on_loop_thread:
+                return _cancel_and_cleanup
+
+            if task_loop.is_closed():
+                task_cleanup_complete.set()
+                _finalize_stop_state()
+            elif current_loop is task_loop:
+                # Avoid blocking the owning event loop thread; schedule cancellation
+                # inline and let the task done-callback perform cleanup.
+                task_done = threading.Event()
+                cancel_handler = _make_cancel_handler(task_done, task)
+                cancel_scheduled = True
+                try:
+                    task_loop.call_soon(cancel_handler)
+                except RuntimeError:
+                    # Loop closed between the state check and scheduling.
+                    cancel_scheduled = False
+                    task_done.set()
+                    task_cleanup_complete.set()
+                    _finalize_stop_state()
+
+                if cancel_scheduled:
+
+                    def _watchdog_cleanup() -> None:
+                        if not task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC):
+                            _mark_stop_failed("task cleanup")
+
                     threading.Thread(
-                        target=_shutdown,
-                        args=(self._executor,),
-                        name="MessageQueueExecutorShutdown",
+                        target=_watchdog_cleanup,
+                        name="MessageQueueWatchdog",
                         daemon=True,
                     ).start()
-                else:
-                    _shutdown(self._executor)
-                self._executor = None
+            elif task_loop.is_running():
+                task_done = threading.Event()
+                cancel_handler = _make_cancel_handler(task_done, task)
+                cancel_scheduled = True
+                try:
+                    task_loop.call_soon_threadsafe(cancel_handler)
+                except RuntimeError:
+                    # Loop closed between the state check and scheduling.
+                    cancel_scheduled = False
+                    task_done.set()
+                    task_cleanup_complete.set()
+                    _finalize_stop_state()
+                if cancel_scheduled:
+                    if current_loop is None:
+                        task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
+                        if not task_done.is_set():
+                            _mark_stop_failed("task cleanup")
+                    else:
 
-            logger.info("Message queue stopped")
+                        def _watchdog_cleanup() -> None:
+                            if not task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC):
+                                _mark_stop_failed("task cleanup")
+
+                        threading.Thread(
+                            target=_watchdog_cleanup,
+                            name="MessageQueueWatchdog",
+                            daemon=True,
+                        ).start()
+            else:
+                task.cancel()
+                try:
+                    task_loop.run_until_complete(task)
+                except (asyncio.CancelledError, RuntimeError):
+                    pass
+                except Exception as exc:
+                    logger.exception("Unexpected exception during task cleanup")
+                    task_cleanup_error = exc
+                task_cleanup_complete.set()
+                _finalize_stop_state()
+
+        if exec_ref is not None:
+            on_loop_thread = False
+            with contextlib.suppress(RuntimeError):
+                asyncio.get_running_loop()
+                on_loop_thread = True
+
+            def _shutdown(exec_ref: ThreadPoolExecutor) -> None:
+                """Shut down executor, cancelling pending futures."""
+                exec_ref.shutdown(wait=True, cancel_futures=True)
+
+            executor_done = threading.Event()
+
+            def _shutdown_and_finalize(exec_obj: ThreadPoolExecutor) -> None:
+                try:
+                    _shutdown(exec_obj)
+                finally:
+                    executor_done.set()
+                    executor_cleanup_complete.set()
+                    _finalize_stop_state()
+
+            threading.Thread(
+                target=_shutdown_and_finalize,
+                args=(exec_ref,),
+                name="MessageQueueExecutorShutdown",
+                daemon=True,
+            ).start()
+
+            def _watch_executor_shutdown() -> None:
+                if not executor_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC):
+                    _mark_stop_failed("executor cleanup")
+
+            if on_loop_thread:
+                threading.Thread(
+                    target=_watch_executor_shutdown,
+                    name="MessageQueueExecutorWatchdog",
+                    daemon=True,
+                ).start()
+            else:
+                # Blocking wait is acceptable for synchronous callers
+                _watch_executor_shutdown()
+
+        _finalize_stop_state()
+        if task_cleanup_error is not None:
+            raise task_cleanup_error
 
     def enqueue(
         self,
@@ -245,10 +406,16 @@ class MessageQueue:
         self.ensure_processor_started()
 
         with self._lock:
-            if not self._running:
+            self._clear_failed_stop_state_if_recovered_locked()
+            if self._stop_failed:
+                logger.error(
+                    "Queue is in failed-stop state; cleanup is still in progress."
+                )
+                return False
+            if not self._running or self._stopping:
                 # Refuse to send to prevent blocking the event loop
                 logger.error(
-                    "Queue not running; cannot send message: %s. Start the message queue before sending.",
+                    "Queue not running or is stopping; cannot send message: %s. Start the message queue before sending.",
                     description,
                 )
                 return False
@@ -283,7 +450,8 @@ class MessageQueue:
                         current_time = time.monotonic()
                         if (
                             self._last_queue_full_log_time is None
-                            or current_time - self._last_queue_full_log_time >= 5.0
+                            or current_time - self._last_queue_full_log_time
+                            >= QUEUE_FULL_LOG_INTERVAL_SEC
                         ):
                             logger.warning(
                                 f"Message queue full ({queue_size}/{MAX_QUEUE_SIZE}), "
@@ -295,12 +463,12 @@ class MessageQueue:
                         # Use try/finally to ensure lock is always reacquired
                         self._lock.release()
                         try:
-                            time.sleep(0.5)
+                            time.sleep(QUEUE_WAIT_RETRY_SLEEP_SEC)
                         finally:
                             self._lock.acquire()
 
                         # Re-check queue is still running
-                        if not self._running:
+                        if not self._running or self._stopping:
                             logger.error(
                                 "Queue stopped while waiting; dropping message: %s",
                                 description,
@@ -325,7 +493,7 @@ class MessageQueue:
 
             # Only log queue status when there are multiple messages
             queue_size = len(self._queue)
-            if queue_size >= 2:
+            if queue_size >= QUEUE_LOG_THRESHOLD:
                 logger.debug(
                     f"Queued message ({queue_size}/{MAX_QUEUE_SIZE}): {description}"
                 )
@@ -375,6 +543,28 @@ class MessageQueue:
         """
         return self._running
 
+    def reset_failed_stop_state(self) -> bool:
+        """
+        Clear failed-stop state once old queue resources have fully exited.
+
+        Returns:
+            bool: True if the queue can be safely restarted; False when cleanup is still active.
+        """
+        with self._lock:
+            if self._stopping:
+                logger.error(
+                    "Cannot reset failed-stop state while queue shutdown is in progress"
+                )
+                return False
+            if not self._stop_failed:
+                return True
+            if self._clear_failed_stop_state_if_recovered_locked():
+                return True
+            logger.error(
+                "Cannot reset failed-stop state while queue resources are still active"
+            )
+            return False
+
     def get_status(self) -> dict[str, Any]:
         """
         Get a snapshot of the message queue's runtime status for monitoring and debugging.
@@ -384,6 +574,7 @@ class MessageQueue:
                 - running (bool): `True` if the queue processor is active, `False` otherwise.
                 - queue_size (int): Number of messages currently queued.
                 - message_delay (float): Configured minimum delay in seconds between sends.
+                - stop_failed (bool): `True` if a previous stop timed out and cleanup has not yet completed, `False` otherwise.
                 - processor_task_active (bool): `True` if the internal processor task exists and is not finished, `False` otherwise.
                 - last_send_time (float or None): Wall-clock time (seconds since the epoch) of the last successful send, or `None` if no send has occurred.
                 - time_since_last_send (float or None): Seconds elapsed since the last send, or `None` if no send has occurred.
@@ -395,6 +586,7 @@ class MessageQueue:
             "running": self._running,
             "queue_size": len(self._queue),
             "message_delay": self._message_delay,
+            "stop_failed": self._stop_failed,
             "processor_task_active": self._processor_task is not None
             and not self._processor_task.done(),
             "last_send_time": self._last_send_time,
@@ -424,7 +616,7 @@ class MessageQueue:
                 return False
             if deadline is not None and time.monotonic() > deadline:
                 return False
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(QUEUE_POLL_INTERVAL_SEC)
         return True
 
     def ensure_processor_started(self) -> None:
@@ -434,7 +626,11 @@ class MessageQueue:
         Has no effect if the processor is already running or the queue is not active.
         """
         with self._lock:
-            if self._running and self._processor_task is None:
+            task_inactive = self._processor_task is None or self._processor_task.done()
+            if task_inactive and self._processor_task is not None:
+                self._processor_task = None
+
+            if self._running and not self._stop_failed and task_inactive:
                 try:
                     loop = asyncio.get_running_loop()
                 except RuntimeError:
@@ -475,7 +671,7 @@ class MessageQueue:
                         self._has_current = True
                     except IndexError:
                         # No messages, wait a bit and continue
-                        await asyncio.sleep(0.1)
+                        await asyncio.sleep(QUEUE_POLL_INTERVAL_SEC)
                         continue
 
                 # Check if we should send (connection state, etc.)
@@ -484,7 +680,7 @@ class MessageQueue:
                     logger.debug(
                         f"Connection not ready, waiting to send: {current_message.description}"
                     )
-                    await asyncio.sleep(1.0)
+                    await asyncio.sleep(CONNECTION_RETRY_SLEEP_SEC)
                     continue
 
                 # Check if we need to wait for message delay (only if we've sent before)
@@ -506,7 +702,7 @@ class MessageQueue:
                             self._requeue_message(current_message)
                             current_message = None
                             self._has_current = False
-                            await asyncio.sleep(1.0)
+                            await asyncio.sleep(CONNECTION_RETRY_SLEEP_SEC)
                             continue
                         # After successful wait, continue to send
                     elif time_since_last < MINIMUM_MESSAGE_DELAY:
@@ -531,7 +727,7 @@ class MessageQueue:
                     self._requeue_message(current_message)
                     current_message = None
                     self._has_current = False
-                    await asyncio.sleep(1.0)
+                    await asyncio.sleep(CONNECTION_RETRY_SLEEP_SEC)
                     continue
 
                 # Send the message
@@ -603,7 +799,7 @@ class MessageQueue:
                         error_msg = str(e).lower()
                         is_connection_error = any(
                             keyword in error_msg
-                            for keyword in _CONNECTION_ERROR_KEYWORDS
+                            for keyword in CONNECTION_ERROR_KEYWORDS
                         )
 
                     if is_connection_error:
@@ -616,7 +812,7 @@ class MessageQueue:
                         current_message = None
                         self._has_current = False
                         self._in_flight = False
-                        await asyncio.sleep(1.0)
+                        await asyncio.sleep(CONNECTION_RETRY_SLEEP_SEC)
                         continue
                     else:
                         logger.exception(
@@ -639,7 +835,9 @@ class MessageQueue:
                 break
             except Exception:
                 logger.exception("Error in message queue processor")
-                await asyncio.sleep(1.0)  # Prevent tight error loop
+                await asyncio.sleep(
+                    CONNECTION_RETRY_SLEEP_SEC
+                )  # Prevent tight error loop
 
     def _should_send_message(self) -> bool:
         """
@@ -753,14 +951,17 @@ def get_message_queue() -> MessageQueue:
     return _message_queue
 
 
-def start_message_queue(message_delay: float = DEFAULT_MESSAGE_DELAY) -> None:
+def start_message_queue(message_delay: float = DEFAULT_MESSAGE_DELAY) -> bool:
     """
     Start the global message queue processor.
 
     Parameters:
         message_delay (float): Minimum seconds to wait between consecutive message sends.
+
+    Returns:
+        bool: True when the queue is running or successfully started, False when startup is blocked.
     """
-    _message_queue.start(message_delay)
+    return _message_queue.start(message_delay)
 
 
 def stop_message_queue() -> None:
@@ -768,6 +969,16 @@ def stop_message_queue() -> None:
     Stops the global message queue processor, preventing further message processing until restarted.
     """
     _message_queue.stop()
+
+
+def reset_message_queue_failed_state() -> bool:
+    """
+    Clear failed-stop state on the global queue after cleanup completion.
+
+    Returns:
+        bool: True if reset succeeded, False when resources are still active.
+    """
+    return _message_queue.reset_failed_stop_state()
 
 
 def queue_message(

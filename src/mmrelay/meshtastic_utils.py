@@ -7,7 +7,6 @@ import inspect
 import io
 import logging
 import math
-import re
 import sys
 import threading
 import time
@@ -35,9 +34,13 @@ from mmrelay.constants.config import (
     DEFAULT_NODEDB_REFRESH_INTERVAL,
 )
 from mmrelay.constants.database import PROTO_NODE_NAME_LONG, PROTO_NODE_NAME_SHORT
+from mmrelay.constants.domain import METADATA_OUTPUT_MAX_LENGTH
 from mmrelay.constants.formats import (
+    DEFAULT_TEXT_ENCODING,
     DETECTION_SENSOR_APP,
     EMOJI_FLAG_VALUE,
+    ENCODING_ERROR_IGNORE,
+    FIRMWARE_VERSION_REGEX,
     TEXT_MESSAGE_APP,
 )
 from mmrelay.constants.messages import (
@@ -46,8 +49,15 @@ from mmrelay.constants.messages import (
     PORTNUM_TEXT_MESSAGE_APP,
 )
 from mmrelay.constants.network import (
+    ACK_POLL_INTERVAL_SECS,
     BLE_CONNECT_TIMEOUT_SECS,
+    BLE_DISCONNECT_MAX_RETRIES,
+    BLE_DISCONNECT_SETTLE_SECS,
+    BLE_DISCONNECT_TIMEOUT_SECS,
+    BLE_FUTURE_STALE_GRACE_SECS,
     BLE_FUTURE_WATCHDOG_SECS,
+    BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
+    BLE_RETRY_DELAY_SECS,
     BLE_SCAN_TIMEOUT_SECS,
     BLE_TIMEOUT_RESET_THRESHOLD,
     BLE_TROUBLESHOOTING_GUIDANCE,
@@ -57,20 +67,27 @@ from mmrelay.constants.network import (
     CONFIG_KEY_PORT,
     CONFIG_KEY_SERIAL_PORT,
     CONFIG_KEY_TIMEOUT,
+    CONNECTION_RETRY_BACKOFF_BASE,
+    CONNECTION_RETRY_BACKOFF_MAX_SECS,
     CONNECTION_TYPE_BLE,
     CONNECTION_TYPE_NETWORK,
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
     DEFAULT_BACKOFF_TIME,
+    DEFAULT_HEARTBEAT_INTERVAL_SECS,
     DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
     DEFAULT_MESHTASTIC_TIMEOUT,
+    DEFAULT_PLUGIN_TIMEOUT_SECS,
     DEFAULT_TCP_PORT,
     ERRNO_BAD_FILE_DESCRIPTOR,
     EXECUTOR_ORPHAN_THRESHOLD,
+    FUTURE_CANCEL_TIMEOUT_SECS,
+    HEALTH_PROBE_TRACK_GRACE_SECS,
     INFINITE_RETRIES,
     INITIAL_HEALTH_CHECK_DELAY,
     MAX_TIMEOUT_RETRIES_INFINITE,
     METADATA_WATCHDOG_SECS,
+    STALE_DISCONNECT_TIMEOUT_SECS,
 )
 from mmrelay.db_utils import (
     NodeNameState,
@@ -115,6 +132,9 @@ matrix_rooms: list[dict[str, Any]] = []
 # Initialize logger for Meshtastic
 logger = get_logger(name="Meshtastic")
 
+# Meshtastic text payloads are UTF-8 on the wire.
+MESHTASTIC_TEXT_ENCODING = "utf-8"
+
 # Session cutoff used to filter out backlog packets; reset on each new connection.
 RELAY_START_TIME = time.time()
 
@@ -149,7 +169,6 @@ _metadata_future_lock = threading.Lock()
 _metadata_executor_orphaned_workers = 0
 _health_probe_request_deadlines: dict[int, float] = {}
 _health_probe_request_lock = threading.Lock()
-_HEALTH_PROBE_TRACK_GRACE_SECS = 60.0
 
 # Shared executor for BLE init/connect to avoid leaking threads across retries.
 # BLE setup is inherently sequential, so a single worker keeps things predictable.
@@ -165,8 +184,6 @@ _ble_timeout_lock = threading.Lock()
 _ble_future_watchdog_secs = BLE_FUTURE_WATCHDOG_SECS
 _ble_timeout_reset_threshold = BLE_TIMEOUT_RESET_THRESHOLD
 _ble_scan_timeout_secs = BLE_SCAN_TIMEOUT_SECS
-BLE_FUTURE_STALE_GRACE_SECS = 2.0
-BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS = 90.0
 _ble_future_stale_grace_secs = BLE_FUTURE_STALE_GRACE_SECS
 _ble_interface_create_timeout_secs = BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS
 
@@ -494,18 +511,18 @@ def _reset_metadata_executor_for_stale_probe() -> None:
     global _metadata_executor, _metadata_future, _metadata_future_started_at
     global _metadata_executor_orphaned_workers, _metadata_executor_degraded
 
-    if _metadata_executor_degraded:
-        logger.debug(
-            "Metadata executor is in degraded state; refusing to reset. "
-            "Reconnect or restart required to recover."
-        )
-        return
-
     stale_executor: ThreadPoolExecutor | None = None
     orphaned_workers: int | None = None
     degraded_now = False
 
     with _metadata_future_lock:
+        if _metadata_executor_degraded:
+            logger.debug(
+                "Metadata executor is in degraded state; refusing to reset. "
+                "Reconnect or restart required to recover."
+            )
+            return
+
         projected_orphans = _metadata_executor_orphaned_workers + 1
         if projected_orphans >= EXECUTOR_ORPHAN_THRESHOLD:
             _metadata_executor_degraded = True
@@ -967,9 +984,7 @@ def _track_health_probe_request_id(
         return None
 
     expires_at = (
-        time.monotonic()
-        + max(float(timeout_secs), 1.0)
-        + _HEALTH_PROBE_TRACK_GRACE_SECS
+        time.monotonic() + max(float(timeout_secs), 1.0) + HEALTH_PROBE_TRACK_GRACE_SECS
     )
     with _health_probe_request_lock:
         _prune_health_probe_tracking()
@@ -1153,15 +1168,22 @@ def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
     if ack_state is None:
         raise _missing_ack_state_error()
 
+    ack_attrs = ("receivedAck", "receivedNak", "receivedImplAck")
+
     deadline = time.monotonic() + timeout_secs
     while time.monotonic() < deadline:
-        if any(
-            bool(getattr(ack_state, attr, False))
-            for attr in ("receivedAck", "receivedNak", "receivedImplAck")
-        ):
+        if any(bool(getattr(ack_state, attr, False)) for attr in ack_attrs):
             _reset_probe_ack_state(ack_state)
             return
-        time.sleep(0.1)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(ACK_POLL_INTERVAL_SECS, remaining))
+
+    # Final check catches ACK/NAK updates that may land near the deadline.
+    if any(bool(getattr(ack_state, attr, False)) for attr in ack_attrs):
+        _reset_probe_ack_state(ack_state)
+        return
 
     raise _metadata_probe_ack_timeout_error(timeout_secs)
 
@@ -1617,7 +1639,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
         if ble_future_to_cancel is not None:
             ble_future_to_cancel.cancel()
             try:
-                ble_future_to_cancel.result(timeout=0.2)
+                ble_future_to_cancel.result(timeout=FUTURE_CANCEL_TIMEOUT_SECS)
             except Exception as exc:  # noqa: BLE001 - best-effort degraded cleanup
                 logger.debug(
                     "BLE future cancellation raised error for %s: %s",
@@ -1636,7 +1658,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     if ble_future_to_cancel is not None:
         ble_future_to_cancel.cancel()
         try:
-            ble_future_to_cancel.result(timeout=0.2)
+            ble_future_to_cancel.result(timeout=FUTURE_CANCEL_TIMEOUT_SECS)
         except FuturesTimeoutError:
             pass
         except Exception as exc:  # noqa: BLE001 - best-effort reset cleanup
@@ -1738,6 +1760,12 @@ def _is_ble_discovery_error(error: Exception) -> bool:
         return True
     if "Timed out waiting for connection completion" in message:
         return True
+    if isinstance(error, KeyError):
+        normalized_keys = {
+            str(item).strip().strip("'").strip('"') for item in error.args
+        }
+        if "path" in normalized_keys:
+            return True
 
     def _is_type_or_tuple(candidate: object) -> bool:
         if isinstance(candidate, type):
@@ -1978,7 +2006,9 @@ def _wait_for_result(
         asyncio.set_event_loop(None)
 
 
-def _resolve_plugin_timeout(cfg: dict[str, Any] | None, default: float = 5.0) -> float:
+def _resolve_plugin_timeout(
+    cfg: dict[str, Any] | None, default: float = DEFAULT_PLUGIN_TIMEOUT_SECS
+) -> float:
     """
     Resolve the plugin timeout value from the configuration.
 
@@ -2000,17 +2030,19 @@ def _resolve_plugin_timeout(cfg: dict[str, Any] | None, default: float = 5.0) ->
             raw_value = default
 
     try:
+        if isinstance(raw_value, bool):
+            raise TypeError("boolean timeout")
         timeout = float(raw_value)
-        if timeout > 0:
+        if timeout > 0 and math.isfinite(timeout):
             return timeout
         logger.warning(
-            "Non-positive meshtastic.plugin_timeout value %r; using %ss fallback.",
+            "Invalid meshtastic.plugin_timeout value %r; using %.1fs fallback.",
             raw_value,
             default,
         )
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         logger.warning(
-            "Invalid meshtastic.plugin_timeout value %r; using %ss fallback.",
+            "Invalid meshtastic.plugin_timeout value %r; using %.1fs fallback.",
             raw_value,
             default,
         )
@@ -2068,7 +2100,7 @@ def _run_meshtastic_plugins(
     from mmrelay.plugin_loader import load_plugins
 
     plugins = load_plugins()
-    plugin_timeout = _resolve_plugin_timeout(cfg, default=5.0)
+    plugin_timeout = _resolve_plugin_timeout(cfg, default=DEFAULT_PLUGIN_TIMEOUT_SECS)
 
     found_matching_plugin = False
     for plugin in plugins:
@@ -2157,7 +2189,7 @@ def _normalize_firmware_version(value: Any) -> str | None:
         str | None: Trimmed firmware version string when valid, otherwise None.
     """
     if isinstance(value, bytes):
-        value = value.decode("utf-8", errors="ignore")
+        value = value.decode(DEFAULT_TEXT_ENCODING, errors=ENCODING_ERROR_IGNORE)
     if isinstance(value, str):
         normalized = value.strip()
         if normalized and normalized.lower() != "unknown":
@@ -2385,17 +2417,12 @@ def _get_device_metadata(
         if future_error is not None:
             raise future_error
 
-        # Cap raw_output length to avoid memory bloat
-        if len(console_output) > 4096:
-            console_output = console_output[:4096] + "…"
-        result["raw_output"] = console_output
+        raw_output = console_output
+        if len(raw_output) > METADATA_OUTPUT_MAX_LENGTH:
+            raw_output = raw_output[: max(METADATA_OUTPUT_MAX_LENGTH - 1, 0)] + "…"
+        result["raw_output"] = raw_output
 
-        # Parse firmware version from the output using robust regex
-        # Case-insensitive, handles quotes, whitespace, and various formats
-        match = re.search(
-            r"(?i)\bfirmware[\s_/-]*version\b\s*[:=]\s*['\"]?\s*([^\s\r\n'\"]+)",
-            console_output,
-        )
+        match = FIRMWARE_VERSION_REGEX.search(console_output)
         parsed_output_firmware = (
             _normalize_firmware_version(match.group(1)) if match else None
         )
@@ -2588,18 +2615,24 @@ def _disconnect_ble_by_address(address: str) -> None:
                         f"Device {address} is already connected in BlueZ. Disconnecting..."
                     )
                     # Retry logic for disconnect with timeout
-                    max_retries = 3
+                    max_retries = BLE_DISCONNECT_MAX_RETRIES
                     for attempt in range(max_retries):
                         try:
                             # Some backends or test doubles return a sync result
                             # from disconnect(); only await when needed.
                             disconnect_result = client.disconnect()
                             if inspect.isawaitable(disconnect_result):
-                                await asyncio.wait_for(disconnect_result, timeout=3.0)
-                            await asyncio.sleep(2.0)
+                                await asyncio.wait_for(
+                                    disconnect_result,
+                                    timeout=BLE_DISCONNECT_TIMEOUT_SECS,
+                                )
+                            await asyncio.sleep(BLE_DISCONNECT_SETTLE_SECS)
                             logger.debug(
-                                f"Successfully disconnected stale connection to {address} on attempt {attempt + 1}, "
-                                f"waiting 2s for BlueZ to settle"
+                                "Successfully disconnected stale connection to %s on attempt %s, "
+                                "waiting %.1fs for BlueZ to settle",
+                                address,
+                                attempt + 1,
+                                BLE_DISCONNECT_SETTLE_SECS,
                             )
                             break
                         except asyncio.TimeoutError:
@@ -2607,7 +2640,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                                 logger.warning(
                                     f"Disconnect attempt {attempt + 1} for {address} timed out, retrying..."
                                 )
-                                await asyncio.sleep(0.5)
+                                await asyncio.sleep(BLE_RETRY_DELAY_SECS)
                             else:
                                 logger.warning(
                                     f"Disconnect for {address} timed out after {max_retries} attempts"
@@ -2623,7 +2656,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                                     e,
                                     exc_info=True,
                                 )
-                                await asyncio.sleep(0.5)
+                                await asyncio.sleep(BLE_RETRY_DELAY_SECS)
                             else:
                                 logger.warning(
                                     "Disconnect for %s failed after %s attempts: %s",
@@ -2651,8 +2684,10 @@ def _disconnect_ble_by_address(address: str) -> None:
                         # from disconnect(); only await when needed.
                         disconnect_result = client.disconnect()
                         if inspect.isawaitable(disconnect_result):
-                            await asyncio.wait_for(disconnect_result, timeout=2.0)
-                        await asyncio.sleep(0.5)
+                            await asyncio.wait_for(
+                                disconnect_result, timeout=BLE_DISCONNECT_TIMEOUT_SECS
+                            )
+                        await asyncio.sleep(BLE_DISCONNECT_SETTLE_SECS)
                 except asyncio.TimeoutError:
                     logger.debug(f"Final disconnect for {address} timed out (cleanup)")
                 except BLEAK_EXCEPTIONS as e:
@@ -2687,11 +2722,11 @@ def _disconnect_ble_by_address(address: str) -> None:
                 disconnect_stale_connection(), event_loop
             )
             try:
-                future.result(timeout=10.0)
+                future.result(timeout=STALE_DISCONNECT_TIMEOUT_SECS)
                 logger.debug(f"Stale connection disconnect completed for {address}")
             except FuturesTimeoutError:
                 logger.warning(
-                    f"Stale connection disconnect timed out after 10s for {address}"
+                    f"Stale connection disconnect timed out after {STALE_DISCONNECT_TIMEOUT_SECS:.0f}s for {address}"
                 )
                 if not future.done():
                     # Cancel the cleanup task so we do not block a new connect
@@ -2987,9 +3022,9 @@ def _get_portnum_name(portnum: Any) -> str:
             return portnum
         return "UNKNOWN (empty string)"
 
-    if isinstance(portnum, int):
+    if isinstance(portnum, int) and not isinstance(portnum, bool):
         try:
-            return portnums_pb2.PortNum.Name(portnum)  # type: ignore[no-any-return, arg-type]
+            return portnums_pb2.PortNum.Name(portnum)  # type: ignore[no-any-return]
         except ValueError:
             return f"UNKNOWN (portnum={portnum})"
 
@@ -3049,6 +3084,30 @@ def serial_port_exists(port_name: str) -> bool:
     """
     ports = [p.device for p in serial.tools.list_ports.comports()]
     return port_name in ports
+
+
+def _get_connection_retry_wait_time(attempts: int) -> float:
+    """Return capped exponential retry backoff without exponentiating past the cap."""
+    if attempts <= 0 or CONNECTION_RETRY_BACKOFF_MAX_SECS <= 0:
+        return 0.0
+
+    if CONNECTION_RETRY_BACKOFF_BASE <= 1:
+        return min(
+            float(CONNECTION_RETRY_BACKOFF_BASE**attempts),
+            float(CONNECTION_RETRY_BACKOFF_MAX_SECS),
+        )
+
+    max_capped_attempt = math.ceil(
+        math.log(
+            CONNECTION_RETRY_BACKOFF_MAX_SECS,
+            CONNECTION_RETRY_BACKOFF_BASE,
+        )
+    )
+    exponent = min(attempts, max_capped_attempt)
+    return min(
+        float(CONNECTION_RETRY_BACKOFF_BASE**exponent),
+        float(CONNECTION_RETRY_BACKOFF_MAX_SECS),
+    )
 
 
 def connect_meshtastic(
@@ -3144,7 +3203,7 @@ def connect_meshtastic(
             )
 
     # Move retry loop outside the lock to prevent blocking other threads
-    meshtastic_settings = config.get("meshtastic", {}) if config else {}
+    meshtastic_settings = config.get(CONFIG_SECTION_MESHTASTIC, {}) if config else {}
     retry_limit_raw = meshtastic_settings.get("retries")
     if retry_limit_raw is None:
         retry_limit_raw = meshtastic_settings.get("retry_limit", INFINITE_RETRIES)
@@ -3291,6 +3350,10 @@ def connect_meshtastic(
                                 logger.debug(
                                     "BLEInterface auto_reconnect parameter not available; using compatibility mode"
                                 )
+                            # Compatibility mode (official library) can benefit from
+                            # pre-scan retries. Forked interfaces that expose
+                            # auto_reconnect already perform richer connect/discovery
+                            # orchestration, so avoid duplicate scan work there.
                             if ble_scan_after_failure and not supports_auto_reconnect:
                                 scan_timeout_secs = _coerce_positive_float(
                                     _ble_scan_timeout_secs,
@@ -3435,8 +3498,16 @@ def connect_meshtastic(
                             except TimeoutError:
                                 raise
                             except Exception:
-                                # BLEInterface constructor failed - this is a critical error
-                                logger.exception("BLE interface creation failed")
+                                # Late BLE worker failures can surface during shutdown
+                                # after cancellation. Treat those as expected noise.
+                                if shutting_down:
+                                    logger.debug(
+                                        "BLE interface creation ended during shutdown for %s",
+                                        ble_address,
+                                        exc_info=True,
+                                    )
+                                else:
+                                    logger.exception("BLE interface creation failed")
                                 raise
                         else:
                             logger.debug(
@@ -3736,7 +3807,7 @@ def connect_meshtastic(
                 logger.exception("Connection failed after %s attempts", attempts)
                 return None
 
-            wait_time = min(2**attempts, 60)
+            wait_time = _get_connection_retry_wait_time(attempts)
             logger.warning(
                 "Connection attempt %s timed out (%s). Retrying in %s seconds...",
                 attempts,
@@ -3752,13 +3823,16 @@ def connect_meshtastic(
             if (
                 connection_type == CONNECTION_TYPE_BLE
                 and ble_address
+                # Keep discovery-triggered scan recovery scoped to compatibility
+                # mode; forked auto_reconnect-capable implementations handle
+                # discovery/connect retries internally.
                 and not supports_auto_reconnect
                 and _is_ble_discovery_error(e)
             ):
                 ble_scan_after_failure = True
                 ble_scan_reason = type(e).__name__
             if retry_limit == 0 or attempts <= retry_limit:
-                wait_time = min(2**attempts, 60)
+                wait_time = _get_connection_retry_wait_time(attempts)
                 logger.warning(
                     "An unexpected error occurred on attempt %s: %s. Retrying in %s seconds...",
                     attempts,
@@ -4018,7 +4092,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
 
     if rx_time > 0 and rx_time < RELAY_START_TIME:
         logger.debug(
-            "Ignoring old message with rxTime %s (older than start time %s)",
+            "Ignoring old packet with rxTime %s (older than start time %s)",
             rx_time,
             RELAY_START_TIME,
         )
@@ -4571,7 +4645,9 @@ async def check_connection() -> None:
         logger.info("Connection health checks are disabled in configuration")
         return
 
-    heartbeat_interval = health_config.get("heartbeat_interval", 60)
+    heartbeat_interval = health_config.get(
+        "heartbeat_interval", DEFAULT_HEARTBEAT_INTERVAL_SECS
+    )
     initial_delay = health_config.get("initial_delay", INITIAL_HEALTH_CHECK_DELAY)
     probe_timeout = health_config.get(
         "probe_timeout", DEFAULT_MESHTASTIC_OPERATION_TIMEOUT
@@ -4583,7 +4659,7 @@ async def check_connection() -> None:
 
     heartbeat_interval = _coerce_positive_float(
         heartbeat_interval,
-        60.0,
+        float(DEFAULT_HEARTBEAT_INTERVAL_SECS),
         "meshtastic.health_check.heartbeat_interval",
     )
     initial_delay = _coerce_positive_float(
@@ -4711,7 +4787,7 @@ def send_text_reply(
     # Create the Data protobuf message with reply_id set
     data_msg = mesh_pb2.Data()
     data_msg.portnum = portnums_pb2.PortNum.TEXT_MESSAGE_APP
-    data_msg.payload = text.encode("utf-8")
+    data_msg.payload = text.encode(MESHTASTIC_TEXT_ENCODING)
     data_msg.reply_id = reply_id
 
     # Create the MeshPacket

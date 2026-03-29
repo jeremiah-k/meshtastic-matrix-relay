@@ -21,28 +21,33 @@ from unittest.mock import patch
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-try:
-    from mmrelay.paths import (
-        UnknownPluginTypeError,
-        _has_mmrelay_artifacts,
-        _reset_deprecation_warning_flag,
-        ensure_directories,
-        get_config_paths,
-        get_database_path,
-        get_diagnostics,
-        get_home_dir,
-        get_legacy_dirs,
-        get_plugin_code_dir,
-        get_plugin_data_dir,
-        get_plugin_database_path,
-        reset_home_override,
-        resolve_all_paths,
-        set_home_override,
-    )
-
-    IMPORTS_AVAILABLE = True
-except ImportError:
-    IMPORTS_AVAILABLE = False
+from mmrelay.constants.app import (
+    CONFIG_FILENAME,
+    CREDENTIALS_FILENAME,
+    DATABASE_DIRNAME,
+    LOGS_DIRNAME,
+    MATRIX_DIRNAME,
+    PLUGINS_DIRNAME,
+    STORE_DIRNAME,
+)
+from mmrelay.constants.database import DEFAULT_DB_FILENAME
+from mmrelay.paths import (
+    UnknownPluginTypeError,
+    _has_mmrelay_artifacts,
+    _reset_deprecation_warning_flag,
+    ensure_directories,
+    get_config_paths,
+    get_database_path,
+    get_diagnostics,
+    get_home_dir,
+    get_legacy_dirs,
+    get_plugin_code_dir,
+    get_plugin_data_dir,
+    get_plugin_database_path,
+    reset_home_override,
+    resolve_all_paths,
+    set_home_override,
+)
 
 
 class TestPathResolutionEnvVars(unittest.TestCase):
@@ -175,14 +180,26 @@ class TestPathResolutionConfigPaths(unittest.TestCase):
         reset_home_override()
 
     def test_explicit_config_path_provided(self):
-        """Test explicit config path is always first in candidates (lines 152-153, 160)."""
-        with patch("sys.platform", "linux"):
+        """Explicit config should be first while preserving fallback candidates."""
+        with (
+            patch("sys.platform", "linux"),
+            patch("mmrelay.paths.get_home_dir", return_value=Path("/home/testhome")),
+            patch("mmrelay.paths.Path.cwd", return_value=Path("/workdir")),
+        ):
             paths = get_config_paths(explicit="/explicit/config.yaml")
 
             self.assertTrue(len(paths) >= 1)
             self.assertEqual(
                 os.path.normpath(str(paths[0])),
                 os.path.normpath("/explicit/config.yaml"),
+            )
+            self.assertIn(
+                os.path.normpath("/home/testhome/config.yaml"),
+                [os.path.normpath(str(p)) for p in paths],
+            )
+            self.assertIn(
+                os.path.normpath("/workdir/config.yaml"),
+                [os.path.normpath(str(p)) for p in paths],
             )
 
     def test_no_explicit_path_home_config_exists(self):
@@ -193,7 +210,7 @@ class TestPathResolutionConfigPaths(unittest.TestCase):
             path_strs = [os.path.normpath(str(p)) for p in paths]
             self.assertTrue(
                 any(
-                    "mmrelay" in path_str and "config.yaml" in path_str
+                    "mmrelay" in path_str and CONFIG_FILENAME in path_str
                     for path_str in path_strs
                 )
             )
@@ -294,7 +311,7 @@ class TestPathResolutionDatabase(unittest.TestCase):
         ):
             result = get_database_path()
 
-            expected = Path("/home/database") / "meshtastic.sqlite"
+            expected = Path("/home/database") / DEFAULT_DB_FILENAME
             self.assertEqual(result, expected)
 
 
@@ -396,13 +413,13 @@ class TestPathDirectoryCreation(unittest.TestCase):
 
             base = Path(temp_dir)
             expected_dirs = [
-                base / "database",
-                base / "logs",
-                base / "matrix" / "store",
-                base / "plugins",
-                base / "plugins" / "custom",
-                base / "plugins" / "community",
-                base / "plugins" / "core",
+                base / DATABASE_DIRNAME,
+                base / LOGS_DIRNAME,
+                base / MATRIX_DIRNAME / STORE_DIRNAME,
+                base / PLUGINS_DIRNAME,
+                base / PLUGINS_DIRNAME / "custom",
+                base / PLUGINS_DIRNAME / "community",
+                base / PLUGINS_DIRNAME / "core",
             ]
             for dir_path in expected_dirs:
                 self.assertTrue(dir_path.exists(), f"Missing directory: {dir_path}")
@@ -422,13 +439,13 @@ class TestPathDirectoryCreation(unittest.TestCase):
 
             base = Path(temp_dir)
             expected_missing = [
-                base / "database",
-                base / "logs",
-                base / "matrix" / "store",
-                base / "plugins",
-                base / "plugins" / "custom",
-                base / "plugins" / "community",
-                base / "plugins" / "core",
+                base / DATABASE_DIRNAME,
+                base / LOGS_DIRNAME,
+                base / MATRIX_DIRNAME / STORE_DIRNAME,
+                base / PLUGINS_DIRNAME,
+                base / PLUGINS_DIRNAME / "custom",
+                base / PLUGINS_DIRNAME / "community",
+                base / PLUGINS_DIRNAME / "core",
             ]
             for dir_path in expected_missing:
                 self.assertFalse(dir_path.exists(), f"Unexpected directory: {dir_path}")
@@ -443,13 +460,13 @@ class TestPathDirectoryCreation(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             base = Path(temp_dir)
             precreate = [
-                base / "database",
-                base / "logs",
-                base / "matrix" / "store",
-                base / "plugins",
-                base / "plugins" / "custom",
-                base / "plugins" / "community",
-                base / "plugins" / "core",
+                base / DATABASE_DIRNAME,
+                base / LOGS_DIRNAME,
+                base / MATRIX_DIRNAME / STORE_DIRNAME,
+                base / PLUGINS_DIRNAME,
+                base / PLUGINS_DIRNAME / "custom",
+                base / PLUGINS_DIRNAME / "community",
+                base / PLUGINS_DIRNAME / "core",
             ]
             for dir_path in precreate:
                 dir_path.mkdir(parents=True, exist_ok=True)
@@ -565,20 +582,36 @@ class TestInternalArtifactDetection(unittest.TestCase):
         """Test _has_mmrelay_artifacts returns True when config.yaml exists."""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "config.yaml").write_text("")
+            (root / CONFIG_FILENAME).write_text("")
             self.assertTrue(_has_mmrelay_artifacts(root))
 
     def test_has_artifacts_credentials(self):
         """Test _has_mmrelay_artifacts returns True when credentials.json exists."""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "credentials.json").write_text("")
+            (root / CREDENTIALS_FILENAME).write_text("")
             self.assertTrue(_has_mmrelay_artifacts(root))
 
     def test_has_artifacts_none(self):
         """Test _has_mmrelay_artifacts returns False when no artifacts exist."""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
+            self.assertFalse(_has_mmrelay_artifacts(root))
+
+    def test_has_artifacts_nonempty_plugins_directory(self):
+        """Top-level plugins directory counts as persisted artifacts for legacy-home detection."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plugin_dir = root / PLUGINS_DIRNAME
+            plugin_dir.mkdir(parents=True, exist_ok=True)
+            (plugin_dir / "example.py").write_text("# plugin")
+            self.assertTrue(_has_mmrelay_artifacts(root))
+
+    def test_has_artifacts_empty_logs_directory_not_detected(self):
+        """Test empty logs directories do not trigger false legacy-home detection."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / LOGS_DIRNAME).mkdir(parents=True, exist_ok=True)
             self.assertFalse(_has_mmrelay_artifacts(root))
 
 

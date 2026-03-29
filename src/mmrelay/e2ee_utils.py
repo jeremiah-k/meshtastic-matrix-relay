@@ -18,7 +18,21 @@ from mmrelay.constants.app import (
     PYTHON_OLM_PACKAGE,
     WINDOWS_PLATFORM,
 )
+from mmrelay.constants.config import CONFIG_SECTION_MATRIX
+from mmrelay.constants.messages import (
+    MSG_E2EE_DISABLED,
+    MSG_E2EE_DISABLED_SHORT,
+    MSG_E2EE_NO_AUTH,
+    MSG_E2EE_WINDOWS_UNSUPPORTED,
+    MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL,
+    MSG_E2EE_WINDOWS_UNSUPPORTED_SHORT,
+)
+from mmrelay.log_utils import get_logger
 from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
+
+logger = get_logger("E2EE")
+
+_E2EE_INCOMPLETE_STATUS = "E2EE setup is incomplete"
 
 
 class E2EEStatus(TypedDict):
@@ -69,7 +83,8 @@ def get_e2ee_status(
     # Check platform support
     if sys.platform == WINDOWS_PLATFORM or sys.platform.startswith(("msys", "cygwin")):
         status["platform_supported"] = False
-        status["issues"].append("E2EE is not supported on Windows")
+        status["issues"].append(MSG_E2EE_WINDOWS_UNSUPPORTED)
+        logger.debug("E2EE platform check: Windows/msys/cygwin not supported")
 
     # Check dependencies
     try:
@@ -84,14 +99,16 @@ def get_e2ee_status(
             raise ImportError("nio.store.SqliteStore is unavailable")
 
         status["dependencies_installed"] = True
+        logger.debug("E2EE dependency check: olm and nio components available")
     except ImportError:
         status["dependencies_installed"] = False
         status["issues"].append(
             f"E2EE dependencies not installed ({PYTHON_OLM_PACKAGE})"
         )
+        logger.debug("E2EE dependency check: missing olm or nio components")
 
     # Check configuration
-    matrix_section = config.get("matrix", {})
+    matrix_section = config.get(CONFIG_SECTION_MATRIX, {})
     e2ee_config = matrix_section.get("e2ee", {})
     encryption_config = matrix_section.get("encryption", {})  # Legacy support
     status["enabled"] = e2ee_config.get("enabled", False) or encryption_config.get(
@@ -99,7 +116,8 @@ def get_e2ee_status(
     )
 
     if not status["enabled"]:
-        status["issues"].append("E2EE is disabled in configuration")
+        status["issues"].append(MSG_E2EE_DISABLED)
+        logger.debug("E2EE config check: not enabled in configuration")
 
     # Check credentials
     paths_info = resolve_all_paths()
@@ -108,7 +126,8 @@ def get_e2ee_status(
     )
 
     if not status["credentials_available"]:
-        status["issues"].append("Matrix authentication not configured")
+        status["issues"].append(MSG_E2EE_NO_AUTH)
+        logger.debug("E2EE credentials check: no credentials.json found")
 
     # Determine overall availability and status
     status["available"] = (
@@ -125,6 +144,14 @@ def get_e2ee_status(
         status["overall_status"] = "disabled"
     else:
         status["overall_status"] = "incomplete"
+
+    logger.debug(
+        "E2EE status determined: %s (enabled=%s, available=%s, configured=%s)",
+        status["overall_status"],
+        status["enabled"],
+        status["available"],
+        status["configured"],
+    )
 
     return status
 
@@ -221,15 +248,15 @@ def get_room_encryption_warnings(
         overall = e2ee_status["overall_status"]
         if overall == "unavailable":
             warnings.append(
-                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but E2EE is not supported on Windows"
+                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but {MSG_E2EE_WINDOWS_UNSUPPORTED}"
             )
         elif overall == "disabled":
             warnings.append(
-                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but E2EE is disabled"
+                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but {MSG_E2EE_DISABLED}"
             )
         else:
             warnings.append(
-                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but E2EE setup is incomplete"
+                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but {_E2EE_INCOMPLETE_STATUS}"
             )
 
         # Tail message depends on readiness
@@ -258,7 +285,7 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
     Returns:
         List[str]: One formatted line per room suitable for user display.
     """
-    room_lines: list[str] = []
+    room_lines: List[str] = []
 
     # Handle invalid rooms input
     if not rooms or not hasattr(rooms, "items"):
@@ -279,15 +306,15 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
             if encrypted:
                 if e2ee_status["overall_status"] == "unavailable":
                     room_lines.append(
-                        f"   ⚠️ {room_name} - Encrypted (E2EE not supported on Windows - messages will be blocked)"
+                        f"   ⚠️ {room_name} - Encrypted ({MSG_E2EE_WINDOWS_UNSUPPORTED_SHORT} - messages will be blocked)"
                     )
                 elif e2ee_status["overall_status"] == "disabled":
                     room_lines.append(
-                        f"   ⚠️ {room_name} - Encrypted (E2EE disabled - messages will be blocked)"
+                        f"   ⚠️ {room_name} - Encrypted ({MSG_E2EE_DISABLED_SHORT} - messages will be blocked)"
                     )
                 else:
                     room_lines.append(
-                        f"   ⚠️ {room_name} - Encrypted (E2EE incomplete - messages may be blocked)"
+                        f"   ⚠️ {room_name} - Encrypted ({_E2EE_INCOMPLETE_STATUS} - messages may be blocked)"
                     )
             else:
                 room_lines.append(f"   ✅ {room_name}")
@@ -306,11 +333,11 @@ def get_e2ee_warning_messages() -> dict[str, str]:
             and "missing_config".
     """
     return {
-        "unavailable": "E2EE is not supported on Windows - messages to encrypted rooms will be blocked",
-        "disabled": "E2EE is disabled in configuration - messages to encrypted rooms will be blocked",
-        "incomplete": "E2EE setup is incomplete - messages to encrypted rooms may be blocked",
+        "unavailable": f"{MSG_E2EE_WINDOWS_UNSUPPORTED} - messages to encrypted rooms will be blocked",
+        "disabled": f"{MSG_E2EE_DISABLED} - messages to encrypted rooms will be blocked",
+        "incomplete": f"{_E2EE_INCOMPLETE_STATUS} - messages to encrypted rooms may be blocked",
         "missing_deps": f"E2EE dependencies not installed - run: pipx install {PACKAGE_NAME_E2E}",
-        "missing_auth": f"Matrix authentication not configured - run: {get_command('auth_login')}",
+        "missing_auth": f"{MSG_E2EE_NO_AUTH} - run: {get_command('auth_login')}",
         "missing_config": "E2EE not enabled in configuration - add 'e2ee: enabled: true' under matrix section",
     }
 
@@ -371,8 +398,8 @@ def get_e2ee_fix_instructions(e2ee_status: E2EEStatus) -> List[str]:
     instructions = []
 
     if not e2ee_status["platform_supported"]:
-        instructions.append("❌ E2EE is not supported on Windows")
-        instructions.append("   Use Linux or macOS for E2EE support")
+        instructions.append(MSG_E2EE_WINDOWS_UNSUPPORTED)
+        instructions.append(MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL)
         return instructions
 
     step = 1

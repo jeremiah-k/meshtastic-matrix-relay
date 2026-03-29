@@ -1,7 +1,9 @@
 """Tests for mmrelay.tools module."""
 
+import os
 import unittest
 
+from mmrelay.constants.app import SYSTEMD_SERVICE_FILENAME
 from mmrelay.tools import get_sample_config_path, get_service_template_path
 
 
@@ -20,7 +22,7 @@ class TestToolsInit(unittest.TestCase):
         # This should work on modern Python versions
         path = get_service_template_path()
         self.assertIsInstance(path, str)
-        self.assertIn("mmrelay.service", path)
+        self.assertEqual(os.path.basename(path), SYSTEMD_SERVICE_FILENAME)
 
 
 if __name__ == "__main__":

@@ -22,6 +22,8 @@ Usage:
     result = await logout_matrix_bot(password="user_password")
 """
 
+# ruff: noqa: E402
+
 import asyncio
 import logging
 import os
@@ -34,46 +36,93 @@ try:
 except ImportError:
     certifi: ModuleType | None = None  # type: ignore[no-redef]
 
-# Import Matrix-related modules for logout functionality
-try:
-    from nio import AsyncClient
-    from nio.exceptions import (
-        LocalProtocolError,
-        LocalTransportError,
-        RemoteProtocolError,
-        RemoteTransportError,
-    )
-    from nio.responses import LoginError, LogoutError
 
-    # Create aliases for backward compatibility
+# Import Matrix-related modules for logout functionality
+class _FallbackLoginError(Exception):
+    pass
+
+
+class _FallbackLogoutError(Exception):
+    pass
+
+
+class _FallbackLocalTransportError(Exception):
+    pass
+
+
+class _FallbackRemoteTransportError(Exception):
+    pass
+
+
+class _FallbackLocalProtocolError(Exception):
+    pass
+
+
+class _FallbackRemoteProtocolError(Exception):
+    pass
+
+
+AsyncClient: Any = None
+LoginError: type[Any] = _FallbackLoginError
+LogoutError: type[Any] = _FallbackLogoutError
+LocalTransportError: type[Any] = _FallbackLocalTransportError
+RemoteTransportError: type[Any] = _FallbackRemoteTransportError
+LocalProtocolError: type[Any] = _FallbackLocalProtocolError
+RemoteProtocolError: type[Any] = _FallbackRemoteProtocolError
+NioLoginError = LoginError
+NioLogoutError = LogoutError
+NioLocalTransportError = LocalTransportError
+NioRemoteTransportError = RemoteTransportError
+NioLocalProtocolError = LocalProtocolError
+NioRemoteProtocolError = RemoteProtocolError
+
+try:
+    from nio import AsyncClient as _AsyncClient
+    from nio.exceptions import LocalProtocolError as _LocalProtocolError
+    from nio.exceptions import LocalTransportError as _LocalTransportError
+    from nio.exceptions import RemoteProtocolError as _RemoteProtocolError
+    from nio.exceptions import RemoteTransportError as _RemoteTransportError
+    from nio.responses import LoginError as _LoginError
+    from nio.responses import LogoutError as _LogoutError
+except ImportError:
+    pass
+else:
+    AsyncClient = _AsyncClient
+    LoginError = _LoginError
+    LogoutError = _LogoutError
+    LocalTransportError = _LocalTransportError
+    RemoteTransportError = _RemoteTransportError
+    LocalProtocolError = _LocalProtocolError
+    RemoteProtocolError = _RemoteProtocolError
     NioLoginError = LoginError
     NioLogoutError = LogoutError
     NioLocalTransportError = LocalTransportError
     NioRemoteTransportError = RemoteTransportError
     NioLocalProtocolError = LocalProtocolError
     NioRemoteProtocolError = RemoteProtocolError
-except ImportError:
-    # Handle case where matrix-nio is not installed
-    AsyncClient = None
-    LoginError = Exception
-    LogoutError = Exception
-    LocalTransportError = Exception
-    RemoteTransportError = Exception
-    LocalProtocolError = Exception
-    RemoteProtocolError = Exception
-    # Create aliases for backward compatibility
-    NioLoginError = Exception
-    NioLogoutError = Exception
-    NioLocalTransportError = Exception
-    NioRemoteTransportError = Exception
-    NioLocalProtocolError = Exception
-    NioRemoteProtocolError = Exception
 
 # Import mmrelay modules - avoid circular imports by importing inside functions
 
+from mmrelay.constants.auth import (
+    MATRIX_ERRCODE_FORBIDDEN,
+    TEMP_DEVICE_NAME_LOGOUT,
+)
 from mmrelay.constants.cli import (
     CLI_COMMANDS,
     DEPRECATED_COMMANDS,
+    WINDOWS_PATH_NOT_APPLICABLE_LABEL,
+)
+from mmrelay.constants.config import (
+    CONFIG_KEY_ACCESS_TOKEN,
+    CONFIG_KEY_DEVICE_ID,
+    CONFIG_KEY_HOMESERVER,
+    CONFIG_KEY_USER_ID,
+    DEFAULT_CONFIG_FILENAME,
+)
+from mmrelay.constants.network import (
+    HTTP_SERVER_ERROR_CODES,
+    HTTP_STATUS_FORBIDDEN,
+    HTTP_STATUS_UNAUTHORIZED,
 )
 from mmrelay.log_utils import get_logger
 
@@ -230,7 +279,8 @@ def msg_require_auth_login() -> str:
         Instruction string directing the user to run the `auth_login` command to set up `credentials.json` or add a Matrix section to `config.yaml`.
     """
     return require_command(
-        "auth_login", "to set up credentials.json, or add matrix section to config.yaml"
+        "auth_login",
+        f"to set up credentials.json, or add matrix section to {DEFAULT_CONFIG_FILENAME}",
     )
 
 
@@ -374,7 +424,7 @@ def _cleanup_local_session_data() -> bool:
     # Skip on Windows (E2EE not supported); resolve_all_paths handles this safely
     candidate_store_paths: set[str] = set()
     store_dir = paths_info.get("store_dir")
-    if store_dir and store_dir != "N/A (Windows)":
+    if store_dir and store_dir != WINDOWS_PATH_NOT_APPLICABLE_LABEL:
         candidate_store_paths.add(store_dir)
 
     # Add any configured override from config
@@ -438,18 +488,20 @@ def _cleanup_local_session_data() -> bool:
 
 
 def _handle_matrix_error(
-    exception: Exception, context: str, log_level: str = "error"
+    error: Any,
+    context: str,
+    log_level: str = "error",
 ) -> bool:
     """
-    Classify a Matrix-related exception, log and print an appropriate user-facing message, and mark it handled.
+    Classify a Matrix-related error, log and print an appropriate user-facing message, and mark it handled.
 
     Parameters:
-        exception (Exception): The exception to classify and report.
+        error (Exception | LoginError | LogoutError): The Matrix error or response object to classify and report.
         context (str): Short description of the operation (e.g., "Password verification"); used to tailor message phrasing and detect verification flows.
         log_level (str): Logging level to use; either "error" or "warning".
 
     Returns:
-        bool: `True` indicating the exception was handled and reported.
+        bool: `True` indicating the error was handled and reported.
     """
     logger = _get_logger()
     log_func = logger.error if log_level == "error" else logger.warning
@@ -461,23 +513,41 @@ def _handle_matrix_error(
     error_detail = None
 
     # Handle specific Matrix-nio exceptions
-    if isinstance(exception, (NioLoginError, NioLogoutError)):
-        errcode = getattr(exception, "errcode", None)
-        status_code = getattr(exception, "status_code", None)
-        if errcode == "M_FORBIDDEN" or status_code == 401:
+    if isinstance(error, (LoginError, LogoutError)):
+        errcode = getattr(error, "errcode", None)
+        status_code = getattr(error, "status_code", None)
+        status_text = (
+            str(status_code).strip().lower() if status_code is not None else ""
+        )
+        raw_message_obj = getattr(error, "message", None)
+        raw_message = (
+            str(raw_message_obj).strip() if raw_message_obj is not None else ""
+        )
+        message_text = raw_message.lower()
+        parsed_status_code: int | None = None
+        if status_code is not None:
+            try:
+                parsed_status_code = int(status_code)
+            except (TypeError, ValueError):
+                parsed_status_code = None
+
+        if (
+            errcode == MATRIX_ERRCODE_FORBIDDEN
+            or parsed_status_code in (HTTP_STATUS_UNAUTHORIZED, HTTP_STATUS_FORBIDDEN)
+            or "forbidden" in status_text
+            or "forbidden" in message_text
+        ):
             error_category = "credentials"
-        elif status_code in [
-            500,
-            502,
-            503,
-        ]:
+        elif parsed_status_code in HTTP_SERVER_ERROR_CODES:
             error_category = "server"
         else:
             error_category = "other"
-            error_detail = str(status_code)
+            error_detail = raw_message or str(
+                status_code if status_code is not None else type(error).__name__
+            )
     # Handle network/transport exceptions
     elif isinstance(
-        exception,
+        error,
         (
             NioLocalTransportError,
             NioRemoteTransportError,
@@ -488,8 +558,8 @@ def _handle_matrix_error(
         error_category = "network"
     else:
         # Fallback to string matching for unknown exceptions
-        error_msg = str(exception).lower()
-        if "forbidden" in error_msg or "401" in error_msg:
+        error_msg = str(error).lower()
+        if "forbidden" in error_msg or "401" in error_msg or "403" in error_msg:
             error_category = "credentials"
         elif (
             "network" in error_msg
@@ -497,16 +567,13 @@ def _handle_matrix_error(
             or "timeout" in error_msg
         ):
             error_category = "network"
-        elif (
-            "server" in error_msg
-            or "500" in error_msg
-            or "502" in error_msg
-            or "503" in error_msg
+        elif "server" in error_msg or any(
+            str(code) in error_msg for code in HTTP_SERVER_ERROR_CODES
         ):
             error_category = "server"
         else:
             error_category = "other"
-            error_detail = type(exception).__name__
+            error_detail = type(error).__name__
 
     # Generate appropriate messages based on category and context
     if error_category == "credentials":
@@ -557,7 +624,7 @@ def _handle_matrix_error(
     else:  # error_category == "other"
         if is_verification:
             log_func(f"{context} failed: {error_detail or 'Unknown error'}")
-            _get_logger().debug(f"Full error details: {exception}")
+            logger.debug(f"Full error details: {error}")
             print(f"{emoji} {context} failed: {error_detail or 'Unknown error'}")
         else:
             log_func(
@@ -600,10 +667,10 @@ async def logout_matrix_bot(password: str) -> bool:
         print("ℹ️  No active session found. Already logged out.")
         return True
 
-    homeserver = credentials.get("homeserver")
-    user_id = credentials.get("user_id")
-    access_token = credentials.get("access_token")
-    device_id = credentials.get("device_id")
+    homeserver = credentials.get(CONFIG_KEY_HOMESERVER)
+    user_id = credentials.get(CONFIG_KEY_USER_ID)
+    access_token = credentials.get(CONFIG_KEY_ACCESS_TOKEN)
+    device_id = credentials.get(CONFIG_KEY_DEVICE_ID)
 
     # If user_id is missing, try to fetch it using the access token
     if not user_id and access_token and homeserver:
@@ -634,7 +701,7 @@ async def logout_matrix_bot(password: str) -> bool:
                 print(f"✅ Successfully fetched user_id: {user_id}")
 
                 # Update credentials with the fetched user_id
-                credentials["user_id"] = user_id
+                credentials[CONFIG_KEY_USER_ID] = user_id
                 from mmrelay.config import save_credentials
 
                 save_credentials(credentials)
@@ -715,10 +782,13 @@ async def logout_matrix_bot(password: str) -> bool:
         try:
             # Attempt login with the provided password
             response = await asyncio.wait_for(
-                temp_client.login(password, device_name="mmrelay-logout-verify"),
+                temp_client.login(password, device_name=TEMP_DEVICE_NAME_LOGOUT),
                 timeout=MATRIX_LOGIN_TIMEOUT,
             )
 
+            if isinstance(response, (LoginError, NioLoginError)):
+                _handle_matrix_error(response, "Password verification", "error")
+                return False
             if hasattr(response, "access_token"):
                 _get_logger().info("Password verified successfully.")
                 print("✅ Password verified successfully.")
@@ -786,7 +856,13 @@ async def logout_matrix_bot(password: str) -> bool:
                     "⚠️  Timeout during Matrix server logout, proceeding with local cleanup."
                 )
             else:
-                if hasattr(logout_response, "transport_response"):
+                if isinstance(logout_response, (LogoutError, NioLogoutError)):
+                    _handle_matrix_error(
+                        logout_response,
+                        "Server logout",
+                        "warning",
+                    )
+                elif hasattr(logout_response, "transport_response"):
                     _get_logger().info("Successfully logged out from Matrix server.")
                     print("✅ Successfully logged out from Matrix server.")
                 else:

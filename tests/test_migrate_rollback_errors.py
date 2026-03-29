@@ -9,7 +9,19 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch
 
+from mmrelay.constants.app import (
+    CONFIG_FILENAME,
+    CREDENTIALS_FILENAME,
+    DATABASE_FILENAME,
+)
+from mmrelay.constants.migration import (
+    MIGRATION_BACKUP_DIRNAME,
+    MIGRATION_STAGING_DIRNAME,
+)
 from mmrelay.migrate import rollback_migration
+
+_REAL_COPY2 = shutil.copy2
+_REAL_RMTREE = shutil.rmtree
 
 
 class TestRollbackMigrationErrorHandling:
@@ -22,13 +34,13 @@ class TestRollbackMigrationErrorHandling:
         new_home.mkdir()
 
         # Create backup directory and backup file
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
         backup_file = backup_dir / "credentials.json.bak.20240101_120000"
         backup_file.write_text('{"test": "backup"}')
 
         # Create destination file
-        dest_file = new_home / "matrix" / "credentials.json"
+        dest_file = new_home / "matrix" / CREDENTIALS_FILENAME
         dest_file.parent.mkdir(parents=True)
         dest_file.write_text('{"test": "current"}')
 
@@ -45,17 +57,11 @@ class TestRollbackMigrationErrorHandling:
             }
         ]
 
-        # Create real error condition - make backup file inaccessible
-        backup_file.chmod(0o000)  # Remove all permissions
-
         # Force a restore failure path deterministically
         with patch(
             "mmrelay.migrate.shutil.copy2", side_effect=shutil.Error("copy failed")
         ):
             result = rollback_migration(completed_steps, migrations, new_home)
-
-        # Restore permissions for cleanup
-        backup_file.chmod(0o644)
 
         # Verify error handling
         assert result["success"] is False
@@ -74,7 +80,7 @@ class TestRollbackMigrationErrorHandling:
             {
                 "type": "credentials",
                 "result": {
-                    "new_path": str(new_home / "matrix" / "credentials.json"),
+                    "new_path": str(new_home / "matrix" / CREDENTIALS_FILENAME),
                     "action": "move",
                     "success": True,
                 },
@@ -105,13 +111,13 @@ class TestRollbackMigrationErrorHandling:
         new_home.mkdir()
 
         # Create backup directory and backup file
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
         backup_path = backup_dir / "database.sqlite.bak.20240101_120000"
         backup_path.write_text("sqlite database content")
 
         # Create destination file
-        dest_file = new_home / "database" / "meshtastic.sqlite"
+        dest_file = new_home / "database" / DATABASE_FILENAME
         dest_file.parent.mkdir(parents=True)
         dest_file.write_text("current database")
 
@@ -128,16 +134,14 @@ class TestRollbackMigrationErrorHandling:
             }
         ]
 
-        # Create real error condition - make backup directory inaccessible
-        old_mode = backup_dir.stat().st_mode
-        backup_dir.chmod(0o000)  # Remove all permissions
+        # Force restore failure by mocking shutil.copy2 to raise OSError
+        def selective_copy_failure(src, dst, *args, **kwargs):
+            if "database.sqlite" in str(src):
+                raise PermissionError(13, "Permission denied", src)
+            return _REAL_COPY2(src, dst, *args, **kwargs)
 
-        try:
-            # Execute rollback
+        with patch("mmrelay.migrate.shutil.copy2", side_effect=selective_copy_failure):
             result = rollback_migration(completed_steps, migrations, new_home)
-        finally:
-            # Restore permissions
-            backup_dir.chmod(old_mode)
 
         # Verify OSError handling
         assert result["success"] is False
@@ -152,7 +156,7 @@ class TestRollbackMigrationErrorHandling:
         new_home.mkdir()
 
         # Create backup directories and files
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
 
         # Successful backup - credentials
@@ -164,11 +168,11 @@ class TestRollbackMigrationErrorHandling:
         config_backup.write_text("config: backup")
 
         # Create destination files
-        creds_dest = new_home / "matrix" / "credentials.json"
+        creds_dest = new_home / "matrix" / CREDENTIALS_FILENAME
         creds_dest.parent.mkdir(parents=True)
         creds_dest.write_text('{"test": "current_creds"}')
 
-        config_dest = new_home / "config.yaml"
+        config_dest = new_home / CONFIG_FILENAME
         config_dest.write_text("config: current")
 
         # Test data
@@ -192,15 +196,14 @@ class TestRollbackMigrationErrorHandling:
             },
         ]
 
-        # Create real error condition - make config backup inaccessible
-        config_backup.chmod(0o000)  # Remove permissions
+        # Force config restore failure by mocking shutil.copy2 to raise OSError
+        def selective_copy_failure(src, dst, *args, **kwargs):
+            if CONFIG_FILENAME in str(src):
+                raise PermissionError(13, "Permission denied", src)
+            return _REAL_COPY2(src, dst, *args, **kwargs)
 
-        try:
-            # Execute rollback
+        with patch("mmrelay.migrate.shutil.copy2", side_effect=selective_copy_failure):
             result = rollback_migration(completed_steps, migrations, new_home)
-        finally:
-            # Restore permissions
-            config_backup.chmod(0o644)
 
         # Verify partial success handling
         assert result["success"] is False  # Overall should be False due to errors
@@ -219,12 +222,12 @@ class TestRollbackMigrationErrorHandling:
         new_home.mkdir()
 
         # Create staging directory that will fail to clean up
-        staging_dir = new_home / ".migration_staging"
+        staging_dir = new_home / MIGRATION_STAGING_DIRNAME
         staging_dir.mkdir()
         (staging_dir / "some_file").write_text("staging content")
 
         # Create backup directory and backup file
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
         backup_file = backup_dir / "logs.bak.20240101_120000"
         backup_file.mkdir()  # Directory backup
@@ -247,16 +250,16 @@ class TestRollbackMigrationErrorHandling:
             }
         ]
 
-        # Make staging directory unwritable to cause cleanup failure
-        old_mode = staging_dir.stat().st_mode
-        staging_dir.chmod(0o555)  # Read and execute only
+        # Force staging cleanup failure by mocking shutil.rmtree to raise OSError
+        def selective_rmtree_failure(path, *args, **kwargs):
+            if MIGRATION_STAGING_DIRNAME in str(path):
+                raise PermissionError(13, "Permission denied", path)
+            return _REAL_RMTREE(path, *args, **kwargs)
 
-        try:
-            # Execute rollback (rollback should succeed, but cleanup should fail)
+        with patch(
+            "mmrelay.migrate.shutil.rmtree", side_effect=selective_rmtree_failure
+        ):
             result = rollback_migration(completed_steps, migrations, new_home)
-        finally:
-            # Restore permissions
-            staging_dir.chmod(old_mode)
 
         # Verify that cleanup failure doesn't affect rollback success
         # The rollback should still succeed, just log a warning about cleanup failure
@@ -280,13 +283,13 @@ class TestRollbackMigrationErrorHandling:
         new_home.mkdir()
 
         # Create backup directory and backup file
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
 
-        # Create backup as a file while destination is a directory path.
-        # rollback_migration will attempt copy2(file -> directory path) and fail.
+        # Create backup directory (matching destination type - the mock forces the failure)
         backup_path = backup_dir / "store.bak.20240101_120000"
-        backup_path.write_text("not-a-store-directory")
+        backup_path.mkdir()
+        (backup_path / "backup_file").write_text("backup content")
 
         # Create destination directory
         dest_dir = new_home / "matrix" / "store"
@@ -309,7 +312,7 @@ class TestRollbackMigrationErrorHandling:
 
         # Execute rollback with forced restore copy failure
         with patch(
-            "mmrelay.migrate.shutil.copy2", side_effect=shutil.Error("copy failed")
+            "mmrelay.migrate.shutil.copytree", side_effect=shutil.Error("copy failed")
         ):
             result = rollback_migration(completed_steps, migrations, new_home)
 

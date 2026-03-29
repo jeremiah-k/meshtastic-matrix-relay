@@ -45,6 +45,7 @@ Plugin Data Migration (Three-Tier System):
 """
 
 import atexit
+import errno
 import json
 import os
 import shutil
@@ -57,7 +58,39 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from mmrelay.constants.app import CREDENTIALS_FILENAME, MATRIX_DIRNAME, STORE_DIRNAME
+from mmrelay.constants.app import (
+    CONFIG_FILENAME,
+    CREDENTIALS_FILENAME,
+    DATABASE_FILENAME,
+    MATRIX_DIRNAME,
+    STORE_DIRNAME,
+    WINERR_ACCESS_DENIED,
+    WINERR_LOCK_VIOLATION,
+    WINERR_SHARING_VIOLATION,
+)
+from mmrelay.constants.config import REQUIRED_CREDENTIALS_KEYS
+from mmrelay.constants.database import SQLITE_SIDECAR_SUFFIXES
+from mmrelay.constants.formats import (
+    BACKUP_TIMESTAMP_FORMAT,
+    DEFAULT_TEXT_ENCODING,
+    ENCODING_ERROR_IGNORE,
+    MIGRATION_TIMESTAMP_FORMAT,
+)
+from mmrelay.constants.migration import (
+    BYTES_PER_MIB,
+    MIGRATION_BACKUP_DIRNAME,
+    MIGRATION_FREE_SPACE_WARNING_FACTOR,
+    MIGRATION_INITIAL_RETRY_DELAY,
+    MIGRATION_LOCK_FILENAME,
+    MIGRATION_MAX_RETRIES,
+    MIGRATION_MAX_RETRY_DELAY,
+    MIGRATION_MIN_FREE_SPACE_BYTES,
+    MIGRATION_STAGING_DIRNAME,
+)
+from mmrelay.constants.network import (
+    PROCESS_CHECK_SHORT_TIMEOUT_SECS,
+    PROCESS_CHECK_TIMEOUT_SECS,
+)
 from mmrelay.log_utils import get_logger
 from mmrelay.paths import resolve_all_paths
 
@@ -69,10 +102,10 @@ logger = get_logger("Migration")
 # Global reference to current lock file for cleanup on signal
 _current_lock_file: Path | None = None
 
-# Retry configuration for Windows file-in-use errors
-_MAX_RETRIES = 5
-_INITIAL_RETRY_DELAY = 0.1  # 100ms
-_MAX_RETRY_DELAY = 2.0  # 2 seconds
+# Retry configuration aliases for code clarity
+_MAX_RETRIES = MIGRATION_MAX_RETRIES
+_INITIAL_RETRY_DELAY = MIGRATION_INITIAL_RETRY_DELAY
+_MAX_RETRY_DELAY = MIGRATION_MAX_RETRY_DELAY
 
 
 def _is_windows_file_in_use_error(exc: OSError) -> bool:
@@ -95,11 +128,15 @@ def _is_windows_file_in_use_error(exc: OSError) -> bool:
 
     # Get Windows error code if available
     winerror = getattr(exc, "winerror", None)
-    if winerror in (5, 32, 33):  # ACCESS_DENIED, SHARING_VIOLATION, LOCK_VIOLATION
+    if winerror in (
+        WINERR_ACCESS_DENIED,
+        WINERR_SHARING_VIOLATION,
+        WINERR_LOCK_VIOLATION,
+    ):
         return True
 
     # Fallback: check errno for common locking errors
-    if exc.errno in (13,):  # EACCES
+    if exc.errno == errno.EACCES:
         return True
 
     return False
@@ -161,15 +198,15 @@ def _looks_like_matrix_credentials(path: Path) -> bool:
     """
     Detects whether a file is a Matrix credentials JSON document.
 
-    Performs strict validation to avoid false positives when scanning legacy locations:
-    the file must be a JSON object containing the string keys "homeserver", "access_token",
-    and "user_id". The "user_id" must start with "@" and contain a ":".
+    Validates the same required credential contract used by runtime authentication:
+    the file must be a JSON object containing non-empty string values for
+    "homeserver" and "access_token". The "user_id" field is optional.
 
     Parameters:
         path (Path): Candidate credentials file path.
 
     Returns:
-        true if the file contains valid Matrix credential keys with the expected formats, false otherwise.
+        true if the file contains required Matrix credential keys, false otherwise.
     """
     try:
         with path.open("r", encoding="utf-8") as handle:
@@ -180,16 +217,10 @@ def _looks_like_matrix_credentials(path: Path) -> bool:
     if not isinstance(payload, dict):
         return False
 
-    required = ("homeserver", "access_token", "user_id")
-    for key in required:
+    for key in REQUIRED_CREDENTIALS_KEYS:
         value = payload.get(key)
         if not isinstance(value, str) or not value.strip():
             return False
-
-    # Keep fallback strict to avoid false positives from unrelated files.
-    user_id = payload.get("user_id", "")
-    if not user_id.startswith("@") or ":" not in user_id:
-        return False
 
     return True
 
@@ -271,7 +302,7 @@ def _is_mmrelay_running() -> bool:
                 [pgrep_path, "-f", r"(^|/)mmrelay($|\s)|python.*\bmmrelay\b"],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=PROCESS_CHECK_TIMEOUT_SECS,
             )
             if result.returncode == 0 and result.stdout.strip():
                 for pid_str in result.stdout.strip().split("\n"):
@@ -284,7 +315,8 @@ def _is_mmrelay_running() -> bool:
                                 try:
                                     with open(proc_cmdline, "rb") as f:
                                         cmdline = f.read().decode(
-                                            "utf-8", errors="ignore"
+                                            DEFAULT_TEXT_ENCODING,
+                                            errors=ENCODING_ERROR_IGNORE,
                                         )
                                         if "mmrelay" in cmdline:
                                             return True
@@ -298,16 +330,13 @@ def _is_mmrelay_running() -> bool:
                                         ["ps", "-p", str(pid), "-o", "command="],
                                         capture_output=True,
                                         text=True,
-                                        timeout=2,
+                                        timeout=PROCESS_CHECK_SHORT_TIMEOUT_SECS,
                                     )
                                     if exe_result.returncode == 0:
                                         cmd = exe_result.stdout.strip()
                                         # Verify it's actually mmrelay-related
-                                        if (
-                                            "mmrelay" in cmd.split()[0]
-                                            if cmd.split()
-                                            else ""
-                                        ):
+                                        parts = cmd.split()
+                                        if parts and "mmrelay" in parts[0]:
                                             return True
                                         # Also match python -m mmrelay pattern
                                         if "python" in cmd and "mmrelay" in cmd:
@@ -332,7 +361,7 @@ def _is_mmrelay_running() -> bool:
 def _get_db_base_path(path: Path) -> Path:
     """Strip SQLite sidecar suffixes to get the main database file path."""
     name = path.name
-    for suffix in ("-wal", "-shm", "-journal"):
+    for suffix in SQLITE_SIDECAR_SUFFIXES:
         if name.endswith(suffix):
             return path.with_name(name.removesuffix(suffix))
     return path
@@ -465,26 +494,25 @@ def _find_legacy_data(legacy_root: Path) -> list[dict[str, str]]:
         findings.append({"type": item_type, "path": path_str})
         seen_paths.add(path_str)
 
-    credentials = legacy_root / "credentials.json"
+    credentials = legacy_root / CREDENTIALS_FILENAME
     if credentials.exists():
         add_finding("credentials", credentials)
 
-    config_path = legacy_root / "config.yaml"
+    config_path = legacy_root / CONFIG_FILENAME
     if config_path.exists():
         add_finding("config", config_path)
 
     db_candidates = [
-        legacy_root / "meshtastic.sqlite",
-        legacy_root / "data" / "meshtastic.sqlite",
-        legacy_root / "database" / "meshtastic.sqlite",
+        legacy_root / DATABASE_FILENAME,
+        legacy_root / "data" / DATABASE_FILENAME,
+        legacy_root / "database" / DATABASE_FILENAME,
     ]
-    db_sidecar_suffixes = [".sqlite-wal", ".sqlite-shm"]
     for candidate in db_candidates:
         if candidate.exists():
             add_finding("database", candidate)
-        for suffix in db_sidecar_suffixes:
-            sidecar = candidate.with_suffix(suffix)
-            if sidecar.exists():
+            sidecars: list[Path] = []
+            _collect_db_sidecars(candidate, sidecars)
+            for sidecar in sidecars:
                 add_finding("database", sidecar)
 
     logs_dir = legacy_root / "logs"
@@ -565,7 +593,7 @@ def verify_migration() -> dict[str, Any]:
 
     credentials_path = Path(paths_info["credentials_path"])
     database_dir = Path(paths_info["database_dir"])
-    database_path = database_dir / "meshtastic.sqlite"
+    database_path = database_dir / DATABASE_FILENAME
     logs_dir = Path(paths_info["logs_dir"])
     plugins_dir = Path(paths_info["plugins_dir"])
 
@@ -844,18 +872,9 @@ def print_migration_verification(report: dict[str, Any]) -> None:
             print(f"   - {error}")
 
 
-STAGING_DIRNAME = ".migration_staging"
-BACKUP_DIRNAME = ".migration_backups"
-LOCK_FILENAME = ".migration.lock"
-
-# Minimum free space required for migration (in bytes)
-# Allowing for staging + backups with 50% safety margin
-MIN_FREE_SPACE_BYTES = 500 * 1024 * 1024  # 500 MB minimum
-
-
 def _get_staging_path(new_home: Path, unit_name: str) -> Path:
     """Get the staging path for a migration unit."""
-    return new_home / STAGING_DIRNAME / unit_name
+    return new_home / MIGRATION_STAGING_DIRNAME / unit_name
 
 
 def _backup_file(src_path: Path, suffix: str = ".bak") -> Path:
@@ -870,8 +889,8 @@ def _backup_file(src_path: Path, suffix: str = ".bak") -> Path:
     Returns:
         Path: Path under `<src_path.parent>/.migration_backups/` with the format `<original_name><suffix>.<YYYYMMDD_HHMMSS>`.
     """
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_dir = src_path.parent / BACKUP_DIRNAME
+    timestamp = datetime.now().strftime(BACKUP_TIMESTAMP_FORMAT)
+    backup_dir = src_path.parent / MIGRATION_BACKUP_DIRNAME
     backup_dir.mkdir(parents=True, exist_ok=True)
     backup_name = f"{src_path.name}{suffix}.{timestamp}"
     return backup_dir / backup_name
@@ -885,7 +904,7 @@ def _check_disk_space(
 
     Parameters:
         path (Path): File or directory path to check. If the path is a file or does not exist, its parent directory is used.
-        required_bytes (int | None): Minimum required bytes. If omitted, defaults to MIN_FREE_SPACE_BYTES.
+        required_bytes (int | None): Minimum required bytes. If omitted, defaults to MIGRATION_MIN_FREE_SPACE_BYTES.
 
     Returns:
         tuple[bool, int]: Tuple of (has_sufficient_space, free_bytes_available).
@@ -893,7 +912,7 @@ def _check_disk_space(
             If disk usage cannot be determined, `(True, 0)` is returned.
     """
     if required_bytes is None:
-        required_bytes = MIN_FREE_SPACE_BYTES
+        required_bytes = MIGRATION_MIN_FREE_SPACE_BYTES
 
     # Use parent directory if path is a file or doesn't exist
     check_path = path
@@ -902,8 +921,7 @@ def _check_disk_space(
 
     try:
         usage = shutil.disk_usage(str(check_path))
-        # Add 50% safety margin
-        required_with_margin = int(required_bytes * 1.5)
+        required_with_margin = int(required_bytes * MIGRATION_FREE_SPACE_WARNING_FACTOR)
     except (OSError, IOError):
         # If we can't check disk space, assume it's OK and log warning
         logger.warning("Could not check disk space at %s", check_path)
@@ -1232,13 +1250,13 @@ def migrate_config(
         MigrationError: If migration fails (permission errors or other failures are wrapped in a MigrationError).
     """
     # Warn if config exists in multiple legacy roots
-    _warn_multiple_sources(legacy_roots, "config", "config.yaml")
+    _warn_multiple_sources(legacy_roots, "config", CONFIG_FILENAME)
 
-    new_config = new_home / "config.yaml"
+    new_config = new_home / CONFIG_FILENAME
     old_config: Path | None = None
 
     for legacy_root in legacy_roots:
-        candidate = legacy_root / "config.yaml"
+        candidate = legacy_root / CONFIG_FILENAME
         if candidate.resolve() == new_config.resolve():
             if candidate.exists():
                 logger.info(
@@ -1352,6 +1370,23 @@ def migrate_config(
             staging_path.unlink(missing_ok=True)
 
 
+def _collect_db_sidecars(db_path: Path, candidates: list[Path]) -> None:
+    """
+    Append existing SQLite sidecar files for a database to the candidates list.
+
+    Iterates over SQLITE_SIDECAR_SUFFIXES and constructs sidecar paths by
+    appending the suffix to the database filename.
+
+    Parameters:
+        db_path: Path to the main SQLite database file.
+        candidates: List to append discovered sidecar paths to.
+    """
+    for suffix in SQLITE_SIDECAR_SUFFIXES:
+        sidecar = db_path.with_name(f"{db_path.name}{suffix}")
+        if sidecar.exists():
+            candidates.append(sidecar)
+
+
 def migrate_database(
     legacy_roots: list[Path],
     new_home: Path,
@@ -1381,8 +1416,8 @@ def migrate_database(
     candidates = []
 
     for legacy_root in legacy_roots:
-        legacy_db = legacy_root / "meshtastic.sqlite"
-        if legacy_db.resolve() == (new_db_dir / "meshtastic.sqlite").resolve():
+        legacy_db = legacy_root / DATABASE_FILENAME
+        if legacy_db.resolve() == (new_db_dir / DATABASE_FILENAME).resolve():
             if legacy_db.exists() and len(legacy_roots) == 1:
                 logger.info(
                     "Database already at target location, no migration needed: %s",
@@ -1398,27 +1433,21 @@ def migrate_database(
             continue
         if legacy_db.exists():
             candidates.append(legacy_db)
-            for suffix in ["-wal", "-shm", "-journal"]:
-                sidecar = legacy_db.with_suffix(f".sqlite{suffix}")
-                if sidecar.exists():
-                    candidates.append(sidecar)
+            _collect_db_sidecars(legacy_db, candidates)
 
         partial_data_dir = legacy_root / "data"
         if partial_data_dir.exists():
-            partial_db = partial_data_dir / "meshtastic.sqlite"
-            if partial_db.resolve() == (new_db_dir / "meshtastic.sqlite").resolve():
+            partial_db = partial_data_dir / DATABASE_FILENAME
+            if partial_db.resolve() == (new_db_dir / DATABASE_FILENAME).resolve():
                 continue
             if partial_db.exists():
                 candidates.append(partial_db)
-                for suffix in ["-wal", "-shm", "-journal"]:
-                    sidecar = partial_db.with_suffix(f".sqlite{suffix}")
-                    if sidecar.exists():
-                        candidates.append(sidecar)
+                _collect_db_sidecars(partial_db, candidates)
 
         legacy_db_dir = legacy_root / "database"
         if legacy_db_dir.exists():
-            legacy_db = legacy_db_dir / "meshtastic.sqlite"
-            if legacy_db.resolve() == (new_db_dir / "meshtastic.sqlite").resolve():
+            legacy_db = legacy_db_dir / DATABASE_FILENAME
+            if legacy_db.resolve() == (new_db_dir / DATABASE_FILENAME).resolve():
                 if legacy_db.exists() and len(legacy_roots) == 1:
                     logger.info(
                         "Database already at target location, no migration needed: %s",
@@ -1434,13 +1463,10 @@ def migrate_database(
                 continue
             if legacy_db.exists():
                 candidates.append(legacy_db)
-                for suffix in ["-wal", "-shm", "-journal"]:
-                    sidecar = legacy_db.with_suffix(f".sqlite{suffix}")
-                    if sidecar.exists():
-                        candidates.append(sidecar)
+                _collect_db_sidecars(legacy_db, candidates)
 
     if not candidates:
-        if (new_db_dir / "meshtastic.sqlite").exists():
+        if (new_db_dir / DATABASE_FILENAME).exists():
             logger.info("Database already migrated to %s", new_db_dir)
             return {
                 "success": True,
@@ -1455,8 +1481,7 @@ def migrate_database(
             "message": "No database files found in legacy locations",
         }
 
-    # Skip if target already exists and not forcing
-    if (new_db_dir / "meshtastic.sqlite").exists() and not force:
+    if (new_db_dir / DATABASE_FILENAME).exists() and not force:
         logger.warning(
             "Database already exists at destination, skipping: %s. Use --force to overwrite.",
             new_db_dir,
@@ -1496,24 +1521,35 @@ def migrate_database(
         }
     if most_recent not in selected_group:
         selected_group.insert(0, most_recent)
-    for suffix in ("-wal", "-shm"):
-        sidecar = most_recent.with_name(f"{most_recent.name}{suffix}")
-        if sidecar.exists() and sidecar not in selected_group:
+    extra_sidecars: list[Path] = []
+    _collect_db_sidecars(most_recent, extra_sidecars)
+    for sidecar in extra_sidecars:
+        if sidecar not in selected_group:
             selected_group.append(sidecar)
 
     # Proceed with migration
     staging_dir = _get_staging_path(new_home, "database")
 
     migration_succeeded = False
+    backed_up_files: list[dict[str, str]] = []
 
     try:
         staging_dir.mkdir(parents=True, exist_ok=True)
 
+        destination_group: list[Path] = [new_db_dir / DATABASE_FILENAME]
+        _collect_db_sidecars(destination_group[0], destination_group)
+        source_names = {path.name for path in selected_group}
+
         # 1. Backup existing database files (ALWAYS)
-        for db_path in selected_group:
-            dest = new_db_dir / db_path.name
-            # Skip if already at target to avoid self-backup/self-copy
-            if db_path.resolve() == dest.resolve():
+        destination_targets = {
+            new_db_dir / db_path.name for db_path in selected_group
+        } | set(destination_group)
+        for dest in sorted(destination_targets, key=lambda path: path.name):
+            # Skip if already at target to avoid self-backup/self-copy.
+            if any(
+                db_path.name == dest.name and db_path.resolve() == dest.resolve()
+                for db_path in selected_group
+            ):
                 continue
             if dest.exists():
                 backup_path = _backup_file(dest)
@@ -1524,6 +1560,9 @@ def migrate_database(
                     shutil.copytree(str(dest), str(backup_path))
                 else:
                     shutil.copy2(str(dest), str(backup_path))
+                backed_up_files.append(
+                    {"backup_path": str(backup_path), "restore_path": str(dest)}
+                )
 
         # 2. Copy to staging (using copy-verify-delete pattern)
         for db_path in selected_group:
@@ -1537,7 +1576,9 @@ def migrate_database(
 
         # 3. Verify integrity in staging
         main_db_staged = staging_dir / most_recent.name
-        if not most_recent.name.endswith(("-wal", "-shm")):
+        if not any(
+            most_recent.name.endswith(suffix) for suffix in SQLITE_SIDECAR_SUFFIXES
+        ):
             try:
                 db_uri = f"{main_db_staged.resolve().as_uri()}?mode=ro"
                 with sqlite3.connect(db_uri, uri=True) as conn:
@@ -1578,12 +1619,38 @@ def migrate_database(
             except (OSError, IOError):
                 logger.warning("Failed to delete source file: %s", db_path)
 
+        # 1b. Remove destination-only sidecars so stale WAL/SHM/JOURNAL state does not survive.
+        # Only do this after migration succeeds so we don't delete files we can't restore.
+        for dest in destination_group:
+            if not dest.exists() or dest.name in source_names:
+                continue
+            logger.info("Removing destination-only database sidecar: %s", dest)
+            if dest.is_dir():
+                _retry_on_file_in_use(
+                    lambda d=dest: shutil.rmtree(str(d), ignore_errors=False),
+                    f"rmtree {dest}",
+                )
+            else:
+                _retry_on_file_in_use(
+                    lambda d=dest: d.unlink(),
+                    f"unlink {dest}",
+                )
+
         migration_succeeded = True
+        migrated_files = sorted(
+            {
+                str(new_db_dir / db_path.name)
+                for db_path in selected_group
+                if (new_db_dir / db_path.name).exists()
+            }
+        )
         return {
             "success": True,
             "old_path": str(most_recent),
             "new_path": str(new_db_dir),
             "action": "move",
+            "backed_up_files": backed_up_files,
+            "migrated_files": migrated_files,
         }
     except PermissionError as exc:
         logger.exception(
@@ -1714,7 +1781,7 @@ def migrate_logs(
         migrated_count = 0
         for idx, log_file in enumerate(old_logs_dir.glob("*.log")):
             # Include microseconds and index to avoid filename collisions
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            timestamp = datetime.now().strftime(MIGRATION_TIMESTAMP_FORMAT)
             new_name = f"{log_file.stem}_migrated_{timestamp}_{idx}.log"
             dest_staged = staging_dir / new_name
             shutil.move(str(log_file), str(dest_staged))
@@ -2221,23 +2288,35 @@ def migrate_gpxtracker(
         MigrationError: When migration fails (wrapped as a step failure with context).
     """
     old_gpx_dir: Path | None = None
+    scan_skipped_due_to_pyyaml = False
+    yaml_available = False
+    yaml_module: Any | None = None
+
+    try:
+        import yaml as imported_yaml
+
+        yaml_module = imported_yaml
+        yaml_available = True
+    except ImportError as e:
+        logger.warning(
+            "PyYAML is not available; skipping GPX tracker config scan: %s",
+            e,
+        )
+        scan_skipped_due_to_pyyaml = True
 
     roots_to_scan = list(legacy_roots)
     if new_home not in roots_to_scan:
         roots_to_scan.append(new_home)
 
     for legacy_root in roots_to_scan:
-        legacy_config = legacy_root / "config.yaml"
+        legacy_config = legacy_root / CONFIG_FILENAME
         if legacy_config.exists():
-            try:
-                import yaml
-            except ImportError as e:
-                logger.warning("Failed to import yaml for GPX tracker detection: %s", e)
-                break
+            if not yaml_available:
+                continue
 
             try:
                 with open(legacy_config, "r", encoding="utf-8") as f:
-                    config_data = yaml.safe_load(f)
+                    config_data = yaml_module.safe_load(f) if yaml_module else None
                     if isinstance(config_data, dict):
                         plugins_section = config_data.get("community-plugins", {})
                         if isinstance(plugins_section, dict):
@@ -2252,7 +2331,14 @@ def migrate_gpxtracker(
                                             old_gpx_dir,
                                         )
                                         break
-            except (OSError, yaml.YAMLError) as e:
+            except OSError as e:
+                logger.warning("Failed to read legacy config %s: %s", legacy_config, e)
+            except Exception as e:
+                yaml_error = yaml_module is not None and isinstance(
+                    e, getattr(yaml_module, "YAMLError", ())
+                )
+                if not yaml_error:
+                    raise
                 logger.warning("Failed to read legacy config %s: %s", legacy_config, e)
 
     new_gpx_data_dir = new_home / "plugins" / "community" / "gpxtracker" / "data"
@@ -2278,6 +2364,15 @@ def migrate_gpxtracker(
             pass
 
     if not old_gpx_dir or not old_gpx_dir.exists():
+        if scan_skipped_due_to_pyyaml:
+            logger.info(
+                "gpxtracker scan skipped because PyYAML is unavailable; cannot determine configured gpx_directory"
+            )
+            return {
+                "success": True,
+                "action": "scan_skipped_pyyaml",
+                "message": "gpxtracker scan skipped because PyYAML is unavailable",
+            }
         if _dir_has_entries(new_gpx_data_dir):
             logger.info("GPX tracker data already migrated to %s", new_gpx_data_dir)
             return {
@@ -2344,7 +2439,7 @@ def migrate_gpxtracker(
         # 2. Stage GPX files with timestamped names
         for idx, gpx_file in enumerate(old_gpx_dir.glob("*.gpx")):
             # Include microseconds and index to avoid filename collisions
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            timestamp = datetime.now().strftime(MIGRATION_TIMESTAMP_FORMAT)
             new_name = f"{gpx_file.stem}_migrated_{timestamp}_{idx}.gpx"
             dest_staged = staging_dir / new_name
             shutil.move(str(gpx_file), str(dest_staged))
@@ -2599,19 +2694,21 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
     if not dry_run:
         has_space, free_bytes = _check_disk_space(new_home)
         if not has_space:
-            free_mb = free_bytes / (1024 * 1024)
-            min_mb = MIN_FREE_SPACE_BYTES / (1024 * 1024)
+            free_mb = free_bytes / BYTES_PER_MIB
+            required_mb = (
+                MIGRATION_MIN_FREE_SPACE_BYTES * MIGRATION_FREE_SPACE_WARNING_FACTOR
+            ) / BYTES_PER_MIB
             report["success"] = False
             report["error"] = "Insufficient disk space"
             report["message"] = (
                 f"Insufficient disk space for migration. "
-                f"Available: {free_mb:.0f} MB, Required: {min_mb:.0f} MB (with safety margin). "
+                f"Available: {free_mb:.0f} MiB, Required: {required_mb:.0f} MiB (with safety margin). "
                 f"Free up disk space and try again."
             )
             return report
         logger.debug(
-            "Disk space check passed: %d MB available",
-            free_bytes // (1024 * 1024),
+            "Disk space check passed: %d MiB available",
+            free_bytes // BYTES_PER_MIB,
         )
 
     # Get new home directory
@@ -2625,7 +2722,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
         return report
 
     # Acquire migration lock to prevent concurrent migrations
-    lock_file = new_home / LOCK_FILENAME
+    lock_file = new_home / MIGRATION_LOCK_FILENAME
     if not dry_run:
         try:
             lock_file.touch(exist_ok=False)
@@ -2790,7 +2887,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
         report["message"] = "Migration failed"
 
         # Log detailed failure info
-        staging_dir = new_home / STAGING_DIRNAME
+        staging_dir = new_home / MIGRATION_STAGING_DIRNAME
         staged_note = (
             f" Staged data may be present in: {staging_dir}"
             if staging_dir.exists()
@@ -2902,30 +2999,23 @@ def rollback_migration(
         Returns:
             Path | None: Path to the most recent matching backup, or `None` if none exists.
         """
-        # Backup names follow pattern: <name>.bak.<timestamp> or <name>_pre_migration.<timestamp>
-        # The backup is named after the destination that was backed up
         dest_name = dest_path.name
 
-        # Search in order: destination's parent backup dir, then home backup dir
         backup_dirs = [
-            dest_path.parent
-            / BACKUP_DIRNAME,  # Primary: where _backup_file creates them
-            new_home / BACKUP_DIRNAME,  # Fallback: for top-level files
+            dest_path.parent / MIGRATION_BACKUP_DIRNAME,
+            new_home / MIGRATION_BACKUP_DIRNAME,
         ]
 
         for backup_dir in backup_dirs:
             if not backup_dir.exists():
                 continue
 
-            # Look for backups with the destination name
             candidates = []
             for backup in backup_dir.iterdir():
-                # Check if backup name starts with dest_name
                 if backup.name.startswith(dest_name):
                     candidates.append(backup)
 
             if candidates:
-                # Return most recent by modification time
                 return max(candidates, key=lambda p: p.stat().st_mtime)
 
         return None
@@ -2945,17 +3035,14 @@ def rollback_migration(
             bool: True if the restore completed successfully, False otherwise.
         """
         try:
-            # Create parent directories
             restore_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Remove what's currently at restore location
             if restore_path.exists():
                 if restore_path.is_dir():
                     shutil.rmtree(str(restore_path))
                 else:
                     restore_path.unlink()
 
-            # Copy from backup (keep backup intact for safety)
             if backup_path.is_dir():
                 shutil.copytree(str(backup_path), str(restore_path))
             else:
@@ -2970,10 +3057,8 @@ def rollback_migration(
         else:
             return True
 
-    # Process steps in reverse order (last completed first)
     for step_name in reversed(completed_steps):
         try:
-            # Find the migration result for this step
             step_result = None
             for migration in migrations:
                 if migration.get("type") == step_name:
@@ -2989,7 +3074,6 @@ def rollback_migration(
             new_path = step_result.get("new_path")
             action = step_result.get("action")
 
-            # Skip steps that didn't actually migrate anything
             if action in (
                 "none",
                 "already_at_target",
@@ -3007,63 +3091,136 @@ def rollback_migration(
                 continue
 
             new_path_obj = Path(new_path)
+            backed_up_files = step_result.get("backed_up_files", [])
+            migrated_files = step_result.get("migrated_files", [])
 
-            # Find backup for this step
-            backup_path = find_backup_for_step(step_name, new_path_obj)
+            if backed_up_files:
+                all_restored = True
+                for file_info in backed_up_files:
+                    backup_path = Path(file_info["backup_path"])
+                    restore_path = Path(file_info["restore_path"])
+                    if restore_from_backup(backup_path, restore_path, step_name):
+                        rollback_report["rolled_back_steps"].append(
+                            {
+                                "step": step_name,
+                                "restored_from": str(backup_path),
+                                "restored_to": str(restore_path),
+                            }
+                        )
+                    else:
+                        rollback_report["errors"].append(
+                            {
+                                "step": step_name,
+                                "error": f"Failed to restore {restore_path} from {backup_path}",
+                            }
+                        )
+                        all_restored = False
+                        rollback_report["success"] = False
 
-            if backup_path:
-                # Restore from backup to new location (undo the overwrite)
-                if restore_from_backup(backup_path, new_path_obj, step_name):
+                if migrated_files and all_restored:
+                    backed_up_restore_paths = {
+                        Path(f["restore_path"]) for f in backed_up_files
+                    }
+                    # Check if we only restored database sidecars, not the main DB
+                    # In that case, keep migrated DB files to avoid data loss
+                    if step_name == "database":
+                        restored_names = {path.name for path in backed_up_restore_paths}
+                        restored_db_bases = {
+                            _get_db_base_path(path).name
+                            for path in backed_up_restore_paths
+                        }
+                        # If only sidecars were backed up (no main DB), skip deletion
+                        if (
+                            DATABASE_FILENAME not in restored_names
+                            and DATABASE_FILENAME in restored_db_bases
+                        ):
+                            logger.warning(
+                                "Rollback restored only database sidecars; keeping migrated "
+                                "database files to avoid data loss."
+                            )
+                            continue
+                    for migrated_path_str in migrated_files:
+                        migrated_path = Path(migrated_path_str)
+                        if (
+                            migrated_path not in backed_up_restore_paths
+                            and migrated_path.exists()
+                        ):
+                            try:
+                                if migrated_path.is_dir():
+                                    shutil.rmtree(str(migrated_path))
+                                else:
+                                    migrated_path.unlink()
+                                logger.info(
+                                    "Removed unbacked migrated file: %s", migrated_path
+                                )
+                                rollback_report["rolled_back_steps"].append(
+                                    {
+                                        "step": step_name,
+                                        "removed": str(migrated_path),
+                                    }
+                                )
+                            except (OSError, IOError) as exc:
+                                logger.error(
+                                    "Failed to remove unbacked migrated file %s: %s",
+                                    migrated_path,
+                                    exc,
+                                )
+                                rollback_report["errors"].append(
+                                    {
+                                        "step": step_name,
+                                        "error": f"Failed to remove unbacked migrated file {migrated_path}: {exc}",
+                                    }
+                                )
+                                rollback_report["success"] = False
+            else:
+                found_backup = find_backup_for_step(step_name, new_path_obj)
+
+                if found_backup:
+                    if restore_from_backup(found_backup, new_path_obj, step_name):
+                        rollback_report["rolled_back_steps"].append(
+                            {
+                                "step": step_name,
+                                "restored_from": str(found_backup),
+                                "restored_to": new_path,
+                            }
+                        )
+                    else:
+                        rollback_report["errors"].append(
+                            {
+                                "step": step_name,
+                                "error": f"Failed to restore from {found_backup}",
+                            }
+                        )
+                        rollback_report["success"] = False
+                else:
+                    logger.warning(
+                        "No backup found for %s at %s; skipping removal to preserve data. "
+                        "Manual cleanup may be needed.",
+                        step_name,
+                        new_path,
+                    )
                     rollback_report["rolled_back_steps"].append(
                         {
                             "step": step_name,
-                            "restored_from": str(backup_path),
-                            "restored_to": new_path,
+                            "skipped": True,
+                            "reason": "no backup, data preserved",
+                            "path": new_path,
                         }
                     )
-                else:
-                    rollback_report["errors"].append(
-                        {
-                            "step": step_name,
-                            "error": f"Failed to restore from {backup_path}",
-                        }
-                    )
-                    rollback_report["success"] = False
-            else:
-                # No backup exists - destination was new. The source was moved (deleted),
-                # so removing from new_path would cause permanent data loss.
-                logger.warning(
-                    "No backup found for %s at %s; skipping removal to preserve data. "
-                    "Manual cleanup may be needed.",
-                    step_name,
-                    new_path,
-                )
-                rollback_report["rolled_back_steps"].append(
-                    {
-                        "step": step_name,
-                        "skipped": True,
-                        "reason": "no backup, data preserved",
-                        "path": new_path,
-                    }
-                )
 
         except (OSError, IOError, shutil.Error) as e:
             logger.exception("Failed to rollback step '%s'", step_name)
             rollback_report["errors"].append({"step": step_name, "error": str(e)})
             rollback_report["success"] = False
 
-    # Clean up staging directory if rollback succeeded
     if rollback_report["success"]:
-        staging_dir = new_home / STAGING_DIRNAME
+        staging_dir = new_home / MIGRATION_STAGING_DIRNAME
         if staging_dir.exists():
             try:
                 shutil.rmtree(str(staging_dir), ignore_errors=True)
                 logger.debug("Cleaned up staging directory after rollback")
             except (OSError, IOError):
                 pass
-
-    # Note: We intentionally do NOT clean up backups after rollback
-    # They serve as a safety net and can be manually removed later
 
     if rollback_report["success"] and not rollback_report["errors"]:
         logger.info("Rollback completed successfully")

@@ -18,6 +18,7 @@
 #
 # This pattern eliminates RuntimeWarnings while maintaining proper test coverage.
 # See docs/dev/TESTING_GUIDE.md for comprehensive async mocking patterns.
+# ruff: noqa: E402
 
 import builtins
 import json
@@ -27,8 +28,11 @@ import unittest
 import unittest.mock
 from unittest.mock import MagicMock, mock_open, patch
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+# Add repo root and src to path for imports
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
+sys.path.insert(0, os.path.join(repo_root, "src"))
 
 from mmrelay.cli import (
     check_config,
@@ -41,6 +45,10 @@ from mmrelay.cli import (
     parse_arguments,
     print_version,
 )
+from mmrelay.constants.app import CREDENTIALS_FILENAME
+from mmrelay.constants.cli import EXIT_CODE_ERROR, EXIT_CODE_SUCCESS
+from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
+from tests.constants import TEST_CONFIG_PATH, TEST_HOME_CONFIG_PATH, TEST_SERIAL_PORT
 
 
 class TestCLI(unittest.TestCase):
@@ -161,7 +169,7 @@ class TestCLI(unittest.TestCase):
                 "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
                 "meshtastic": {
                     "connection_type": "serial",
-                    "serial_port": "/dev/ttyUSB0",
+                    "serial_port": TEST_SERIAL_PORT,
                 },
             },
         )
@@ -196,7 +204,7 @@ class TestCLI(unittest.TestCase):
                 "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
                 "meshtastic": {
                     "connection_type": "serial",
-                    "serial_port": "/dev/ttyUSB0",
+                    "serial_port": TEST_SERIAL_PORT,
                 },
             },
         )
@@ -332,7 +340,7 @@ class TestGenerateSampleConfig(unittest.TestCase):
         """
         Test that generate_sample_config returns False and prints a message when the config file already exists.
         """
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH]
         mock_isfile.return_value = True
 
         with patch("builtins.print") as mock_print:
@@ -362,7 +370,7 @@ class TestGenerateSampleConfig(unittest.TestCase):
         """
         Test that generate_sample_config creates a sample config file when none exists and the sample file is available, ensuring correct file operations and success message output.
         """
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH]
         mock_isfile.return_value = False  # No existing config
         mock_get_sample.return_value = "/path/to/sample_config.yaml"
         mock_exists.return_value = True  # Sample config exists
@@ -397,7 +405,7 @@ class TestGenerateSampleConfig(unittest.TestCase):
 
         Simulates the absence of the sample config file at the expected location, mocks importlib.resources to provide sample content, and verifies that the config file is created with the correct content.
         """
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH]
         mock_isfile.return_value = False
         mock_get_sample.return_value = "/nonexistent/path"
         mock_exists.return_value = False  # Sample config doesn't exist at helper path
@@ -437,7 +445,7 @@ class TestMainFunction(unittest.TestCase):
 
         result = main()
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_check.assert_called_once_with(args)
 
     @patch("mmrelay.cli.parse_arguments")
@@ -457,7 +465,7 @@ class TestMainFunction(unittest.TestCase):
 
         result = main()
 
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.setup_utils.install_service")
@@ -476,7 +484,7 @@ class TestMainFunction(unittest.TestCase):
 
         result = main()
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_install.assert_called_once()
 
     @patch("mmrelay.cli.parse_arguments")
@@ -496,7 +504,7 @@ class TestMainFunction(unittest.TestCase):
 
         result = main()
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_generate.assert_called_once()
 
     @patch("mmrelay.cli.parse_arguments")
@@ -515,7 +523,7 @@ class TestMainFunction(unittest.TestCase):
 
         result = main()
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_print_version.assert_called_once()
 
     @patch("mmrelay.cli.parse_arguments")
@@ -536,7 +544,7 @@ class TestMainFunction(unittest.TestCase):
 
         result = main()
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_run_main.assert_called_once_with(args)
 
     @patch("mmrelay.cli.os.makedirs")
@@ -568,7 +576,7 @@ class TestMainFunction(unittest.TestCase):
         try:
             result = main()
 
-            self.assertEqual(result, 0)
+            self.assertEqual(result, EXIT_CODE_SUCCESS)
             mock_expanduser.assert_called_once_with("~/mmrelay")
             mock_makedirs.assert_called_once_with("/home/test/mmrelay", exist_ok=True)
             expected_home = os.path.abspath(mock_expanduser.return_value)
@@ -641,11 +649,11 @@ class TestCLIValidationFunctions(unittest.TestCase):
             "homeserver": "https://matrix.org",
             "access_token": "test_token",
             "user_id": "@test:matrix.org",
-            "device_id": "test_device",
+            CONFIG_KEY_DEVICE_ID: "test_device",
         }
 
         with patch("builtins.open", mock_open(read_data=json.dumps(valid_credentials))):
-            result = _validate_credentials_json("/path/to/config.yaml")
+            result = _validate_credentials_json(TEST_CONFIG_PATH)
             self.assertTrue(result)
 
     @patch("os.path.exists")
@@ -654,7 +662,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
         from mmrelay.cli import _validate_credentials_json
 
         mock_exists.return_value = False
-        result = _validate_credentials_json("/path/to/config.yaml")
+        result = _validate_credentials_json(TEST_CONFIG_PATH)
         self.assertFalse(result)
 
     @patch("os.path.exists")
@@ -665,7 +673,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
         mock_exists.return_value = True
 
         with patch("builtins.open", mock_open(read_data='{"incomplete": "data"}')):
-            result = _validate_credentials_json("/path/to/config.yaml")
+            result = _validate_credentials_json(TEST_CONFIG_PATH)
             self.assertFalse(result)
 
     @patch("os.path.exists")
@@ -677,7 +685,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
 
         with self.assertLogs("mmrelay.cli", level="WARNING"):
             with patch("builtins.open", mock_open(read_data='["bad"]')):
-                result = _validate_credentials_json("/path/to/config.yaml")
+                result = _validate_credentials_json(TEST_CONFIG_PATH)
         self.assertFalse(result)
 
     @patch("os.path.exists")
@@ -692,14 +700,14 @@ class TestCLIValidationFunctions(unittest.TestCase):
             "homeserver": "https://matrix.org",
             "access_token": "test_token",
             "user_id": "@test:matrix.org",
-            "device_id": "test_device",
+            CONFIG_KEY_DEVICE_ID: "test_device",
         }
 
         with (
             patch("mmrelay.config.get_base_dir", return_value="/home/user/.mmrelay"),
             patch("builtins.open", mock_open(read_data=json.dumps(valid_credentials))),
         ):
-            result = _validate_credentials_json("/path/to/config.yaml")
+            result = _validate_credentials_json(TEST_CONFIG_PATH)
             self.assertTrue(result)
 
     @patch("os.path.exists")
@@ -714,7 +722,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
             patch("builtins.open", side_effect=FileNotFoundError("File not found")),
             patch("builtins.print"),
         ):
-            result = _validate_credentials_json("/path/to/config.yaml")
+            result = _validate_credentials_json(TEST_CONFIG_PATH)
             self.assertFalse(result)
 
     def test_validate_matrix_authentication_with_credentials(self):
@@ -725,7 +733,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
             patch("mmrelay.cli._validate_credentials_json", return_value=True),
             patch("builtins.print"),
         ):
-            result = _validate_matrix_authentication("/path/to/config.yaml", None)
+            result = _validate_matrix_authentication(TEST_CONFIG_PATH, None)
             self.assertTrue(result)
 
     def test_validate_matrix_authentication_with_config(self):
@@ -742,9 +750,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
             patch("mmrelay.cli._validate_credentials_json", return_value=False),
             patch("builtins.print"),
         ):
-            result = _validate_matrix_authentication(
-                "/path/to/config.yaml", matrix_section
-            )
+            result = _validate_matrix_authentication(TEST_CONFIG_PATH, matrix_section)
             self.assertTrue(result)
 
     def test_validate_matrix_authentication_none(self):
@@ -755,7 +761,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
             patch("mmrelay.cli._validate_credentials_json", return_value=False),
             patch("builtins.print"),
         ):
-            result = _validate_matrix_authentication("/path/to/config.yaml", None)
+            result = _validate_matrix_authentication(TEST_CONFIG_PATH, None)
             self.assertFalse(result)
 
     def test_is_valid_serial_port_linux_valid(self):
@@ -763,7 +769,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
         from mmrelay.cli import _is_valid_serial_port
 
         with patch("platform.system", return_value="Linux"):
-            self.assertTrue(_is_valid_serial_port("/dev/ttyUSB0"))
+            self.assertTrue(_is_valid_serial_port(TEST_SERIAL_PORT))
             self.assertTrue(_is_valid_serial_port("/dev/ttyACM0"))
             self.assertTrue(_is_valid_serial_port("/dev/cu.usbserial-1234"))
             self.assertTrue(_is_valid_serial_port("/dev/ttyS0"))
@@ -797,7 +803,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
             self.assertFalse(_is_valid_serial_port("COMA"))
             self.assertFalse(_is_valid_serial_port("COM1A"))
             self.assertFalse(_is_valid_serial_port("COM 1"))
-            self.assertFalse(_is_valid_serial_port("/dev/ttyUSB0"))
+            self.assertFalse(_is_valid_serial_port(TEST_SERIAL_PORT))
 
     def test_is_valid_serial_port_edge_cases(self):
         """Test _is_valid_serial_port with edge cases."""
@@ -903,7 +909,7 @@ class TestCLISubcommandHandlers(unittest.TestCase):
 
         with patch("mmrelay.cli.handle_config_command", return_value=0) as mock_handle:
             result = handle_subcommand(args)
-            self.assertEqual(result, 0)
+            self.assertEqual(result, EXIT_CODE_SUCCESS)
             mock_handle.assert_called_once_with(args)
 
     def test_handle_subcommand_auth(self):
@@ -915,7 +921,7 @@ class TestCLISubcommandHandlers(unittest.TestCase):
 
         with patch("mmrelay.cli.handle_auth_command", return_value=0) as mock_handle:
             result = handle_subcommand(args)
-            self.assertEqual(result, 0)
+            self.assertEqual(result, EXIT_CODE_SUCCESS)
             mock_handle.assert_called_once_with(args)
 
     def test_handle_subcommand_service(self):
@@ -927,7 +933,7 @@ class TestCLISubcommandHandlers(unittest.TestCase):
 
         with patch("mmrelay.cli.handle_service_command", return_value=0) as mock_handle:
             result = handle_subcommand(args)
-            self.assertEqual(result, 0)
+            self.assertEqual(result, EXIT_CODE_SUCCESS)
             mock_handle.assert_called_once_with(args)
 
     def test_handle_config_command_generate(self):
@@ -941,7 +947,7 @@ class TestCLISubcommandHandlers(unittest.TestCase):
             "mmrelay.cli.generate_sample_config", return_value=True
         ) as mock_generate:
             result = handle_config_command(args)
-            self.assertEqual(result, 0)
+            self.assertEqual(result, EXIT_CODE_SUCCESS)
             mock_generate.assert_called_once()
 
     def test_handle_config_command_check(self):
@@ -953,7 +959,7 @@ class TestCLISubcommandHandlers(unittest.TestCase):
 
         with patch("mmrelay.cli.check_config", return_value=True) as mock_check:
             result = handle_config_command(args)
-            self.assertEqual(result, 0)
+            self.assertEqual(result, EXIT_CODE_SUCCESS)
             mock_check.assert_called_once_with(args)
 
     def test_handle_auth_command_login(self):
@@ -965,7 +971,7 @@ class TestCLISubcommandHandlers(unittest.TestCase):
 
         with patch("mmrelay.cli.handle_auth_login", return_value=0) as mock_login:
             result = handle_auth_command(args)
-            self.assertEqual(result, 0)
+            self.assertEqual(result, EXIT_CODE_SUCCESS)
             mock_login.assert_called_once_with(args)
 
     def test_handle_auth_command_status(self):
@@ -977,7 +983,7 @@ class TestCLISubcommandHandlers(unittest.TestCase):
 
         with patch("mmrelay.cli.handle_auth_status", return_value=0) as mock_status:
             result = handle_auth_command(args)
-            self.assertEqual(result, 0)
+            self.assertEqual(result, EXIT_CODE_SUCCESS)
             mock_status.assert_called_once_with(args)
 
 
@@ -991,7 +997,7 @@ class TestE2EEConfigurationFunctions(unittest.TestCase):
         config = {"matrix": {"homeserver": "https://matrix.org"}}
 
         with patch("mmrelay.cli._validate_matrix_authentication", return_value=True):
-            result = _validate_e2ee_config(config, None, "/path/to/config.yaml")
+            result = _validate_e2ee_config(config, None, TEST_CONFIG_PATH)
             self.assertTrue(result)
 
     def test_validate_e2ee_config_e2ee_disabled(self):
@@ -1005,9 +1011,7 @@ class TestE2EEConfigurationFunctions(unittest.TestCase):
             patch("mmrelay.cli._validate_matrix_authentication", return_value=True),
             patch("mmrelay.cli.print"),
         ):
-            result = _validate_e2ee_config(
-                config, matrix_section, "/path/to/config.yaml"
-            )
+            result = _validate_e2ee_config(config, matrix_section, TEST_CONFIG_PATH)
             self.assertTrue(result)
 
     def test_validate_e2ee_config_e2ee_enabled_valid(self):
@@ -1031,9 +1035,7 @@ class TestE2EEConfigurationFunctions(unittest.TestCase):
             patch("os.path.exists", return_value=True),
             patch("builtins.print"),
         ):
-            result = _validate_e2ee_config(
-                config, matrix_section, "/path/to/config.yaml"
-            )
+            result = _validate_e2ee_config(config, matrix_section, TEST_CONFIG_PATH)
             self.assertTrue(result)
 
     def test_validate_e2ee_config_e2ee_enabled_invalid_deps(self):
@@ -1049,9 +1051,7 @@ class TestE2EEConfigurationFunctions(unittest.TestCase):
             patch("mmrelay.cli._validate_matrix_authentication", return_value=True),
             patch("mmrelay.cli._validate_e2ee_dependencies", return_value=False),
         ):
-            result = _validate_e2ee_config(
-                config, matrix_section, "/path/to/config.yaml"
-            )
+            result = _validate_e2ee_config(config, matrix_section, TEST_CONFIG_PATH)
             self.assertFalse(result)
 
 
@@ -1071,7 +1071,7 @@ class TestE2EEAnalysisFunctions(unittest.TestCase):
             "sys.modules",
             {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
         ):
-            result = _analyze_e2ee_setup(config, "/path/to/config.yaml")
+            result = _analyze_e2ee_setup(config, TEST_CONFIG_PATH)
 
             self.assertTrue(result["config_enabled"])
             self.assertTrue(result["dependencies_available"])
@@ -1086,7 +1086,7 @@ class TestE2EEAnalysisFunctions(unittest.TestCase):
 
         config = {"matrix": {"e2ee": {"enabled": True}}}
 
-        result = _analyze_e2ee_setup(config, "/path/to/config.yaml")
+        result = _analyze_e2ee_setup(config, TEST_CONFIG_PATH)
 
         self.assertFalse(result["platform_supported"])
         self.assertEqual(result["overall_status"], "not_supported")
@@ -1105,7 +1105,7 @@ class TestE2EEAnalysisFunctions(unittest.TestCase):
             "sys.modules",
             {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
         ):
-            result = _analyze_e2ee_setup(config, "/path/to/config.yaml")
+            result = _analyze_e2ee_setup(config, TEST_CONFIG_PATH)
 
             self.assertFalse(result["config_enabled"])
             self.assertEqual(result["overall_status"], "disabled")
@@ -1208,7 +1208,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_input.assert_called_once_with("Are you sure you want to logout? (y/N): ")
         mock_asyncio_run.assert_called_once()
 
@@ -1229,7 +1229,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_input.assert_called_once_with("Are you sure you want to logout? (y/N): ")
         mock_asyncio_run.assert_not_called()  # Should not attempt logout due to cancellation
         # Check that cancellation message was printed
@@ -1249,7 +1249,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_asyncio_run.assert_called_once()
 
     @patch("asyncio.run")
@@ -1270,7 +1270,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_getpass.assert_called_once_with("Enter Matrix password for verification: ")
         mock_asyncio_run.assert_called_once()
 
@@ -1281,9 +1281,7 @@ class TestAuthLogout(unittest.TestCase):
     def test_handle_auth_logout_password_prompt_empty(
         self, mock_print, mock_getpass, mock_asyncio_run
     ):
-        """Test logout with password='' (prompt for password)."""
-        # ASYNC MOCK FIX: Mock asyncio.run instead of the async function directly
-        mock_getpass.return_value = "prompted_password"
+        """Test logout with password='' (empty string accepted, no prompt)."""
         mock_asyncio_run.return_value = True
         self.mock_args.password = ""
         self.mock_args.yes = True
@@ -1291,9 +1289,9 @@ class TestAuthLogout(unittest.TestCase):
         # Call function
         result = handle_auth_logout(self.mock_args)
 
-        # Verify results
-        self.assertEqual(result, 0)
-        mock_getpass.assert_called_once_with("Enter Matrix password for verification: ")
+        # Verify results - empty string is accepted, no prompt triggered
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
+        mock_getpass.assert_not_called()
         mock_asyncio_run.assert_called_once()
 
     @patch("asyncio.run")
@@ -1312,7 +1310,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         # Check that security warning was printed
         mock_print.assert_any_call(
             "⚠️  Warning: Supplying password as argument exposes it in shell history and process list."
@@ -1336,7 +1334,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_asyncio_run.assert_called_once()
 
     @patch("asyncio.run")
@@ -1353,7 +1351,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_print.assert_any_call("\nLogout cancelled by user.")
 
     @patch(
@@ -1371,7 +1369,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_print.assert_any_call("\nError during logout: Test error")
 
     @patch("builtins.print")
@@ -1395,7 +1393,7 @@ class TestAuthLogout(unittest.TestCase):
             mock_print.assert_any_call(
                 "This will log out from Matrix and clear all local session data:"
             )
-            mock_print.assert_any_call("• Remove credentials.json")
+            mock_print.assert_any_call(f"• Remove {CREDENTIALS_FILENAME}")
             mock_print.assert_any_call("• Clear E2EE encryption store")
             mock_print.assert_any_call("• Invalidate Matrix access token")
 
@@ -1428,7 +1426,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_login.assert_called_once_with(
             homeserver=None, username=None, password=None, logout_others=False
@@ -1451,7 +1449,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_login.assert_called_once_with(
             homeserver=None, username=None, password=None, logout_others=False
@@ -1476,7 +1474,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_login.assert_called_once_with(
             homeserver="https://matrix.org",
@@ -1506,7 +1504,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_login.assert_called_once()
 
@@ -1520,7 +1518,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         # Check error message content
         expected_message = """❌ Error: All authentication parameters are required when using command-line options.
    Missing: --username, --password
@@ -1543,7 +1541,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         # Check error message content
         expected_message = """❌ Error: All authentication parameters are required when using command-line options.
    Missing: --homeserver, --password
@@ -1566,7 +1564,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         # Check error message content
         expected_message = """❌ Error: All authentication parameters are required when using command-line options.
    Missing: --homeserver, --username
@@ -1590,7 +1588,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         # Check error message content
         expected_message = """❌ Error: All authentication parameters are required when using command-line options.
    Missing: --password
@@ -1614,7 +1612,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         # Check error message content
         expected_message = """❌ Error: All authentication parameters are required when using command-line options.
    Missing: --username
@@ -1638,7 +1636,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         # Check error message content
         expected_message = """❌ Error: All authentication parameters are required when using command-line options.
    Missing: --homeserver
@@ -1661,7 +1659,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         # Check that guidance messages are included in the combined message
         expected_message = """❌ Error: All authentication parameters are required when using command-line options.
    Missing: --username, --password
@@ -1688,7 +1686,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_print.assert_any_call("\nAuthentication cancelled by user.")
 
@@ -1706,7 +1704,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_print.assert_any_call("\nError during authentication: Test error")
 
@@ -1726,7 +1724,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)  # Should return error code
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return error code
         mock_print.assert_any_call(
             "❌ Error: --homeserver and --username must be non-empty for non-interactive login."
         )
@@ -1749,7 +1747,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify interactive mode
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_login.assert_called_with(
             homeserver=None, username=None, password=None, logout_others=False
         )
@@ -1768,7 +1766,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify validation error
-        self.assertEqual(result, 1)  # Should return error code
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return error code
         mock_print.assert_any_call(
             "❌ Error: --homeserver and --username must be non-empty for non-interactive login."
         )
@@ -1792,7 +1790,7 @@ class TestAuthStatus(unittest.TestCase):
     ):
         """Test successful status check when credentials.json exists and is valid."""
         # Setup mocks
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH]
         mock_exists.return_value = True
         mock_get_command.return_value = "mmrelay auth login"
 
@@ -1801,7 +1799,7 @@ class TestAuthStatus(unittest.TestCase):
             "homeserver": "https://matrix.org",
             "access_token": "syt_dGVzdA_test_token_here",
             "user_id": "@bot:matrix.org",
-            "device_id": "DEVICEABC123",
+            CONFIG_KEY_DEVICE_ID: "DEVICEABC123",
         }
         mock_file.return_value.read.return_value = json.dumps(credentials_data)
 
@@ -1811,7 +1809,7 @@ class TestAuthStatus(unittest.TestCase):
         result = handle_auth_status(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_get_paths.assert_called_once_with(self.mock_args)
         # Ensure at least one credentials candidate path was checked and opened.
         self.assertGreaterEqual(mock_exists.call_count, 1)
@@ -1837,13 +1835,43 @@ class TestAuthStatus(unittest.TestCase):
     @patch("mmrelay.cli_utils.get_command")
     @patch("mmrelay.config.get_config_paths")
     @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_handle_auth_status_credentials_missing_user_id_shows_runtime_note(
+        self, mock_print, mock_file, mock_exists, mock_get_paths, mock_get_command
+    ):
+        """Missing user_id should still be valid and display recovery guidance."""
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH]
+        mock_exists.return_value = True
+        mock_get_command.return_value = "mmrelay auth login"
+
+        credentials_data = {
+            "homeserver": "https://matrix.org",
+            "access_token": "syt_dGVzdA_test_token_here",
+            CONFIG_KEY_DEVICE_ID: "DEVICEABC123",
+        }
+        mock_file.return_value.read.return_value = json.dumps(credentials_data)
+
+        from mmrelay.cli import handle_auth_status
+
+        result = handle_auth_status(self.mock_args)
+
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
+        mock_print.assert_any_call("   User ID: <missing>")
+        mock_print.assert_any_call(
+            "   Note: user_id is optional and can be recovered at runtime via whoami."
+        )
+
+    @patch("mmrelay.cli_utils.get_command")
+    @patch("mmrelay.config.get_config_paths")
+    @patch("os.path.exists")
     @patch("builtins.print")
     def test_handle_auth_status_credentials_not_found(
         self, mock_print, mock_exists, mock_get_paths, mock_get_command
     ):
         """Test status check when credentials.json does not exist."""
         # Setup mocks
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH]
         mock_exists.return_value = False
         mock_get_command.return_value = "mmrelay auth login"
 
@@ -1853,9 +1881,13 @@ class TestAuthStatus(unittest.TestCase):
         result = handle_auth_status(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_get_paths.assert_called_once_with(self.mock_args)
-        mock_exists.assert_any_call("/home/user/.mmrelay/credentials.json")
+        home_dir = os.path.dirname(TEST_HOME_CONFIG_PATH)
+        mock_exists.assert_any_call(os.path.join(home_dir, CREDENTIALS_FILENAME))
+        mock_exists.assert_any_call(
+            os.path.join(home_dir, "matrix", CREDENTIALS_FILENAME)
+        )
 
         # Check printed output
         mock_print.assert_any_call("Matrix Authentication Status")
@@ -1873,7 +1905,7 @@ class TestAuthStatus(unittest.TestCase):
     ):
         """Test status check when credentials.json exists but contains invalid JSON."""
         # Setup mocks
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH]
         mock_exists.return_value = True
         mock_get_command.return_value = "mmrelay auth login"
 
@@ -1887,9 +1919,13 @@ class TestAuthStatus(unittest.TestCase):
         result = handle_auth_status(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_get_paths.assert_called_once_with(self.mock_args)
-        mock_exists.assert_any_call("/home/user/.mmrelay/credentials.json")
+        home_dir = os.path.dirname(TEST_HOME_CONFIG_PATH)
+        mock_exists.assert_any_call(os.path.join(home_dir, CREDENTIALS_FILENAME))
+        mock_exists.assert_any_call(
+            os.path.join(home_dir, "matrix", CREDENTIALS_FILENAME)
+        )
 
         # Check error output
         mock_print.assert_any_call("Matrix Authentication Status")
@@ -1906,7 +1942,7 @@ class TestAuthStatus(unittest.TestCase):
     ):
         """Test status check when credentials.json exists but is missing some fields."""
         # Setup mocks
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH]
         mock_exists.return_value = True
         mock_get_command.return_value = "mmrelay auth login"
 
@@ -1923,7 +1959,7 @@ class TestAuthStatus(unittest.TestCase):
         result = handle_auth_status(self.mock_args)
 
         # Verify results - invalid credentials should be skipped and auth is reported missing
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
 
         # Check printed output shows invalid credentials were skipped (path may vary)
         found_skip_warning = False
@@ -1950,13 +1986,12 @@ class TestAuthStatus(unittest.TestCase):
     ):
         """Test status check with multiple config paths, credentials found in second path."""
         # Setup mocks - multiple config paths
-        mock_get_paths.return_value = [
-            "/home/user/.mmrelay/config.yaml",
-            "/etc/mmrelay/config.yaml",
-        ]
+        home_dir = os.path.dirname(TEST_HOME_CONFIG_PATH)
+        etc_dir = os.path.dirname(TEST_CONFIG_PATH)
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH, TEST_CONFIG_PATH]
         # First path doesn't have credentials, second path does (in matrix/ subdir)
-        mock_exists.side_effect = (
-            lambda path: path == "/etc/mmrelay/matrix/credentials.json"
+        mock_exists.side_effect = lambda path: (
+            path == os.path.join(etc_dir, "matrix", CREDENTIALS_FILENAME)
         )
         mock_get_command.return_value = "mmrelay auth login"
 
@@ -1965,7 +2000,7 @@ class TestAuthStatus(unittest.TestCase):
             "homeserver": "https://matrix.example.com",
             "access_token": "syt_dGVzdA_test_token_here",
             "user_id": "@relay:example.com",
-            "device_id": "DEVICE456",
+            CONFIG_KEY_DEVICE_ID: "DEVICE456",
         }
 
         with patch("builtins.open", mock_open(read_data=json.dumps(credentials_data))):
@@ -1975,18 +2010,22 @@ class TestAuthStatus(unittest.TestCase):
             result = handle_auth_status(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_get_paths.assert_called_once_with(self.mock_args)
 
         # Should check configured candidates, including second config path.
-        mock_exists.assert_any_call("/home/user/.mmrelay/credentials.json")
-        mock_exists.assert_any_call("/home/user/.mmrelay/matrix/credentials.json")
-        mock_exists.assert_any_call("/etc/mmrelay/credentials.json")
-        mock_exists.assert_any_call("/etc/mmrelay/matrix/credentials.json")
+        mock_exists.assert_any_call(os.path.join(home_dir, CREDENTIALS_FILENAME))
+        mock_exists.assert_any_call(
+            os.path.join(home_dir, "matrix", CREDENTIALS_FILENAME)
+        )
+        mock_exists.assert_any_call(os.path.join(etc_dir, CREDENTIALS_FILENAME))
+        mock_exists.assert_any_call(
+            os.path.join(etc_dir, "matrix", CREDENTIALS_FILENAME)
+        )
 
         # Check printed output shows second path
         mock_print.assert_any_call(
-            "✅ Found credentials.json at: /etc/mmrelay/matrix/credentials.json"
+            f"✅ Found credentials.json at: {os.path.join(etc_dir, 'matrix', 'credentials.json')}"
         )
         mock_print.assert_any_call("   Homeserver: https://matrix.example.com")
         mock_print.assert_any_call("   User ID: @relay:example.com")
@@ -2014,7 +2053,7 @@ class TestServiceCommand(unittest.TestCase):
         result = handle_service_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_install.assert_called_once()
         mock_print.assert_not_called()  # No error messages on success
 
@@ -2032,7 +2071,7 @@ class TestServiceCommand(unittest.TestCase):
         result = handle_service_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_install.assert_called_once()
         mock_print.assert_not_called()  # No error messages, just return code
 
@@ -2054,7 +2093,7 @@ class TestServiceCommand(unittest.TestCase):
         result = handle_service_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_print.assert_called_once_with(
             "Error importing setup utilities: Module not found"
         )
@@ -2071,7 +2110,7 @@ class TestServiceCommand(unittest.TestCase):
         result = handle_service_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_print.assert_called_once_with("Unknown service command: unknown_command")
 
     @patch("builtins.print")
@@ -2086,7 +2125,7 @@ class TestServiceCommand(unittest.TestCase):
         result = handle_service_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_print.assert_called_once_with("Unknown service command: None")
 
 
@@ -2115,14 +2154,14 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     def test_validate_credentials_json_missing_homeserver(self, mock_file, mock_exists):
         """Test validation when credentials.json is missing homeserver field."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
 
         # Mock credentials with missing homeserver
         credentials_data = {
             "access_token": "syt_test_token_123",
             "user_id": "@bot:matrix.org",
-            "device_id": "DEVICEABC123",
+            CONFIG_KEY_DEVICE_ID: "DEVICEABC123",
             # Missing homeserver
         }
         mock_file.return_value.read.return_value = json.dumps(credentials_data)
@@ -2143,14 +2182,14 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     ):
         """Test validation when credentials.json is missing access_token field."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
 
         # Mock credentials with missing access_token
         credentials_data = {
             "homeserver": "https://matrix.org",
             "user_id": "@bot:matrix.org",
-            "device_id": "DEVICEABC123",
+            CONFIG_KEY_DEVICE_ID: "DEVICEABC123",
             # Missing access_token
         }
         mock_file.return_value.read.return_value = json.dumps(credentials_data)
@@ -2166,17 +2205,19 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
-    def test_validate_credentials_json_missing_user_id(self, mock_file, mock_exists):
-        """Test validation when credentials.json is missing user_id field."""
+    def test_validate_credentials_json_missing_user_id_is_accepted(
+        self, mock_file, mock_exists
+    ):
+        """Legacy credentials missing user_id should remain valid for whoami recovery."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
 
         # Mock credentials with missing user_id
         credentials_data = {
             "homeserver": "https://matrix.org",
             "access_token": "syt_test_token_123",
-            "device_id": "DEVICEABC123",
+            CONFIG_KEY_DEVICE_ID: "DEVICEABC123",
             # Missing user_id
         }
         mock_file.return_value.read.return_value = json.dumps(credentials_data)
@@ -2184,18 +2225,17 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         # Import and call function
         from mmrelay.cli import _validate_credentials_json
 
-        with self.assertLogs("mmrelay.cli", level="WARNING"):
-            result = _validate_credentials_json(config_path)
+        result = _validate_credentials_json(config_path)
 
         # Verify results
-        self.assertFalse(result)
+        self.assertTrue(result)
 
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
     def test_validate_credentials_json_missing_device_id(self, mock_file, mock_exists):
         """Test validation when credentials.json is missing device_id field."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
 
         # Mock credentials with missing device_id
@@ -2221,7 +2261,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     def test_validate_credentials_json_empty_field_values(self, mock_file, mock_exists):
         """Test validation when credentials.json has empty field values."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
 
         # Mock credentials with empty homeserver field
@@ -2229,7 +2269,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
             "homeserver": "",  # Empty value
             "access_token": "syt_test_token_123",
             "user_id": "@bot:matrix.org",
-            "device_id": "DEVICEABC123",
+            CONFIG_KEY_DEVICE_ID: "DEVICEABC123",
         }
         mock_file.return_value.read.return_value = json.dumps(credentials_data)
 
@@ -2246,7 +2286,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     def test_validate_credentials_json_file_read_error(self, mock_exists):
         """Test validation when credentials.json cannot be read due to permissions or other IO error."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
 
         # Mock file read error
@@ -2265,7 +2305,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     def test_validate_credentials_json_invalid_json(self, mock_file, mock_exists):
         """Test validation when credentials.json contains invalid JSON."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
         # Mock file with invalid JSON
         mock_file.return_value.read.return_value = "{invalid json}"
@@ -2286,7 +2326,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     ):
         """Test validation when credentials.json is missing multiple fields (should report first missing)."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
 
         # Mock credentials with multiple missing fields
@@ -2346,7 +2386,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
     ):
         """Test authentication validation with valid credentials.json."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         matrix_section = {"access_token": "token123"}
         mock_validate_creds.return_value = True
 
@@ -2373,7 +2413,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
     ):
         """Test authentication validation falling back to access_token."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         matrix_section = {"access_token": "token123"}
         mock_validate_creds.return_value = False  # No valid credentials.json
         mock_msg_e2ee.return_value = "E2EE not available with access_token"
@@ -2399,7 +2439,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
     ):
         """Test authentication validation with no authentication configured."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         matrix_section = {}  # No access_token
         mock_validate_creds.return_value = False  # No valid credentials.json
         mock_msg_setup.return_value = (
@@ -2426,7 +2466,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
     ):
         """Test authentication validation with None matrix_section."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         matrix_section = None  # No matrix section
         mock_validate_creds.return_value = False  # No valid credentials.json
 
@@ -2448,7 +2488,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
     ):
         """Test authentication validation with empty access_token (now correctly rejected)."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         matrix_section = {"access_token": ""}  # Empty access_token (should be rejected)
         mock_validate_creds.return_value = False  # No valid credentials.json
         mock_msg_e2ee.return_value = "E2EE not available with access_token"
@@ -2469,7 +2509,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
         self, mock_validate_creds
     ):
         """Test that base_config is forwarded to _validate_credentials_json."""
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         matrix_section = {"access_token": "token123"}
         base_config = {"matrix": {"homeserver": "https://matrix.org"}}
         mock_validate_creds.return_value = True
@@ -2507,7 +2547,7 @@ class TestHandleCliCommands(unittest.TestCase):
         result = handle_cli_commands(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)  # Should return 0 for success
+        self.assertEqual(result, EXIT_CODE_SUCCESS)  # Should return 0 for success
         mock_print_version.assert_called_once()
 
     @patch("mmrelay.setup_utils.install_service")
@@ -2523,7 +2563,7 @@ class TestHandleCliCommands(unittest.TestCase):
 
         # Verify results
         mock_install_service.assert_called_once()
-        self.assertEqual(result, 0)  # Should return 0 for success
+        self.assertEqual(result, EXIT_CODE_SUCCESS)  # Should return 0 for success
 
     @patch("mmrelay.setup_utils.install_service")
     def test_handle_cli_commands_install_service_failure(self, mock_install_service):
@@ -2538,7 +2578,7 @@ class TestHandleCliCommands(unittest.TestCase):
 
         # Verify results
         mock_install_service.assert_called_once()
-        self.assertEqual(result, 1)  # Should return 1 for error
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return 1 for error
 
     @patch("mmrelay.cli.generate_sample_config")
     def test_handle_cli_commands_generate_config_success(self, mock_generate_config):
@@ -2552,7 +2592,7 @@ class TestHandleCliCommands(unittest.TestCase):
         result = handle_cli_commands(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)  # Should return 0 for success
+        self.assertEqual(result, EXIT_CODE_SUCCESS)  # Should return 0 for success
         mock_generate_config.assert_called_once()
 
     @patch("mmrelay.cli.generate_sample_config")
@@ -2568,7 +2608,7 @@ class TestHandleCliCommands(unittest.TestCase):
 
         # Verify results
         mock_generate_config.assert_called_once()
-        self.assertEqual(result, 1)  # Should return 1 for error
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return 1 for error
 
     @patch("mmrelay.cli.check_config")
     def test_handle_cli_commands_check_config_success(self, mock_check_config):
@@ -2583,7 +2623,7 @@ class TestHandleCliCommands(unittest.TestCase):
 
         # Verify results
         mock_check_config.assert_called_once()
-        self.assertEqual(result, 0)  # Should return 0 for success
+        self.assertEqual(result, EXIT_CODE_SUCCESS)  # Should return 0 for success
 
     @patch("mmrelay.cli.check_config")
     def test_handle_cli_commands_check_config_failure(self, mock_check_config):
@@ -2598,7 +2638,7 @@ class TestHandleCliCommands(unittest.TestCase):
 
         # Verify results
         mock_check_config.assert_called_once()
-        self.assertEqual(result, 1)  # Should return 1 for error
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return 1 for error
 
     def test_handle_cli_commands_no_flags(self):
         """Test handling when no CLI flags are set."""
@@ -2635,7 +2675,7 @@ class TestHandleSubcommand(unittest.TestCase):
         result = handle_subcommand(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_config.assert_called_once_with(self.mock_args)
         mock_print.assert_not_called()
 
@@ -2653,7 +2693,7 @@ class TestHandleSubcommand(unittest.TestCase):
         result = handle_subcommand(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_auth.assert_called_once_with(self.mock_args)
         mock_print.assert_not_called()
 
@@ -2671,7 +2711,7 @@ class TestHandleSubcommand(unittest.TestCase):
         result = handle_subcommand(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_service.assert_called_once_with(self.mock_args)
         mock_print.assert_not_called()
 
@@ -2687,7 +2727,7 @@ class TestHandleSubcommand(unittest.TestCase):
         result = handle_subcommand(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)  # Should return error code
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return error code
         mock_print.assert_called_once_with("Unknown command: unknown")
 
 
@@ -2712,7 +2752,7 @@ class TestHandleConfigCommand(unittest.TestCase):
         result = handle_config_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_generate.assert_called_once()
         mock_print.assert_not_called()
 
@@ -2730,7 +2770,7 @@ class TestHandleConfigCommand(unittest.TestCase):
         result = handle_config_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)  # Should return error code
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return error code
         mock_generate.assert_called_once()
         mock_print.assert_not_called()
 
@@ -2748,7 +2788,7 @@ class TestHandleConfigCommand(unittest.TestCase):
         result = handle_config_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_check.assert_called_once_with(self.mock_args)
         mock_print.assert_not_called()
 
@@ -2766,7 +2806,7 @@ class TestHandleConfigCommand(unittest.TestCase):
         result = handle_config_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)  # Should return error code
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return error code
         mock_check.assert_called_once_with(self.mock_args)
         mock_print.assert_not_called()
 
@@ -2782,7 +2822,7 @@ class TestHandleConfigCommand(unittest.TestCase):
         result = handle_config_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)  # Should return error code
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return error code
         mock_print.assert_called_once_with("Unknown config command: unknown")
 
 
@@ -2806,7 +2846,7 @@ class TestHandleAuthCommand(unittest.TestCase):
         result = handle_auth_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_status.assert_called_once_with(self.mock_args)
 
     @patch("mmrelay.cli.handle_auth_logout")
@@ -2822,7 +2862,7 @@ class TestHandleAuthCommand(unittest.TestCase):
         result = handle_auth_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_logout.assert_called_once_with(self.mock_args)
 
     @patch("mmrelay.cli.handle_auth_login")
@@ -2838,7 +2878,7 @@ class TestHandleAuthCommand(unittest.TestCase):
         result = handle_auth_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_login.assert_called_once_with(self.mock_args)
 
     @patch("mmrelay.cli.handle_auth_login")
@@ -2854,7 +2894,7 @@ class TestHandleAuthCommand(unittest.TestCase):
         result = handle_auth_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_login.assert_called_once_with(self.mock_args)
 
     @patch("mmrelay.cli.handle_auth_login")
@@ -2871,7 +2911,7 @@ class TestHandleAuthCommand(unittest.TestCase):
         result = handle_auth_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_login.assert_called_once_with(self.mock_args)
 
 
@@ -3043,7 +3083,7 @@ class TestValidateE2eeConfig(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.config_path = "/home/user/.mmrelay/config.yaml"
+        self.config_path = TEST_HOME_CONFIG_PATH
         self.base_config = {"matrix": {"homeserver": "https://matrix.org"}}
 
     @patch("mmrelay.cli._validate_matrix_authentication")
@@ -3274,7 +3314,7 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.config_path = "/home/user/.mmrelay/config.yaml"
+        self.config_path = TEST_HOME_CONFIG_PATH
         self.base_config = {
             "matrix": {"homeserver": "https://matrix.org", "e2ee": {"enabled": True}}
         }

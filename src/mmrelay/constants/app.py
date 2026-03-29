@@ -37,5 +37,59 @@ PYTHON_OLM_PACKAGE: Final[str] = "python-olm"
 # Configuration file names
 CREDENTIALS_FILENAME: Final[str] = "credentials.json"
 CONFIG_FILENAME: Final[str] = "config.yaml"
+REQUIREMENTS_FILENAME: Final[str] = "requirements.txt"
 STORE_DIRNAME: Final[str] = "store"
 MATRIX_DIRNAME: Final[str] = "matrix"
+
+# Directory and file names
+DATABASE_DIRNAME: Final[str] = "database"
+DATABASE_FILENAME: Final[str] = "meshtastic.sqlite"
+LOGS_DIRNAME: Final[str] = "logs"
+LOG_FILENAME: Final[str] = "mmrelay.log"
+PLUGINS_DIRNAME: Final[str] = "plugins"
+PLUGIN_DATA_DIRNAME: Final[str] = "data"
+# Alias for backward compatibility
+LEGACY_DATA_SUBDIR: Final[str] = PLUGIN_DATA_DIRNAME
+
+# File permissions (octal)
+SECURE_FILE_PERMISSIONS: Final[int] = 0o600
+SECURE_DIR_PERMISSIONS: Final[int] = 0o700
+
+# Version requirements
+MIN_PYTHON_VERSION: Final[tuple[int, int]] = (3, 10)
+
+# Windows-specific constants
+WINDOWS_VTP_FLAG: Final[int] = 0x0004  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+WINDOWS_STD_OUTPUT_HANDLE: Final[int] = -11  # GetStdHandle parameter
+WINDOWS_STD_ERROR_HANDLE: Final[int] = -12  # GetStdHandle parameter
+WINDOWS_PATH_LENGTH_WARNING: Final[int] = 200
+
+# Windows error codes
+WINERR_ACCESS_DENIED: Final[int] = 5  # ERROR_ACCESS_DENIED
+WINERR_SHARING_VIOLATION: Final[int] = 32  # ERROR_SHARING_VIOLATION
+WINERR_LOCK_VIOLATION: Final[int] = 33  # ERROR_LOCK_VIOLATION
+
+# Exit codes
+EXIT_CODE_SIGINT: Final[int] = 130
+
+# Systemd service
+SYSTEMD_SERVICE_FILENAME: Final[str] = "mmrelay.service"
+SYSTEMD_USER_DIR: Final[str] = ".config/systemd/user"
+SERVICE_RESTART_SECONDS: Final[int] = 10
+
+# Process paths
+PROC_SELF_STATUS_PATH: Final[str] = "/proc/self/status"
+PROC_COMM_PATH_TEMPLATE: Final[str] = "/proc/{ppid}/comm"
+
+# Diagnostics thresholds
+DIAGNOSTICS_PARTIAL_ERROR_THRESHOLD: Final[int] = 3
+DISK_SPACE_OK_GB: Final[float] = 1.0
+DISK_SPACE_WARN_GB: Final[float] = 0.5
+DISK_SPACE_CRITICAL_DATABASE_GB: Final[float] = 0.1
+
+# Docker legacy paths (for migration detection)
+DOCKER_LEGACY_PATHS: Final[tuple[str, ...]] = (
+    "/data",
+    "/app/data",
+    "/var/lib/mmrelay",
+)

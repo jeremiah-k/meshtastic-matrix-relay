@@ -19,16 +19,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.formats import DATE_FORMAT_LONG
 from mmrelay.plugins.nodes_plugin import Plugin, get_relative_time
 
 
 class TestGetRelativeTime(unittest.TestCase):
     """Test cases for the get_relative_time utility function."""
 
+    FIXED_NOW = datetime(2026, 3, 26, 12, 0, 0)
+
     def test_get_relative_time_just_now(self):
         """
         Test that `get_relative_time` returns "Just now" for timestamps within a few seconds of the current time.
         """
+        # Note: Uses real datetime.now() since the function is designed to handle
+        # timestamps within a few seconds of current time reliably
         now = datetime.now()
         timestamp = now.timestamp()
 
@@ -56,7 +61,7 @@ class TestGetRelativeTime(unittest.TestCase):
 
         result = get_relative_time(timestamp)
 
-        self.assertEqual(result, "1 minutes ago")
+        self.assertEqual(result, "1 minute ago")
 
     def test_get_relative_time_hours_ago(self):
         """
@@ -78,7 +83,7 @@ class TestGetRelativeTime(unittest.TestCase):
 
         result = get_relative_time(timestamp)
 
-        self.assertEqual(result, "1 hours ago")
+        self.assertEqual(result, "1 hour ago")
 
     def test_get_relative_time_days_ago(self):
         """
@@ -100,7 +105,7 @@ class TestGetRelativeTime(unittest.TestCase):
 
         result = get_relative_time(timestamp)
 
-        self.assertEqual(result, "1 days ago")
+        self.assertEqual(result, "1 day ago")
 
     def test_get_relative_time_old_date(self):
         """
@@ -113,33 +118,34 @@ class TestGetRelativeTime(unittest.TestCase):
         result = get_relative_time(timestamp)
 
         # Should return formatted date like "Jan 15, 2024"
-        expected_format = ten_days_ago.strftime("%b %d, %Y")
+        expected_format = ten_days_ago.strftime(DATE_FORMAT_LONG)
         self.assertEqual(result, expected_format)
 
     def test_get_relative_time_exactly_seven_days(self):
         """
         Test that `get_relative_time` returns "7 days ago" for a timestamp exactly seven days in the past.
         """
-        now = datetime.now()
-        seven_days_ago = now - timedelta(days=7)
+        seven_days_ago = self.FIXED_NOW - timedelta(days=7)
         timestamp = seven_days_ago.timestamp()
 
-        result = get_relative_time(timestamp)
+        with patch("mmrelay.plugins.nodes_plugin.datetime") as mock_datetime:
+            mock_datetime.now.return_value = self.FIXED_NOW
+            mock_datetime.fromtimestamp.side_effect = datetime.fromtimestamp
+            result = get_relative_time(timestamp)
 
         self.assertEqual(result, "7 days ago")
 
     def test_get_relative_time_exactly_eight_days(self):
-        """
-        Test that `get_relative_time` returns a formatted date string for a timestamp exactly eight days ago.
-        """
-        now = datetime.now()
-        eight_days_ago = now - timedelta(days=8)
+        """Test that get_relative_time returns a formatted date string for a timestamp exactly eight days ago."""
+        eight_days_ago = self.FIXED_NOW - timedelta(days=8)
         timestamp = eight_days_ago.timestamp()
 
-        result = get_relative_time(timestamp)
+        with patch("mmrelay.plugins.nodes_plugin.datetime") as mock_datetime:
+            mock_datetime.now.return_value = self.FIXED_NOW
+            mock_datetime.fromtimestamp.side_effect = datetime.fromtimestamp
+            result = get_relative_time(timestamp)
 
-        # Should return formatted date
-        expected_format = eight_days_ago.strftime("%b %d, %Y")
+        expected_format = eight_days_ago.strftime(DATE_FORMAT_LONG)
         self.assertEqual(result, expected_format)
 
 

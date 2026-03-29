@@ -21,11 +21,23 @@ from nio import (
 from mmrelay.config import get_plugin_data_dir as resolve_plugin_data_dir
 from mmrelay.constants.config import (
     CONFIG_KEY_REQUIRE_BOT_MENTION,
+    CONFIG_SECTION_COMMUNITY_PLUGINS,
+    CONFIG_SECTION_CUSTOM_PLUGINS,
+    CONFIG_SECTION_PLUGINS,
     DEFAULT_REQUIRE_BOT_MENTION,
+    PLUGIN_CONFIG_SECTIONS,
+    PLUGIN_SECTION_TYPES,
 )
 from mmrelay.constants.database import (
     DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE,
     DEFAULT_TEXT_TRUNCATION_LENGTH,
+)
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
+from mmrelay.constants.plugins import (
+    DEFAULT_PLUGIN_PRIORITY,
+    PLUGIN_TYPE_COMMUNITY,
+    PLUGIN_TYPE_CORE,
+    PLUGIN_TYPE_CUSTOM,
 )
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY, MINIMUM_MESSAGE_DELAY
 from mmrelay.db_utils import (
@@ -97,20 +109,38 @@ class BasePlugin(ABC):
 
     Attributes:
         plugin_name (str): Unique identifier for the plugin
-        max_data_rows_per_node (int): Maximum data rows stored per node (default: 100)
-        priority (int): Plugin execution priority (lower = higher priority, default: 10)
+        max_data_rows_per_node (int): Maximum data rows stored per node
+            (default: DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE)
+        priority (int): Plugin execution priority (lower = higher priority,
+            default: DEFAULT_PLUGIN_PRIORITY)
 
     Subclasses must:
     - Set plugin_name as a class attribute
     - Implement handle_meshtastic_message() and handle_room_message()
     - Optionally override other methods for custom behavior
+
+    Failure Semantics:
+    When a plugin claims a Matrix command (its ``matches()`` or ``get_matrix_commands()``
+    matches the event), the relay treats that event as handled and will *not* relay it
+    to Meshtastic.  This is true even when the plugin's handler encounters an error.
+
+    The recommended pattern for plugin authors is:
+
+    1. Return ``True`` from the handler to confirm the command was claimed.
+    2. On failure, emit a user-facing error via ``send_notice()`` before returning.
+    3. Do **not** raise exceptions to signal failure to the relay — raising will be
+       caught and logged, but the user will not see a helpful message.
+
+    This keeps the contract simple: a matching plugin owns the event end-to-end,
+    including error reporting.  The relay will never double-relay a plugin-handled
+    message, regardless of the handler's success or failure.
     """
 
     # Class-level default attributes
     plugin_name: str | None = None  # Must be overridden in subclasses
     is_core_plugin: bool | None = None
     max_data_rows_per_node = DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE
-    priority = 10
+    priority = DEFAULT_PLUGIN_PRIORITY
 
     @property
     def description(self) -> str:
@@ -175,18 +205,119 @@ class BasePlugin(ABC):
         self.config: dict[str, Any] = {"active": False}
         self.mapped_channels: list[int | None] = []
         self._global_require_bot_mention: bool | None = None
+        self.plugin_type: str | None = PLUGIN_TYPE_CORE if self.is_core_plugin else None
         global config
-        plugin_levels = ["plugins", "community-plugins", "custom-plugins"]
 
-        # Check if config is available
         if config is not None:
-            for level in plugin_levels:
-                if level in config and self.plugin_name in config[level]:
-                    self.config = config[level][self.plugin_name]
+            resolved_section: str | None = None
+            expected_section: str | None = (
+                CONFIG_SECTION_PLUGINS if self.is_core_plugin else None
+            )
+            candidate_sections = (
+                (CONFIG_SECTION_PLUGINS,)
+                if self.is_core_plugin
+                else tuple(PLUGIN_CONFIG_SECTIONS)
+            )
+            if not self.is_core_plugin:
+                # Infer non-core tier from plugin source path first so config
+                # resolution prefers the plugin's own tier when names overlap.
+                try:
+                    from mmrelay.plugin_loader import (
+                        get_community_plugin_dirs,
+                        get_custom_plugin_dirs,
+                    )
+
+                    class_file = os.path.realpath(inspect.getfile(self.__class__))
+
+                    def _is_under(plugin_root: str) -> bool:
+                        root = os.path.realpath(plugin_root)
+                        return class_file == root or class_file.startswith(
+                            f"{root}{os.sep}"
+                        )
+
+                    if any(_is_under(path) for path in get_custom_plugin_dirs()):
+                        expected_section = CONFIG_SECTION_CUSTOM_PLUGINS
+                        self.plugin_type = PLUGIN_TYPE_CUSTOM
+                    elif any(_is_under(path) for path in get_community_plugin_dirs()):
+                        expected_section = CONFIG_SECTION_COMMUNITY_PLUGINS
+                        self.plugin_type = PLUGIN_TYPE_COMMUNITY
+                except (OSError, ImportError, TypeError) as e:
+                    self.logger.debug(
+                        "Could not infer plugin tier from filesystem: %s", e
+                    )
+
+                if (
+                    expected_section is not None
+                    and expected_section in candidate_sections
+                ):
+                    candidate_sections = (
+                        expected_section,
+                        *(s for s in candidate_sections if s != expected_section),
+                    )
+
+                configured_section = next(
+                    (
+                        section
+                        for section in candidate_sections
+                        if isinstance((sec_cfg := config.get(section, {})), dict)
+                        and self.plugin_name in sec_cfg
+                    ),
+                    None,
+                )
+                if configured_section is not None:
+                    # Preserve inferred non-core section as primary precedence even if
+                    # plugin-local config is found under legacy core "plugins".
+                    if (
+                        expected_section is None
+                        or configured_section != CONFIG_SECTION_PLUGINS
+                    ):
+                        expected_section = configured_section
+                        mapped_type = PLUGIN_SECTION_TYPES.get(configured_section)
+                        if mapped_type is not None and (
+                            mapped_type != PLUGIN_TYPE_CORE
+                            or self.plugin_type in (None, PLUGIN_TYPE_CORE)
+                        ):
+                            self.plugin_type = mapped_type
+
+            for section in candidate_sections:
+                section_config = config.get(section, {})
+                if (
+                    isinstance(section_config, dict)
+                    and self.plugin_name in section_config
+                ):
+                    plugin_config = section_config[self.plugin_name]
+                    if plugin_config is None:
+                        plugin_config = {}
+                    if not isinstance(plugin_config, dict):
+                        self.logger.warning(
+                            "Ignoring invalid config for plugin '%s': expected a mapping",
+                            self.plugin_name,
+                        )
+                        plugin_config = {}
+                    self.config = plugin_config
+                    resolved_section = section
+                    if expected_section is None or section != CONFIG_SECTION_PLUGINS:
+                        expected_section = section
+                        mapped_type = PLUGIN_SECTION_TYPES.get(section)
+                        if mapped_type is not None and (
+                            mapped_type != PLUGIN_TYPE_CORE
+                            or self.plugin_type in (None, PLUGIN_TYPE_CORE)
+                        ):
+                            self.plugin_type = mapped_type
                     break
 
-            # Cache global plugin-level settings (for options like require_bot_mention)
-            for section_name in ("plugins", "community-plugins", "custom-plugins"):
+            # Cache global plugin-level settings (for options like require_bot_mention).
+            # Precedence for globals:
+            # 1) plugin's resolved/expected section
+            # 2) legacy fallback from core "plugins" section for compatibility
+            section_to_check = expected_section or resolved_section
+            global_sections: list[str] = []
+            if section_to_check:
+                global_sections.append(section_to_check)
+            if CONFIG_SECTION_PLUGINS not in global_sections:
+                global_sections.append(CONFIG_SECTION_PLUGINS)
+
+            for section_name in global_sections:
                 section_config = config.get(section_name, {})
                 if (
                     isinstance(section_config, dict)
@@ -216,20 +347,6 @@ class BasePlugin(ABC):
                 ]
         else:
             self.mapped_channels = []
-
-        self.plugin_type: str = "core"
-        if isinstance(config, dict):
-            community_plugins = config.get("community-plugins", {})
-            custom_plugins = config.get("custom-plugins", {})
-            if (
-                isinstance(community_plugins, dict)
-                and self.plugin_name in community_plugins
-            ):
-                self.plugin_type = "community"
-            elif (
-                isinstance(custom_plugins, dict) and self.plugin_name in custom_plugins
-            ):
-                self.plugin_type = "custom"
 
         # Get the channels specified for this plugin, or default to all mapped channels
         self.channels = self.config.get("channels", self.mapped_channels)
@@ -599,7 +716,7 @@ class BasePlugin(ABC):
             content["formatted_body"] = markdown.markdown(message)
         return await matrix_client.room_send(
             room_id=room_id,
-            message_type="m.room.message",
+            message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
             content=content,
         )
 
@@ -837,6 +954,17 @@ class BasePlugin(ABC):
             full_message (str): The full text content of the received message.
 
         Returns:
-            bool: `True` if the plugin handled the message, `False` otherwise.
+            bool: `True` if the plugin handled the message (including user-facing error
+                cases), `False` if the message was not handled and should be passed to
+                other plugins for reinterpretation.
+
+        Plugin author guidance:
+            - Return `True` when the plugin has claimed the message and no further
+              reinterpretation is desired, including when the plugin has sent a
+              user-visible failure response (e.g., via room.send_text).
+            - Return `False` when the plugin did not recognize or handle the message,
+              allowing subsequent plugins in the priority order to process it.
+            - This semantics prevents error messages from being sent multiple times
+              by different plugins interpreting the same command.
         """
         pass  # Implement in subclass

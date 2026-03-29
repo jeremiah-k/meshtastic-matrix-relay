@@ -374,6 +374,7 @@ def _cancel_and_drain_future_like(future_obj: Any, *, timeout: float = 0.2) -> N
 
 # Now that mocks are in place, we can import the application code
 import mmrelay.meshtastic_utils as mu  # noqa: E402
+from tests.constants import TEST_BOT_USER_ID, TEST_ROOM_ID, TEST_USER_ID  # noqa: E402
 
 # Store references to prevent accidental mocking
 _BUILTIN_MODULES = {
@@ -1214,10 +1215,10 @@ def mock_room():
     Provide a MagicMock representing a Matrix room for tests.
 
     Returns:
-        MagicMock: A mock room object with `room_id` set to "!room:matrix.org".
+        MagicMock: A mock room object with `room_id` set to TEST_ROOM_ID.
     """
     mock_room = MagicMock()
-    mock_room.room_id = "!room:matrix.org"
+    mock_room.room_id = TEST_ROOM_ID
     return mock_room
 
 
@@ -1231,12 +1232,12 @@ def mock_event():
     values.
 
     Returns:
-        MagicMock: Mock event with `sender` set to "@user:matrix.org",
+        MagicMock: Mock event with `sender` set to TEST_USER_ID,
         `body` set to "Hello, world!", `source` set to {"content": {"body": "Hello, world!"}},
         and `server_timestamp` set to 1234567890.
     """
     mock_event = MagicMock()
-    mock_event.sender = "@user:matrix.org"
+    mock_event.sender = TEST_USER_ID
     mock_event.body = "Hello, world!"
     mock_event.source = {"content": {"body": "Hello, world!"}}
     mock_event.server_timestamp = 1234567890
@@ -1265,11 +1266,11 @@ def test_config():
         },
         "matrix_rooms": [
             {
-                "id": "!room:matrix.org",
+                "id": TEST_ROOM_ID,
                 "meshtastic_channel": 0,
             }
         ],
-        "matrix": {"bot_user_id": "@bot:matrix.org"},
+        "matrix": {"bot_user_id": TEST_BOT_USER_ID},
     }
 
 

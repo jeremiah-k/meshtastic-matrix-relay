@@ -22,7 +22,8 @@ set -euo pipefail
 #   4. E2EE Matrix user message in encrypted room → Mesh A + Mesh B
 #   5. E2EE Matrix user reply in encrypted room → both meshes as structured replies
 #   6. E2EE Matrix user reaction in encrypted room → both meshes
-#   7. Stale name rows are pruned to match current node DB
+#   7. dm-rcv-basic plugin initialization (DM forwarding untested - infra limitation)
+#   8. Stale name rows are pruned to match current node DB
 #
 # Environment Variables:
 #   MESHTASTICD_IMAGE: Docker image for meshtasticd (default: meshtastic/meshtasticd:latest)
@@ -34,18 +35,27 @@ set -euo pipefail
 #   MATRIX_EVENT_TIMEOUT_SECONDS: Matrix event polling timeout per assertion
 #   NODEDB_REFRESH_INTERVAL_SECONDS: Node-name refresh cadence in MMRelay config
 #   NAME_PRUNE_WAIT_TIMEOUT_SECONDS: Timeout for stale-name prune assertions
+#   MMRELAY_ALLOW_TAGGED_IMAGE_CACHE: Reuse local tag-based images instead of forcing pull
 # =============================================================================
 
 # Meshtasticd Configuration
 MESHTASTICD_IMAGE="${MESHTASTICD_IMAGE:-meshtastic/meshtasticd:latest}"
 MESHTASTICD_CONTAINER_A="${MESHTASTICD_CONTAINER_A:-mmrelay-ci-mesh-a}"
 MESHTASTICD_CONTAINER_B="${MESHTASTICD_CONTAINER_B:-mmrelay-ci-mesh-b}"
+MESHTASTICD_CONTAINER_A_PEER="${MESHTASTICD_CONTAINER_A_PEER:-mmrelay-ci-mesh-a-peer}"
+MESHTASTICD_CONTAINER_B_PEER="${MESHTASTICD_CONTAINER_B_PEER:-mmrelay-ci-mesh-b-peer}"
 MESHTASTICD_HOST_A="${MESHTASTICD_HOST_A:-localhost}"
 MESHTASTICD_HOST_B="${MESHTASTICD_HOST_B:-localhost}"
+MESHTASTICD_HOST_A_PEER="${MESHTASTICD_HOST_A_PEER:-localhost}"
+MESHTASTICD_HOST_B_PEER="${MESHTASTICD_HOST_B_PEER:-localhost}"
 MESHTASTICD_PORT_A="${MESHTASTICD_PORT_A:-4403}"
 MESHTASTICD_PORT_B="${MESHTASTICD_PORT_B:-4404}"
+MESHTASTICD_PORT_A_PEER="${MESHTASTICD_PORT_A_PEER:-4405}"
+MESHTASTICD_PORT_B_PEER="${MESHTASTICD_PORT_B_PEER:-4406}"
 MESHTASTICD_HWID_A="${MESHTASTICD_HWID_A:-11}"
 MESHTASTICD_HWID_B="${MESHTASTICD_HWID_B:-22}"
+MESHTASTICD_HWID_A_PEER="${MESHTASTICD_HWID_A_PEER:-33}"
+MESHTASTICD_HWID_B_PEER="${MESHTASTICD_HWID_B_PEER:-44}"
 MESHTASTICD_READY_TIMEOUT_SECONDS="${MESHTASTICD_READY_TIMEOUT_SECONDS:-180}"
 MESH_CHANNEL_NAME_A="${MESH_CHANNEL_NAME_A:-MMRelayMeshA}"
 MESH_CHANNEL_NAME_B="${MESH_CHANNEL_NAME_B:-MMRelayMeshB}"
@@ -69,14 +79,61 @@ MESSAGE_MAP_WAIT_TIMEOUT_SECONDS="${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS:-60}"
 NAME_PRUNE_WAIT_TIMEOUT_SECONDS="${NAME_PRUNE_WAIT_TIMEOUT_SECONDS:-75}"
 NODEDB_REFRESH_INTERVAL_SECONDS="${NODEDB_REFRESH_INTERVAL_SECONDS:-5}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
+DM_RCV_BASIC_COMMIT="${DM_RCV_BASIC_COMMIT:-d6c07cccef267cb8e6be4b6f7e9d91a6e9ca24f1}"
 
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
 	echo "Python runtime '${PYTHON_BIN}' is required." >&2
 	exit 1
 fi
 
+# docker_pull_with_retry pulls a Docker image with exponential backoff retry
+# to handle transient Docker Hub rate limiting errors.
+# Usage: docker_pull_with_retry <image> [max_retries]
+docker_pull_with_retry() {
+	local image="${1}"
+	local max_retries="${2:-3}"
+	local retry=0
+	local delay=5
+
+	while [[ ${retry} -lt ${max_retries} ]]; do
+		if docker pull "${image}"; then
+			return 0
+		fi
+		retry=$((retry + 1))
+		if [[ ${retry} -lt ${max_retries} ]]; then
+			echo "Docker pull failed, retrying in ${delay}s (attempt ${retry}/${max_retries})..." >&2
+			sleep "${delay}"
+			delay=$((delay * 2))
+		fi
+	done
+	echo "Failed to pull ${image} after ${max_retries} attempts" >&2
+	return 1
+}
+
+# ensure_docker_image_available reuses a local image when present and only pulls
+# when necessary.
+# Usage: ensure_docker_image_available <image> [max_retries]
+ensure_docker_image_available() {
+	local image="${1}"
+	local max_retries="${2:-3}"
+	local allow_tagged_cache="${MMRELAY_ALLOW_TAGGED_IMAGE_CACHE:-false}"
+
+	# Default behavior is to trust only immutable digest references.
+	# CI cache-restore steps can opt into trusted tag reuse by setting
+	# MMRELAY_ALLOW_TAGGED_IMAGE_CACHE=true for deterministic cache tags.
+	if [[ ${image} == *@sha256:* || ${allow_tagged_cache} == "true" ]]; then
+		if docker image inspect "${image}" >/dev/null 2>&1; then
+			echo "Using cached Docker image: ${image}"
+			return 0
+		fi
+	fi
+
+	echo "Pulling Docker image: ${image}"
+	docker_pull_with_retry "${image}" "${max_retries}"
+}
+
 # Names-table SQL identifiers loaded from app constants.
-mapfile -t names_table_constants < <(
+names_table_output=$(
 	"${PYTHON_BIN}" - <<'PY'
 import pathlib
 import sys
@@ -98,6 +155,7 @@ PY
 	echo "Failed to load names-table constants via '${PYTHON_BIN}'." >&2
 	exit 1
 }
+mapfile -t names_table_constants <<<"${names_table_output}"
 if [[ ${#names_table_constants[@]} -ne 4 ]]; then
 	echo "Failed to parse names-table constants from '${PYTHON_BIN}' output." >&2
 	exit 1
@@ -141,6 +199,12 @@ MMRELAY_HOME_DIR_B="${INSTANCE_B_DATA_DIR}/mmrelay-home"
 MMRELAY_DB_PATH_A="${MMRELAY_HOME_DIR_A}/database/meshtastic.sqlite"
 MMRELAY_DB_PATH_B="${MMRELAY_HOME_DIR_B}/database/meshtastic.sqlite"
 MATRIX_RUNTIME_JSON="${SHARED_DIR}/matrix-runtime.json"
+ROOM_ID_DM_A=""
+ROOM_ID_DM_B=""
+RELAY_NODE_ID_A=""
+RELAY_NODE_ID_B=""
+MESHTASTICD_ENDPOINT_A_PEER=""
+MESHTASTICD_ENDPOINT_B_PEER=""
 
 # Process tracking
 MMRELAY_PID_A=""
@@ -174,10 +238,16 @@ require_regex() {
 
 # run_with_status executes a command with errexit temporarily disabled and returns its exit status.
 run_with_status() {
+	local errexit_was_set=0
+	if [[ $- == *e* ]]; then
+		errexit_was_set=1
+	fi
 	set +e
 	"$@"
 	local status=$?
-	set -e
+	if ((errexit_was_set)); then
+		set -e
+	fi
 	return "${status}"
 }
 
@@ -186,10 +256,16 @@ run_capture_with_status() {
 	local output_var=$1
 	shift
 	local output
+	local errexit_was_set=0
+	if [[ $- == *e* ]]; then
+		errexit_was_set=1
+	fi
 	set +e
 	output="$("$@")"
 	local status=$?
-	set -e
+	if ((errexit_was_set)); then
+		set -e
+	fi
 	printf -v "${output_var}" "%s" "${output}"
 	return "${status}"
 }
@@ -198,8 +274,17 @@ run_capture_with_status() {
 run_or_fail() {
 	local failure_note=$1
 	shift
+	local status=0
+	local errexit_was_set=0
+	if [[ $- == *e* ]]; then
+		errexit_was_set=1
+	fi
+	set +e
 	run_with_status "$@"
-	local status=$?
+	status=$?
+	if ((errexit_was_set)); then
+		set -e
+	fi
 	if ((status != 0)); then
 		fail_test "${failure_note}"
 	fi
@@ -210,8 +295,17 @@ run_capture_or_fail() {
 	local output_var=$1
 	local failure_note=$2
 	shift 2
+	local status=0
+	local errexit_was_set=0
+	if [[ $- == *e* ]]; then
+		errexit_was_set=1
+	fi
+	set +e
 	run_capture_with_status "${output_var}" "$@"
-	local status=$?
+	status=$?
+	if ((errexit_was_set)); then
+		set -e
+	fi
 	if ((status != 0)); then
 		fail_test "${failure_note}"
 	fi
@@ -528,6 +622,14 @@ cleanup() {
 		docker rm -f "${MESHTASTICD_CONTAINER_B}" >/dev/null 2>&1 || true
 	fi
 
+	if docker ps -a --format '{{.Names}}' | grep -Fxq "${MESHTASTICD_CONTAINER_A_PEER}"; then
+		docker rm -f "${MESHTASTICD_CONTAINER_A_PEER}" >/dev/null 2>&1 || true
+	fi
+
+	if docker ps -a --format '{{.Names}}' | grep -Fxq "${MESHTASTICD_CONTAINER_B_PEER}"; then
+		docker rm -f "${MESHTASTICD_CONTAINER_B_PEER}" >/dev/null 2>&1 || true
+	fi
+
 	if docker ps -a --format '{{.Names}}' | grep -Fxq "${SYNAPSE_CONTAINER}"; then
 		echo "Capturing Synapse logs..."
 		docker logs "${SYNAPSE_CONTAINER}" >"${SYNAPSE_LOG_PATH}" 2>&1 || true
@@ -574,6 +676,64 @@ configure_mesh_channel() {
 		--host "${endpoint}" \
 		--ch-set psk "${psk_hex}" \
 		--ch-index 0 >/dev/null
+}
+
+# get_local_node_id reads the connected node ID for a Meshtastic endpoint and
+# returns it in !xxxxxxxx format suitable for --dest.
+get_local_node_id() {
+	local endpoint=$1
+	local info_output
+	info_output="$("${PYTHON_BIN}" -m meshtastic --timeout 15 --host "${endpoint}" --info 2>/dev/null || true)"
+	local node_id
+	node_id="$(printf '%s\n' "${info_output}" | grep -Eo '![0-9a-fA-F]{8}' | head -n1 || true)"
+	if [[ -z ${node_id} ]]; then
+		echo "Unable to determine Meshtastic node ID for endpoint ${endpoint}" >&2
+		return 1
+	fi
+	printf '%s\n' "${node_id,,}"
+}
+
+# send_direct_mesh_message sends a direct text message to a destination node.
+# Returns 0 on success, non-zero on failure. Output is captured for debugging.
+send_direct_mesh_message() {
+	local endpoint=$1
+	local destination_id=$2
+	local text=$3
+	local stderr_file
+	stderr_file=$(mktemp)
+	"${PYTHON_BIN}" -m meshtastic \
+		--timeout 20 \
+		--host "${endpoint}" \
+		--dest "${destination_id}" \
+		--sendtext "${text}" \
+		--wait-to-disconnect 2 >/dev/null 2>"${stderr_file}"
+	local exit_code=$?
+	if ((exit_code != 0)); then
+		echo "send_direct_mesh_message failed: endpoint=${endpoint} dest=${destination_id} exit=${exit_code}" >&2
+		sed 's/^/  /' "${stderr_file}" >&2
+	fi
+	rm -f "${stderr_file}"
+	return "${exit_code}"
+}
+
+# wait_for_node_in_nodedb waits until a node with the given ID appears in the
+# node DB of the specified meshtasticd endpoint. Returns 0 on success, 1 on timeout.
+wait_for_node_in_nodedb() {
+	local endpoint=$1
+	local node_id=$2
+	local timeout_seconds=${3:-30}
+	local deadline=$((SECONDS + timeout_seconds))
+
+	while ((SECONDS < deadline)); do
+		local nodes_output
+		nodes_output=$("${PYTHON_BIN}" -m meshtastic --timeout 10 --host "${endpoint}" --nodes 2>/dev/null || true)
+		if printf '%s\n' "${nodes_output}" | grep -Fq "${node_id}"; then
+			return 0
+		fi
+		sleep 2
+	done
+	echo "Timed out waiting for node ${node_id} in nodedb of ${endpoint}" >&2
+	return 1
 }
 
 wait_for_synapse_ready() {
@@ -1731,13 +1891,21 @@ fi
 # Validate all configuration parameters
 require_regex "${MESHTASTICD_CONTAINER_A}" '^[A-Za-z0-9][A-Za-z0-9_.-]*$' "MESHTASTICD_CONTAINER_A"
 require_regex "${MESHTASTICD_CONTAINER_B}" '^[A-Za-z0-9][A-Za-z0-9_.-]*$' "MESHTASTICD_CONTAINER_B"
+require_regex "${MESHTASTICD_CONTAINER_A_PEER}" '^[A-Za-z0-9][A-Za-z0-9_.-]*$' "MESHTASTICD_CONTAINER_A_PEER"
+require_regex "${MESHTASTICD_CONTAINER_B_PEER}" '^[A-Za-z0-9][A-Za-z0-9_.-]*$' "MESHTASTICD_CONTAINER_B_PEER"
 require_regex "${MESHTASTICD_IMAGE}" '^[^[:space:]]+$' "MESHTASTICD_IMAGE"
 require_regex "${MESHTASTICD_HOST_A}" '^[A-Za-z0-9._-]+$' "MESHTASTICD_HOST_A"
 require_regex "${MESHTASTICD_HOST_B}" '^[A-Za-z0-9._-]+$' "MESHTASTICD_HOST_B"
+require_regex "${MESHTASTICD_HOST_A_PEER}" '^[A-Za-z0-9._-]+$' "MESHTASTICD_HOST_A_PEER"
+require_regex "${MESHTASTICD_HOST_B_PEER}" '^[A-Za-z0-9._-]+$' "MESHTASTICD_HOST_B_PEER"
 require_regex "${MESHTASTICD_PORT_A}" '^[0-9]+$' "MESHTASTICD_PORT_A"
 require_regex "${MESHTASTICD_PORT_B}" '^[0-9]+$' "MESHTASTICD_PORT_B"
+require_regex "${MESHTASTICD_PORT_A_PEER}" '^[0-9]+$' "MESHTASTICD_PORT_A_PEER"
+require_regex "${MESHTASTICD_PORT_B_PEER}" '^[0-9]+$' "MESHTASTICD_PORT_B_PEER"
 require_regex "${MESHTASTICD_HWID_A}" '^[0-9]+$' "MESHTASTICD_HWID_A"
 require_regex "${MESHTASTICD_HWID_B}" '^[0-9]+$' "MESHTASTICD_HWID_B"
+require_regex "${MESHTASTICD_HWID_A_PEER}" '^[0-9]+$' "MESHTASTICD_HWID_A_PEER"
+require_regex "${MESHTASTICD_HWID_B_PEER}" '^[0-9]+$' "MESHTASTICD_HWID_B_PEER"
 require_regex "${SYNAPSE_CONTAINER}" '^[A-Za-z0-9][A-Za-z0-9_.-]*$' "SYNAPSE_CONTAINER"
 require_regex "${SYNAPSE_IMAGE}" '^[^[:space:]]+$' "SYNAPSE_IMAGE"
 require_regex "${SYNAPSE_PORT}" '^[0-9]+$' "SYNAPSE_PORT"
@@ -1754,6 +1922,8 @@ require_regex "${MESH_PRIMARY_PSK_B}" '^0x[0-9A-Fa-f]{64}$' "MESH_PRIMARY_PSK_B"
 # Port validation
 MESHTASTICD_PORT_A_DEC=$((10#${MESHTASTICD_PORT_A}))
 MESHTASTICD_PORT_B_DEC=$((10#${MESHTASTICD_PORT_B}))
+MESHTASTICD_PORT_A_PEER_DEC=$((10#${MESHTASTICD_PORT_A_PEER}))
+MESHTASTICD_PORT_B_PEER_DEC=$((10#${MESHTASTICD_PORT_B_PEER}))
 SYNAPSE_PORT_DEC=$((10#${SYNAPSE_PORT}))
 HOST_UID=$(id -u)
 HOST_GID=$(id -g)
@@ -1766,8 +1936,16 @@ if ((MESHTASTICD_PORT_B_DEC < 1 || MESHTASTICD_PORT_B_DEC > 65535)); then
 	echo "MESHTASTICD_PORT_B must be between 1 and 65535." >&2
 	exit 1
 fi
-if ((MESHTASTICD_PORT_A_DEC == MESHTASTICD_PORT_B_DEC)); then
-	echo "MESHTASTICD_PORT_A and MESHTASTICD_PORT_B must be different." >&2
+if ((MESHTASTICD_PORT_A_PEER_DEC < 1 || MESHTASTICD_PORT_A_PEER_DEC > 65535)); then
+	echo "MESHTASTICD_PORT_A_PEER must be between 1 and 65535." >&2
+	exit 1
+fi
+if ((MESHTASTICD_PORT_B_PEER_DEC < 1 || MESHTASTICD_PORT_B_PEER_DEC > 65535)); then
+	echo "MESHTASTICD_PORT_B_PEER must be between 1 and 65535." >&2
+	exit 1
+fi
+if ((MESHTASTICD_PORT_A_DEC == MESHTASTICD_PORT_B_DEC || MESHTASTICD_PORT_A_DEC == MESHTASTICD_PORT_A_PEER_DEC || MESHTASTICD_PORT_A_DEC == MESHTASTICD_PORT_B_PEER_DEC || MESHTASTICD_PORT_B_DEC == MESHTASTICD_PORT_A_PEER_DEC || MESHTASTICD_PORT_B_DEC == MESHTASTICD_PORT_B_PEER_DEC || MESHTASTICD_PORT_A_PEER_DEC == MESHTASTICD_PORT_B_PEER_DEC)); then
+	echo "Meshtasticd ports must all be different (A, B, A_PEER, B_PEER)." >&2
 	exit 1
 fi
 if ((SYNAPSE_PORT_DEC < 1 || SYNAPSE_PORT_DEC > 65535)); then
@@ -1825,6 +2003,8 @@ fi
 
 MESHTASTICD_ENDPOINT_A="${MESHTASTICD_HOST_A}:${MESHTASTICD_PORT_A_DEC}"
 MESHTASTICD_ENDPOINT_B="${MESHTASTICD_HOST_B}:${MESHTASTICD_PORT_B_DEC}"
+MESHTASTICD_ENDPOINT_A_PEER="${MESHTASTICD_HOST_A_PEER}:${MESHTASTICD_PORT_A_PEER_DEC}"
+MESHTASTICD_ENDPOINT_B_PEER="${MESHTASTICD_HOST_B_PEER}:${MESHTASTICD_PORT_B_PEER_DEC}"
 
 # =============================================================================
 # Setup
@@ -1878,14 +2058,26 @@ export MATRIX_USER2_PASSWORD
 docker rm -f \
 	"${MESHTASTICD_CONTAINER_A}" \
 	"${MESHTASTICD_CONTAINER_B}" \
+	"${MESHTASTICD_CONTAINER_A_PEER}" \
+	"${MESHTASTICD_CONTAINER_B_PEER}" \
 	"${SYNAPSE_CONTAINER}" >/dev/null 2>&1 || true
 
-echo "Pulling meshtasticd image: ${MESHTASTICD_IMAGE}"
-if ! docker pull "${MESHTASTICD_IMAGE}"; then
+set +e
+ensure_docker_image_available "${MESHTASTICD_IMAGE}"
+meshtasticd_pull_status=$?
+set -e
+if [[ ${meshtasticd_pull_status} -ne 0 ]]; then
 	if [[ ${MESHTASTICD_IMAGE} == "meshtastic/meshtasticd:latest" || ${MESHTASTICD_IMAGE} == "meshtastic/meshtasticd" ]]; then
 		echo "Failed to pull ${MESHTASTICD_IMAGE}; retrying with meshtastic/meshtasticd:beta" >&2
 		MESHTASTICD_IMAGE="meshtastic/meshtasticd:beta"
-		docker pull "${MESHTASTICD_IMAGE}"
+		set +e
+		ensure_docker_image_available "${MESHTASTICD_IMAGE}"
+		meshtasticd_pull_status=$?
+		set -e
+		if [[ ${meshtasticd_pull_status} -ne 0 ]]; then
+			echo "Failed to pull ${MESHTASTICD_IMAGE}" >&2
+			exit 1
+		fi
 	else
 		echo "Failed to pull ${MESHTASTICD_IMAGE}" >&2
 		exit 1
@@ -1906,19 +2098,39 @@ docker run -d \
 	"${MESHTASTICD_IMAGE}" \
 	meshtasticd -s --fsdir=/var/lib/meshtasticd-relay-b -p "${MESHTASTICD_PORT_B_DEC}" -h "${MESHTASTICD_HWID_B}" >/dev/null
 
+docker run -d \
+	--name "${MESHTASTICD_CONTAINER_A_PEER}" \
+	--network host \
+	"${MESHTASTICD_IMAGE}" \
+	meshtasticd -s --fsdir=/var/lib/meshtasticd-relay-a-peer -p "${MESHTASTICD_PORT_A_PEER_DEC}" -h "${MESHTASTICD_HWID_A_PEER}" >/dev/null
+
+docker run -d \
+	--name "${MESHTASTICD_CONTAINER_B_PEER}" \
+	--network host \
+	"${MESHTASTICD_IMAGE}" \
+	meshtasticd -s --fsdir=/var/lib/meshtasticd-relay-b-peer -p "${MESHTASTICD_PORT_B_PEER_DEC}" -h "${MESHTASTICD_HWID_B_PEER}" >/dev/null
+
 wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_A}" "${MESHTASTICD_CONTAINER_A}"
 wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_B}" "${MESHTASTICD_CONTAINER_B}"
+wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_A_PEER}" "${MESHTASTICD_CONTAINER_A_PEER}"
+wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_B_PEER}" "${MESHTASTICD_CONTAINER_B_PEER}"
 
 echo ""
-echo "Configuring isolated meshnets (one relay node per meshnet)..."
+echo "Configuring isolated meshnets (relay + peer node per meshnet)..."
 configure_mesh_channel "${MESHTASTICD_ENDPOINT_A}" "${MESH_CHANNEL_NAME_A}" "${MESH_PRIMARY_PSK_A}"
 configure_mesh_channel "${MESHTASTICD_ENDPOINT_B}" "${MESH_CHANNEL_NAME_B}" "${MESH_PRIMARY_PSK_B}"
+configure_mesh_channel "${MESHTASTICD_ENDPOINT_A_PEER}" "${MESH_CHANNEL_NAME_A}" "${MESH_PRIMARY_PSK_A}"
+configure_mesh_channel "${MESHTASTICD_ENDPOINT_B_PEER}" "${MESH_CHANNEL_NAME_B}" "${MESH_PRIMARY_PSK_B}"
 wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_A}" "${MESHTASTICD_CONTAINER_A}"
 wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_B}" "${MESHTASTICD_CONTAINER_B}"
+wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_A_PEER}" "${MESHTASTICD_CONTAINER_A_PEER}"
+wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_B_PEER}" "${MESHTASTICD_CONTAINER_B_PEER}"
+RELAY_NODE_ID_A="$(get_local_node_id "${MESHTASTICD_ENDPOINT_A}")"
+RELAY_NODE_ID_B="$(get_local_node_id "${MESHTASTICD_ENDPOINT_B}")"
+echo "Resolved relay node IDs: A=${RELAY_NODE_ID_A}, B=${RELAY_NODE_ID_B}"
 
 echo ""
-echo "Pulling Synapse image: ${SYNAPSE_IMAGE}"
-docker pull "${SYNAPSE_IMAGE}"
+ensure_docker_image_available "${SYNAPSE_IMAGE}"
 
 echo ""
 echo "Generating Synapse config..."
@@ -2116,11 +2328,29 @@ room_id_encrypted = create_room(
     f"mmrelay-ci-e2ee-{room_suffix}",
     encrypted=True,
 )
+room_id_dm_a = create_room(
+    user1["access_token"],
+    "MMRelay CI DM Room A",
+    "Direct message forwarding room for relay A plugin tests",
+    f"mmrelay-ci-dm-a-{room_suffix}",
+    encrypted=False,
+)
+room_id_dm_b = create_room(
+    user1["access_token"],
+    "MMRelay CI DM Room B",
+    "Direct message forwarding room for relay B plugin tests",
+    f"mmrelay-ci-dm-b-{room_suffix}",
+    encrypted=False,
+)
 
 # Shared room members: user1 + user2 + bot_a + bot_b in both rooms.
 for room_id in [room_id_plaintext, room_id_encrypted]:
     for account in [bot_a, bot_b, user2]:
         invite_and_join(room_id, user1["access_token"], account)
+
+# Relay-specific DM rooms
+invite_and_join(room_id_dm_a, user1["access_token"], bot_a)
+invite_and_join(room_id_dm_b, user1["access_token"], bot_b)
 
 sync_response = requests.get(
     f"{base_url}/_matrix/client/v3/sync",
@@ -2134,6 +2364,8 @@ initial_sync_user1 = sync_response.json()
 runtime = {
     "room_id_plaintext": room_id_plaintext,
     "room_id_encrypted": room_id_encrypted,
+    "room_id_dm_a": room_id_dm_a,
+    "room_id_dm_b": room_id_dm_b,
     "bot_a_user_id": bot_a["user_id"],
     "bot_a_access_token": bot_a["access_token"],
     "bot_a_device_id": bot_a["device_id"],
@@ -2162,6 +2394,8 @@ USER2_ACCESS_TOKEN="$(load_json_value user2_access_token)"
 USER2_DEVICE_ID="$(load_json_value user2_device_id)"
 ROOM_ID_PLAINTEXT="$(load_json_value room_id_plaintext)"
 ROOM_ID_ENCRYPTED="$(load_json_value room_id_encrypted)"
+ROOM_ID_DM_A="$(load_json_value room_id_dm_a)"
+ROOM_ID_DM_B="$(load_json_value room_id_dm_b)"
 SYNC_SINCE_USER="$(load_json_value sync_since_user)"
 
 export BOT_A_USER_ID
@@ -2176,6 +2410,8 @@ export USER2_ACCESS_TOKEN
 export USER2_DEVICE_ID
 export ROOM_ID_PLAINTEXT
 export ROOM_ID_ENCRYPTED
+export ROOM_ID_DM_A
+export ROOM_ID_DM_B
 export SYNC_SINCE_USER
 
 E2EE_USER2_STORE_DIR="${SHARED_DIR}/user2-e2ee-store"
@@ -2223,6 +2459,13 @@ matrix_rooms:
     meshtastic_channel: 0
   - id: "${ROOM_ID_ENCRYPTED}"
     meshtastic_channel: 0
+community-plugins:
+  dm-rcv-basic:
+    active: true
+    repository: "https://github.com/jeremiah-k/mmr-dm-rcv-basic.git"
+    commit: "${DM_RCV_BASIC_COMMIT}"
+    dm_room: "${ROOM_ID_DM_A}"
+    dm_prefix: true
 meshtastic:
   connection_type: tcp
   host: "${MESHTASTICD_HOST_A}"
@@ -2256,6 +2499,13 @@ matrix_rooms:
     meshtastic_channel: 0
   - id: "${ROOM_ID_ENCRYPTED}"
     meshtastic_channel: 0
+community-plugins:
+  dm-rcv-basic:
+    active: true
+    repository: "https://github.com/jeremiah-k/mmr-dm-rcv-basic.git"
+    commit: "${DM_RCV_BASIC_COMMIT}"
+    dm_room: "${ROOM_ID_DM_B}"
+    dm_prefix: true
 meshtastic:
   connection_type: tcp
   host: "${MESHTASTICD_HOST_B}"
@@ -2277,9 +2527,18 @@ logging:
 EOF_CONFIG
 
 # =============================================================================
-# Start MMRelay Instances
+# Test Scenarios
 # =============================================================================
 
+echo ""
+echo "============================================================================"
+echo "Running Test Scenarios"
+echo "============================================================================"
+
+SUITE_START_MS=$(date +%s%3N)
+SYNC_CURSOR_USER1="${SYNC_SINCE_USER}"
+
+# Start relay processes after infrastructure setup and configuration generation.
 echo ""
 echo "Starting MMRelay A (connected to Mesh A)..."
 PYTHONUNBUFFERED=1 "${PYTHON_BIN}" -m mmrelay.cli \
@@ -2327,18 +2586,6 @@ if docker ps -a --format '{{.Names}}' | grep -Fxq "${MESHTASTICD_CONTAINER_B}"; 
 		MESHTASTICD_LOG_OFFSET_B=$(wc -c <"${mesh_log_baseline_b}")
 	fi
 fi
-
-# =============================================================================
-# Test Scenarios
-# =============================================================================
-
-echo ""
-echo "============================================================================"
-echo "Running Test Scenarios"
-echo "============================================================================"
-
-SUITE_START_MS=$(date +%s%3N)
-SYNC_CURSOR_USER1="${SYNC_SINCE_USER}"
 
 # Test 1: Matrix user message in plaintext room → Mesh A + Mesh B
 MATRIX_TO_SHARED_TEXT="MMRELAY_CI_M2SHARED_$(date +%s)_${RANDOM}"
@@ -2608,8 +2855,28 @@ run_or_fail "Reaction did not relay to Mesh B" \
 	60
 pass_test "Encrypted-room user reaction relayed to both meshes"
 
-# Test 7: stale name rows are pruned to match current node DB snapshot.
-start_test "Test 7" "Test 7: stale name rows are pruned to match current node DB..."
+# Test 7: dm-rcv-basic plugin initialization.
+# Verifies the dm-rcv-basic community plugin loads and initializes correctly
+# with valid dm_room configuration.
+
+start_test "Test 7" "Test 7: dm-rcv-basic plugin initialization..."
+
+run_or_fail "dm-rcv-basic did not initialize in relay A" \
+	wait_for_log_pattern_since \
+	"${MMRELAY_LOG_PATH_A}" \
+	"initialized - forwarding DMs to room: ${ROOM_ID_DM_A}" \
+	0 \
+	45
+run_or_fail "dm-rcv-basic did not initialize in relay B" \
+	wait_for_log_pattern_since \
+	"${MMRELAY_LOG_PATH_B}" \
+	"initialized - forwarding DMs to room: ${ROOM_ID_DM_B}" \
+	0 \
+	45
+pass_test "dm-rcv-basic plugin initialized in both relays"
+
+# Test 8: stale name rows are pruned to match current node DB snapshot.
+start_test "Test 8" "Test 8: stale name rows are pruned to match current node DB..."
 
 POLL_TIMEOUT_SECONDS=$(
 	"${PYTHON_BIN}" - "${NODEDB_REFRESH_INTERVAL_SECONDS}" <<'PY'

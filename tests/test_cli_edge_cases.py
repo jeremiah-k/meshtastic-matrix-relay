@@ -27,6 +27,7 @@ from mmrelay.cli import (
     main,
     parse_arguments,
 )
+from mmrelay.constants.cli import EXIT_CODE_ERROR
 
 
 class TestCLIEdgeCases(unittest.TestCase):
@@ -313,7 +314,7 @@ class TestCLIEdgeCases(unittest.TestCase):
                 "builtins.__import__", side_effect=ImportError("Module not found")
             ):
                 result = main()
-                self.assertEqual(result, 1)
+                self.assertEqual(result, EXIT_CODE_ERROR)
 
     def test_handle_cli_commands_service_installation_failure(self):
         """
@@ -329,7 +330,7 @@ class TestCLIEdgeCases(unittest.TestCase):
 
         with patch("mmrelay.setup_utils.install_service", return_value=False):
             result = handle_cli_commands(args)
-            self.assertEqual(result, 1)
+            self.assertEqual(result, EXIT_CODE_ERROR)
 
     def test_handle_cli_commands_config_generation_failure(self):
         """
@@ -345,7 +346,7 @@ class TestCLIEdgeCases(unittest.TestCase):
 
         with patch("mmrelay.cli.generate_sample_config", return_value=False):
             result = handle_cli_commands(args)
-            self.assertEqual(result, 1)
+            self.assertEqual(result, EXIT_CODE_ERROR)
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ import functools
 import os
 import signal
 import sys
+import tempfile
 import threading
 from pathlib import Path
 from typing import Any, Callable, cast
@@ -31,15 +32,28 @@ from mmrelay.constants.app import (
     DEFAULT_READY_HEARTBEAT_SECONDS,
     MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS,
     PLUGIN_SHUTDOWN_TIMEOUT_SECONDS,
+    SECURE_DIR_PERMISSIONS,
+    SECURE_FILE_PERMISSIONS,
     WINDOWS_PLATFORM,
 )
 from mmrelay.constants.config import (
+    CONFIG_KEY_LEVEL,
     CONFIG_KEY_MESSAGE_DELAY,
     CONFIG_KEY_MSG_MAP,
     CONFIG_KEY_WIPE_ON_RESTART,
     CONFIG_SECTION_DATABASE,
     CONFIG_SECTION_DATABASE_LEGACY,
+    CONFIG_SECTION_LOGGING,
     CONFIG_SECTION_MESHTASTIC,
+    REQUIRED_CONFIG_SECTIONS_WITH_CREDENTIALS,
+    REQUIRED_CONFIG_SECTIONS_WITHOUT_CREDENTIALS,
+)
+from mmrelay.constants.network import (
+    MATRIX_CLIENT_CLOSE_TIMEOUT_SECS,
+    MESHTASTIC_CLOSE_TIMEOUT_SECS,
+    NODEDB_BACKOFF_INITIAL_SECS,
+    NODEDB_BACKOFF_MAX_SECS,
+    NODEDB_SHUTDOWN_TIMEOUT_SECS,
 )
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
 from mmrelay.db_utils import (
@@ -110,14 +124,15 @@ def _write_ready_file() -> None:
         ready_dir = os.path.dirname(_ready_file_path)
         if ready_dir:
             # Create parent directory with restrictive permissions (owner only)
-            os.makedirs(ready_dir, exist_ok=True, mode=0o700)
+            os.makedirs(ready_dir, exist_ok=True, mode=SECURE_DIR_PERMISSIONS)
             # Ensure directory has correct permissions when we own it.
             try:
-                if (
-                    os.path.isdir(ready_dir)
-                    and os.stat(ready_dir).st_uid == os.geteuid()
-                ):
-                    os.chmod(ready_dir, 0o700)
+                if os.path.isdir(ready_dir):
+                    same_owner = not hasattr(os, "geteuid") or (
+                        os.stat(ready_dir).st_uid == os.geteuid()
+                    )
+                    if same_owner:
+                        os.chmod(ready_dir, SECURE_DIR_PERMISSIONS)
             except OSError:
                 logger.debug(
                     "Failed to set readiness directory permissions: %s",
@@ -125,18 +140,28 @@ def _write_ready_file() -> None:
                     exc_info=True,
                 )
 
-        # Write atomically using a temp file in the same directory
+        # Write atomically using a secure unique temp file in the same directory
         ready_path = Path(_ready_file_path)
-        temp_path = ready_path.with_suffix(".tmp")
-
-        # Create temp file with restrictive permissions (owner read/write only)
-        with os.fdopen(
-            os.open(temp_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600), "w"
-        ):
-            pass
-
-        # Atomically rename temp file to target
-        temp_path.rename(ready_path)
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{ready_path.name}.",
+            dir=ready_path.parent,
+            text=True,
+        )
+        temp_path = Path(temp_name)
+        try:
+            os.close(fd)
+            try:
+                os.chmod(temp_path, SECURE_FILE_PERMISSIONS)
+            except OSError:
+                logger.debug(
+                    "Failed to set readiness temp file permissions: %s",
+                    temp_path,
+                    exc_info=True,
+                )
+            temp_path.replace(ready_path)
+        except OSError:
+            temp_path.unlink(missing_ok=True)
+            raise
         logger.debug("Wrote readiness file: %s", _ready_file_path)
     except OSError:
         logger.debug(
@@ -155,8 +180,18 @@ def _touch_ready_file() -> None:
     if not _ready_file_path:
         return
     try:
-        Path(_ready_file_path).touch(mode=0o600, exist_ok=True)
-        os.chmod(_ready_file_path, 0o600)
+        ready_path = Path(_ready_file_path)
+        ready_path.touch(mode=SECURE_FILE_PERMISSIONS, exist_ok=True)
+        same_owner = not hasattr(os, "geteuid") or (
+            ready_path.stat().st_uid == os.geteuid()
+        )
+        if same_owner:
+            os.chmod(ready_path, SECURE_FILE_PERMISSIONS)
+        else:
+            logger.debug(
+                "Skipping readiness file chmod due to ownership mismatch: %s",
+                ready_path,
+            )
         logger.debug("Touched readiness file: %s", _ready_file_path)
     except OSError:
         logger.debug(
@@ -266,6 +301,68 @@ def _requires_continuous_health_monitor(config: dict[str, Any]) -> bool:
     return meshtastic_utils.requires_continuous_health_monitor(config)
 
 
+def _should_suppress_unretrieved_matrix_task_timeout(context: dict[str, Any]) -> bool:
+    """
+    Return True when an asyncio loop exception context represents a known, transient Matrix keys_query timeout task.
+
+    This suppresses noisy "Task exception was never retrieved" logs emitted by third-party
+    background tasks during temporary homeserver/network instability.
+    """
+    message = str(context.get("message", ""))
+    if "Task exception was never retrieved" not in message:
+        return False
+
+    exception = context.get("exception")
+    if not isinstance(exception, asyncio.TimeoutError):
+        return False
+
+    task_like = context.get("task") or context.get("future")
+    if task_like is None:
+        return False
+
+    coro_name = ""
+    get_coro = getattr(task_like, "get_coro", None)
+    if callable(get_coro):
+        coro = get_coro()
+        coro_name = getattr(getattr(coro, "cr_code", None), "co_name", "")
+    task_repr = repr(task_like)
+    return "keys_query" in coro_name or "keys_query" in task_repr
+
+
+def _install_loop_exception_handler(
+    loop: asyncio.AbstractEventLoop,
+) -> Callable[[asyncio.AbstractEventLoop, dict[str, Any]], object] | None:
+    """
+    Install an asyncio exception handler that de-noises known transient Matrix background timeouts.
+
+    Returns the previous exception handler so callers can restore it during shutdown.
+    """
+    previous_handler = loop.get_exception_handler()
+
+    def _handler(
+        current_loop: asyncio.AbstractEventLoop, context: dict[str, Any]
+    ) -> None:
+        if _should_suppress_unretrieved_matrix_task_timeout(context):
+            matrix_logger.warning(
+                "Background Matrix key query timed out; continuing (transient network/homeserver issue)."
+            )
+            exception = context.get("exception")
+            if isinstance(exception, BaseException):
+                matrix_logger.debug(
+                    "Suppressed unretrieved Matrix background task timeout",
+                    exc_info=(type(exception), exception, exception.__traceback__),
+                )
+            return
+
+        if previous_handler is not None:
+            previous_handler(current_loop, context)
+        else:
+            current_loop.default_exception_handler(context)
+
+    loop.set_exception_handler(_handler)
+    return previous_handler
+
+
 async def main(config: dict[str, Any]) -> None:
     """
     Run the relay: initialize core services, connect to Meshtastic and Matrix, run the Matrix sync loop with health-monitoring and retry behavior, and perform an orderly shutdown.
@@ -286,54 +383,71 @@ async def main(config: dict[str, Any]) -> None:
 
     loop = asyncio.get_running_loop()
     meshtastic_utils.event_loop = loop
+    previous_loop_exception_handler: (
+        Callable[[asyncio.AbstractEventLoop, dict[str, Any]], object] | None
+    ) = None
+    if hasattr(loop, "get_exception_handler") and hasattr(
+        loop, "set_exception_handler"
+    ):
+        previous_loop_exception_handler = _install_loop_exception_handler(loop)
 
-    # Initialize the SQLite database
-    initialize_database()
+    def _restore_loop_exception_handler() -> None:
+        if hasattr(loop, "set_exception_handler"):
+            loop.set_exception_handler(previous_loop_exception_handler)
 
-    # Check database config for wipe_on_restart (preferred format)
-    database_config = config.get(CONFIG_SECTION_DATABASE)
-    msg_map_config = (
-        database_config.get(CONFIG_KEY_MSG_MAP)
-        if isinstance(database_config, dict)
-        else None
-    )
-    preferred_msg_map_config = (
-        msg_map_config if isinstance(msg_map_config, dict) else {}
-    )
-    has_preferred_wipe_on_restart = (
-        CONFIG_KEY_WIPE_ON_RESTART in preferred_msg_map_config
-    )
-    preferred_wipe_on_restart = preferred_msg_map_config.get(
-        CONFIG_KEY_WIPE_ON_RESTART, False
-    )
-    wipe_on_restart = (
-        _coerce_config_bool(preferred_wipe_on_restart)
-        if has_preferred_wipe_on_restart
-        else False
-    )
+    try:
+        # Initialize the SQLite database
+        initialize_database()
 
-    # If not found in database config, check legacy db config
-    if not has_preferred_wipe_on_restart:
-        db_config = config.get(CONFIG_SECTION_DATABASE_LEGACY)
-        legacy_msg_map_config = (
-            db_config.get(CONFIG_KEY_MSG_MAP) if isinstance(db_config, dict) else None
+        # Check database config for wipe_on_restart (preferred format)
+        database_config = config.get(CONFIG_SECTION_DATABASE)
+        msg_map_config = (
+            database_config.get(CONFIG_KEY_MSG_MAP)
+            if isinstance(database_config, dict)
+            else None
         )
-        if not isinstance(legacy_msg_map_config, dict):
-            legacy_msg_map_config = {}
-        legacy_wipe_on_restart_value = legacy_msg_map_config.get(
+        preferred_msg_map_config = (
+            msg_map_config if isinstance(msg_map_config, dict) else {}
+        )
+        has_preferred_wipe_on_restart = (
+            CONFIG_KEY_WIPE_ON_RESTART in preferred_msg_map_config
+        )
+        preferred_wipe_on_restart = preferred_msg_map_config.get(
             CONFIG_KEY_WIPE_ON_RESTART, False
         )
-        legacy_wipe_on_restart = _coerce_config_bool(legacy_wipe_on_restart_value)
+        wipe_on_restart = (
+            _coerce_config_bool(preferred_wipe_on_restart)
+            if has_preferred_wipe_on_restart
+            else False
+        )
 
-        if legacy_wipe_on_restart:
-            wipe_on_restart = True
-            logger.warning(
-                "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
+        # If not found in database config, check legacy db config
+        if not has_preferred_wipe_on_restart:
+            db_config = config.get(CONFIG_SECTION_DATABASE_LEGACY)
+            legacy_msg_map_config = (
+                db_config.get(CONFIG_KEY_MSG_MAP)
+                if isinstance(db_config, dict)
+                else None
             )
+            if not isinstance(legacy_msg_map_config, dict):
+                legacy_msg_map_config = {}
+            legacy_wipe_on_restart_value = legacy_msg_map_config.get(
+                CONFIG_KEY_WIPE_ON_RESTART, False
+            )
+            legacy_wipe_on_restart = _coerce_config_bool(legacy_wipe_on_restart_value)
 
-    if wipe_on_restart:
-        logger.debug("wipe_on_restart enabled. Wiping message_map now (startup).")
-        wipe_message_map()
+            if legacy_wipe_on_restart:
+                wipe_on_restart = True
+                logger.warning(
+                    "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
+                )
+
+        if wipe_on_restart:
+            logger.debug("wipe_on_restart enabled. Wiping message_map now (startup).")
+            wipe_message_map()
+    except BaseException:
+        _restore_loop_exception_handler()
+        raise
 
     # Set up shutdown event
     shutdown_event = asyncio.Event()
@@ -359,6 +473,8 @@ async def main(config: dict[str, Any]) -> None:
 
         Logs that a shutdown was requested, sets the global shutdown flag, and signals the local shutdown event so tasks waiting on it can begin cleanup.
         """
+        if shutdown_event.is_set():
+            return
         matrix_logger.info("Shutdown signal received. Closing down...")
         _set_shutdown_flag()
 
@@ -420,7 +536,12 @@ async def main(config: dict[str, Any]) -> None:
 
         if result is not None:
             if isinstance(result, (KeyboardInterrupt, SystemExit)):
-                raise result
+                logger.error(
+                    "Error while stopping %s (interrupted); continuing shutdown",
+                    step_name,
+                    exc_info=(type(result), result, result.__traceback__),
+                )
+                return
             logger.error(
                 "Error while stopping %s",
                 step_name,
@@ -435,16 +556,27 @@ async def main(config: dict[str, Any]) -> None:
             return
         matrix_logger.info("Closing Matrix client...")
         try:
-            await asyncio.wait_for(matrix_client.close(), timeout=10.0)
+            await asyncio.wait_for(
+                matrix_client.close(), timeout=MATRIX_CLIENT_CLOSE_TIMEOUT_SECS
+            )
         except asyncio.TimeoutError:
             matrix_logger.error(
                 "Timed out closing Matrix client during %s; continuing shutdown",
                 context,
             )
         except BaseException as exc:
-            if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+            if isinstance(exc, asyncio.CancelledError):
                 raise
-            matrix_logger.exception("Failed to close Matrix client during %s", context)
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                matrix_logger.error(
+                    "Interrupted while closing Matrix client during %s; continuing shutdown",
+                    context,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+            else:
+                matrix_logger.exception(
+                    "Failed to close Matrix client during %s", context
+                )
 
     async def _close_meshtastic_client_best_effort(*, context: str) -> None:
         """
@@ -472,7 +604,7 @@ async def main(config: dict[str, Any]) -> None:
             await asyncio.to_thread(
                 meshtastic_utils._run_blocking_with_timeout,
                 _close_meshtastic,
-                timeout=10.0,
+                timeout=MESHTASTIC_CLOSE_TIMEOUT_SECS,
                 label=f"meshtastic-client-close-{context.replace(' ', '-')}",
                 timeout_log_level=None,
             )
@@ -483,12 +615,19 @@ async def main(config: dict[str, Any]) -> None:
                 context,
             )
         except BaseException as exc:
-            if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+            if isinstance(exc, asyncio.CancelledError):
                 raise
-            meshtastic_logger.exception(
-                "Unexpected error during Meshtastic client close during %s",
-                context,
-            )
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                meshtastic_logger.error(
+                    "Interrupted while closing Meshtastic client during %s; continuing shutdown",
+                    context,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+            else:
+                meshtastic_logger.exception(
+                    "Unexpected error during Meshtastic client close during %s",
+                    context,
+                )
         finally:
             meshtastic_utils.meshtastic_client = None
             meshtastic_utils.meshtastic_iface = None
@@ -508,8 +647,15 @@ async def main(config: dict[str, Any]) -> None:
             CONFIG_KEY_MESSAGE_DELAY,
             DEFAULT_MESSAGE_DELAY,
         )
+        queue_started = start_message_queue(message_delay=message_delay)
+        if queue_started is False:
+            queue_status = get_message_queue().get_status()
+            raise RuntimeError(
+                "Failed to start message queue: "
+                f"stop_failed={queue_status.get('stop_failed')} "
+                f"running={queue_status.get('running')}"
+            )
         message_queue_cleanup_needed = True
-        start_message_queue(message_delay=message_delay)
 
         # Connect to Meshtastic
         meshtastic_utils.meshtastic_client = await asyncio.to_thread(
@@ -573,6 +719,9 @@ async def main(config: dict[str, Any]) -> None:
         # This provides proactive connection detection for all interface types
         check_connection_callable = meshtastic_utils.check_connection
         check_connection_task = asyncio.create_task(check_connection_callable())
+        continuous_health_exit_message = (
+            "Connection health task exited unexpectedly without an exception"
+        )
 
         def _on_check_connection_done(task: asyncio.Task[Any]) -> None:
             nonlocal fatal_exception
@@ -596,18 +745,34 @@ async def main(config: dict[str, Any]) -> None:
                 check_connection_callable is _DEFAULT_CHECK_CONNECTION_CALLABLE
                 and _requires_continuous_health_monitor(config)
             ):
-                fatal_exception = RuntimeError(
-                    "Connection health task exited unexpectedly without an exception"
-                )
-                meshtastic_logger.error(
-                    "Connection health task exited unexpectedly without an exception"
-                )
+                fatal_exception = RuntimeError(continuous_health_exit_message)
+                meshtastic_logger.error(continuous_health_exit_message)
                 _set_shutdown_flag()
 
         check_connection_task.add_done_callback(_on_check_connection_done)
         # Give the health-check task one scheduling opportunity before readiness logic.
         # This only guards against immediate startup failures in check_connection().
         await asyncio.sleep(0)
+        # Enforce deterministic startup behavior for immediate task failures/exits.
+        # Done callbacks are normally enough, but checking task state directly avoids
+        # event-loop scheduling races across Python versions.
+        if check_connection_task.done():
+            if fatal_exception is not None:
+                raise fatal_exception
+            if not check_connection_task.cancelled():
+                task_exception = check_connection_task.exception()
+                if task_exception is not None:
+                    fatal_exception = task_exception
+                    _set_shutdown_flag()
+                    check_connection_task._exception_consumed = True  # type: ignore[attr-defined]
+                    raise task_exception
+                if (
+                    check_connection_callable is _DEFAULT_CHECK_CONNECTION_CALLABLE
+                    and _requires_continuous_health_monitor(config)
+                ):
+                    fatal_exception = RuntimeError(continuous_health_exit_message)
+                    _set_shutdown_flag()
+                    raise fatal_exception
     except BaseException:
         _set_shutdown_flag()
         if check_connection_task is not None:
@@ -648,8 +813,8 @@ async def main(config: dict[str, Any]) -> None:
         NodeDB persistence in later releases.
         """
         restart_attempt = 0
-        backoff_seconds = 1.0
-        max_backoff_seconds = 30.0
+        backoff_seconds = NODEDB_BACKOFF_INITIAL_SECS
+        max_backoff_seconds = NODEDB_BACKOFF_MAX_SECS
         first_pass = True
 
         while first_pass or not shutdown_event.is_set():
@@ -697,7 +862,7 @@ async def main(config: dict[str, Any]) -> None:
                 if shutdown_event.is_set() or refresh_interval_seconds <= 0:
                     return
                 restart_attempt = 0
-                backoff_seconds = 1.0
+                backoff_seconds = NODEDB_BACKOFF_INITIAL_SECS
                 meshtastic_logger.warning(
                     "NodeDB name-cache refresh task exited unexpectedly; restarting in %.1fs",
                     backoff_seconds,
@@ -915,6 +1080,7 @@ async def main(config: dict[str, Any]) -> None:
     except KeyboardInterrupt:
         shutdown()
     finally:
+        _restore_loop_exception_handler()
         _set_shutdown_flag()
         await _await_background_task_shutdown(
             ready_task,
@@ -925,7 +1091,7 @@ async def main(config: dict[str, Any]) -> None:
         await _await_background_task_shutdown(
             node_name_refresh_task,
             task_name="NodeDB name-cache refresh task",
-            timeout_seconds=10.0,
+            timeout_seconds=NODEDB_SHUTDOWN_TIMEOUT_SECS,
         )
         await _await_background_task_shutdown(
             check_connection_task,
@@ -983,9 +1149,9 @@ def run_main(args: Any) -> int:
     # Handle --log-level option
     if args and args.log_level:
         # Override the log level from config
-        if "logging" not in config:
-            config["logging"] = {}
-        config["logging"]["level"] = args.log_level
+        if CONFIG_SECTION_LOGGING not in config:
+            config[CONFIG_SECTION_LOGGING] = {}
+        config[CONFIG_SECTION_LOGGING][CONFIG_KEY_LEVEL] = args.log_level
 
     # Set the global config variables in each module
     from mmrelay import (
@@ -1053,10 +1219,10 @@ def run_main(args: Any) -> int:
 
     if credentials:
         # With credentials.json, only meshtastic and matrix_rooms are required
-        required_keys = ["meshtastic", "matrix_rooms"]
+        required_keys = sorted(REQUIRED_CONFIG_SECTIONS_WITH_CREDENTIALS)
     else:
         # Without credentials.json, all sections are required
-        required_keys = ["matrix", "meshtastic", "matrix_rooms"]
+        required_keys = sorted(REQUIRED_CONFIG_SECTIONS_WITHOUT_CREDENTIALS)
 
     # Check each key individually for better debugging
     for key in required_keys:

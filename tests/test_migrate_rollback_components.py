@@ -10,24 +10,45 @@ from pathlib import Path
 
 import pytest
 
+from mmrelay.constants.app import (
+    CONFIG_FILENAME,
+    CREDENTIALS_FILENAME,
+    DATABASE_FILENAME,
+)
+from mmrelay.constants.migration import MIGRATION_BACKUP_DIRNAME
 from mmrelay.migrate import rollback_migration
+
+
+@pytest.fixture
+def new_home_with_gpx_plugin(tmp_path: Path) -> Path:
+    """Create a new_home directory with the gpxtracker plugin parent structure."""
+    new_home = tmp_path / "home"
+    new_home.mkdir()
+    gpx_plugin_parent = new_home / "plugins" / "community"
+    gpx_plugin_parent.mkdir(parents=True)
+    return new_home
+
+
+@pytest.fixture
+def gpxtracker_plugin_path(new_home_with_gpx_plugin: Path) -> Path:
+    """Create the gpxtracker plugin directory structure and return its path."""
+    gpx_plugin_parent = new_home_with_gpx_plugin / "plugins" / "community"
+    gpx_plugin_parent.mkdir(parents=True, exist_ok=True)
+    return gpx_plugin_parent / "gpxtracker"
 
 
 class TestRollbackCredentialsMigration:
     """Test rollback of credentials.json migration."""
 
-    def test_rollback_credentials_migration(self, tmp_path: Path) -> None:
+    def test_rollback_credentials_migration(
+        self, new_home_with_gpx_plugin: Path
+    ) -> None:
         """Test rollback of credentials.json from backup."""
-        # Create test structure
-        new_home = tmp_path / "home"
-        new_home.mkdir()
+        new_home = new_home_with_gpx_plugin
 
         # Create backup directory and credentials backup
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / "matrix" / ".migration_backups"
+        backup_dir = new_home / "matrix" / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir(parents=True)
         creds_backup = backup_dir / "credentials.json.bak.20240101_120000"
         creds_backup.write_text(
@@ -35,7 +56,7 @@ class TestRollbackCredentialsMigration:
         )
 
         # Create current (migrated) credentials file
-        creds_dest = new_home / "matrix" / "credentials.json"
+        creds_dest = new_home / "matrix" / CREDENTIALS_FILENAME
         creds_dest.parent.mkdir(parents=True, exist_ok=True)
         creds_dest.write_text(
             '{"homeserver": "https://new.server", "access_token": "new_token"}'
@@ -72,18 +93,13 @@ class TestRollbackCredentialsMigration:
 class TestRollbackConfigMigration:
     """Test rollback of config.yaml migration."""
 
-    def test_rollback_config_migration(self, tmp_path: Path) -> None:
+    def test_rollback_config_migration(self, new_home_with_gpx_plugin: Path) -> None:
         """Test rollback of config.yaml from backup."""
-        # Create test structure
-        new_home = tmp_path / "home"
-        new_home.mkdir()
+        new_home = new_home_with_gpx_plugin
 
         # Create backup directory and config backup
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir(parents=True)
         config_backup = backup_dir / "config.yaml.bak.20240101_120000"
         config_backup.write_text(
@@ -91,7 +107,7 @@ class TestRollbackConfigMigration:
         )
 
         # Create current (migrated) config file
-        config_dest = new_home / "config.yaml"
+        config_dest = new_home / CONFIG_FILENAME
         config_dest.write_text(
             "meshtastic:\n  connection_type: network\nmatrix:\n  homeserver: https://new.server"
         )
@@ -127,18 +143,15 @@ class TestRollbackConfigMigration:
 class TestRollbackDatabaseMigration:
     """Test rollback of database files including WAL/SHM sidecars."""
 
-    def test_rollback_database_migration_with_sidecars(self, tmp_path: Path) -> None:
+    def test_rollback_database_migration_with_sidecars(
+        self, new_home_with_gpx_plugin: Path
+    ) -> None:
         """Test rollback of database including WAL and SHM sidecar files."""
-        # Create test structure
-        new_home = tmp_path / "home"
-        new_home.mkdir()
+        new_home = new_home_with_gpx_plugin
 
         # Create backup directory and database backups with sidecars
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
 
         # Main database backup
@@ -157,7 +170,7 @@ class TestRollbackDatabaseMigration:
         db_dir = new_home / "database"
         db_dir.mkdir(parents=True)
 
-        db_file = db_dir / "meshtastic.sqlite"
+        db_file = db_dir / DATABASE_FILENAME
         db_file.write_text("SQLite format 3 (migrated)")
 
         wal_file = db_dir / "meshtastic.sqlite-wal"
@@ -187,22 +200,113 @@ class TestRollbackDatabaseMigration:
         assert db_file.exists()
         assert "backup" in db_file.read_text()
 
+    def test_rollback_database_migration_uses_recorded_backup_members(
+        self, new_home_with_gpx_plugin: Path
+    ) -> None:
+        """Recorded backup member paths should restore DB files when step new_path is a directory."""
+        new_home = new_home_with_gpx_plugin
+
+        db_dir = new_home / "database"
+        backup_dir = db_dir / MIGRATION_BACKUP_DIRNAME
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        db_backup = backup_dir / "meshtastic.sqlite.bak.20240101_120000"
+        wal_backup = backup_dir / "meshtastic.sqlite-wal.bak.20240101_120000"
+        db_backup.write_text("SQLite format 3 (backup)")
+        wal_backup.write_text("WAL backup")
+
+        db_dest = db_dir / DATABASE_FILENAME
+        wal_dest = db_dir / "meshtastic.sqlite-wal"
+        db_dest.write_text("SQLite format 3 (migrated)")
+        wal_dest.write_text("WAL migrated")
+
+        completed_steps = ["database"]
+        migrations = [
+            {
+                "type": "database",
+                "result": {
+                    "new_path": str(db_dir),
+                    "action": "move",
+                    "success": True,
+                    "backed_up_files": [
+                        {
+                            "backup_path": str(db_backup),
+                            "restore_path": str(db_dest),
+                        },
+                        {
+                            "backup_path": str(wal_backup),
+                            "restore_path": str(wal_dest),
+                        },
+                    ],
+                },
+            }
+        ]
+
+        result = rollback_migration(completed_steps, migrations, new_home)
+
+        assert result["success"] is True
+        # rolled_back_steps has 2 entries because backed_up_files contains 2 files (db + wal).
+        # Each restored file gets its own entry, unlike test_rollback_database_migration_with_sidecars
+        # which uses find_backup_for_step() and produces 1 entry per step.
+        assert len(result["rolled_back_steps"]) == 2
+        assert result["rolled_back_steps"][0]["step"] == "database"
+        assert db_dest.read_text() == "SQLite format 3 (backup)"
+        assert wal_dest.read_text() == "WAL backup"
+
+    def test_rollback_database_migration_removes_unbacked_migrated_members(
+        self, new_home_with_gpx_plugin: Path
+    ) -> None:
+        """Rollback should remove migrated DB members that had no recorded backup."""
+        new_home = new_home_with_gpx_plugin
+
+        db_dir = new_home / "database"
+        backup_dir = db_dir / MIGRATION_BACKUP_DIRNAME
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        db_backup = backup_dir / "meshtastic.sqlite.bak.20240101_120000"
+        db_backup.write_text("SQLite format 3 (backup)")
+
+        db_dest = db_dir / DATABASE_FILENAME
+        wal_dest = db_dir / "meshtastic.sqlite-wal"
+        db_dest.write_text("SQLite format 3 (migrated)")
+        wal_dest.write_text("WAL migrated")
+
+        completed_steps = ["database"]
+        migrations = [
+            {
+                "type": "database",
+                "result": {
+                    "new_path": str(db_dir),
+                    "action": "move",
+                    "success": True,
+                    "backed_up_files": [
+                        {
+                            "backup_path": str(db_backup),
+                            "restore_path": str(db_dest),
+                        }
+                    ],
+                    "migrated_files": [str(db_dest), str(wal_dest)],
+                },
+            }
+        ]
+
+        result = rollback_migration(completed_steps, migrations, new_home)
+
+        assert result["success"] is True
+        assert db_dest.read_text() == "SQLite format 3 (backup)"
+        assert not wal_dest.exists()
+
 
 class TestRollbackLogsMigration:
     """Test rollback of logs directory migration."""
 
-    def test_rollback_logs_migration(self, tmp_path: Path) -> None:
+    def test_rollback_logs_migration(self, new_home_with_gpx_plugin: Path) -> None:
         """Test rollback of logs directory from backup."""
-        # Create test structure
-        new_home = tmp_path / "home"
-        new_home.mkdir()
+        new_home = new_home_with_gpx_plugin
 
         # Create backup directory and logs backup
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
         logs_backup = backup_dir / "logs.bak.20240101_120000"
         logs_backup.mkdir()
@@ -250,18 +354,13 @@ class TestRollbackStoreMigration:
     """Test rollback of E2EE store directory migration."""
 
     @pytest.mark.skipif(sys.platform == "win32", reason="E2EE not supported on Windows")
-    def test_rollback_store_migration(self, tmp_path: Path) -> None:
+    def test_rollback_store_migration(self, new_home_with_gpx_plugin: Path) -> None:
         """Test rollback of E2EE store directory from backup (Unix/macOS only)."""
-        # Create test structure
-        new_home = tmp_path / "home"
-        new_home.mkdir()
+        new_home = new_home_with_gpx_plugin
 
         # Create backup directory and store backup
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
         store_backup = backup_dir / "store.bak.20240101_120000"
         store_backup.mkdir()
@@ -307,18 +406,13 @@ class TestRollbackStoreMigration:
 class TestRollbackPluginsMigration:
     """Test rollback of plugins directory migration."""
 
-    def test_rollback_plugins_migration(self, tmp_path: Path) -> None:
+    def test_rollback_plugins_migration(self, new_home_with_gpx_plugin: Path) -> None:
         """Test rollback of plugins directory with custom and community subdirectories."""
-        # Create test structure
-        new_home = tmp_path / "home"
-        new_home.mkdir()
+        new_home = new_home_with_gpx_plugin
 
         # Create backup directory and plugins backup
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
         plugins_backup = backup_dir / "plugins.bak.20240101_120000"
         plugins_backup.mkdir()
@@ -383,20 +477,18 @@ class TestRollbackPluginsMigration:
 class TestRollbackGpxtrackerMigration:
     """Test rollback of GPX tracker data migration."""
 
-    def test_rollback_gpxtracker_migration(self, tmp_path: Path) -> None:
+    def test_rollback_gpxtracker_migration(
+        self, new_home_with_gpx_plugin: Path, gpxtracker_plugin_path: Path
+    ) -> None:
         """Test rollback of GPX tracker data from backup."""
-        # Create test structure
-        new_home = tmp_path / "home"
-        new_home.mkdir()
-
         # Create current (migrated) GPX directory
-        gpx_dest = new_home / "plugins" / "community" / "gpxtracker" / "data"
+        gpx_dest = gpxtracker_plugin_path / "data"
         gpx_dest.mkdir(parents=True)
         (gpx_dest / "track_new.gpx").write_text("<gpx>New track</gpx>")
 
         # Create backup directory and GPX tracker backup.
-        # For this step rollback lookup searches under new_path.parent/.migration_backups
-        backup_dir = gpx_dest.parent / ".migration_backups"
+        # For this step rollback lookup searches under new_path.parent/MIGRATION_BACKUP_DIRNAME
+        backup_dir = gpx_dest.parent / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
         gpx_backup = backup_dir / "data.bak.20240101_120000"
         gpx_backup.mkdir()
@@ -421,7 +513,9 @@ class TestRollbackGpxtrackerMigration:
         ]
 
         # Execute rollback
-        result = rollback_migration(completed_steps, migrations, new_home)
+        result = rollback_migration(
+            completed_steps, migrations, new_home_with_gpx_plugin
+        )
 
         # Verify rollback succeeded
         assert result["success"] is True
@@ -437,18 +531,13 @@ class TestRollbackGpxtrackerMigration:
 class TestRollbackMultipleComponents:
     """Test rollback of multiple components in reverse order."""
 
-    def test_rollback_multiple_components_reverse_order(self, tmp_path: Path) -> None:
+    def test_rollback_multiple_components_reverse_order(
+        self, new_home_with_gpx_plugin: Path
+    ) -> None:
         """Test that multiple components are rolled back in reverse order."""
-        # Create test structure
-        new_home = tmp_path / "home"
-        new_home.mkdir()
+        new_home = new_home_with_gpx_plugin
 
-        # Create backup directory
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
-
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
 
         # Create backups for multiple components
@@ -463,11 +552,11 @@ class TestRollbackMultipleComponents:
         (logs_backup / "backup.log").write_text("backup log")
 
         # Create current (migrated) files
-        creds_dest = new_home / "matrix" / "credentials.json"
+        creds_dest = new_home / "matrix" / CREDENTIALS_FILENAME
         creds_dest.parent.mkdir(parents=True)
         creds_dest.write_text('{"token": "new_creds"}')
 
-        config_dest = new_home / "config.yaml"
+        config_dest = new_home / CONFIG_FILENAME
         config_dest.write_text("config: new")
 
         logs_dest = new_home / "logs"

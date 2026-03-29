@@ -56,8 +56,8 @@ For containers, the canonical model remains:
 - For safety, home-root fallback migration validates required keys before moving files:
   - `homeserver`
   - `access_token`
-  - `user_id`
 
+`user_id` is optional in v1.3+ and can be recovered at runtime when needed.
 If your credentials are missing or malformed, run `mmrelay auth login` again to regenerate.
 
 ## Upgrade Steps (All Deployments)

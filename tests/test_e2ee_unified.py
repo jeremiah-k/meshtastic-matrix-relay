@@ -20,6 +20,14 @@ from unittest.mock import MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from mmrelay.constants.app import CONFIG_FILENAME
+from mmrelay.constants.messages import (
+    MSG_E2EE_DISABLED,
+    MSG_E2EE_NO_AUTH,
+    MSG_E2EE_WINDOWS_UNSUPPORTED,
+    MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL,
+)
+
 try:
     from mmrelay.e2ee_utils import (
         format_room_list,
@@ -59,19 +67,18 @@ class MockRoom:
 class TestUnifiedE2EEStatus(unittest.TestCase):
     """Test the unified E2EE status detection system"""
 
-    def setUp(self):
+    def setUp(self) -> None:
         """
         Prepare the test environment: skip tests if E2EE utilities are unavailable, create a temporary directory with config and credentials paths, and initialize a baseline config used by tests.
 
-        The baseline config enables matrix E2EE, sets a meshtastic meshnet name ("TestNet"), and includes a single matrix room entry ("!room:test.org") mapped to meshtastic channel 0. Temporary paths created: self.temp_dir, self.config_path, and self.credentials_path.
+        The baseline config enables matrix E2EE, sets a meshtastic meshnet name ("TestNet"), and includes a single matrix room entry ("!room:test.org") mapped to meshtastic channel 0. Temporary paths created: self.temp_dir and self.config_path.
         """
         if not IMPORTS_AVAILABLE:
             self.skipTest("Required imports not available")
 
         # Create temporary config file
         self.temp_dir = tempfile.mkdtemp()
-        self.config_path = os.path.join(self.temp_dir, "config.yaml")
-        self.credentials_path = os.path.join(self.temp_dir, "credentials.json")
+        self.config_path = os.path.join(self.temp_dir, CONFIG_FILENAME)
 
         # Basic config
         self.base_config = {
@@ -121,7 +128,7 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
         self.assertEqual(status["overall_status"], "unavailable")
         self.assertFalse(status["platform_supported"])
-        self.assertIn("E2EE is not supported on Windows", status["issues"])
+        self.assertIn(MSG_E2EE_WINDOWS_UNSUPPORTED, status["issues"])
 
     @patch("sys.platform", "linux")
     def test_e2ee_disabled_status(self):
@@ -133,7 +140,7 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
         self.assertEqual(status["overall_status"], "disabled")
         self.assertFalse(status["enabled"])
-        self.assertIn("E2EE is disabled in configuration", status["issues"])
+        self.assertIn(MSG_E2EE_DISABLED, status["issues"])
 
     @patch("sys.platform", "linux")
     @patch("mmrelay.e2ee_utils.os.path.exists")
@@ -189,7 +196,7 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
             self.assertEqual(status["overall_status"], "incomplete")
             self.assertFalse(status["credentials_available"])
-            self.assertIn("Matrix authentication not configured", status["issues"])
+            self.assertIn(MSG_E2EE_NO_AUTH, status["issues"])
             imported_modules = {call.args[0] for call in mock_import.call_args_list}
             assert {
                 "olm",
@@ -381,7 +388,7 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 class TestRoomListFormatting(unittest.TestCase):
     """Test room list formatting with E2EE status"""
 
-    def setUp(self):
+    def setUp(self) -> None:
         """
         Skip the test when optional E2EE-related imports are not available.
 
@@ -462,7 +469,7 @@ class TestRoomListFormatting(unittest.TestCase):
 class TestEncryptionWarnings(unittest.TestCase):
     """Test encryption warning generation"""
 
-    def setUp(self):
+    def setUp(self) -> None:
         """
         Skip the test when optional E2EE-related imports are not available.
 
@@ -523,7 +530,7 @@ class TestEncryptionWarnings(unittest.TestCase):
 class TestE2EEErrorMessages(unittest.TestCase):
     """Test E2EE error message generation"""
 
-    def setUp(self):
+    def setUp(self) -> None:
         """
         Skip the test when optional E2EE-related imports are not available.
 
@@ -538,7 +545,7 @@ class TestE2EEErrorMessages(unittest.TestCase):
 
         message = get_e2ee_error_message(e2ee_status)
 
-        self.assertIn("E2EE is not supported on Windows", message)
+        self.assertIn(MSG_E2EE_WINDOWS_UNSUPPORTED, message)
 
     def test_error_message_disabled(self):
         """Test error message for disabled E2EE"""
@@ -550,7 +557,7 @@ class TestE2EEErrorMessages(unittest.TestCase):
 
         message = get_e2ee_error_message(e2ee_status)
 
-        self.assertIn("E2EE is disabled in configuration", message)
+        self.assertIn(MSG_E2EE_DISABLED, message)
 
     def test_fix_instructions_complete_flow(self):
         """Test fix instructions for incomplete E2EE setup"""
@@ -570,6 +577,22 @@ class TestE2EEErrorMessages(unittest.TestCase):
         self.assertIn("Set up Matrix authentication", instruction_text)
         self.assertIn("Enable E2EE in configuration", instruction_text)
         self.assertIn("Verify configuration", instruction_text)
+
+    def test_fix_instructions_windows_unsupported_short_circuit(self):
+        """Unsupported platforms should return the two Windows guidance lines."""
+        e2ee_status = {
+            "overall_status": "unavailable",
+            "platform_supported": False,
+            "dependencies_installed": False,
+            "credentials_available": False,
+            "enabled": False,
+        }
+
+        instructions = get_e2ee_fix_instructions(e2ee_status)
+
+        self.assertEqual(len(instructions), 2)
+        self.assertEqual(instructions[0], MSG_E2EE_WINDOWS_UNSUPPORTED)
+        self.assertEqual(instructions[1], MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL)
 
     def test_get_e2ee_warning_messages(self):
         """Test that get_e2ee_warning_messages returns expected warning messages."""
@@ -607,7 +630,7 @@ class TestE2EEErrorMessages(unittest.TestCase):
 class TestActualEncryptionVerification(unittest.TestCase):
     """Test actual encryption verification using log capture"""
 
-    def setUp(self):
+    def setUp(self) -> None:
         """
         Skip the test when optional E2EE-related imports are not available.
 

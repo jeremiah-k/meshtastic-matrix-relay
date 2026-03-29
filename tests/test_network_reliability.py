@@ -7,13 +7,15 @@ queuing during network interruptions.
 """
 
 import asyncio
-import time
+import http.client
+import socket
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from mmrelay.constants.network import (
     CONNECTION_TYPE_BLE,
+    CONNECTION_TYPE_NETWORK,
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
     DEFAULT_BACKOFF_TIME,
@@ -23,6 +25,26 @@ from mmrelay.constants.network import (
 from mmrelay.constants.queue import MAX_QUEUE_SIZE
 
 
+@pytest.fixture(autouse=True)
+def block_external_network_calls(monkeypatch):
+    """
+    Fail fast if a test attempts a real outbound network request.
+    """
+
+    def _blocked(*_args, **_kwargs):
+        raise AssertionError("External network calls are not allowed in this test")
+
+    async def _blocked_async(*_args, **_kwargs):
+        raise AssertionError("External network calls are not allowed in this test")
+
+    monkeypatch.setattr(socket, "create_connection", _blocked)
+    monkeypatch.setattr(socket.socket, "connect", _blocked)
+    monkeypatch.setattr(socket.socket, "connect_ex", _blocked)
+    monkeypatch.setattr(http.client.HTTPConnection, "request", _blocked)
+    monkeypatch.setattr(http.client.HTTPSConnection, "request", _blocked)
+    monkeypatch.setattr(asyncio, "open_connection", _blocked_async)
+
+
 class TestConnectionRetryLogic:
     """Test connection retry and backoff behavior."""
 
@@ -30,46 +52,58 @@ class TestConnectionRetryLogic:
     @pytest.mark.usefixtures("comprehensive_cleanup")
     async def test_connection_retry_backoff_timing(self):
         """
-        Verify that connection retry logic applies backoff delays between failed attempts and succeeds after the expected number of retries.
-
-        This test simulates two consecutive connection failures followed by a successful attempt, ensuring that the retry mechanism waits for the appropriate backoff duration between retries and attempts the correct number of connections.
+        Verify reconnect() requests exponential backoff delays between failed attempts.
         """
-        with patch("mmrelay.meshtastic_utils.time.sleep"), patch(
-            "mmrelay.meshtastic_utils.connect_meshtastic"
-        ) as mock_connect:
-            # Simulate connection failures followed by success
-            mock_connect.side_effect = [
-                ConnectionError("First attempt"),
-                ConnectionError("Second attempt"),
-                MagicMock(),  # Success on third attempt
-            ]
+        import mmrelay.meshtastic_utils as mu
 
-            start_time = time.monotonic()
+        backoff_delays = []
+        original_backoff = mu.DEFAULT_BACKOFF_TIME
+        original_config = mu.config
+        original_shutting_down = mu.shutting_down
 
-            # This would be your actual retry logic - adjust import as needed
-            try:
-                from mmrelay.meshtastic_utils import establish_connection_with_retry
+        async def _record_sleep(duration):
+            backoff_delays.append(duration)
+            return None
 
-                await establish_connection_with_retry()
-            except ImportError:
-                # If the function doesn't exist yet, simulate the test
-                for attempt in range(3):
-                    try:
-                        mock_connect()
-                        break
-                    except ConnectionError:
-                        if attempt < 2:  # Don't sleep on last attempt
-                            await asyncio.sleep(DEFAULT_BACKOFF_TIME)
+        class _InlineLoop:
+            async def run_in_executor(self, _executor, fn, *args):
+                return fn(*args)
 
-            end_time = time.monotonic()
+        try:
+            mu.DEFAULT_BACKOFF_TIME = 1
+            mu.config = {
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "127.0.0.1",
+                }
+            }
+            mu.shutting_down = False
 
-            # Should have attempted connection 3 times
+            with (
+                patch(
+                    "mmrelay.meshtastic_utils.is_running_as_service",
+                    return_value=True,
+                ),
+                patch("asyncio.get_running_loop", return_value=_InlineLoop()),
+                patch("asyncio.sleep", side_effect=_record_sleep),
+                patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
+            ):
+                # Fail twice, then succeed.
+                mock_connect.side_effect = [
+                    ConnectionError("First attempt"),
+                    ConnectionError("Second attempt"),
+                    MagicMock(),
+                ]
+
+                await mu.reconnect()
+
             assert mock_connect.call_count == 3
-
-            # Should have waited for backoff (allowing some timing variance)
-            elapsed = end_time - start_time
-            expected_min_time = DEFAULT_BACKOFF_TIME * 2  # Two backoff periods
-            assert elapsed >= expected_min_time * 0.8  # Allow 20% variance
+            # reconnect() sleeps before each attempt, with exponential backoff.
+            assert backoff_delays == [1, 2, 4]
+        finally:
+            mu.DEFAULT_BACKOFF_TIME = original_backoff
+            mu.config = original_config
+            mu.shutting_down = original_shutting_down
 
     @pytest.mark.asyncio
     async def test_exponential_backoff_progression(self):
@@ -86,9 +120,10 @@ class TestConnectionRetryLogic:
             """
             backoff_times.append(duration)
 
-        with patch("asyncio.sleep", side_effect=mock_sleep), patch(
-            "mmrelay.meshtastic_utils.connect_meshtastic"
-        ) as mock_connect:
+        with (
+            patch("asyncio.sleep", side_effect=mock_sleep),
+            patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
+        ):
             # Simulate multiple failures
             mock_connect.side_effect = [ConnectionError()] * 5
 
@@ -204,7 +239,12 @@ class TestConnectionTypeFallback:
         for conn_type in valid_types:
             assert isinstance(conn_type, str)
             assert len(conn_type) > 0
-            assert conn_type in ["tcp", "serial", "ble", "network"]
+            assert conn_type in [
+                CONNECTION_TYPE_TCP,
+                CONNECTION_TYPE_SERIAL,
+                CONNECTION_TYPE_BLE,
+                CONNECTION_TYPE_NETWORK,
+            ]
 
     @pytest.mark.asyncio
     async def test_connection_preference_order(self):
@@ -407,22 +447,38 @@ class TestNetworkErrorRecovery:
     @pytest.mark.asyncio
     async def test_message_delay_enforcement(self):
         """
-        Verify that the minimum delay between consecutive message sends is enforced, allowing for a small timing variance.
+        Verify MessageQueue requests inter-send delay using production queue logic.
         """
-        send_times = []
+        requested_delays = []
+        real_sleep = asyncio.sleep
 
-        async def mock_send_message():
-            """
-            Simulates sending a message by recording the current timestamp in the send_times list.
-            """
-            send_times.append(time.time())
+        async def _record_sleep(duration):
+            requested_delays.append(duration)
+            # Keep cooperative scheduling without introducing real delays.
+            await real_sleep(0)
 
-        # Simulate rapid message sending
-        for _ in range(3):
-            await mock_send_message()
-            await asyncio.sleep(MINIMUM_MESSAGE_DELAY)
+        from mmrelay.message_queue import MessageQueue
 
-        # Verify minimum delay between messages
-        for i in range(1, len(send_times)):
-            time_diff = send_times[i] - send_times[i - 1]
-            assert time_diff >= MINIMUM_MESSAGE_DELAY * 0.9  # Allow 10% variance
+        queue = MessageQueue()
+        send_fn = MagicMock(return_value=MagicMock(id=123))
+        connected_client = MagicMock()
+        connected_client.is_connected = True
+
+        with (
+            patch("mmrelay.message_queue.asyncio.sleep", side_effect=_record_sleep),
+            patch("mmrelay.meshtastic_utils.reconnecting", False),
+            patch("mmrelay.meshtastic_utils.meshtastic_client", connected_client),
+        ):
+            queue.start(message_delay=MINIMUM_MESSAGE_DELAY)
+            try:
+                assert queue.enqueue(send_fn, "first", description="first message")
+                assert queue.enqueue(send_fn, "second", description="second message")
+                drained = await queue.drain(timeout=2.0)
+            finally:
+                queue.stop()
+
+        assert drained is True
+        assert send_fn.call_count == 2
+        assert any(
+            delay >= MINIMUM_MESSAGE_DELAY - 0.01 for delay in requested_delays
+        ), requested_delays

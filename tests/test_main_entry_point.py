@@ -7,12 +7,44 @@ scripts fail.
 """
 
 import os
+import runpy
 import sys
 import unittest
 from unittest.mock import patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+from mmrelay.constants.app import EXIT_CODE_SIGINT
+
+
+def _run_main_module() -> None:
+    """
+    Execute mmrelay.__main__ as if run with python -m mmrelay.
+
+    Clears mmrelay modules from sys.modules to ensure fresh execution.
+    """
+    saved_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "mmrelay" or name.startswith("mmrelay.")
+    }
+
+    # Clear only the modules that trigger stale-import runtime warnings when
+    # executing the entry point via runpy.
+    sys.modules.pop("mmrelay.paths", None)
+    sys.modules.pop("mmrelay.__main__", None)
+    sys.modules.pop("mmrelay.main", None)
+    sys.modules.pop("mmrelay", None)
+    try:
+        runpy.run_module("mmrelay.__main__", run_name="__main__")
+    finally:
+        # Restore original module graph to avoid leaking fresh package/module
+        # objects into later tests that already captured function globals.
+        for module_name in list(sys.modules):
+            if module_name == "mmrelay" or module_name.startswith("mmrelay."):
+                sys.modules.pop(module_name, None)
+        sys.modules.update(saved_modules)
 
 
 class TestMainEntryPoint(unittest.TestCase):
@@ -41,10 +73,7 @@ class TestMainEntryPoint(unittest.TestCase):
         """Test successful execution of main entry point."""
         mock_main.return_value = 0
 
-        # Execute the main module code with __name__ == "__main__"
-        with open("src/mmrelay/__main__.py") as f:
-            code = f.read()
-        exec(code, {"__name__": "__main__"})  # nosec B102
+        _run_main_module()
 
         mock_main.assert_called_once()
         mock_exit.assert_called_once_with(0)
@@ -61,10 +90,7 @@ class TestMainEntryPoint(unittest.TestCase):
         - "Please ensure MMRelay is properly installed." is printed to stderr.
         - sys.exit is called with code 1.
         """
-        # Execute the main module code with __name__ == "__main__"
-        with open("src/mmrelay/__main__.py") as f:
-            code = f.read()
-        exec(code, {"__name__": "__main__"})  # nosec B102
+        _run_main_module()
 
         mock_print.assert_any_call(
             "Error importing MMRelay CLI: Module not found", file=sys.stderr
@@ -81,10 +107,29 @@ class TestMainEntryPoint(unittest.TestCase):
         self, mock_exit, mock_print, mock_main
     ):
         """Test handling of KeyboardInterrupt."""
-        # Execute the main module code with __name__ == "__main__"
-        with open("src/mmrelay/__main__.py") as f:
-            code = f.read()
-        exec(code, {"__name__": "__main__"})  # nosec B102
+        _run_main_module()
+
+        mock_print.assert_called_once_with("Interrupted.", file=sys.stderr)
+        mock_exit.assert_called_once_with(EXIT_CODE_SIGINT)
+
+    @patch("mmrelay.cli.main", side_effect=KeyboardInterrupt())
+    @patch("builtins.print")
+    @patch("sys.exit")
+    def test_main_entry_point_keyboard_interrupt_falls_back_to_130_on_import_error(
+        self, mock_exit, mock_print, _mock_main
+    ):
+        """KeyboardInterrupt branch should use exit 130 when EXIT_CODE_SIGINT import fails."""
+        import builtins as _builtins
+
+        real_import = _builtins.__import__
+
+        def _import_side_effect(name, globs=None, locs=None, fromlist=(), level=0):
+            if "mmrelay.constants" in name:
+                raise ImportError("constants unavailable")
+            return real_import(name, globs, locs, fromlist, level)
+
+        with patch("builtins.__import__", side_effect=_import_side_effect):
+            _run_main_module()
 
         mock_print.assert_called_once_with("Interrupted.", file=sys.stderr)
         mock_exit.assert_called_once_with(130)
@@ -98,9 +143,7 @@ class TestMainEntryPoint(unittest.TestCase):
         Executes the package's __main__ module as a script (via exec with __name__ == "__main__") and asserts the raised SystemExit carries the original exit code (42), ensuring passthrough behavior rather than being swallowed or remapped.
         """
         with self.assertRaises(SystemExit) as cm:
-            with open("src/mmrelay/__main__.py") as f:
-                code = f.read()
-            exec(code, {"__name__": "__main__"})  # nosec B102
+            _run_main_module()
 
         self.assertEqual(cm.exception.code, 42)
 
@@ -115,10 +158,7 @@ class TestMainEntryPoint(unittest.TestCase):
 
         Executes src/mmrelay/__main__.py with __name__ set to "__main__" (the test patches mmrelay.cli.main to raise a RuntimeError). Asserts that a single error message of the form "Unexpected error: <message>" is printed to stderr and that sys.exit is called with 1.
         """
-        # Execute the main module code with __name__ == "__main__"
-        with open("src/mmrelay/__main__.py") as f:
-            code = f.read()
-        exec(code, {"__name__": "__main__"})  # nosec B102
+        _run_main_module()
 
         mock_print.assert_called_once_with(
             "Unexpected error: Unexpected error", file=sys.stderr
@@ -150,10 +190,11 @@ class TestMainEntryPoint(unittest.TestCase):
         # Import the module to check its docstring
         import mmrelay.__main__
 
-        self.assertIsNotNone(mmrelay.__main__.__doc__)
-        self.assertIn("Alternative entry point", mmrelay.__main__.__doc__)
-        self.assertIn("Windows", mmrelay.__main__.__doc__)
-        self.assertIn("python -m mmrelay", mmrelay.__main__.__doc__)
+        doc = mmrelay.__main__.__doc__
+        self.assertIsNotNone(doc)
+        self.assertIn("Alternative entry point", doc)
+        self.assertIn("Windows", doc)
+        self.assertIn("python -m mmrelay", doc)
 
     @patch("mmrelay.cli.main")
     @patch("sys.exit")
@@ -162,10 +203,7 @@ class TestMainEntryPoint(unittest.TestCase):
         mock_main.return_value = 5
         sys.argv = ["python", "-m", "mmrelay", "--help"]
 
-        # Execute the main module code with __name__ == "__main__"
-        with open("src/mmrelay/__main__.py") as f:
-            code = f.read()
-        exec(code, {"__name__": "__main__"})  # nosec B102
+        _run_main_module()
 
         mock_main.assert_called_once()
         mock_exit.assert_called_once_with(5)
@@ -189,12 +227,12 @@ class TestMainEntryPointIntegration(unittest.TestCase):
     def test_main_entry_point_can_be_executed_as_module(self):
         """Test that the main entry point can be executed as a module."""
         # This is more of a structural test to ensure the module is set up correctly
-        import subprocess
+        import subprocess  # nosec B404  # test: testing subprocess entry point behavior
         import sys
 
         # Try to run the module with --help to see if it executes without import errors
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S603  # nosec B603  # test: running program under test via subprocess
                 [sys.executable, "-m", "mmrelay", "--help"],
                 capture_output=True,
                 text=True,

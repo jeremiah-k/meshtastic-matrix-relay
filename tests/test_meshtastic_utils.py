@@ -18,7 +18,7 @@ import unittest
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from types import SimpleNamespace
 from typing import Any, Callable
-from unittest.mock import AsyncMock, MagicMock, Mock, mock_open, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, Mock, mock_open, patch
 
 import pytest
 from meshtastic.mesh_interface import BROADCAST_NUM
@@ -26,10 +26,18 @@ from meshtastic.mesh_interface import BROADCAST_NUM
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.network import (
     BLE_CONNECT_TIMEOUT_SECS,
+    BLE_DISCONNECT_SETTLE_SECS,
+    CONNECTION_TYPE_BLE,
+    CONNECTION_TYPE_SERIAL,
+    CONNECTION_TYPE_TCP,
+    DEFAULT_MESHTASTIC_TIMEOUT,
+    DEFAULT_TCP_PORT,
     MAX_TIMEOUT_RETRIES_INFINITE,
     METADATA_WATCHDOG_SECS,
+    STALE_DISCONNECT_TIMEOUT_SECS,
 )
 from mmrelay.meshtastic_utils import (
     _get_device_metadata,
@@ -46,6 +54,12 @@ from mmrelay.meshtastic_utils import (
     serial_port_exists,
 )
 from tests.conftest import cleanup_ble_future_state
+from tests.constants import (
+    TEST_BLE_MAC,
+    TEST_NODE_NUM,
+    TEST_PACKET_FROM_ID,
+    TEST_PACKET_ID,
+)
 
 TEST_PACKET_RX_TIME = 1234567890
 
@@ -127,7 +141,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         # Mock configuration
         self.mock_config = {
             "meshtastic": {
-                "connection_type": "serial",
+                "connection_type": CONNECTION_TYPE_SERIAL,
                 "serial_port": "/dev/ttyUSB0",
                 "broadcast_enabled": True,
                 "meshnet_name": "test_mesh",
@@ -140,14 +154,14 @@ class TestMeshtasticUtils(unittest.TestCase):
 
         # Mock packet data
         self.mock_packet = {
-            "from": 123456789,
+            "from": TEST_PACKET_FROM_ID,
             "to": 987654321,
             "decoded": {
                 "text": "Hello from mesh",
-                "portnum": "TEXT_MESSAGE_APP",  # Use string constant
+                "portnum": TEXT_MESSAGE_APP,
             },
             "channel": 0,
-            "id": 12345,
+            "id": TEST_PACKET_ID,
             "rxTime": TEST_PACKET_RX_TIME,
         }
 
@@ -268,7 +282,7 @@ class TestMeshtasticUtils(unittest.TestCase):
 
             mock_interface = MagicMock()
             mock_interface.myInfo = MagicMock()
-            mock_interface.myInfo.my_node_num = 12345
+            mock_interface.myInfo.my_node_num = TEST_NODE_NUM
 
             # Call the function
             on_meshtastic_message(packet_no_channel, mock_interface)
@@ -338,9 +352,9 @@ class TestMeshtasticUtils(unittest.TestCase):
             # Verify debug log was called with packet type information
             log_output = "\n".join(cm.output)
             self.assertIn("REMOTE_HARDWARE_APP", log_output)
-            self.assertIn("from=123456789", log_output)
+            self.assertIn(f"from={TEST_PACKET_FROM_ID}", log_output)
             self.assertIn("channel=0", log_output)
-            self.assertIn("id=12345", log_output)
+            self.assertIn(f"id={TEST_PACKET_ID}", log_output)
 
     def test_on_meshtastic_message_missing_myinfo(self):
         """
@@ -374,7 +388,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         packet = self.mock_packet.copy()
         packet["to"] = BROADCAST_NUM + 1
         mock_interface = MagicMock()
-        mock_interface.myInfo.my_node_num = 12345
+        mock_interface.myInfo.my_node_num = TEST_NODE_NUM
 
         with (
             patch("mmrelay.meshtastic_utils.config", self.mock_config),
@@ -411,7 +425,7 @@ class TestMeshtasticUtils(unittest.TestCase):
             "to": 999,
             "decoded": {
                 "text": ":)",
-                "portnum": "TEXT_MESSAGE_APP",
+                "portnum": TEXT_MESSAGE_APP,
                 "replyId": 42,
                 "emoji": 1,
             },
@@ -481,7 +495,7 @@ class TestMeshtasticUtils(unittest.TestCase):
             "to": 999,
             "decoded": {
                 "text": "Reply message",
-                "portnum": "TEXT_MESSAGE_APP",
+                "portnum": TEXT_MESSAGE_APP,
                 "replyId": 77,
             },
             "channel": 0,
@@ -578,7 +592,10 @@ class TestMeshtasticUtils(unittest.TestCase):
         mock_port_exists.return_value = True
 
         config = {
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            }
         }
 
         # Reset global state
@@ -591,7 +608,9 @@ class TestMeshtasticUtils(unittest.TestCase):
         result = connect_meshtastic(passed_config=config)
 
         self.assertEqual(result, mock_client)
-        mock_serial.assert_called_once_with("/dev/ttyUSB0", timeout=300)
+        mock_serial.assert_called_once_with(
+            "/dev/ttyUSB0", timeout=DEFAULT_MESHTASTIC_TIMEOUT
+        )
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
@@ -610,7 +629,7 @@ class TestMeshtasticUtils(unittest.TestCase):
 
         config = {
             "meshtastic": {
-                "connection_type": "tcp",
+                "connection_type": CONNECTION_TYPE_TCP,
                 "host": "192.168.1.100",  # Use 'host' not 'tcp_host'
             }
         }
@@ -627,8 +646,8 @@ class TestMeshtasticUtils(unittest.TestCase):
         self.assertEqual(result, mock_client)
         mock_tcp.assert_called_once_with(
             hostname="192.168.1.100",
-            portNumber=4403,
-            timeout=300,
+            portNumber=DEFAULT_TCP_PORT,
+            timeout=DEFAULT_MESHTASTIC_TIMEOUT,
         )
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
@@ -648,7 +667,7 @@ class TestMeshtasticUtils(unittest.TestCase):
 
         config = {
             "meshtastic": {
-                "connection_type": "tcp",
+                "connection_type": CONNECTION_TYPE_TCP,
                 "host": "192.168.1.101",
                 "port": 4404,
             }
@@ -667,7 +686,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         mock_tcp.assert_called_once_with(
             hostname="192.168.1.101",
             portNumber=4404,
-            timeout=300,
+            timeout=DEFAULT_MESHTASTIC_TIMEOUT,
         )
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
@@ -689,13 +708,16 @@ class TestMeshtasticUtils(unittest.TestCase):
         # Set up nested structure for BLE address validation
         mock_client.client = MagicMock()
         mock_client.client.bleak_client = MagicMock()
-        mock_client.client.bleak_client.address = "AA:BB:CC:DD:EE:FF"
+        mock_client.client.bleak_client.address = TEST_BLE_MAC
 
         # Configure BLE mock to return our mock client
         mock_ble.return_value = mock_client
 
         config = {
-            "meshtastic": {"connection_type": "ble", "ble_address": "AA:BB:CC:DD:EE:FF"}
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_BLE,
+                "ble_address": TEST_BLE_MAC,
+            }
         }
 
         # Reset global state
@@ -709,11 +731,11 @@ class TestMeshtasticUtils(unittest.TestCase):
 
         self.assertEqual(result, mock_client)
         mock_ble.assert_called_once_with(
-            address="AA:BB:CC:DD:EE:FF",
+            address=TEST_BLE_MAC,
             noProto=False,
             debugOut=None,
             noNodes=False,
-            timeout=300,
+            timeout=DEFAULT_MESHTASTIC_TIMEOUT,
         )
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
@@ -825,7 +847,7 @@ class TestMeshtasticUtils(unittest.TestCase):
 
             mock_interface = MagicMock()
             mock_interface.myInfo = MagicMock()
-            mock_interface.myInfo.my_node_num = 12345
+            mock_interface.myInfo.my_node_num = TEST_NODE_NUM
             packet = self.mock_packet.copy()
             packet["to"] = BROADCAST_NUM
 
@@ -852,15 +874,15 @@ class TestGetPortnumName(unittest.TestCase):
 
     def test_get_portnum_name_with_string(self):
         """Test with a valid string portnum name."""
-        result = _get_portnum_name("TEXT_MESSAGE_APP")
-        self.assertEqual(result, "TEXT_MESSAGE_APP")
+        result = _get_portnum_name(TEXT_MESSAGE_APP)
+        self.assertEqual(result, TEXT_MESSAGE_APP)
 
     def test_get_portnum_name_with_valid_int(self):
         """Test with a valid integer portnum."""
         with patch("mmrelay.meshtastic_utils.portnums_pb2") as mock_portnums_pb2:
-            mock_portnums_pb2.PortNum.Name.return_value = "TEXT_MESSAGE_APP"
+            mock_portnums_pb2.PortNum.Name.return_value = TEXT_MESSAGE_APP
             result = _get_portnum_name(1)
-            self.assertEqual(result, "TEXT_MESSAGE_APP")
+            self.assertEqual(result, TEXT_MESSAGE_APP)
             mock_portnums_pb2.PortNum.Name.assert_called_once_with(1)
 
     def test_get_portnum_name_with_invalid_int(self):
@@ -970,9 +992,9 @@ class TestGetPacketDetails(unittest.TestCase):
 
     def test_get_packet_details_non_telemetry(self):
         """Test with non-TELEMETRY_APP portnum."""
-        decoded = {"portnum": "TEXT_MESSAGE_APP"}
+        decoded = {"portnum": TEXT_MESSAGE_APP}
         packet = {"from": 123, "rxRssi": -70}
-        result = _get_packet_details(decoded, packet, "TEXT_MESSAGE_APP")
+        result = _get_packet_details(decoded, packet, TEXT_MESSAGE_APP)
         self.assertEqual(result["signal"], "RSSI:-70")
         self.assertNotIn("batt", result)
         self.assertNotIn("voltage", result)
@@ -1440,7 +1462,10 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         mock_port_exists.return_value = False
 
         config = {
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            }
         }
 
         result = connect_meshtastic(passed_config=config)
@@ -1458,7 +1483,10 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         mock_serial.side_effect = Exception("Serial connection failed")
 
         config = {
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            }
         }
 
         with patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True):
@@ -1477,7 +1505,12 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         """
         mock_tcp.side_effect = Exception("TCP connection failed")
 
-        config = {"meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"}}
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.100",
+            }
+        }
 
         result = connect_meshtastic(passed_config=config)
 
@@ -1505,7 +1538,9 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
             raise Exception("boom")
 
         mock_tcp.side_effect = raise_and_shutdown
-        config = {"meshtastic": {"connection_type": "tcp", "host": "127.0.0.1"}}
+        config = {
+            "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "127.0.0.1"}
+        }
 
         try:
             mu.shutting_down = False
@@ -1529,7 +1564,10 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         mock_ble.side_effect = Exception("BLE connection failed")
 
         config = {
-            "meshtastic": {"connection_type": "ble", "ble_address": "AA:BB:CC:DD:EE:FF"}
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_BLE,
+                "ble_address": TEST_BLE_MAC,
+            }
         }
 
         import mmrelay.meshtastic_utils as mu
@@ -1573,7 +1611,10 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
             mu.shutting_down = True
             result = connect_meshtastic(
                 passed_config={
-                    "meshtastic": {"connection_type": "tcp", "host": "127.0.0.1"}
+                    "meshtastic": {
+                        "connection_type": CONNECTION_TYPE_TCP,
+                        "host": "127.0.0.1",
+                    }
                 }
             )
         finally:
@@ -1594,7 +1635,7 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
 
         existing_client = MagicMock()
         config = {
-            "meshtastic": {"connection_type": "tcp", "host": "127.0.0.1"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "127.0.0.1"},
             "matrix_rooms": [{"id": "!room:example.org", "meshtastic_channel": 0}],
         }
 
@@ -1704,6 +1745,7 @@ class TestBleHelperFunctions(unittest.TestCase):
                 Exception("Timed out waiting for connection completion")
             )
         )
+        self.assertTrue(_is_ble_discovery_error(KeyError("path")))
 
     def test_is_ble_discovery_error_type_matches(self):
         """Cover BLEError and MeshInterfaceError type checks."""
@@ -1742,7 +1784,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         """
         self.mock_config = {
             "meshtastic": {
-                "connection_type": "serial",
+                "connection_type": CONNECTION_TYPE_SERIAL,
                 "serial_port": "/dev/ttyUSB0",
                 "broadcast_enabled": True,
                 "meshnet_name": "test_mesh",
@@ -1755,10 +1797,10 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         Verify that a Meshtastic packet lacking the 'decoded' field does not initiate message relay processing.
         """
         packet = {
-            "from": 123456789,
+            "from": TEST_PACKET_FROM_ID,
             "to": 987654321,
             "channel": 0,
-            "id": 12345,
+            "id": TEST_PACKET_ID,
             "rxTime": TEST_PACKET_RX_TIME,
             # No 'decoded' field
         }
@@ -1806,20 +1848,20 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             # Verify debug log was called with packet type information (portnum None)
             log_output = "\n".join(cm.output)
             self.assertIn("UNKNOWN (None)", log_output)
-            self.assertIn("from=123456789", log_output)
+            self.assertIn(f"from={TEST_PACKET_FROM_ID}", log_output)
             self.assertIn("channel=0", log_output)
-            self.assertIn("id=12345", log_output)
+            self.assertIn(f"id={TEST_PACKET_ID}", log_output)
 
     def test_on_meshtastic_message_empty_text(self):
         """
         Test that Meshtastic packets with empty text messages do not trigger relaying to Matrix rooms.
         """
         packet = {
-            "from": 123456789,
+            "from": TEST_PACKET_FROM_ID,
             "to": 987654321,
-            "decoded": {"text": "", "portnum": "TEXT_MESSAGE_APP"},  # Empty text
+            "decoded": {"text": "", "portnum": TEXT_MESSAGE_APP},  # Empty text
             "channel": 0,
-            "id": 12345,
+            "id": TEST_PACKET_ID,
             "rxTime": TEST_PACKET_RX_TIME,
         }
 
@@ -1863,10 +1905,10 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
             # Verify debug log was called with packet type information
             log_output = "\n".join(cm.output)
-            self.assertIn("TEXT_MESSAGE_APP", log_output)
-            self.assertIn("from=123456789", log_output)
+            self.assertIn(TEXT_MESSAGE_APP, log_output)
+            self.assertIn(f"from={TEST_PACKET_FROM_ID}", log_output)
             self.assertIn("channel=0", log_output)
-            self.assertIn("id=12345", log_output)
+            self.assertIn(f"id={TEST_PACKET_ID}", log_output)
 
     def test_on_meshtastic_message_health_probe_response_logged_separately(self):
         """
@@ -1874,15 +1916,15 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         processed as regular ADMIN_APP traffic.
         """
         packet = {
-            "from": 123456789,
-            "to": 123456789,
+            "from": TEST_PACKET_FROM_ID,
+            "to": TEST_PACKET_FROM_ID,
             "decoded": {"portnum": "ADMIN_APP", "requestId": 4242},
             "channel": 0,
             "id": 22222,
             "rxTime": TEST_PACKET_RX_TIME,
         }
         mock_interface = MagicMock()
-        mock_interface.myInfo.my_node_num = 123456789
+        mock_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
 
         with (
             patch.dict(
@@ -1954,7 +1996,7 @@ def test_connect_meshtastic_retry_on_serial_exception(
 
     config = {
         "meshtastic": {
-            "connection_type": "serial",
+            "connection_type": CONNECTION_TYPE_SERIAL,
             "serial_port": "/dev/ttyUSB0",
             "retries": 2,
         }
@@ -1977,7 +2019,9 @@ def test_connect_meshtastic_retry_exhausted(
     # Mock a critical error that should not be retried
     mock_tcp.side_effect = ConcurrentTimeoutError("Connection timeout")
 
-    config = {"meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"}}
+    config = {
+        "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "192.168.1.100"}
+    }
 
     result = connect_meshtastic(passed_config=config)
 
@@ -2030,8 +2074,16 @@ def test_reconnect_attempts_connection(
 
     mock_connect.side_effect = _connect_side_effect
 
+    import copy
+
     import mmrelay.meshtastic_utils as mu
 
+    original_config = mu.config
+    test_config = {
+        "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "127.0.0.1"}
+    }
+    expected_config = copy.deepcopy(test_config)
+    mu.config = test_config
     original_backoff = mu.DEFAULT_BACKOFF_TIME
     mu.DEFAULT_BACKOFF_TIME = 0
 
@@ -2046,11 +2098,12 @@ def test_reconnect_attempts_connection(
             await reconnect()
         finally:
             mu.DEFAULT_BACKOFF_TIME = original_backoff
+            mu.config = original_config
 
-        asyncio.run(_run())
+    asyncio.run(_run())
 
-        # Reconnection now passes config to ensure matrix_rooms is re-initialized
-        mock_connect.assert_called_with(mu.config, True)
+    # Reconnection now passes config to ensure matrix_rooms is re-initialized
+    mock_connect.assert_called_once_with(expected_config, True)
 
 
 def test_check_connection_function_exists(reset_meshtastic_globals):
@@ -2930,6 +2983,76 @@ class TestGetDeviceMetadata(unittest.TestCase):
         mock_reset.assert_called_once()
         self.assertTrue(mock_logger.debug.called)
 
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_submit_metadata_probe_rejects_when_degraded(self, mock_logger):
+        """Degraded metadata executor should fail fast and skip submission."""
+        import mmrelay.meshtastic_utils as mu
+
+        probe = Mock()
+        mock_executor = MagicMock()
+
+        with patch(
+            "mmrelay.meshtastic_utils._get_metadata_executor",
+            return_value=mock_executor,
+        ) as mock_get_executor:
+            original_degraded = mu._metadata_executor_degraded
+            original_future = mu._metadata_future
+            original_started_at = mu._metadata_future_started_at
+            mu._metadata_executor_degraded = True
+            mu._metadata_future = None
+            mu._metadata_future_started_at = None
+            try:
+                with self.assertRaises(mu.MetadataExecutorDegradedError):
+                    mu._submit_metadata_probe(probe)
+            finally:
+                mu._metadata_executor_degraded = original_degraded
+                mu._metadata_future = original_future
+                mu._metadata_future_started_at = original_started_at
+
+        mock_get_executor.assert_not_called()
+        mock_executor.submit.assert_not_called()
+        mock_logger.error.assert_called()
+
+    def test_reset_metadata_executor_checks_degraded_state_under_lock(self):
+        """Degraded metadata reset checks should execute while holding the metadata lock."""
+        import mmrelay.meshtastic_utils as mu
+
+        class _TrackingLock:
+            def __init__(self) -> None:
+                self.entered = False
+
+            def __enter__(self) -> "_TrackingLock":
+                self.entered = True
+                return self
+
+            def __exit__(self, *_args: Any) -> bool:
+                self.entered = False
+                return False
+
+        class _DegradedFlag:
+            def __init__(self, lock: _TrackingLock) -> None:
+                self._lock = lock
+                self.check_states: list[bool] = []
+
+            def __bool__(self) -> bool:
+                self.check_states.append(self._lock.entered)
+                return True
+
+        tracking_lock = _TrackingLock()
+        degraded_flag = _DegradedFlag(tracking_lock)
+        original_lock = mu._metadata_future_lock
+        original_degraded = mu._metadata_executor_degraded
+        try:
+            mu._metadata_future_lock = tracking_lock  # type: ignore[assignment]
+            mu._metadata_executor_degraded = degraded_flag  # type: ignore[assignment]
+            mu._reset_metadata_executor_for_stale_probe()
+        finally:
+            mu._metadata_future_lock = original_lock
+            mu._metadata_executor_degraded = original_degraded
+
+        self.assertTrue(degraded_flag.check_states)
+        self.assertTrue(all(degraded_flag.check_states))
+
     def test_get_device_metadata_raise_on_error_reraises_non_io_value_error(self):
         """Non-I/O ValueError failures from getMetadata() should propagate."""
         mock_client = MagicMock()
@@ -3019,6 +3142,75 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
         mock_logger.warning.assert_not_called()
 
     @patch("mmrelay.meshtastic_utils.logger")
+    def test_resolve_plugin_timeout_zero_logs_warning(self, mock_logger):
+        """Non-positive timeout values should fall back and log a warning."""
+        from mmrelay.meshtastic_utils import _resolve_plugin_timeout
+
+        result = _resolve_plugin_timeout({"meshtastic": {"plugin_timeout": 0}}, 7.0)
+        self.assertEqual(result, 7.0)
+        mock_logger.warning.assert_called_once_with(
+            "Invalid meshtastic.plugin_timeout value %r; using %.1fs fallback.",
+            0,
+            7.0,
+        )
+
+    @patch("mmrelay.meshtastic_utils.ThreadPoolExecutor")
+    def test_maybe_reset_ble_executor_handles_cancel_timeout_and_stale_executor_shutdown(
+        self, mock_thread_pool
+    ):
+        """BLE executor reset should cancel stale futures and shutdown old executors."""
+        import mmrelay.meshtastic_utils as mu
+
+        old_executor = mu._ble_executor
+        old_future = mu._ble_future
+        old_future_address = mu._ble_future_address
+        old_future_started_at = mu._ble_future_started_at
+        old_future_timeout_secs = mu._ble_future_timeout_secs
+        old_threshold = mu._ble_timeout_reset_threshold
+        old_timeout_counts = dict(mu._ble_timeout_counts)
+        old_orphans = dict(mu._ble_executor_orphaned_workers_by_address)
+        old_degraded = set(mu._ble_executor_degraded_addresses)
+
+        stale_executor = Mock()
+        stale_executor._shutdown = False
+        stale_future = Mock()
+        stale_future.done.return_value = False
+        stale_future.result.side_effect = ConcurrentTimeoutError()
+
+        replacement_executor = Mock()
+        mock_thread_pool.return_value = replacement_executor
+        created_executor = None
+
+        try:
+            mu._ble_timeout_reset_threshold = 1
+            mu._ble_executor = stale_executor
+            mu._ble_future = stale_future
+            mu._ble_future_address = "AA:BB:CC:DD:EE:FF"
+            mu._ble_future_started_at = 1.0
+            mu._ble_future_timeout_secs = 1.0
+            mu._ble_timeout_counts = {"AA:BB:CC:DD:EE:FF": 4}
+            mu._ble_executor_orphaned_workers_by_address = {}
+            mu._ble_executor_degraded_addresses = set()
+
+            mu._maybe_reset_ble_executor("AA:BB:CC:DD:EE:FF", timeout_count=1)
+            created_executor = mu._ble_executor
+        finally:
+            mu._ble_executor = old_executor
+            mu._ble_future = old_future
+            mu._ble_future_address = old_future_address
+            mu._ble_future_started_at = old_future_started_at
+            mu._ble_future_timeout_secs = old_future_timeout_secs
+            mu._ble_timeout_reset_threshold = old_threshold
+            mu._ble_timeout_counts = old_timeout_counts
+            mu._ble_executor_orphaned_workers_by_address = old_orphans
+            mu._ble_executor_degraded_addresses = old_degraded
+
+        stale_future.cancel.assert_called_once()
+        stale_executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+        mock_thread_pool.assert_called_once()
+        self.assertIs(created_executor, replacement_executor)
+
+    @patch("mmrelay.meshtastic_utils.logger")
     def test_get_device_metadata_no_localnode(self, mock_logger):
         """Test _get_device_metadata when client has no localNode attribute."""
         from mmrelay.meshtastic_utils import _get_device_metadata
@@ -3105,7 +3297,10 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
         mmrelay.meshtastic_utils.meshtastic_client = mock_existing_client
 
         config = {
-            "meshtastic": {"connection_type": "tcp", "host": "localhost:4403"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "localhost:4403",
+            },
             "matrix_rooms": {},
         }
 
@@ -3395,7 +3590,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
 
-        mock_sleep.assert_any_call(0.5)
+        mock_sleep.assert_any_call(BLE_DISCONNECT_SETTLE_SECS)
         mock_client.disconnect.assert_called()
 
     @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
@@ -3426,7 +3621,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
 
-        mock_sleep.assert_any_call(2.0)
+        mock_sleep.assert_any_call(BLE_DISCONNECT_SETTLE_SECS)
 
     @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
     @patch("mmrelay.meshtastic_utils.asyncio.wait_for")
@@ -3625,10 +3820,75 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         # Verify warning was logged for timeout
         mock_logger.warning.assert_called_with(
-            "Stale connection disconnect timed out after 10s for AA:BB:CC:DD:EE:FF"
+            f"Stale connection disconnect timed out after {STALE_DISCONNECT_TIMEOUT_SECS:.0f}s for AA:BB:CC:DD:EE:FF"
         )
         # Verify future.cancel() was called
         mock_future.cancel.assert_called_once()
+
+    @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
+    @patch("mmrelay.meshtastic_utils.asyncio.sleep")
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("bleak.BleakClient")
+    def test_disconnect_ble_by_address_disconnect_errors_log_final_retry_warning(
+        self, mock_bleak, mock_logger, mock_sleep, mock_get_running_loop
+    ):
+        """Repeated BLE disconnect errors should log the final failure warning."""
+        from mmrelay.meshtastic_utils import _disconnect_ble_by_address
+
+        async def _noop(*_args, **_kwargs):
+            return None
+
+        mock_get_running_loop.side_effect = RuntimeError("no loop")
+        mock_sleep.side_effect = _noop
+
+        mock_client = Mock()
+        mock_client.is_connected = True
+        mock_client.disconnect.side_effect = RuntimeError("disconnect failed")
+        mock_bleak.return_value = mock_client
+
+        _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
+
+        mock_logger.warning.assert_any_call(
+            "Disconnect for %s failed after %s attempts: %s",
+            "AA:BB:CC:DD:EE:FF",
+            3,
+            ANY,
+            exc_info=True,
+        )
+
+    @patch("bleak.BleakClient")
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
+    @patch("mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe")
+    def test_disconnect_ble_by_address_logs_completion_with_global_running_loop(
+        self,
+        mock_run_coroutine_threadsafe,
+        mock_get_running_loop,
+        mock_logger,
+        mock_bleak_client,
+    ):
+        """Global event-loop cleanup success should log completion."""
+        from mmrelay.meshtastic_utils import _disconnect_ble_by_address
+
+        mock_get_running_loop.side_effect = RuntimeError("no loop")
+        mock_bleak_client.return_value = Mock(is_connected=False)
+        mock_future = Mock()
+        mock_future.result.return_value = None
+
+        def _submit(coro, _loop):
+            coro.close()
+            return mock_future
+
+        mock_run_coroutine_threadsafe.side_effect = _submit
+
+        mock_loop = Mock()
+        mock_loop.is_running.return_value = True
+        with patch("mmrelay.meshtastic_utils.event_loop", mock_loop):
+            _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
+
+        mock_logger.debug.assert_any_call(
+            "Stale connection disconnect completed for AA:BB:CC:DD:EE:FF"
+        )
 
     def test_disconnect_ble_interface_none_input(self):
         """Test _disconnect_ble_interface returns early when iface is None."""
@@ -3698,8 +3958,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         config = {
             "meshtastic": {
-                "connection_type": "ble",
-                "ble_address": "AA:BB:CC:DD:EE:FF",
+                "connection_type": CONNECTION_TYPE_BLE,
+                "ble_address": TEST_BLE_MAC,
             },
             "matrix_rooms": [],
         }
@@ -3724,7 +3984,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             mu._metadata_future = None
             result = connect_meshtastic(passed_config=config)
             self.assertIsNone(result)
-            mock_bleak_client.assert_called_with("AA:BB:CC:DD:EE:FF")
+            mock_bleak_client.assert_called_with(TEST_BLE_MAC)
 
             self.assertIsNone(mu.meshtastic_iface)
 
@@ -3736,7 +3996,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             self.assertEqual(len(error_calls), MAX_TIMEOUT_RETRIES_INFINITE + 1)
 
             last_error_call = str(error_calls[-1])
-            self.assertIn("AA:BB:CC:DD:EE:FF", last_error_call)
+            self.assertIn(TEST_BLE_MAC, last_error_call)
 
             abort_calls = [
                 call
@@ -3752,6 +4012,66 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
                 if "Connection attempt" in str(call) and "timed out" in str(call)
             ]
             self.assertEqual(len(warning_calls), MAX_TIMEOUT_RETRIES_INFINITE)
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_connect_meshtastic_ble_creation_error_during_shutdown_logs_debug(
+        self, mock_logger
+    ):
+        """Late BLE worker errors during shutdown should avoid exception-level logs."""
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_BLE,
+                "ble_address": TEST_BLE_MAC,
+                "retries": 1,
+            },
+            "matrix_rooms": [],
+        }
+
+        import mmrelay.meshtastic_utils as mu
+
+        def _future_result(*_args, **_kwargs):
+            mu.shutting_down = True
+            raise KeyError("path")
+
+        mock_future = Mock()
+        mock_future.result = Mock(side_effect=_future_result)
+        mock_future.cancel = Mock(return_value=False)
+
+        mock_executor = Mock()
+        mock_executor._shutdown = False
+        mock_executor.submit.return_value = mock_future
+
+        original_shutting_down = mu.shutting_down
+        try:
+            with (
+                patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
+                patch("bleak.BleakClient") as mock_bleak_client,
+            ):
+                mock_client_instance = Mock()
+                mock_client_instance.is_connected = False
+                mock_bleak_client.return_value = mock_client_instance
+                _reset_ble_inflight_state(mu)
+                mu._metadata_future = None
+                result = connect_meshtastic(passed_config=config)
+        finally:
+            mu.shutting_down = original_shutting_down
+            _reset_ble_inflight_state(mu)
+
+        self.assertIsNone(result)
+        self.assertTrue(
+            any(
+                "BLE interface creation ended during shutdown" in str(call)
+                for call in mock_logger.debug.call_args_list
+            )
+        )
+        self.assertFalse(
+            any(
+                "BLE interface creation failed" in str(call)
+                for call in mock_logger.exception.call_args_list
+            )
+        )
 
     @patch("mmrelay.meshtastic_utils._disconnect_ble_interface")
     def test_connect_meshtastic_closes_existing_ble_interface(
@@ -3781,8 +4101,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         config = {
             "meshtastic": {
-                "connection_type": "ble",
-                "ble_address": "AA:BB:CC:DD:EE:FF",
+                "connection_type": CONNECTION_TYPE_BLE,
+                "ble_address": TEST_BLE_MAC,
             },
             "matrix_rooms": [],
         }
@@ -3825,7 +4145,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             mu._metadata_future = None
             result = connect_meshtastic(passed_config=config)
             self.assertIsNone(result)
-            mock_bleak_client.assert_called_with("AA:BB:CC:DD:EE:FF")
+            mock_bleak_client.assert_called_with(TEST_BLE_MAC)
 
             self.assertIsNone(mu.meshtastic_iface)
 
@@ -3860,6 +4180,85 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
                 if "Connection attempt" in str(call) and "timed out" in str(call)
             ]
             self.assertEqual(len(warning_calls), MAX_TIMEOUT_RETRIES_INFINITE)
+
+    @patch("mmrelay.meshtastic_utils.time.sleep")
+    def test_connect_meshtastic_skips_scan_recovery_for_auto_reconnect_interfaces(
+        self, _mock_sleep
+    ):
+        """Discovery-error scan recovery should stay in compatibility-mode only."""
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_BLE,
+                "ble_address": TEST_BLE_MAC,
+                "retries": 1,
+            },
+            "matrix_rooms": [],
+        }
+
+        class _BleInterfaceWithAutoReconnect:
+            def __init__(
+                self,
+                address=None,
+                noProto=False,
+                debugOut=None,
+                noNodes=False,
+                timeout=300,
+                *,
+                auto_reconnect=False,
+            ):
+                self.address = address
+
+        mock_iface = Mock()
+        mock_iface.auto_reconnect = False
+
+        def _make_interface_future():
+            future = Mock()
+            future.result = Mock(return_value=mock_iface)
+            future.cancel = Mock(return_value=True)
+            return future
+
+        def _make_keyerror_future():
+            future = Mock()
+            future.result = Mock(side_effect=KeyError("path"))
+            future.cancel = Mock(return_value=False)
+            return future
+
+        future_sequence = iter(
+            future
+            for _ in range(2)
+            for future in (_make_interface_future(), _make_keyerror_future())
+        )
+
+        def submit_side_effect(_func, *_args, **_kwargs):
+            return next(future_sequence)
+
+        mock_executor = Mock()
+        mock_executor._shutdown = False
+        mock_executor.submit.side_effect = submit_side_effect
+
+        with (
+            patch(
+                "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+                _BleInterfaceWithAutoReconnect,
+            ),
+            patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
+            patch("mmrelay.meshtastic_utils._scan_for_ble_address") as mock_scan,
+            patch("bleak.BleakClient") as mock_bleak_client,
+        ):
+            mock_client_instance = Mock()
+            mock_client_instance.is_connected = False
+            mock_bleak_client.return_value = mock_client_instance
+
+            import mmrelay.meshtastic_utils as mu
+
+            _reset_ble_inflight_state(mu)
+            mu._metadata_future = None
+            result = connect_meshtastic(passed_config=config)
+            self.assertIsNone(result)
+
+            mock_scan.assert_not_called()
 
 
 if __name__ == "__main__":

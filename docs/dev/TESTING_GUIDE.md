@@ -267,36 +267,93 @@ filterwarnings =
     # ignore:.*some benign 3rd-party warning.*:DeprecationWarning:third_party_pkg
 ```
 
-### 2. Descriptive Test Names
+### 2. Testing Code That Uses Custom Loggers
+
+The project uses a custom logger configuration (`log_utils.get_logger`) that manages its own handlers. This creates a conflict with `unittest.TestCase.assertLogs()`.
+
+> **Note**: `mmrelay.cli._get_logger` is a wrapper around `log_utils.get_logger` that adds CLI-specific configuration. The import of the function under test must happen _inside_ the test function, after mock setup, to ensure the function uses the mocked logger rather than caching a reference to the real one at module load time.
+
+**Problem**: `assertLogs()` works by attaching a `_CapturingHandler` to the target logger (handler-based capture, not propagation-based). The conflict is that `_configure_logger` replaces the logger's handlers when called, which removes the capturing handler that `assertLogs()` attached, causing logs to be lost.
+
+**✅ CORRECT PATTERN** - Mock `_get_logger` to return a controllable logger:
+
+```python
+@patch("mmrelay.cli._get_logger")
+@patch("mmrelay.cli.os.path.exists")
+def test_validation_logs_warning(self, mock_exists, mock_get_logger):
+    """Test that validation logs appropriate warnings."""
+    import logging
+    import uuid
+
+    # Create a uniquely named test logger to avoid handler leakage across tests
+    logger_name = f"mmrelay.test.{self._testMethodName}.{uuid.uuid4().hex[:8]}"
+    mock_logger = logging.getLogger(logger_name)
+    mock_logger.handlers.clear()
+    mock_logger.setLevel(logging.DEBUG)
+    # propagate=True only needed if function_under_test creates child loggers
+    # (e.g., "mmrelay.test.<id>.submodule") that should propagate to parent
+    mock_logger.propagate = True
+    mock_get_logger.return_value = mock_logger
+
+    # Import after mock setup to ensure function uses the mocked logger
+    from mmrelay.cli import function_under_test
+
+    config_path = "/tmp/mmrelay-config.yaml"
+    with self.assertLogs(logger_name, level="WARNING"):
+        result = function_under_test(config_path)
+
+    self.assertFalse(result)
+```
+
+**❌ INCORRECT PATTERN** - Setting `propagate=True` on the configured logger:
+
+```python
+# ❌ This won't work - _configure_logger clears handlers and sets propagate=False
+logger = logging.getLogger("mmrelay.cli")
+logger.propagate = True  # Gets reset when _get_logger is called
+
+config_path = "/tmp/mmrelay-config.yaml"
+with self.assertLogs("mmrelay.cli", level="WARNING"):
+    result = function_under_test(config_path)  # Logs are lost
+```
+
+**Future Consideration**: This pattern is a workaround for the current logger architecture. A future refactoring could:
+
+- Make logger propagation configurable for testing
+- Use dependency injection for loggers instead of module-level caching
+- Provide a test fixture that automatically mocks `_get_logger`
+
+### 3. Descriptive Test Names
 
 - Use descriptive test method names that explain the scenario
 - Include expected behavior in the name
 
-### 3. Arrange-Act-Assert Pattern
+### 4. Arrange-Act-Assert Pattern
 
 - **Arrange**: Set up test data and mocks
 - **Act**: Execute the code under test
 - **Assert**: Verify the expected behavior
 
-### 4. Mock at the Right Level
+### 5. Mock at the Right Level
 
 - Mock external dependencies, not internal logic
 - Mock at the boundary of your system under test
 
-### 5. Test Error Conditions
+### 6. Test Error Conditions
 
 - Test both success and failure scenarios
 - Test exception handling and edge cases
 - Consider adding explicit patterns for asserting log messages on failures in async paths
   Example:
   ```python
-  # Ensure logger name matches the component under test (e.g., "MessageQueue")
-  with self.assertLogs("mmrelay", level="ERROR") as cm:
+  # some_async_wrapper calls async code via asyncio.run()
+  # Ensure logger name matches the component under test (e.g., "mmrelay.MessageQueue")
+  with self.assertLogs("mmrelay.MessageQueue", level="ERROR") as cm:
       result = some_async_wrapper(self.mock_args)
       self.assertIn("expected failure detail", "\n".join(cm.output))
   ```
 
-### 6. Avoid Test Interdependence
+### 7. Avoid Test Interdependence
 
 - Each test should be independent
 - Use `setUp()` and `tearDown()` for common initialization

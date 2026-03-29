@@ -14,16 +14,51 @@ from nio import (
     RoomMessageText,
 )
 
-from mmrelay.constants.formats import TEXT_MESSAGE_APP
+from mmrelay.constants.formats import (
+    CELSIUS_TO_FAHRENHEIT_MULTIPLIER,
+    DEFAULT_CHANNEL,
+    DEFAULT_TEXT_ENCODING,
+    DEGREE_SYMBOL,
+    ENCODING_ERROR_IGNORE,
+    FAHRENHEIT_OFFSET,
+    KM_TO_MILES_FACTOR,
+    LATITUDE_MAX,
+    LATITUDE_MIN,
+    LONGITUDE_MAX,
+    LONGITUDE_MIN,
+    TEXT_MESSAGE_APP,
+)
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
-from mmrelay.constants.plugins import MAX_FORECAST_LENGTH
+from mmrelay.constants.plugins import (
+    DAILY_FORECAST_DAYS,
+    GEOCODING_RESULT_COUNT,
+    HOURLY_CONFIG,
+    HOURLY_FORECAST_DAYS,
+    MAX_FORECAST_LENGTH,
+    OPEN_METEO_CURRENT_WEATHER_FLAG,
+    OPEN_METEO_DAILY_FIELDS,
+    OPEN_METEO_FORECAST_API_URL,
+    OPEN_METEO_GEOCODING_API_URL,
+    OPEN_METEO_HOURLY_FIELDS,
+    OPEN_METEO_TIMEZONE_AUTO,
+    WEATHER_API_TIMEOUT_SECONDS,
+    WEATHER_CODE_TEXT_MAPPING,
+    WEATHER_COMMANDS,
+    WEATHER_MODE_CURRENT,
+    WEATHER_MODE_DAILY,
+    WEATHER_SLOT_NOW,
+    WEATHER_UNITS_IMPERIAL,
+    WEATHER_UNITS_METRIC,
+)
 from mmrelay.plugins.base_plugin import BasePlugin
+
+CANONICAL_WEATHER_MODE = WEATHER_MODE_CURRENT
 
 
 class Plugin(BasePlugin):
     plugin_name = "weather"
     is_core_plugin = True
-    mesh_commands = ("weather", "hourly", "daily")
+    mesh_commands = WEATHER_COMMANDS
 
     # No __init__ method needed with the simplified plugin system
     # The BasePlugin will automatically use the class-level plugin_name
@@ -43,17 +78,15 @@ class Plugin(BasePlugin):
         Normalize a command string to a supported forecast mode.
 
         Returns:
-            str: 'weather', 'hourly', or 'daily'. Unrecognized or empty inputs yield 'weather'.
+            str: A valid mode from WEATHER_COMMANDS. Unrecognized or empty inputs yield the default.
         """
-        cmd = (mode or "weather").lower()
-        if cmd == "hourly":
-            return "hourly"
-        if cmd == "daily":
-            return "daily"
-        return "weather"
+        cmd = (mode or CANONICAL_WEATHER_MODE).lower()
+        if cmd in WEATHER_COMMANDS:
+            return cmd
+        return CANONICAL_WEATHER_MODE
 
     def generate_forecast(
-        self, latitude: float, longitude: float, mode: str = "weather"
+        self, latitude: float, longitude: float, mode: str = CANONICAL_WEATHER_MODE
     ) -> str:
         """
         Generate a concise one-line weather forecast for the given GPS coordinates and requested mode.
@@ -71,42 +104,53 @@ class Plugin(BasePlugin):
         """
         mode_key = self._normalize_mode(mode)
 
-        units = self.config.get("units", "metric")  # Default to metric
-        temperature_unit = "°C" if units == "metric" else "°F"
-        daily_days = 5 if mode_key == "daily" else 3
+        raw_units = self.config.get("units", WEATHER_UNITS_METRIC)
+        units = (
+            raw_units.strip().lower()
+            if isinstance(raw_units, str)
+            else WEATHER_UNITS_METRIC
+        )
+        if units not in {WEATHER_UNITS_METRIC, WEATHER_UNITS_IMPERIAL}:
+            units = WEATHER_UNITS_METRIC
+        temperature_unit = "°C" if units == WEATHER_UNITS_METRIC else "°F"
+        daily_days = (
+            DAILY_FORECAST_DAYS
+            if mode_key == WEATHER_MODE_DAILY
+            else HOURLY_FORECAST_DAYS
+        )
 
-        hourly_config = {
-            "weather": {
-                "slots": ["now"],
-                "offsets": [],
-            },
-            "hourly": {
-                # Keep the hourly forecast compact to fit mesh payload limits
-                "slots": ["+3h", "+6h", "+12h"],
-                "offsets": [3, 6, 12],
-            },
-        }
-        mode_offsets = hourly_config.get(mode_key, hourly_config["weather"])
-        offsets = mode_offsets["offsets"]  # type: ignore[index]
+        mode_offsets = HOURLY_CONFIG.get(mode_key, HOURLY_CONFIG[WEATHER_MODE_CURRENT])
+        offsets = [
+            offset
+            for offset in mode_offsets.get("offsets", ())
+            if isinstance(offset, int)
+        ]
 
+        hourly_fields = ",".join(OPEN_METEO_HOURLY_FIELDS)
+        daily_fields = ",".join(OPEN_METEO_DAILY_FIELDS)
         url = (
-            f"https://api.open-meteo.com/v1/forecast?"
+            f"{OPEN_METEO_FORECAST_API_URL}?"
             f"latitude={latitude}&longitude={longitude}&"
-            f"hourly=temperature_2m,precipitation_probability,weathercode,is_day,"
-            f"relativehumidity_2m,windspeed_10m,winddirection_10m&"
-            f"daily=weathercode,temperature_2m_max,temperature_2m_min&"
-            f"forecast_days={daily_days}&timezone=auto&current_weather=true"
+            f"hourly={hourly_fields}&"
+            f"daily={daily_fields}&"
+            f"forecast_days={daily_days}&{OPEN_METEO_TIMEZONE_AUTO}&{OPEN_METEO_CURRENT_WEATHER_FLAG}"
         )
 
         try:
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, timeout=WEATHER_API_TIMEOUT_SECONDS)
             response.raise_for_status()
-        except (requests.exceptions.RequestException, AttributeError):
+        except requests.exceptions.RequestException:
             self.logger.exception("Error fetching weather data")
             return "Error fetching weather data."
 
         try:
             data = response.json()
+
+            # Daily fast-path - check before parsing current/hourly data
+            if mode_key == WEATHER_MODE_DAILY:
+                return self._build_daily_forecast(
+                    data, units, temperature_unit, daily_days
+                )
 
             # Extract relevant weather data
             current_temp = data["current_weather"]["temperature"]
@@ -124,7 +168,9 @@ class Plugin(BasePlugin):
                 current_hour = current_time.hour
             except ValueError as ex:
                 self.logger.warning(
-                    f"Unexpected current_weather.time '{current_time_str}': {ex}. Defaulting to hour=0."
+                    "Unexpected current_weather.time '%s': %s. Defaulting to hour=0.",
+                    current_time_str,
+                    ex,
                 )
 
             # Calculate indices for +2h and +5h forecasts
@@ -160,7 +206,7 @@ class Plugin(BasePlugin):
             index_map: dict[str, int] = {
                 f"+{offset}h": min(base_index + offset, max_index) for offset in offsets
             }
-            index_map["now"] = min(base_index, max_index)
+            index_map[WEATHER_SLOT_NOW] = min(base_index, max_index)
 
             def _safe_get(seq: Any, idx: Any) -> Any:
                 """
@@ -206,14 +252,17 @@ class Plugin(BasePlugin):
                 label: get_hourly(idx) for label, idx in index_map.items()
             }
 
-            if units == "imperial":
+            if units == WEATHER_UNITS_IMPERIAL:
                 if current_temp is not None:
-                    current_temp = current_temp * 9 / 5 + 32
+                    current_temp = (
+                        current_temp * CELSIUS_TO_FAHRENHEIT_MULTIPLIER
+                        + FAHRENHEIT_OFFSET
+                    )
                 imperial_forecasts = {}
                 for key, values in forecast_hours.items():
                     t, p, w, dflag, *rest = values
                     if t is not None:
-                        t = t * 9 / 5 + 32
+                        t = t * CELSIUS_TO_FAHRENHEIT_MULTIPLIER + FAHRENHEIT_OFFSET
                     imperial_forecasts[key] = (t, p, w, dflag, *rest)
                 forecast_hours = imperial_forecasts
 
@@ -230,21 +279,15 @@ class Plugin(BasePlugin):
                 for key, (t, p, w, dflag, *rest) in forecast_hours.items()
             }
 
-            # Generate one-line weather forecast
-            if mode_key == "daily":
-                return self._build_daily_forecast(
-                    data, units, temperature_unit, daily_days
-                )
-
-            if mode_key == "weather":
-                now_slot = forecast_hours.get("now")
+            if mode_key == WEATHER_MODE_CURRENT:
+                now_slot = forecast_hours.get(WEATHER_SLOT_NOW)
                 humidity = now_slot[4] if now_slot else None
                 wind_speed = now_slot[5] if now_slot else None
                 wind_dir = now_slot[6] if now_slot else None
                 precip_now = now_slot[1] if now_slot else None
                 wind_unit = "km/h"
-                if units == "imperial" and wind_speed is not None:
-                    wind_speed = wind_speed * 0.621371
+                if units == WEATHER_UNITS_IMPERIAL and wind_speed is not None:
+                    wind_speed = wind_speed * KM_TO_MILES_FACTOR
                     wind_unit = "mph"
                 parts = [
                     (
@@ -259,13 +302,19 @@ class Plugin(BasePlugin):
                 if wind_speed is not None:
                     wind_part = f"Wind {round(wind_speed, 1)}{wind_unit}"
                     if wind_dir is not None:
-                        wind_part += f" {round(wind_dir)}°"
+                        wind_part += f" {round(wind_dir)}{DEGREE_SYMBOL}"
                     parts.append(wind_part)
                 if precip_now is not None:
                     parts.append(f"Precip {precip_now}%")
                 return self._trim_to_max_bytes(" | ".join(parts))
 
-            slots = hourly_config.get(mode_key, hourly_config["weather"])["slots"]  # type: ignore[index]
+            slots = [
+                slot
+                for slot in HOURLY_CONFIG.get(
+                    mode_key, HOURLY_CONFIG[WEATHER_MODE_CURRENT]
+                ).get("slots", ())
+                if isinstance(slot, str)
+            ]
             return self._build_hourly_forecast(
                 current_temp,
                 current_weather_code,
@@ -278,8 +327,6 @@ class Plugin(BasePlugin):
         except (KeyError, IndexError, TypeError, ValueError, AttributeError):
             self.logger.exception("Malformed weather data")
             return "Error parsing weather data."
-        except Exception:
-            raise
 
     def _build_daily_forecast(
         self,
@@ -304,9 +351,23 @@ class Plugin(BasePlugin):
         daily_max = data.get("daily", {}).get("temperature_2m_max") or []
         daily_min = data.get("daily", {}).get("temperature_2m_min") or []
         daily_times = data.get("daily", {}).get("time") or []
-        if units == "imperial":
-            daily_max = [t * 9 / 5 + 32 if t is not None else None for t in daily_max]
-            daily_min = [t * 9 / 5 + 32 if t is not None else None for t in daily_min]
+        if units == WEATHER_UNITS_IMPERIAL:
+            daily_max = [
+                (
+                    t * CELSIUS_TO_FAHRENHEIT_MULTIPLIER + FAHRENHEIT_OFFSET
+                    if t is not None
+                    else None
+                )
+                for t in daily_max
+            ]
+            daily_min = [
+                (
+                    t * CELSIUS_TO_FAHRENHEIT_MULTIPLIER + FAHRENHEIT_OFFSET
+                    if t is not None
+                    else None
+                )
+                for t in daily_min
+            ]
         days = min(
             len(daily_codes),
             len(daily_max),
@@ -394,11 +455,13 @@ class Plugin(BasePlugin):
         Returns:
             str: The original string if its UTF-8 encoding is within the limit, otherwise a truncated string whose UTF-8 encoding is at most MAX_FORECAST_LENGTH bytes (any partial trailing UTF-8 character is removed).
         """
-        encoded = text.encode("utf-8")
+        encoded = text.encode(DEFAULT_TEXT_ENCODING)
         if len(encoded) <= MAX_FORECAST_LENGTH:
             return text
         # Truncate byte string and decode, ignoring partial trailing characters.
-        return encoded[:MAX_FORECAST_LENGTH].decode("utf-8", "ignore")
+        return encoded[:MAX_FORECAST_LENGTH].decode(
+            DEFAULT_TEXT_ENCODING, ENCODING_ERROR_IGNORE
+        )
 
     @staticmethod
     def _weather_code_to_text(weather_code: int, is_day: int) -> str:
@@ -412,38 +475,19 @@ class Plugin(BasePlugin):
         Returns:
             str: A brief human-readable description prefixed with an emoji (e.g., "☀️ Clear sky"), or "❓ Unknown" if the code is not recognized.
         """
-        weather_mapping = {
-            0: "☀️ Clear sky" if is_day else "🌙 Clear sky",
-            1: "🌤️ Mainly clear" if is_day else "🌙🌤️ Mainly clear",
-            2: "⛅️ Partly cloudy" if is_day else "🌙⛅️ Partly cloudy",
-            3: "☁️ Overcast" if is_day else "🌙☁️ Overcast",
-            45: "🌫️ Fog" if is_day else "🌙🌫️ Fog",
-            48: "🌫️ Depositing rime fog" if is_day else "🌙🌫️ Depositing rime fog",
-            51: "🌧️ Light drizzle",
-            53: "🌧️ Moderate drizzle",
-            55: "🌧️ Dense drizzle",
-            56: "🌧️ Light freezing drizzle",
-            57: "🌧️ Dense freezing drizzle",
-            61: "🌧️ Light rain",
-            63: "🌧️ Moderate rain",
-            65: "🌧️ Heavy rain",
-            66: "🌧️ Light freezing rain",
-            67: "🌧️ Heavy freezing rain",
-            71: "❄️ Light snow fall",
-            73: "❄️ Moderate snow fall",
-            75: "❄️ Heavy snow fall",
-            77: "❄️ Snow grains",
-            80: "🌧️ Light rain showers",
-            81: "🌧️ Moderate rain showers",
-            82: "🌧️ Violent rain showers",
-            85: "❄️ Light snow showers",
-            86: "❄️ Heavy snow showers",
-            95: "⛈️ Thunderstorm",
-            96: "⛈️ Thunderstorm with slight hail",
-            99: "⛈️ Thunderstorm with heavy hail",
-        }
-
-        return weather_mapping.get(weather_code, "❓ Unknown")
+        # Format: "DAY:text|NIGHT:text", "BOTH:text", or plain text
+        text = WEATHER_CODE_TEXT_MAPPING.get(weather_code)
+        if text is None:
+            return "❓ Unknown"
+        if text.startswith("DAY:"):
+            if is_day:
+                return text[4:].split("|")[0]
+            # Night: extract text after "|NIGHT:" or fall back to day text
+            parts = text.split("|NIGHT:")
+            return parts[1] if len(parts) > 1 else parts[0][4:]
+        elif text.startswith("BOTH:"):
+            return text[5:]
+        return text
 
     async def handle_meshtastic_message(
         self,
@@ -479,7 +523,9 @@ class Plugin(BasePlugin):
         if not parsed_command:
             return False
 
-        channel = packet.get("channel", 0)  # Default to channel 0 if not provided
+        channel = packet.get(
+            "channel", DEFAULT_CHANNEL
+        )  # Default to channel 0 if not provided
 
         from mmrelay.meshtastic_utils import connect_meshtastic
 
@@ -515,7 +561,10 @@ class Plugin(BasePlugin):
 
         # Log that the plugin is processing the message
         self.logger.info(
-            f"Processing message from {longname} on channel {channel} with plugin '{self.plugin_name}'"
+            "Processing message from %s on channel %s with plugin '%s'",
+            longname,
+            channel,
+            self.plugin_name,
         )
 
         fromId = packet.get("fromId")
@@ -542,7 +591,7 @@ class Plugin(BasePlugin):
 
         weather_notice = "Cannot determine location"
         if coords:
-            mode = parsed_command if parsed_command else "weather"
+            mode = parsed_command
             weather_notice = await asyncio.to_thread(
                 self.generate_forecast,
                 latitude=coords[0],
@@ -741,7 +790,10 @@ class Plugin(BasePlugin):
             lon = float(parts[1])
         except (TypeError, ValueError):
             return None
-        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        if not (
+            LATITUDE_MIN <= lat <= LATITUDE_MAX
+            and LONGITUDE_MIN <= lon <= LONGITUDE_MAX
+        ):
             return None
         return lat, lon
 
@@ -757,12 +809,16 @@ class Plugin(BasePlugin):
         if not query:
             return None
 
-        url = "https://geocoding-api.open-meteo.com/v1/search"
+        url = OPEN_METEO_GEOCODING_API_URL
         try:
             response = requests.get(
                 url,
-                params={"name": query, "count": 1, "format": "json"},
-                timeout=10,
+                params={
+                    "name": query,
+                    "count": GEOCODING_RESULT_COUNT,
+                    "format": "json",
+                },
+                timeout=WEATHER_API_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
         except requests.exceptions.RequestException:

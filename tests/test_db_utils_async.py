@@ -11,13 +11,23 @@ This test module covers:
 
 import asyncio
 import os
+import re
 import shutil
 import sqlite3
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import mmrelay.db_utils
+from mmrelay.constants.database import (
+    DEFAULT_BUSY_TIMEOUT_MS,
+    DEFAULT_DB_FILENAME,
+    MESSAGE_MAP_TABLE,
+    NAMES_TABLE_LONGNAMES,
+    NAMES_TABLE_SHORTNAMES,
+    PLUGIN_DATA_TABLE,
+    SQLITE_IN_MEMORY_PATH,
+)
 from mmrelay.db_utils import (
     _delete_stale_names_core,
     _get_db_manager,
@@ -97,7 +107,7 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
             patch(
                 "mmrelay.db_runtime.sqlite3.connect",
                 side_effect=lambda _path, *args, **kwargs: real_sqlite_connect(
-                    ":memory:",
+                    SQLITE_IN_MEMORY_PATH,
                     *args,
                     **kwargs,
                 ),
@@ -140,7 +150,7 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
             patch(
                 "mmrelay.db_runtime.sqlite3.connect",
                 side_effect=lambda _path, *args, **kwargs: real_sqlite_connect(
-                    ":memory:",
+                    SQLITE_IN_MEMORY_PATH,
                     *args,
                     **kwargs,
                 ),
@@ -176,9 +186,9 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
                 manager = _get_db_manager()
 
             self.assertIsNotNone(manager)
-            self.assertEqual(manager._path, os.path.join(temp_dir, "meshtastic.sqlite"))
+            self.assertEqual(manager._path, os.path.join(temp_dir, DEFAULT_DB_FILENAME))
         self.assertTrue(manager._enable_wal)
-        self.assertEqual(manager._busy_timeout_ms, 5000)
+        self.assertEqual(manager._busy_timeout_ms, DEFAULT_BUSY_TIMEOUT_MS)
         self.assertEqual(
             manager._extra_pragmas, {"synchronous": "NORMAL", "temp_store": "MEMORY"}
         )
@@ -250,7 +260,6 @@ class TestAsyncHelpers(unittest.TestCase):
     @patch("mmrelay.db_utils._get_db_manager")
     def test_async_store_message_map_success(self, mock_get_manager):
         """Test async_store_message_map successful execution."""
-        from unittest.mock import AsyncMock
 
         # Mock manager and its run_async method
         mock_manager = MagicMock()
@@ -290,8 +299,6 @@ class TestAsyncHelpers(unittest.TestCase):
 
         Calls async_store_message_map with a mocked DatabaseManager whose run_async raises sqlite3.Error and asserts that logger.exception is called once with a message containing "Database error storing message map".
         """
-        from unittest.mock import AsyncMock
-
         # Mock manager that raises an exception
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
@@ -318,7 +325,6 @@ class TestAsyncHelpers(unittest.TestCase):
     @patch("mmrelay.db_utils._get_db_manager")
     def test_async_prune_message_map_success(self, mock_get_manager):
         """Test async_prune_message_map successful execution."""
-        from unittest.mock import AsyncMock
 
         # Mock manager and its run_async method
         mock_manager = MagicMock()
@@ -356,7 +362,6 @@ class TestAsyncHelpers(unittest.TestCase):
     @patch("mmrelay.db_utils._get_db_manager")
     def test_async_prune_message_map_no_pruning_needed(self, mock_get_manager):
         """Test async_prune_message_map when no pruning is needed."""
-        from unittest.mock import AsyncMock
 
         # Mock manager and its run_async method
         mock_manager = MagicMock()
@@ -384,7 +389,6 @@ class TestAsyncHelpers(unittest.TestCase):
     @patch("mmrelay.db_utils._get_db_manager")
     def test_async_prune_message_map_error(self, mock_get_manager):
         """Test async_prune_message_map error handling."""
-        from unittest.mock import AsyncMock
 
         # Mock manager that raises an exception
         mock_manager = MagicMock()
@@ -480,7 +484,7 @@ class TestConfigurationParsing(unittest.TestCase):
             enable_wal, busy_timeout, pragmas = _resolve_database_options()
 
         self.assertTrue(enable_wal)  # Default
-        self.assertEqual(busy_timeout, 5000)  # Default
+        self.assertEqual(busy_timeout, DEFAULT_BUSY_TIMEOUT_MS)  # Default
         expected_pragmas = {
             "synchronous": "OFF",  # Valid override
             "temp_store": "MEMORY",  # Default
@@ -497,7 +501,7 @@ class TestConfigurationParsing(unittest.TestCase):
             enable_wal, busy_timeout, pragmas = _resolve_database_options()
 
             self.assertTrue(enable_wal)  # Default
-            self.assertEqual(busy_timeout, 5000)  # Default
+            self.assertEqual(busy_timeout, DEFAULT_BUSY_TIMEOUT_MS)  # Default
             expected_pragmas = {"synchronous": "NORMAL", "temp_store": "MEMORY"}
             self.assertEqual(pragmas, expected_pragmas)
         finally:
@@ -589,7 +593,9 @@ class TestDatabasePathCaching(unittest.TestCase):
                 },
             ):
                 path = get_db_path()
-                self.assertEqual(path, "/default/data/dir/meshtastic.sqlite")
+                self.assertEqual(
+                    path, os.path.join("/default/data/dir", DEFAULT_DB_FILENAME)
+                )
 
                 # Verify data directory creation was attempted
                 mock_makedirs.assert_called_with("/default/data/dir", exist_ok=True)
@@ -712,50 +718,44 @@ class TestInitializeDatabaseErrors(unittest.TestCase):
             pass
 
     @patch("mmrelay.db_utils._get_db_manager")
-    def test_initialize_database_operational_error_on_index_creation(
-        self, mock_get_manager
-    ):
-        """Test initialize_database handles OperationalError during index creation gracefully."""
-        from unittest.mock import MagicMock
+    def test_initialize_database_issues_index_creation_sql(self, mock_get_manager):
+        """Test initialize_database issues index creation SQL during setup."""
 
         # Mock manager and cursor
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
 
-        # Mock cursor to raise OperationalError on specific execute calls
+        # Mock cursor and run_sync to execute the initialization callback
         mock_cursor = MagicMock()
         mock_manager.run_sync.side_effect = lambda func, write=True: func(mock_cursor)
+        mock_cursor.execute.return_value = None
 
-        def execute_side_effect(sql, *args, **kwargs):
-            # Raise OperationalError for index creation calls only
-            """
-            Simulates executing a SQL statement, failing for index/column creation and succeeding otherwise.
+        initialize_database()
 
-            Parameters:
-                sql (str): The SQL statement to simulate executing. `args` and `kwargs` are accepted for compatibility and ignored.
-
-            Returns:
-                None: Indicates the statement succeeded.
-
-            Raises:
-                sqlite3.OperationalError: If `sql` contains "CREATE INDEX" or "ALTER TABLE", simulating an index/column already existing.
-            """
-            if "CREATE INDEX" in sql or "ALTER TABLE" in sql:
-                raise sqlite3.OperationalError("Index/column already exists")
-            return None  # Table creation succeeds
-
-        mock_cursor.execute.side_effect = execute_side_effect
-
-        # Should not raise exception - should handle OperationalError gracefully
-        try:
-            initialize_database()
-        except Exception as e:
-            self.fail(
-                f"initialize_database() raised {e} unexpectedly! Should handle OperationalError gracefully."
+        executed_sqls = [call.args[0] for call in mock_cursor.execute.call_args_list]
+        index_name = f"idx_{MESSAGE_MAP_TABLE}_meshtastic_id"
+        has_meshtastic_id_index = any(
+            re.search(
+                rf"create\s+index\s+if\s+not\s+exists\s+{re.escape(index_name)}\b",
+                sql,
+                flags=re.IGNORECASE,
             )
-
-        # Verify that execute was called multiple times
-        self.assertGreater(mock_cursor.execute.call_count, 5)
+            and re.search(
+                rf"\bon\s+\"?{re.escape(MESSAGE_MAP_TABLE)}\"?\b",
+                sql,
+                flags=re.IGNORECASE,
+            )
+            and re.search(
+                r"\(\s*\"?meshtastic_id\"?\s*\)",
+                sql,
+                flags=re.IGNORECASE,
+            )
+            for sql in executed_sqls
+        )
+        self.assertTrue(
+            has_meshtastic_id_index,
+            f"Expected index creation for {MESSAGE_MAP_TABLE}.meshtastic_id in SQL calls",
+        )
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -763,7 +763,6 @@ class TestInitializeDatabaseErrors(unittest.TestCase):
         self, mock_logger, mock_get_manager
     ):
         """Test initialize_database logs and re-raises sqlite3.Error."""
-        from unittest.mock import MagicMock
 
         # Mock manager to raise sqlite3.Error
         mock_manager = MagicMock()
@@ -808,7 +807,6 @@ class TestPluginDataErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_store_plugin_data_database_error(self, mock_logger, mock_get_manager):
         """Test store_plugin_data handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         # Mock manager to raise sqlite3.Error
         mock_manager = MagicMock()
@@ -834,7 +832,6 @@ class TestPluginDataErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_delete_plugin_data_database_error(self, mock_logger, mock_get_manager):
         """Test delete_plugin_data handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         # Mock manager to raise sqlite3.Error
         mock_manager = MagicMock()
@@ -863,7 +860,6 @@ class TestPluginDataErrors(unittest.TestCase):
         self, mock_json_loads, mock_logger, mock_get_manager
     ):
         """Test get_plugin_data_for_node handles TypeError gracefully."""
-        from unittest.mock import MagicMock
 
         # Mock manager to return valid result
         mock_manager = MagicMock()
@@ -912,7 +908,6 @@ class TestMessageMapErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_store_message_map_database_error(self, mock_logger, mock_get_manager):
         """Test store_message_map handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         # Mock manager to raise sqlite3.Error
         mock_manager = MagicMock()
@@ -939,7 +934,6 @@ class TestMessageMapErrors(unittest.TestCase):
         self, mock_logger, mock_get_manager
     ):
         """Test get_message_map_by_meshtastic_id handles malformed data gracefully."""
-        from unittest.mock import MagicMock
 
         # Mock manager to return malformed data (not enough elements)
         mock_manager = MagicMock()
@@ -964,7 +958,6 @@ class TestMessageMapErrors(unittest.TestCase):
         self, mock_logger, mock_get_manager
     ):
         """Test get_message_map_by_matrix_event_id handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         # Mock manager to raise sqlite3.Error
         mock_manager = MagicMock()
@@ -984,7 +977,6 @@ class TestMessageMapErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_wipe_message_map_database_error(self, mock_logger, mock_get_manager):
         """Test wipe_message_map handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         # Mock manager to raise sqlite3.Error
         mock_manager = MagicMock()
@@ -1012,7 +1004,6 @@ class TestLongnameShortnameErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_get_longname_database_error(self, mock_logger, mock_get_manager):
         """Test get_longname handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
@@ -1030,7 +1021,6 @@ class TestLongnameShortnameErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_save_longname_database_error(self, mock_logger, mock_get_manager):
         """Test save_longname handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
@@ -1047,7 +1037,6 @@ class TestLongnameShortnameErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_update_longnames_database_error(self, mock_logger, mock_get_manager):
         """Test update_longnames handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
@@ -1081,7 +1070,6 @@ class TestLongnameShortnameErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_get_shortname_database_error(self, mock_logger, mock_get_manager):
         """Test get_shortname handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
@@ -1098,7 +1086,6 @@ class TestLongnameShortnameErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_save_shortname_database_error(self, mock_logger, mock_get_manager):
         """Test save_shortname handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
@@ -1115,7 +1102,6 @@ class TestLongnameShortnameErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_update_shortnames_database_error(self, mock_logger, mock_get_manager):
         """Test update_shortnames handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
@@ -1204,7 +1190,12 @@ class TestIntegrationWithRealDatabase(unittest.TestCase):
             ).fetchall()
             table_names = [row[0] for row in tables]
 
-            expected_tables = ["longnames", "shortnames", "plugin_data", "message_map"]
+            expected_tables = [
+                NAMES_TABLE_LONGNAMES,
+                NAMES_TABLE_SHORTNAMES,
+                PLUGIN_DATA_TABLE,
+                MESSAGE_MAP_TABLE,
+            ]
             for table in expected_tables:
                 self.assertIn(table, table_names)
 
@@ -1242,8 +1233,6 @@ class TestIntegrationWithRealDatabase(unittest.TestCase):
 
     def test_initialize_database_creates_new_db(self):
         """Test initialize_database creates new database when none exists."""
-        import os
-        import tempfile
 
         # Create a temporary database path that doesn't exist
         with tempfile.TemporaryDirectory() as temp_dir:

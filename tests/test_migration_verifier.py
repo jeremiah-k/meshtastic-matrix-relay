@@ -2,8 +2,10 @@ import argparse
 import sqlite3
 import sys
 
+import mmrelay.migrate as migrate_module
 from mmrelay import paths as paths_module
 from mmrelay.cli import handle_doctor_command, handle_verify_migration_command
+from mmrelay.constants.app import CREDENTIALS_FILENAME, DATABASE_FILENAME, LOG_FILENAME
 from mmrelay.migrate import perform_migration, verify_migration
 from mmrelay.paths import resolve_all_paths
 
@@ -12,8 +14,8 @@ def test_verify_migration_after_move(tmp_path, monkeypatch):
     legacy_root = tmp_path / "legacy"
     legacy_root.mkdir()
 
-    (legacy_root / "credentials.json").write_text("{}", encoding="utf-8")
-    legacy_db_path = legacy_root / "meshtastic.sqlite"
+    (legacy_root / CREDENTIALS_FILENAME).write_text("{}", encoding="utf-8")
+    legacy_db_path = legacy_root / DATABASE_FILENAME
     conn = sqlite3.connect(legacy_db_path)
     conn.execute("CREATE TABLE IF NOT EXISTS migration_test (id INTEGER)")
     conn.commit()
@@ -21,7 +23,7 @@ def test_verify_migration_after_move(tmp_path, monkeypatch):
 
     logs_dir = legacy_root / "logs"
     logs_dir.mkdir()
-    (logs_dir / "mmrelay.log").write_text("log", encoding="utf-8")
+    (logs_dir / LOG_FILENAME).write_text("log", encoding="utf-8")
 
     if sys.platform != "win32":
         store_dir = legacy_root / "store"
@@ -34,6 +36,15 @@ def test_verify_migration_after_move(tmp_path, monkeypatch):
     monkeypatch.setattr(paths_module, "_home_override", None)
     monkeypatch.setattr(paths_module, "_home_override_source", None)
     monkeypatch.setattr(paths_module, "get_legacy_dirs", lambda: [legacy_root])
+    monkeypatch.setattr(
+        migrate_module,
+        "migrate_service",
+        lambda *args, **kwargs: {
+            "success": True,
+            "action": "not_applicable",
+            "message": "Service migration skipped in test",
+        },
+    )
 
     paths_info = resolve_all_paths()
     assert paths_info["home"] == str(new_home)
@@ -46,7 +57,7 @@ def test_verify_migration_after_move(tmp_path, monkeypatch):
     assert verification["ok"] is True
     assert verification["legacy_data_found"] is False
     assert verification["credentials_missing"] is False
-    assert (new_home / "matrix" / "credentials.json").exists()
+    assert (new_home / "matrix" / CREDENTIALS_FILENAME).exists()
 
 
 def test_verify_migration_missing_credentials(tmp_path, monkeypatch):
@@ -70,7 +81,7 @@ def test_verify_migration_cli_exit_code_clean(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
     (home / "matrix").mkdir()
-    (home / "matrix" / "credentials.json").write_text("{}", encoding="utf-8")
+    (home / "matrix" / CREDENTIALS_FILENAME).write_text("{}", encoding="utf-8")
 
     monkeypatch.setenv("MMRELAY_HOME", str(home))
     monkeypatch.setattr(paths_module, "_home_override", None)
@@ -84,7 +95,7 @@ def test_verify_migration_cli_exit_code_clean(tmp_path, monkeypatch):
 def test_verify_migration_legacy_only(tmp_path, monkeypatch):
     legacy_root = tmp_path / "legacy"
     legacy_root.mkdir()
-    (legacy_root / "credentials.json").write_text("{}", encoding="utf-8")
+    (legacy_root / CREDENTIALS_FILENAME).write_text("{}", encoding="utf-8")
 
     home = tmp_path / "home"
     home.mkdir()
@@ -107,12 +118,12 @@ def test_verify_migration_split_roots(tmp_path, monkeypatch):
     legacy_root.mkdir()
     logs_dir = legacy_root / "logs"
     logs_dir.mkdir()
-    (logs_dir / "mmrelay.log").write_text("log", encoding="utf-8")
+    (logs_dir / LOG_FILENAME).write_text("log", encoding="utf-8")
 
     home = tmp_path / "home"
     home.mkdir()
     (home / "matrix").mkdir()
-    (home / "matrix" / "credentials.json").write_text("{}", encoding="utf-8")
+    (home / "matrix" / CREDENTIALS_FILENAME).write_text("{}", encoding="utf-8")
 
     monkeypatch.setenv("MMRELAY_HOME", str(home))
     monkeypatch.setattr(paths_module, "_home_override", None)
@@ -132,11 +143,11 @@ def test_doctor_migration_exit_codes(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
     (home / "matrix").mkdir()
-    (home / "matrix" / "credentials.json").write_text("{}", encoding="utf-8")
+    (home / "matrix" / CREDENTIALS_FILENAME).write_text("{}", encoding="utf-8")
 
     legacy_root = tmp_path / "legacy"
     legacy_root.mkdir()
-    (legacy_root / "credentials.json").write_text("{}", encoding="utf-8")
+    (legacy_root / CREDENTIALS_FILENAME).write_text("{}", encoding="utf-8")
 
     monkeypatch.setenv("MMRELAY_HOME", str(home))
     monkeypatch.setattr(paths_module, "_home_override", None)
@@ -157,7 +168,7 @@ def test_verify_migration_plugins_outside_home(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
     (home / "matrix").mkdir()
-    (home / "matrix" / "credentials.json").write_text("{}", encoding="utf-8")
+    (home / "matrix" / CREDENTIALS_FILENAME).write_text("{}", encoding="utf-8")
 
     outside_plugins = tmp_path / "plugins"
     outside_plugins.mkdir()
@@ -165,7 +176,7 @@ def test_verify_migration_plugins_outside_home(tmp_path, monkeypatch):
     paths_payload = {
         "home": str(home),
         "legacy_sources": [],
-        "credentials_path": str(home / "matrix" / "credentials.json"),
+        "credentials_path": str(home / "matrix" / CREDENTIALS_FILENAME),
         "database_dir": str(home / "database"),
         "store_dir": (
             "N/A (Windows)"

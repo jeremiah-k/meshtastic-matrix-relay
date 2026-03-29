@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.cli import _get_minimal_config_template, handle_config_diagnose
+from mmrelay.constants.cli import EXIT_CODE_ERROR, EXIT_CODE_SUCCESS
 
 
 class TestHandleConfigDiagnose(unittest.TestCase):
@@ -35,7 +36,7 @@ class TestHandleConfigDiagnose(unittest.TestCase):
             result = handle_config_diagnose(self.mock_args)
 
         # Verify it completed successfully
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
 
         # Check that key diagnostic messages were printed
         printed_messages = [
@@ -59,7 +60,7 @@ class TestHandleConfigDiagnose(unittest.TestCase):
             result = handle_config_diagnose(self.mock_args)
 
         # Verify it completed successfully
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
 
         # Check that key diagnostic messages were printed
         printed_messages = [
@@ -81,7 +82,7 @@ class TestHandleConfigDiagnose(unittest.TestCase):
         result = handle_config_diagnose(self.mock_args)
 
         # Verify
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_print.assert_any_call("❌ Diagnostics failed: Test error", file=sys.stderr)
 
 
@@ -160,7 +161,7 @@ class TestWindowsErrorHandling(unittest.TestCase):
             result = main()
 
         # Should return error code
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
 
         # Should call Windows error message handler
         mock_get_error.assert_called_once()
@@ -182,7 +183,7 @@ class TestWindowsErrorHandling(unittest.TestCase):
             result = main()
 
         # Should return error code
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
 
         # Should use standard error message
         mock_print.assert_called_with(
@@ -202,17 +203,15 @@ class TestWindowsErrorHandling(unittest.TestCase):
         mock_get_error.return_value = "Windows file permission error with guidance"
 
         # Mock file operations to trigger Windows error handling during file copy
-        with patch(
-            "mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]
-        ), patch(
-            "mmrelay.cli.get_sample_config_path",
-            return_value="/fake/sample_config.yaml",
-        ), patch(
-            "os.path.exists", return_value=True
-        ), patch(
-            "shutil.copy2", side_effect=OSError("Permission denied")
+        with (
+            patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]),
+            patch(
+                "mmrelay.cli.get_sample_config_path",
+                return_value="/fake/sample_config.yaml",
+            ),
+            patch("os.path.exists", return_value=True),
+            patch("shutil.copy2", side_effect=OSError("Permission denied")),
         ):
-
             result = generate_sample_config()
 
         # Should fail
@@ -280,7 +279,7 @@ class TestConfigDiagnoseIntegration(unittest.TestCase):
         result = handle_config_diagnose(self.mock_args)
 
         # Should complete successfully
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
 
         # Should print diagnostic header
         printed_messages = [
@@ -313,7 +312,7 @@ class TestConfigDiagnoseIntegration(unittest.TestCase):
         result = handle_config_diagnose(self.mock_args)
 
         # Should complete successfully
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
 
         # Should call Windows-specific tests
         mock_windows_test.assert_called_once()

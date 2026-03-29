@@ -28,15 +28,23 @@ lint:
     - actionlint@1.7.11
     - bandit@1.9.4
     - black@26.3.1
-    - checkov@3.2.510
+    - checkov@3.2.513
     - git-diff-check
     - isort@8.0.1
     - markdownlint@0.48.0
-    - osv-scanner@2.3.3
+    - osv-scanner@2.3.5
     - prettier@3.8.1
-    - ruff@0.15.7
-    - trufflehog@3.94.0
+    - ruff@0.15.8
+    - trufflehog@3.94.1
     - yamllint@1.38.0
+  definitions:
+    - name: bandit
+      direct_configs:
+        - .bandit.yaml
+      commands:
+        - name: lint
+          run: bandit --exit-zero -c .bandit.yaml --format json --output ${tmpfile} ${target}
+          read_output_from: tmp_file
   ignore:
     - linters: [ALL]
       paths:
@@ -52,7 +60,6 @@ lint:
         - src/mmrelay/setup_utils.py
         - src/mmrelay/cli_utils.py # Ignore B110 for client close error handling during logout
         - src/mmrelay/migrate.py # Ignore B603 for safe subprocess.run with validated pgrep path
-        - tests/** # Ignore all bandit security warnings in test files (hardcoded test passwords, asserts, etc.)
     - linters: [mypy]
       paths:
         - tests/** # Type checking is scoped to src/; tests are out of scope

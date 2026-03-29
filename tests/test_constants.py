@@ -12,6 +12,7 @@ from mmrelay.constants import (
     formats,
     messages,
     network,
+    plugins,
     queue,
 )
 
@@ -136,6 +137,12 @@ class TestConstantsValidity:
         assert network.MILLISECONDS_PER_SECOND == 1000
         assert network.ERRNO_BAD_FILE_DESCRIPTOR == 9
 
+    def test_git_retry_defaults_are_constant_backed(self):
+        """Git retry defaults should be centralized and set to the expected value."""
+        assert isinstance(plugins.GIT_RETRY_ATTEMPTS, int)
+        assert plugins.GIT_RETRY_ATTEMPTS > 0
+        assert plugins.GIT_RETRY_ATTEMPTS == 3
+
     def test_message_constants_valid(self):
         """
         Assert message-related constants are defined and meet expected non-negative or positive constraints.
@@ -173,6 +180,7 @@ class TestConstantsImports:
         from mmrelay.constants import formats  # noqa: F401
         from mmrelay.constants import messages  # noqa: F401
         from mmrelay.constants import network  # noqa: F401
+        from mmrelay.constants import plugins  # noqa: F401
         from mmrelay.constants import queue  # noqa: F401
 
     def test_common_constants_available_from_init(self):

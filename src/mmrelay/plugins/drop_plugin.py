@@ -1,5 +1,4 @@
 import asyncio
-import re
 from typing import TYPE_CHECKING, Any
 
 from haversine import haversine
@@ -13,7 +12,7 @@ from nio import (
 
 from mmrelay.constants.database import DEFAULT_DISTANCE_KM_FALLBACK, DEFAULT_RADIUS_KM
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
-from mmrelay.constants.plugins import SPECIAL_NODE_MESSAGES
+from mmrelay.constants.plugins import DROP_COMMAND_REGEX, SPECIAL_NODE_MESSAGES
 from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.plugins.base_plugin import BasePlugin
 
@@ -74,17 +73,11 @@ class Plugin(BasePlugin):
             self.logger.warning(
                 "Meshtastic client unavailable; skipping drop message handling"
             )
-            text = packet.get("decoded", {}).get("text", "")
-            is_drop_command = (
-                packet.get("decoded", {}).get("portnum") == TEXT_MESSAGE_APP
-                and f"!{self.plugin_name}" in text
-                and re.search(r"!drop\s+(.+)$", text)
-            )
-            return bool(is_drop_command)
-        nodeInfo = meshtastic_client.getMyNodeInfo()
+            return True
+        node_info = meshtastic_client.getMyNodeInfo()
 
         # Attempt message drop to packet originator if not relay
-        if "fromId" in packet and packet["fromId"] != nodeInfo["user"]["id"]:
+        if "fromId" in packet and packet["fromId"] != node_info["user"]["id"]:
             from_id: str = packet["fromId"]
             position = self.get_position(meshtastic_client, from_id)
             if position and "latitude" in position and "longitude" in position:
@@ -135,10 +128,8 @@ class Plugin(BasePlugin):
             and packet["decoded"]["portnum"] == TEXT_MESSAGE_APP
         ):
             text = packet["decoded"].get("text") or ""
-            if f"!{self.plugin_name}" not in text:
-                return False
 
-            match = re.search(r"!drop\s+(.+)$", text)
+            match = DROP_COMMAND_REGEX.search(text)
             if not match:
                 return False
 

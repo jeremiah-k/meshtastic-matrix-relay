@@ -16,6 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from nio import RoomSendResponse
 
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
+from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
 from mmrelay.matrix_utils import matrix_relay
 
 
@@ -154,7 +156,7 @@ class TestE2EEEncryption:
             longname="Test User",
             shortname="TU",
             meshnet_name="TestNet",
-            portnum=1,
+            portnum=PORTNUM_TEXT_MESSAGE_APP,
         )
 
         # Verify encryption parameters
@@ -167,7 +169,7 @@ class TestE2EEEncryption:
             kwargs["room_id"] == "!encrypted:example.org"
         ), "Should send to correct room"
         assert (
-            kwargs["message_type"] == "m.room.message"
+            kwargs["message_type"] == MATRIX_EVENT_TYPE_ROOM_MESSAGE
         ), "Should use correct message type"
 
     @patch("mmrelay.matrix_utils.config")
@@ -203,7 +205,7 @@ class TestE2EEEncryption:
             longname="Test User",
             shortname="TU",
             meshnet_name="TestNet",
-            portnum=1,
+            portnum=PORTNUM_TEXT_MESSAGE_APP,
         )
 
         # Verify encryption parameters (should still use ignore_unverified=True based on current implementation)
@@ -227,7 +229,7 @@ class TestE2EEEncryption:
         # Call room_send directly
         await mock_client.room_send(
             room_id="!test:example.org",
-            message_type="m.room.message",
+            message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
             content=test_content,
             ignore_unverified_devices=True,
         )
@@ -326,7 +328,7 @@ class TestE2EEIntegration:
                 longname="E2EE Test User",
                 shortname="ETU",
                 meshnet_name="E2EENet",
-                portnum=1,
+                portnum=PORTNUM_TEXT_MESSAGE_APP,
             )
 
         # Verify E2EE setup was called
@@ -411,7 +413,7 @@ class E2EEDebugUtilities:
         """Create a test room_send call to verify parameters"""
         return {
             "room_id": "!test:example.org",
-            "message_type": "m.room.message",
+            "message_type": MATRIX_EVENT_TYPE_ROOM_MESSAGE,
             "content": {"msgtype": "m.text", "body": "Test message"},
             "ignore_unverified_devices": True,
         }

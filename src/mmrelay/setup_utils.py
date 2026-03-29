@@ -10,19 +10,24 @@ import importlib.resources
 # Import version from package
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    pass
-
+from mmrelay.constants.app import (
+    APP_NAME,
+    LOGS_DIRNAME,
+    SERVICE_RESTART_SECONDS,
+    SYSTEMD_SERVICE_FILENAME,
+    SYSTEMD_USER_DIR,
+)
 from mmrelay.constants.database import PROGRESS_COMPLETE, PROGRESS_TOTAL_STEPS
+from mmrelay.constants.migration import DEFAULT_SERVICE_ARGS_SUFFIX
 from mmrelay.constants.network import SYSTEMCTL_FALLBACK
 from mmrelay.log_utils import get_logger
-from mmrelay.tools import get_service_template_path
 
 # Resolve systemctl path dynamically with fallback
 SYSTEMCTL = shutil.which("systemctl") or SYSTEMCTL_FALLBACK
@@ -40,6 +45,63 @@ def _quote_if_needed(path: str) -> str:
         str: The original `path` if it contains no spaces; otherwise `path` wrapped in double quotes.
     """
     return f'"{path}"' if " " in path else path
+
+
+def _get_service_template_candidates() -> list[str]:
+    """
+    Get the list of candidate paths for the service template file.
+
+    Returns paths in priority order:
+    1. MMRELAY_SERVICE_OVERRIDE environment variable (if set)
+    2. Package directory
+    3. Package tools subdirectory
+    4. sys.prefix share paths
+    5. User local share paths
+    6. Development paths
+    """
+    package_dir = os.path.dirname(__file__)
+
+    candidates = [
+        os.path.join(package_dir, SYSTEMD_SERVICE_FILENAME),
+        os.path.join(package_dir, "tools", SYSTEMD_SERVICE_FILENAME),
+        os.path.join(sys.prefix, "share", APP_NAME, SYSTEMD_SERVICE_FILENAME),
+        os.path.join(sys.prefix, "share", APP_NAME, "tools", SYSTEMD_SERVICE_FILENAME),
+        os.path.join(
+            os.path.expanduser("~"),
+            ".local",
+            "share",
+            APP_NAME,
+            SYSTEMD_SERVICE_FILENAME,
+        ),
+        os.path.join(
+            os.path.expanduser("~"),
+            ".local",
+            "share",
+            APP_NAME,
+            "tools",
+            SYSTEMD_SERVICE_FILENAME,
+        ),
+        os.path.join(os.path.dirname(package_dir), "tools", SYSTEMD_SERVICE_FILENAME),
+        os.path.join(
+            os.path.dirname(os.path.dirname(package_dir)),
+            "tools",
+            SYSTEMD_SERVICE_FILENAME,
+        ),
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "tools",
+            SYSTEMD_SERVICE_FILENAME,
+        ),
+    ]
+
+    override_path = os.environ.get("MMRELAY_SERVICE_OVERRIDE")
+    if override_path:
+        candidates.insert(
+            0,
+            os.path.abspath(os.path.expanduser(os.path.expandvars(override_path))),
+        )
+
+    return candidates
 
 
 def get_resolved_exec_cmd() -> str:
@@ -78,7 +140,7 @@ def get_executable_path() -> str:
 
 
 def get_resolved_exec_start(
-    args_suffix: str = " --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log",
+    args_suffix: str = DEFAULT_SERVICE_ARGS_SUFFIX,
 ) -> str:
     """
     Construct the systemd `ExecStart=` line for the mmrelay service.
@@ -86,13 +148,17 @@ def get_resolved_exec_start(
     Parameters:
         args_suffix (str): Command-line arguments appended to the resolved mmrelay command.
             May include systemd specifiers such as `%h` for the user home directory.
-            Defaults to " --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log".
+            Defaults to DEFAULT_SERVICE_ARGS_SUFFIX (e.g., "--home %h/.mmrelay").
 
     Returns:
         str: A single-line string beginning with `ExecStart=` containing the resolved executable
              invocation followed by the provided argument suffix.
     """
-    return f"ExecStart={get_resolved_exec_cmd()}{args_suffix}"
+    stripped_suffix = args_suffix.lstrip()
+    cmd = get_resolved_exec_cmd()
+    if stripped_suffix:
+        return f"ExecStart={cmd} {stripped_suffix}"
+    return f"ExecStart={cmd}"
 
 
 def get_user_service_path() -> Path:
@@ -102,8 +168,21 @@ def get_user_service_path() -> Path:
     Returns:
         Path: Path to the user unit file, typically '~/.config/systemd/user/mmrelay.service'.
     """
-    service_dir = Path.home() / ".config" / "systemd" / "user"
-    return service_dir / "mmrelay.service"
+    xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+    if xdg_config_home:
+        xdg_path = Path(xdg_config_home).expanduser()
+        if xdg_path.is_absolute():
+            service_dir = xdg_path / "systemd" / "user"
+        else:
+            logger.warning(
+                "Ignoring non-absolute XDG_CONFIG_HOME=%s; falling back to %s",
+                xdg_config_home,
+                SYSTEMD_USER_DIR,
+            )
+            service_dir = Path.home() / SYSTEMD_USER_DIR
+    else:
+        service_dir = Path.home() / SYSTEMD_USER_DIR
+    return service_dir / SYSTEMD_SERVICE_FILENAME
 
 
 def service_exists() -> bool:
@@ -118,10 +197,26 @@ def service_exists() -> bool:
 
 def log_service_commands() -> None:
     """Log the commands for controlling the systemd user service."""
-    logger.info("  systemctl --user start mmrelay.service    # Start the service")
-    logger.info("  systemctl --user stop mmrelay.service     # Stop the service")
-    logger.info("  systemctl --user restart mmrelay.service  # Restart the service")
-    logger.info("  systemctl --user status mmrelay.service   # Check service status")
+    logger.info(
+        "  %s --user start %s      # Start the service",
+        SYSTEMCTL,
+        SYSTEMD_SERVICE_FILENAME,
+    )
+    logger.info(
+        "  %s --user stop %s       # Stop the service",
+        SYSTEMCTL,
+        SYSTEMD_SERVICE_FILENAME,
+    )
+    logger.info(
+        "  %s --user restart %s    # Restart the service",
+        SYSTEMCTL,
+        SYSTEMD_SERVICE_FILENAME,
+    )
+    logger.info(
+        "  %s --user status %s     # Check service status",
+        SYSTEMCTL,
+        SYSTEMD_SERVICE_FILENAME,
+    )
 
 
 def wait_for_service_start() -> None:
@@ -203,13 +298,18 @@ def read_service_file() -> str | None:
     return None
 
 
+def get_service_template_path() -> str | None:
+    """Alias for get_template_service_path for backward compatibility with tests."""
+    return get_template_service_path()
+
+
 def get_template_service_path() -> str | None:
     """
     Locate the mmrelay systemd service template on disk.
 
     Searches a deterministic list of candidate locations (package directory, package/tools,
-    sys.prefix share paths, user local share (~/.local/share), parent-directory development
-    paths, and ./tools) and returns the first existing path.
+    sys.prefix share paths, user local share (~/.local/share), and parent-directory development
+    paths) and returns the first existing path.
 
     If no template is found, the function logs a warning listing all
     attempted locations and returns None.
@@ -217,58 +317,18 @@ def get_template_service_path() -> str | None:
     Returns:
         str | None: Path to the found mmrelay.service template, or None if not found.
     """
-    # Try to find the service template file
-    package_dir = os.path.dirname(__file__)
+    template_paths = _get_service_template_candidates()
 
-    # Try to find the service template file in various locations
-    template_paths = [
-        # Check in the package directory (where it should be after installation)
-        os.path.join(package_dir, "mmrelay.service"),
-        # Check in a tools subdirectory of the package
-        os.path.join(package_dir, "tools", "mmrelay.service"),
-        # Check in the data files location (where it should be after installation)
-        os.path.join(sys.prefix, "share", "mmrelay", "mmrelay.service"),
-        os.path.join(sys.prefix, "share", "mmrelay", "tools", "mmrelay.service"),
-        # Check in the user site-packages location
-        os.path.join(
-            os.path.expanduser("~"), ".local", "share", "mmrelay", "mmrelay.service"
-        ),
-        os.path.join(
-            os.path.expanduser("~"),
-            ".local",
-            "share",
-            "mmrelay",
-            "tools",
-            "mmrelay.service",
-        ),
-        # Check one level up from the package directory
-        os.path.join(os.path.dirname(package_dir), "tools", "mmrelay.service"),
-        # Check two levels up from the package directory (for development)
-        os.path.join(
-            os.path.dirname(os.path.dirname(package_dir)), "tools", "mmrelay.service"
-        ),
-        # Check in the repository root (for development)
-        os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "tools",
-            "mmrelay.service",
-        ),
-        # Check in the current directory (fallback)
-        os.path.join(os.getcwd(), "tools", "mmrelay.service"),
-    ]
-
-    # Try each path until we find one that exists
     for path in template_paths:
         if os.path.exists(path):
             return path
 
-    # If we get here, we couldn't find the template
-    # Warning output to help diagnose issues
-    logger.warning("Could not find mmrelay.service in any of these locations:")
+    logger.warning(
+        "Could not find %s in any of these locations:", SYSTEMD_SERVICE_FILENAME
+    )
     for path in template_paths:
         logger.warning("  - %s", path)
 
-    # If we get here, we couldn't find the template
     return None
 
 
@@ -281,10 +341,10 @@ def get_template_service_content() -> str:
     Returns:
         str: Complete service file content suitable for writing to the user service unit.
     """
-    # Use the helper function to get the service template path
+    # Use compatibility alias to support existing tests/callers that patch it.
     template_path = get_service_template_path()
 
-    if template_path and os.path.exists(template_path):
+    if template_path:
         # Read the template from file
         try:
             with open(template_path, "r", encoding="utf-8") as f:
@@ -297,23 +357,14 @@ def get_template_service_content() -> str:
     try:
         service_template = (
             importlib.resources.files("mmrelay.tools")
-            .joinpath("mmrelay.service")
+            .joinpath(SYSTEMD_SERVICE_FILENAME)
             .read_text(encoding="utf-8")
         )
         return service_template
     except (FileNotFoundError, ImportError, OSError, UnicodeDecodeError):
-        logger.exception("Error accessing mmrelay.service via importlib.resources")
-
-        # Fall back to the file path method
-        fallback_template_path = get_template_service_path()
-        if fallback_template_path:
-            # Read the template from file
-            try:
-                with open(fallback_template_path, "r", encoding="utf-8") as f:
-                    service_template = f.read()
-                return service_template
-            except (OSError, UnicodeDecodeError):
-                logger.exception("Error reading service template file")
+        logger.exception(
+            "Error accessing %s via importlib.resources", SYSTEMD_SERVICE_FILENAME
+        )
 
     # If we couldn't find or read the template file, use a default template
     logger.warning("Using default service template")
@@ -329,7 +380,7 @@ Type=simple
 {resolved_exec_start}
 WorkingDirectory=%h/.mmrelay
 Restart=on-failure
-RestartSec=10
+RestartSec={SERVICE_RESTART_SECONDS}
 Environment=PYTHONUNBUFFERED=1
 Environment=LANG=C.UTF-8
 # Ensure both pipx and pip environments are properly loaded
@@ -351,7 +402,7 @@ def is_service_enabled() -> bool:
     """
     try:
         result = subprocess.run(
-            [SYSTEMCTL, "--user", "is-enabled", "mmrelay.service"],
+            [SYSTEMCTL, "--user", "is-enabled", SYSTEMD_SERVICE_FILENAME],
             check=False,  # Don't raise an exception if the service is not enabled
             capture_output=True,
             text=True,
@@ -371,7 +422,7 @@ def is_service_active() -> bool:
     """
     try:
         result = subprocess.run(
-            [SYSTEMCTL, "--user", "is-active", "mmrelay.service"],
+            [SYSTEMCTL, "--user", "is-active", SYSTEMD_SERVICE_FILENAME],
             check=False,  # Don't raise an exception if the service is not active
             capture_output=True,
             text=True,
@@ -399,7 +450,7 @@ def create_service_file() -> bool:
     service_dir.mkdir(parents=True, exist_ok=True)
 
     # Create logs directory if it doesn't exist
-    logs_dir = Path.home() / ".mmrelay" / "logs"
+    logs_dir = Path.home() / f".{APP_NAME}" / LOGS_DIRNAME
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     # Get the template service content
@@ -475,12 +526,28 @@ def service_needs_update() -> tuple[bool, str]:
     """
     Determine whether the per-user systemd unit file for mmrelay should be updated.
 
-    Performs these checks in order and reports the first failing condition:
-    - No existing user service file is present.
-    - The service's ExecStart line does not contain an acceptable invocation (mmrelay on PATH, "/usr/bin/env mmrelay", or the current Python interpreter using `-m mmrelay`).
-    - Environment PATH entries in the unit do not include common user-bin locations ("%h/.local/pipx/venvs/mmrelay/bin" or "%h/.local/bin").
-    - The service file uses legacy flags (--config, --logfile) instead of the v1.3 --home flag.
-    - A template service file exists on disk and has a modification time newer than the installed service file.
+    This function is primarily a runtime-correctness validator: it checks whether the
+    installed service file can actually work correctly with the current mmrelay version.
+    Normalization guidance for common migration scenarios is a secondary concern; the
+    function respects operator choice for custom unit shapes and does not enforce a
+    house style beyond what is required for correct operation.
+
+    Correctness checks (always enforced):
+    - Legacy --config/--logfile flags are flagged because they indicate an incompatible
+      configuration model that will not work with v1.3+.
+    - Home configuration must be present (--home or MMRELAY_HOME) to ensure the service
+      can locate state correctly.
+    - A recognizable launcher or explicit custom path must be present.
+
+    Normalization guidance (heuristic, not enforced):
+    - PATH hardening for common user-bin locations is suggested when the unit relies on
+      PATH-based mmrelay lookup, but custom launchers are not flagged.
+
+    Policy notes:
+    - Explicit custom launchers (absolute paths or systemd specifiers like %h) are trusted
+      because the operator has made an intentional choice that we cannot meaningfully validate.
+    - This function is NOT a style checker; it will not flag operationally valid custom
+      units that do not match the template layout.
 
     Returns:
         tuple: (needs_update, reason)
@@ -495,16 +562,7 @@ def service_needs_update() -> tuple[bool, str]:
     # Get the template service path
     template_path = get_template_service_path()
 
-    # Get the acceptable executable paths
-    mmrelay_path = shutil.which("mmrelay")
-    acceptable_execs = [
-        f"{_quote_if_needed(sys.executable)} -m mmrelay",
-        "/usr/bin/env mmrelay",
-    ]
-    if mmrelay_path:
-        acceptable_execs.append(_quote_if_needed(mmrelay_path))
-
-    # Check if the ExecStart line in the existing service file contains an acceptable executable form
+    # Check if the ExecStart line exists
     exec_start_line = next(
         (
             line
@@ -517,26 +575,23 @@ def service_needs_update() -> tuple[bool, str]:
     if not exec_start_line:
         return True, "Service file is missing ExecStart line"
 
-    if not any(exec_str in exec_start_line for exec_str in acceptable_execs):
-        return (
-            True,
-            "Service file does not use an acceptable executable "
-            f"({' or '.join(acceptable_execs)}).",
-        )
+    exec_start_value = exec_start_line.split("=", 1)[1].strip()
+    if not exec_start_value:
+        return True, "Service file has empty ExecStart command"
 
-    # Check if the PATH environment includes common user-bin locations
-    # Look specifically in Environment lines, not the entire file
     environment_lines = [
         line
         for line in existing_service.splitlines()
         if line.strip().startswith("Environment=")
     ]
-    path_in_environment = any(
-        "%h/.local/pipx/venvs/mmrelay/bin" in line or "%h/.local/bin" in line
-        for line in environment_lines
-    )
-    if not path_in_environment:
-        return True, "Service PATH does not include common user-bin locations"
+
+    # Tokenize ExecStart first for accurate flag detection
+    try:
+        exec_tokens = shlex.split(exec_start_value)
+    except ValueError:
+        return True, "Service file has invalid ExecStart command"
+    if not exec_tokens:
+        return True, "Service file has empty ExecStart command"
 
     # Check if the service file is using legacy flags (--config, --logfile) instead of --home
     # This ensures migration to v1.3 unified path model
@@ -546,10 +601,163 @@ def service_needs_update() -> tuple[bool, str]:
             "Service file uses legacy --config/--logfile flags (update to --home)",
         )
 
-    # Check if the service file is missing the --home flag entirely
-    # A valid v1.3 service file should have --home
-    if "--home" not in exec_start_line:
-        return True, "Service file is missing --home flag (v1.3 unified path model)"
+    # Accept either --home in ExecStart or MMRELAY_HOME in Environment for compatibility.
+    # Use token-level matching to avoid false positives on flags like --home-dir and
+    # require non-empty values for --home/MMRELAY_HOME.
+    has_home_flag = False
+    for index, token in enumerate(exec_tokens):
+        if token == "--home":
+            if index + 1 < len(exec_tokens):
+                next_token = exec_tokens[index + 1].strip()
+                if next_token and not next_token.startswith("-"):
+                    has_home_flag = True
+                    break
+            continue
+        if token.startswith("--home="):
+            home_value = token.split("=", 1)[1].strip()
+            if home_value:
+                has_home_flag = True
+                break
+
+    def _iter_env_assignments(raw_line: str) -> list[tuple[str, str]]:
+        line = raw_line.strip()
+        if line.startswith("Environment="):
+            line = line[len("Environment=") :].strip()
+        if not line:
+            return []
+        try:
+            tokens = shlex.split(line)
+        except ValueError:
+            tokens = line.split()
+
+        assignments: list[tuple[str, str]] = []
+        for token in tokens:
+            if "=" not in token:
+                continue
+            key, value = token.split("=", 1)
+            normalized_key = key.strip().strip('"').strip("'")
+            normalized_value = value.strip().strip('"').strip("'")
+            if normalized_key:
+                assignments.append((normalized_key, normalized_value))
+        return assignments
+
+    has_home_env = any(
+        key == "MMRELAY_HOME" and bool(value)
+        for line in environment_lines
+        for key, value in _iter_env_assignments(line)
+    )
+
+    cmd_token = exec_tokens[0]
+    cmd_basename = os.path.basename(cmd_token)
+
+    env_target_token: str | None = None
+    env_path_assignment: str | None = None
+    has_home_env_in_exec = False
+    if cmd_basename == "env":
+        for token in exec_tokens[1:]:
+            # Skip env assignments/options and capture the first command token.
+            if token == "--":
+                continue
+            if token.startswith("-"):
+                continue
+            if "=" in token:
+                key, value = token.split("=", 1)
+                normalized_key = key.strip().strip('"').strip("'")
+                normalized_value = value.strip().strip('"').strip("'")
+                if normalized_key == "PATH":
+                    env_path_assignment = normalized_value
+                if normalized_key == "MMRELAY_HOME" and normalized_value:
+                    has_home_env_in_exec = True
+                continue
+            env_target_token = token
+            break
+
+    if cmd_basename == "env" and env_target_token is None:
+        return True, "Service file has invalid ExecStart env launcher (missing command)"
+
+    has_home_env = has_home_env or has_home_env_in_exec
+    if not (has_home_flag or has_home_env):
+        return (
+            True,
+            "Service file is missing home configuration (--home or MMRELAY_HOME)",
+        )
+
+    if cmd_basename == "env":
+        # Safe due to explicit guard above; keep type checkers aware launcher is str.
+        assert env_target_token is not None
+        launcher_token = env_target_token
+    else:
+        launcher_token = cmd_token
+    launcher_basename = os.path.basename(launcher_token)
+
+    uses_python_module = any(
+        token == "-m"
+        and index + 1 < len(exec_tokens)
+        and exec_tokens[index + 1] == "mmrelay"
+        for index, token in enumerate(exec_tokens)
+    )
+    uses_env_mmrelay = cmd_basename == "env" and launcher_basename == "mmrelay"
+    launches_mmrelay_binary = cmd_basename != "env" and cmd_basename == "mmrelay"
+    launches_mmrelay = uses_python_module or uses_env_mmrelay or launches_mmrelay_binary
+
+    # Allow explicit custom launchers (absolute paths or systemd specifier paths).
+    # This is an intentional trust-the-operator path: we validate home semantics
+    # above, but we do not attempt deep wrapper introspection here.
+    is_explicit_custom_launcher = os.path.isabs(
+        launcher_token
+    ) or launcher_token.startswith("%")
+    if not launches_mmrelay and not is_explicit_custom_launcher:
+        return True, "Service file does not use a recognizable mmrelay launcher"
+
+    # Only require PATH hardening when ExecStart depends on PATH lookup.
+    uses_path_lookup = False
+    if uses_env_mmrelay and env_target_token is not None:
+        uses_path_lookup = not (
+            os.path.isabs(env_target_token) or env_target_token.startswith("%")
+        )
+    elif launches_mmrelay_binary and not is_explicit_custom_launcher:
+        uses_path_lookup = True
+
+    if uses_path_lookup:
+
+        def _normalize_path_entry(entry: str) -> str:
+            normalized = entry.strip().strip('"').strip("'")
+            if normalized.startswith("%h/"):
+                normalized = os.path.join(os.path.expanduser("~"), normalized[3:])
+            elif normalized == "%h":
+                normalized = os.path.expanduser("~")
+            normalized = os.path.expandvars(os.path.expanduser(normalized))
+            return normalized.rstrip("/")
+
+        def _split_path_entries(path_value: str) -> set[str]:
+            entries: set[str] = set()
+            for part in path_value.split(":"):
+                normalized = _normalize_path_entry(part)
+                if normalized:
+                    entries.add(normalized)
+            return entries
+
+        expected_path_entries = {
+            _normalize_path_entry("%h/.local/pipx/venvs/mmrelay/bin"),
+            _normalize_path_entry("%h/.local/bin"),
+            _normalize_path_entry("~/.local/pipx/venvs/mmrelay/bin"),
+            _normalize_path_entry("~/.local/bin"),
+        }
+
+        environment_path_entries: set[str] = set()
+        for line in environment_lines:
+            for key, value in _iter_env_assignments(line):
+                if key == "PATH" and value:
+                    environment_path_entries.update(_split_path_entries(value))
+
+        path_in_environment = bool(environment_path_entries & expected_path_entries)
+        path_in_exec_env = False
+        if env_path_assignment:
+            path_in_exec_env = bool(
+                _split_path_entries(env_path_assignment) & expected_path_entries
+            )
+        if not (path_in_environment or path_in_exec_env):
+            return True, "Service PATH does not include common user-bin locations"
 
     # Check if the service file has been modified recently
     service_path = get_user_service_path()
@@ -760,7 +968,7 @@ def install_service() -> bool:
         if enable_service:
             try:
                 subprocess.run(
-                    [SYSTEMCTL, "--user", "enable", "mmrelay.service"],
+                    [SYSTEMCTL, "--user", "enable", SYSTEMD_SERVICE_FILENAME],
                     check=True,
                 )
                 logger.info("Service enabled successfully")
@@ -784,7 +992,7 @@ def install_service() -> bool:
         if restart_service:
             try:
                 subprocess.run(
-                    [SYSTEMCTL, "--user", "restart", "mmrelay.service"],
+                    [SYSTEMCTL, "--user", "restart", SYSTEMD_SERVICE_FILENAME],
                     check=True,
                 )
                 logger.info("Service restarted successfully")
@@ -843,13 +1051,15 @@ def start_service() -> bool:
         True if the service was started successfully, False otherwise.
     """
     try:
-        subprocess.run([SYSTEMCTL, "--user", "start", "mmrelay.service"], check=True)
+        subprocess.run(
+            [SYSTEMCTL, "--user", "start", SYSTEMD_SERVICE_FILENAME], check=True
+        )
         return True
-    except subprocess.CalledProcessError:
-        logger.exception("Error starting service")
+    except subprocess.CalledProcessError as e:
+        logger.exception("Error starting service (exit code %d)", e.returncode)
         return False
     except OSError:
-        logger.exception("Error starting mmrelay service")
+        logger.exception("Error starting service")
         return False
 
 
@@ -864,7 +1074,7 @@ def show_service_status() -> bool:
     """
     try:
         result = subprocess.run(
-            [SYSTEMCTL, "--user", "status", "mmrelay.service"],
+            [SYSTEMCTL, "--user", "status", SYSTEMD_SERVICE_FILENAME],
             check=False,
             capture_output=True,
             text=True,

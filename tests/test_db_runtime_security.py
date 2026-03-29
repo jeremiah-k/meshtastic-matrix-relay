@@ -11,13 +11,30 @@ This test module covers:
 """
 
 import asyncio
+import os
 import sqlite3
 import tempfile
 import threading
 import unittest
-from unittest.mock import MagicMock, patch
+from concurrent.futures import Future
+from typing import Generator
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from mmrelay.db_runtime import DatabaseManager, _validate_sqlite_json_each_support
+import pytest
+
+from mmrelay.constants.database import DEFAULT_BUSY_TIMEOUT_MS, SQLITE_IN_MEMORY_PATH
+from mmrelay.db_runtime import (
+    DatabaseManager,
+    _get_sqlite_runtime_version_info,
+    _probe_sqlite_json_each_support,
+    _validate_sqlite_json_each_support,
+)
+from tests.constants import (
+    TEST_SQL_COUNT_TEST,
+    TEST_SQL_CREATE_TABLE,
+    TEST_SQL_INSERT_VALUE,
+    TEST_SQL_SELECT_ONE,
+)
 
 
 class TestDatabaseManager(unittest.TestCase):
@@ -40,7 +57,6 @@ class TestDatabaseManager(unittest.TestCase):
     def tearDown(self):
         """Clean up test fixtures."""
         self.manager.close()
-        import os
 
         try:
             os.unlink(self.db_path)
@@ -53,7 +69,7 @@ class TestDatabaseManager(unittest.TestCase):
         try:
             self.assertEqual(manager._path, self.db_path)
             self.assertTrue(manager._enable_wal)
-            self.assertEqual(manager._busy_timeout_ms, 5000)
+            self.assertEqual(manager._busy_timeout_ms, DEFAULT_BUSY_TIMEOUT_MS)
             self.assertEqual(manager._extra_pragmas, {})
         finally:
             manager.close()
@@ -89,7 +105,7 @@ class TestDatabaseManager(unittest.TestCase):
             database = kwargs.get("database")
             if database is None and args:
                 database = args[0]
-            if database == ":memory:":
+            if database == SQLITE_IN_MEMORY_PATH:
                 return probe_conn
             return real_connect(*args, **kwargs)
 
@@ -99,7 +115,7 @@ class TestDatabaseManager(unittest.TestCase):
             manager = DatabaseManager(self.db_path)
             try:
                 with manager.read() as cursor:
-                    cursor.execute("SELECT 1")
+                    cursor.execute(TEST_SQL_SELECT_ONE)
                 self.assertFalse(manager.supports_json_each())
             finally:
                 manager.close()
@@ -120,7 +136,7 @@ class TestDatabaseManager(unittest.TestCase):
             database = kwargs.get("database")
             if database is None and args:
                 database = args[0]
-            if database == ":memory:":
+            if database == SQLITE_IN_MEMORY_PATH:
                 return probe_conn
             return real_connect(*args, **kwargs)
 
@@ -130,11 +146,26 @@ class TestDatabaseManager(unittest.TestCase):
             manager = DatabaseManager(self.db_path)
             try:
                 with manager.read() as cursor:
-                    cursor.execute("SELECT 1")
+                    cursor.execute(TEST_SQL_SELECT_ONE)
                 self.assertTrue(manager.supports_json_each())
             finally:
                 manager.close()
         probe_conn.close.assert_called()
+
+    def test_get_sqlite_runtime_version_info_falls_back_to_string(self):
+        """Version parsing should gracefully fall back to sqlite_version string."""
+        with (
+            patch("mmrelay.db_runtime.sqlite3.sqlite_version_info", ("bad",)),
+            patch("mmrelay.db_runtime.sqlite3.sqlite_version", "3.bad"),
+        ):
+            self.assertEqual(_get_sqlite_runtime_version_info(), (3, 0, 0))
+
+    def test_probe_sqlite_json_each_support_reraises_non_json_errors(self):
+        """Non-json_each sqlite errors should propagate unchanged."""
+        conn = MagicMock()
+        conn.execute.side_effect = sqlite3.OperationalError("database is malformed")
+        with self.assertRaises(sqlite3.OperationalError):
+            _probe_sqlite_json_each_support(conn)
 
     def test_pragma_validation_valid_names(self):
         """Test that valid pragma names are accepted."""
@@ -157,7 +188,7 @@ class TestDatabaseManager(unittest.TestCase):
                 try:
                     # Test connection creation to trigger pragma validation
                     with manager.read() as cursor:
-                        cursor.execute("SELECT 1")
+                        cursor.execute(TEST_SQL_SELECT_ONE)
                 finally:
                     manager.close()
 
@@ -183,7 +214,7 @@ class TestDatabaseManager(unittest.TestCase):
                     )
                     # Try to create connection to trigger validation
                     with manager.read() as cursor:
-                        cursor.execute("SELECT 1")
+                        cursor.execute(TEST_SQL_SELECT_ONE)
                 self.assertIn("Invalid pragma name", str(cm.exception))
 
     def test_pragma_validation_string_values(self):
@@ -210,7 +241,7 @@ class TestDatabaseManager(unittest.TestCase):
                 )
                 try:
                     with manager.read() as cursor:
-                        cursor.execute("SELECT 1")
+                        cursor.execute(TEST_SQL_SELECT_ONE)
                 finally:
                     manager.close()
 
@@ -236,7 +267,7 @@ class TestDatabaseManager(unittest.TestCase):
                     )
                     # Try to create connection to trigger validation
                     with manager.read() as cursor:
-                        cursor.execute("SELECT 1")
+                        cursor.execute(TEST_SQL_SELECT_ONE)
                 self.assertIn("Invalid or unsafe pragma value", str(cm.exception))
 
     def test_pragma_validation_numeric_values(self):
@@ -250,7 +281,7 @@ class TestDatabaseManager(unittest.TestCase):
                 )
                 try:
                     with manager.read() as cursor:
-                        cursor.execute("SELECT 1")
+                        cursor.execute(TEST_SQL_SELECT_ONE)
                 finally:
                     manager.close()
 
@@ -265,7 +296,7 @@ class TestDatabaseManager(unittest.TestCase):
                 )
                 try:
                     with manager.read() as cursor:
-                        cursor.execute("SELECT 1")
+                        cursor.execute(TEST_SQL_SELECT_ONE)
                 finally:
                     manager.close()
 
@@ -275,7 +306,7 @@ class TestDatabaseManager(unittest.TestCase):
             {"not": "a dict"},
             ["not", "a list"],
             (None, "tuple"),
-            set([1, 2, 3]),
+            {1, 2, 3},
             None,
         ]
 
@@ -287,20 +318,20 @@ class TestDatabaseManager(unittest.TestCase):
                     )
                     # Try to create connection to trigger validation
                     with manager.read() as cursor:
-                        cursor.execute("SELECT 1")
+                        cursor.execute(TEST_SQL_SELECT_ONE)
                 self.assertIn("Invalid pragma value type", str(cm.exception))
 
     def test_read_context_manager(self):
         """Test read context manager behavior."""
         with self.manager.read() as cursor:
-            result = cursor.execute("SELECT 1").fetchone()
+            result = cursor.execute(TEST_SQL_SELECT_ONE).fetchone()
             self.assertEqual(result[0], 1)
 
     def test_write_context_manager_success(self):
         """Test write context manager on successful operation."""
         with self.manager.write() as cursor:
-            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-            cursor.execute("INSERT INTO test (value) VALUES (?)", ("test_value",))
+            cursor.execute(TEST_SQL_CREATE_TABLE)
+            cursor.execute(TEST_SQL_INSERT_VALUE, ("test_value",))
 
         # Verify data was committed
         with self.manager.read() as cursor:
@@ -311,8 +342,8 @@ class TestDatabaseManager(unittest.TestCase):
         """Test write context manager rolls back on error."""
         # Create initial table
         with self.manager.write() as cursor:
-            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+            cursor.execute(TEST_SQL_CREATE_TABLE)
+            cursor.execute(TEST_SQL_INSERT_VALUE, ("initial",))
 
         # Attempt operation that will fail
         with self.assertRaises(sqlite3.IntegrityError):
@@ -326,7 +357,7 @@ class TestDatabaseManager(unittest.TestCase):
 
         # Verify initial data is still there (rollback worked)
         with self.manager.read() as cursor:
-            result = cursor.execute("SELECT COUNT(*) FROM test").fetchone()
+            result = cursor.execute(TEST_SQL_COUNT_TEST).fetchone()
             self.assertEqual(result[0], 1)
             result = cursor.execute("SELECT value FROM test").fetchone()
             self.assertEqual(result[0], "initial")
@@ -335,21 +366,19 @@ class TestDatabaseManager(unittest.TestCase):
         """Test write context manager rolls back on non-SQLite exceptions."""
         # Create initial table
         with self.manager.write() as cursor:
-            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+            cursor.execute(TEST_SQL_CREATE_TABLE)
+            cursor.execute(TEST_SQL_INSERT_VALUE, ("initial",))
 
         # Attempt operation that will fail with ValueError
         with self.assertRaises(ValueError):
             with self.manager.write() as cursor:
-                cursor.execute(
-                    "INSERT INTO test (value) VALUES (?)", ("should_be_rolled_back",)
-                )
+                cursor.execute(TEST_SQL_INSERT_VALUE, ("should_be_rolled_back",))
                 # Raise a non-SQLite exception
                 raise ValueError("Test exception")
 
         # Verify initial data is still there (rollback worked)
         with self.manager.read() as cursor:
-            result = cursor.execute("SELECT COUNT(*) FROM test").fetchone()
+            result = cursor.execute(TEST_SQL_COUNT_TEST).fetchone()
             self.assertEqual(result[0], 1)
             result = cursor.execute("SELECT value FROM test").fetchone()
             self.assertEqual(result[0], "initial")
@@ -358,8 +387,8 @@ class TestDatabaseManager(unittest.TestCase):
         """Test write context manager rolls back on custom exceptions."""
         # Create initial table
         with self.manager.write() as cursor:
-            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+            cursor.execute(TEST_SQL_CREATE_TABLE)
+            cursor.execute(TEST_SQL_INSERT_VALUE, ("initial",))
 
         # Define a custom exception
         class CustomTestError(Exception):
@@ -368,15 +397,13 @@ class TestDatabaseManager(unittest.TestCase):
         # Attempt operation that will fail with custom exception
         with self.assertRaises(CustomTestError):
             with self.manager.write() as cursor:
-                cursor.execute(
-                    "INSERT INTO test (value) VALUES (?)", ("should_be_rolled_back",)
-                )
+                cursor.execute(TEST_SQL_INSERT_VALUE, ("should_be_rolled_back",))
                 # Raise a custom exception
                 raise CustomTestError("Custom test exception")
 
         # Verify initial data is still there (rollback worked)
         with self.manager.read() as cursor:
-            result = cursor.execute("SELECT COUNT(*) FROM test").fetchone()
+            result = cursor.execute(TEST_SQL_COUNT_TEST).fetchone()
             self.assertEqual(result[0], 1)
             result = cursor.execute("SELECT value FROM test").fetchone()
             self.assertEqual(result[0], "initial")
@@ -385,21 +412,19 @@ class TestDatabaseManager(unittest.TestCase):
         """Test write context manager rolls back on RuntimeError."""
         # Create initial table
         with self.manager.write() as cursor:
-            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+            cursor.execute(TEST_SQL_CREATE_TABLE)
+            cursor.execute(TEST_SQL_INSERT_VALUE, ("initial",))
 
         # Attempt operation that will fail with RuntimeError
         with self.assertRaises(RuntimeError):
             with self.manager.write() as cursor:
-                cursor.execute(
-                    "INSERT INTO test (value) VALUES (?)", ("should_be_rolled_back",)
-                )
+                cursor.execute(TEST_SQL_INSERT_VALUE, ("should_be_rolled_back",))
                 # Raise a RuntimeError
                 raise RuntimeError("Runtime error test")
 
         # Verify initial data is still there (rollback worked)
         with self.manager.read() as cursor:
-            result = cursor.execute("SELECT COUNT(*) FROM test").fetchone()
+            result = cursor.execute(TEST_SQL_COUNT_TEST).fetchone()
             self.assertEqual(result[0], 1)
             result = cursor.execute("SELECT value FROM test").fetchone()
             self.assertEqual(result[0], "initial")
@@ -407,18 +432,16 @@ class TestDatabaseManager(unittest.TestCase):
     def test_write_context_manager_rollback_on_keyboard_interrupt(self):
         """Write context manager should roll back on KeyboardInterrupt."""
         with self.manager.write() as cursor:
-            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+            cursor.execute(TEST_SQL_CREATE_TABLE)
+            cursor.execute(TEST_SQL_INSERT_VALUE, ("initial",))
 
         with self.assertRaises(KeyboardInterrupt):
             with self.manager.write() as cursor:
-                cursor.execute(
-                    "INSERT INTO test (value) VALUES (?)", ("should_be_rolled_back",)
-                )
+                cursor.execute(TEST_SQL_INSERT_VALUE, ("should_be_rolled_back",))
                 raise KeyboardInterrupt()
 
         with self.manager.read() as cursor:
-            result = cursor.execute("SELECT COUNT(*) FROM test").fetchone()
+            result = cursor.execute(TEST_SQL_COUNT_TEST).fetchone()
             self.assertEqual(result[0], 1)
             result = cursor.execute("SELECT value FROM test").fetchone()
             self.assertEqual(result[0], "initial")
@@ -427,28 +450,26 @@ class TestDatabaseManager(unittest.TestCase):
         """Test that partial transactions are properly rolled back on non-SQLite exceptions."""
         # Create initial table with some data
         with self.manager.write() as cursor:
-            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+            cursor.execute(TEST_SQL_CREATE_TABLE)
+            cursor.execute(TEST_SQL_INSERT_VALUE, ("initial",))
 
         # Get initial count
         with self.manager.read() as cursor:
-            initial_count = cursor.execute("SELECT COUNT(*) FROM test").fetchone()[0]
+            initial_count = cursor.execute(TEST_SQL_COUNT_TEST).fetchone()[0]
 
         # Attempt operation with multiple statements that fails partway through
         with self.assertRaises(ValueError):
             with self.manager.write() as cursor:
                 # First insert should succeed
-                cursor.execute("INSERT INTO test (value) VALUES (?)", ("first_insert",))
+                cursor.execute(TEST_SQL_INSERT_VALUE, ("first_insert",))
                 # Second insert should also succeed
-                cursor.execute(
-                    "INSERT INTO test (value) VALUES (?)", ("second_insert",)
-                )
+                cursor.execute(TEST_SQL_INSERT_VALUE, ("second_insert",))
                 # Raise exception before commit
                 raise ValueError("Exception after partial work")
 
         # Verify no new data was committed (rollback worked)
         with self.manager.read() as cursor:
-            final_count = cursor.execute("SELECT COUNT(*) FROM test").fetchone()[0]
+            final_count = cursor.execute(TEST_SQL_COUNT_TEST).fetchone()[0]
             self.assertEqual(final_count, initial_count)
             # Verify only initial data exists
             result = cursor.execute("SELECT value FROM test").fetchone()
@@ -485,8 +506,8 @@ class TestDatabaseManager(unittest.TestCase):
             Returns:
                 int: The `lastrowid` of the inserted row.
             """
-            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-            cursor.execute("INSERT INTO test (value) VALUES (?)", ("sync_test",))
+            cursor.execute(TEST_SQL_CREATE_TABLE)
+            cursor.execute(TEST_SQL_INSERT_VALUE, ("sync_test",))
             return cursor.lastrowid
 
         row_id = self.manager.run_sync(write_func, write=True)
@@ -576,14 +597,16 @@ class TestDatabaseManager(unittest.TestCase):
 
             close_started = threading.Event()
             close_done = threading.Event()
-            close_error: list[Exception] = []
+            close_error: Future[None] = Future()
 
             def _close_manager() -> None:
                 close_started.set()
                 try:
                     self.manager.close()
                 except Exception as err:
-                    close_error.append(err)
+                    close_error.set_exception(err)
+                else:
+                    close_error.set_result(None)
                 finally:
                     close_done.set()
 
@@ -603,25 +626,25 @@ class TestDatabaseManager(unittest.TestCase):
                 second_started.is_set(), "second_write should not have started yet"
             )
 
-            first_release.set()
-
-            await asyncio.sleep(0)
-
-            deadline = asyncio.get_running_loop().time() + operation_timeout
-            while (
-                not second_started.is_set()
-                and asyncio.get_running_loop().time() < deadline
-            ):
-                await asyncio.sleep(0.01)
-            self.assertTrue(
-                second_started.is_set(),
-                "second_write should have started after first_release",
-            )
-
-            second_release.set()
-
-            # Both tasks should have completed by now
             try:
+                first_release.set()
+
+                await asyncio.sleep(0)
+
+                deadline = asyncio.get_running_loop().time() + operation_timeout
+                while (
+                    not second_started.is_set()
+                    and asyncio.get_running_loop().time() < deadline
+                ):
+                    await asyncio.sleep(0.01)
+                self.assertTrue(
+                    second_started.is_set(),
+                    "second_write should have started after first_release",
+                )
+
+                second_release.set()
+
+                # Both tasks should have completed by now
                 result1, result2 = await asyncio.wait_for(
                     asyncio.gather(task1, task2),
                     timeout=operation_timeout,
@@ -633,10 +656,6 @@ class TestDatabaseManager(unittest.TestCase):
                 ):
                     await asyncio.sleep(0.01)
                 self.assertTrue(close_done.is_set(), "close() did not complete")
-                close_thread.join(timeout=operation_timeout)
-                self.assertFalse(close_thread.is_alive(), "close thread did not exit")
-                if close_error:
-                    raise close_error[0]
             except asyncio.TimeoutError as err:
                 # Check if tasks are done after close
                 results = []
@@ -647,6 +666,17 @@ class TestDatabaseManager(unittest.TestCase):
                         task.cancel()
                         results.append(f"task{i + 1}_cancelled")
                 raise AssertionError(f"Tasks did not complete: {results}") from err
+            finally:
+                first_release.set()
+                second_release.set()
+                for task in (task1, task2):
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(task1, task2, return_exceptions=True)
+                close_thread.join(timeout=operation_timeout)
+                self.assertFalse(close_thread.is_alive(), "close thread did not exit")
+                if close_error.done():
+                    close_error.result()
 
             return result1, result2
 
@@ -702,6 +732,38 @@ class TestDatabaseManager(unittest.TestCase):
         self.manager.close()
         self.assertEqual(len(self.manager._connections), 0)
 
+    def test_get_connection_rejects_when_manager_closing(self):
+        """_get_connection should reject new non-admitted access while closing."""
+        with self.manager._connections_lock:
+            self.manager._closing = True
+        try:
+            with self.assertRaises(sqlite3.ProgrammingError):
+                self.manager._get_connection()
+        finally:
+            with self.manager._connections_lock:
+                self.manager._closing = False
+
+    def test_get_connection_recreates_closed_thread_local_connection(self):
+        """A closed thread-local connection should be discarded and replaced."""
+        original = self.manager._get_connection()
+        original.close()
+        replacement = self.manager._get_connection()
+        self.assertIsNot(original, replacement)
+        self.assertIn(replacement, self.manager._connections)
+        self.assertNotIn(original, self.manager._connections)
+
+    def test_read_rejects_new_work_when_manager_closing(self):
+        """read() should reject new work when manager is closing."""
+        with self.manager._connections_lock:
+            self.manager._closing = True
+        try:
+            with self.assertRaises(sqlite3.ProgrammingError):
+                with self.manager.read():
+                    pass
+        finally:
+            with self.manager._connections_lock:
+                self.manager._closing = False
+
     def test_close_cleanup(self):
         """Test close method properly cleans up resources."""
         # Create some connections
@@ -751,6 +813,95 @@ class TestDatabaseManager(unittest.TestCase):
 
         # Verify cleanup happened
         self.assertEqual(len(test_manager._connections), 0)
+
+    def test_close_waits_for_active_sync_work_to_finish(self):
+        """close() should wait until active sync work drains."""
+        manager = DatabaseManager(self.db_path)
+        with manager._connections_lock:
+            manager._active_sync_count = 1
+        close_done = threading.Event()
+        close_started = threading.Event()
+        allow_release = threading.Event()
+        release_error: list[str] = []
+        close_error: Future[None] = Future()
+
+        def release_activity() -> None:
+            try:
+                if not allow_release.wait(timeout=1.0):
+                    release_error.append(
+                        "test never allowed release_activity to continue"
+                    )
+                    return
+                with manager._connections_lock:
+                    manager._active_sync_count = 0
+                    manager._active_sync_condition.notify_all()
+            except AssertionError as err:
+                release_error.append(str(err))
+
+        def close_manager() -> None:
+            close_started.set()
+            try:
+                manager.close()
+            except Exception as err:  # pragma: no cover - defensive
+                close_error.set_exception(err)
+            else:
+                close_error.set_result(None)
+            finally:
+                close_done.set()
+
+        releaser = threading.Thread(target=release_activity, daemon=True)
+        closer = threading.Thread(target=close_manager, daemon=True)
+        releaser.start()
+        closer.start()
+        try:
+            self.assertTrue(
+                close_started.wait(timeout=1.0), "closer thread never started"
+            )
+            self.assertFalse(
+                close_done.wait(timeout=0.05),
+                "close() returned before active sync work drained",
+            )
+            self.assertTrue(closer.is_alive(), "close() did not block before release")
+        finally:
+            allow_release.set()
+            releaser.join(timeout=1.0)
+            closer.join(timeout=1.0)
+
+        self.assertEqual(release_error, [], f"Unexpected errors: {release_error}")
+        self.assertFalse(releaser.is_alive())
+        self.assertFalse(closer.is_alive(), "closer thread did not exit")
+        if close_error.done():
+            close_error.result()
+        self.assertTrue(close_done.is_set(), "close() did not finish after release")
+
+    def test_close_logs_sqlite_errors_when_connection_close_fails(self):
+        """close() should log sqlite close failures and continue cleanup."""
+        manager = DatabaseManager(self.db_path)
+        real_conn = manager._get_connection()
+        bad_conn = MagicMock()
+        bad_conn.close.side_effect = sqlite3.OperationalError("close failed")
+        with manager._connections_lock:
+            manager._connections = {real_conn, bad_conn}
+        with patch("mmrelay.db_runtime.logger") as mock_logger:
+            manager.close()
+        mock_logger.debug.assert_any_call(
+            "Error closing connection during shutdown", exc_info=True
+        )
+        with manager._connections_lock:
+            self.assertEqual(len(manager._connections), 0)
+
+    def test_close_ignores_attributeerror_while_deleting_thread_local_connection(self):
+        """close() should ignore AttributeError from unusual thread-local implementations."""
+
+        class _DelattrRaises:
+            connection = object()
+
+            def __delattr__(self, name: str) -> None:
+                raise AttributeError(name)
+
+        manager = DatabaseManager(self.db_path)
+        manager._thread_local = _DelattrRaises()
+        manager.close()
 
     def test_write_lock_serialization(self):
         """Test that write operations are serialized."""
@@ -848,7 +999,7 @@ class TestDatabaseManager(unittest.TestCase):
             )
             # Try to create connection to trigger validation
             with manager.read() as cursor:
-                cursor.execute("SELECT 1")
+                cursor.execute(TEST_SQL_SELECT_ONE)
 
         # Verify no connections were leaked (this is more of a sanity check)
         # since the manager creation failed, there shouldn't be any connections to track
@@ -883,6 +1034,199 @@ class TestDatabaseManager(unittest.TestCase):
             self.assertEqual(result[0], 1)
 
 
+@pytest.fixture
+def temp_db_manager() -> Generator[DatabaseManager, None, None]:
+    """Provide a temporary DatabaseManager with guaranteed cleanup."""
+    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    temp_db.close()
+    db_path = temp_db.name
+    manager = DatabaseManager(db_path)
+    try:
+        yield manager
+    finally:
+        manager.close()
+        os.unlink(db_path)
+
+
+@pytest.mark.asyncio
+async def test_run_async_rejects_submission_when_closing(
+    temp_db_manager: DatabaseManager,
+) -> None:
+    """run_async should fail fast when new submissions are disabled."""
+    with temp_db_manager._executor_lock:
+        temp_db_manager._accepting_submissions = False
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        await temp_db_manager.run_async(lambda _cursor: None, write=False)
+
+
+@pytest.mark.asyncio
+async def test_run_async_cancelled_read_cancels_worker_future(
+    temp_db_manager: DatabaseManager,
+) -> None:
+    """Caller cancellation on read work should cancel unfinished worker future."""
+    worker_future = MagicMock()
+    worker_future.done.return_value = False
+
+    with patch.object(
+        temp_db_manager._async_executor, "submit", return_value=worker_future
+    ):
+        task = asyncio.create_task(
+            temp_db_manager.run_async(lambda _cursor: None, write=False)
+        )
+        await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    worker_future.cancel.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_run_async_cancelled_write_logs_worker_error(
+    temp_db_manager: DatabaseManager,
+) -> None:
+    """Caller cancellation on write waits for worker and logs late worker errors."""
+    worker_future = MagicMock()
+    worker_future.cancel = MagicMock()
+    worker_future.done.return_value = True
+    worker_future.result.side_effect = RuntimeError(
+        "worker failed after caller cancellation"
+    )
+
+    with (
+        patch.object(
+            temp_db_manager._async_executor, "submit", return_value=worker_future
+        ),
+        patch.object(
+            temp_db_manager,
+            "_await_submitted_future",
+            new=AsyncMock(side_effect=asyncio.CancelledError),
+        ),
+        patch("mmrelay.db_runtime.logger") as mock_logger,
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            await temp_db_manager.run_async(lambda _cursor: None, write=True)
+
+    worker_future.cancel.assert_not_called()
+    mock_logger.warning.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_run_async_cancelled_write_swallows_followup_cancellation(
+    temp_db_manager: DatabaseManager,
+) -> None:
+    """Write cancellation should swallow follow-up CancelledError from worker wait."""
+    worker_future = MagicMock()
+    worker_future.cancel = MagicMock()
+    worker_future.done.return_value = False
+
+    with (
+        patch.object(
+            temp_db_manager._async_executor, "submit", return_value=worker_future
+        ),
+        patch("mmrelay.db_runtime.logger") as mock_logger,
+    ):
+        task = asyncio.create_task(
+            temp_db_manager.run_async(lambda _cursor: None, write=True)
+        )
+        await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    worker_future.cancel.assert_not_called()
+    mock_logger.warning.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_async_cancelled_write_logs_late_worker_error(
+    temp_db_manager: DatabaseManager,
+) -> None:
+    """Write cancellation should log errors from worker completion callbacks."""
+    worker_future = MagicMock()
+    worker_future.cancel = MagicMock()
+    worker_future.done.return_value = False
+    worker_future.result.side_effect = RuntimeError(
+        "worker failed after caller cancellation"
+    )
+
+    def _add_done_callback(callback):
+        callback(worker_future)
+
+    worker_future.add_done_callback.side_effect = _add_done_callback
+
+    with (
+        patch.object(
+            temp_db_manager._async_executor, "submit", return_value=worker_future
+        ),
+        patch.object(
+            temp_db_manager,
+            "_await_submitted_future",
+            new=AsyncMock(side_effect=asyncio.CancelledError),
+        ),
+        patch("mmrelay.db_runtime.logger") as mock_logger,
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            await temp_db_manager.run_async(lambda _cursor: None, write=True)
+
+    worker_future.cancel.assert_not_called()
+    mock_logger.warning.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_run_async_cancelled_read_does_not_cancel_finished_future(
+    temp_db_manager: DatabaseManager,
+) -> None:
+    """Read cancellation should not cancel an already completed worker future."""
+    worker_future = MagicMock()
+    worker_future.done.return_value = True
+    with (
+        patch.object(
+            temp_db_manager._async_executor, "submit", return_value=worker_future
+        ),
+        patch.object(
+            temp_db_manager,
+            "_await_submitted_future",
+            new=AsyncMock(side_effect=asyncio.CancelledError),
+        ),
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            await temp_db_manager.run_async(lambda _cursor: None, write=False)
+
+    worker_future.cancel.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_await_submitted_future_cancelled_task_allows_late_completion(
+    temp_db_manager: DatabaseManager,
+) -> None:
+    """Cancelling the waiter should not block a later worker completion."""
+    worker_future: Future[int] = Future()
+    task = asyncio.create_task(temp_db_manager._await_submitted_future(worker_future))
+
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    worker_future.set_result(123)
+    await asyncio.sleep(0)
+    assert worker_future.done()
+
+
+@pytest.mark.asyncio
+async def test_await_submitted_future_maps_concurrent_cancel_to_async_cancel(
+    temp_db_manager: DatabaseManager,
+) -> None:
+    """Concurrent-future cancellation should surface as asyncio cancellation."""
+    worker_future: Future[int] = Future()
+    worker_future.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await temp_db_manager._await_submitted_future(worker_future)
+
+
 class TestDatabaseManagerEdgeCases(unittest.TestCase):
     """Test DatabaseManager edge cases and error conditions."""
 
@@ -902,8 +1246,6 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
 
         If removing the file fails (for example, because it does not exist or due to permission issues), the error is ignored.
         """
-        import os
-
         try:
             os.unlink(self.db_path)
         except OSError:
@@ -914,7 +1256,7 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
         manager = DatabaseManager(self.db_path, extra_pragmas={})
         try:
             with manager.read() as cursor:
-                cursor.execute("SELECT 1")
+                cursor.execute(TEST_SQL_SELECT_ONE)
         finally:
             manager.close()
 
@@ -923,7 +1265,7 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
         manager = DatabaseManager(self.db_path, extra_pragmas=None)
         try:
             with manager.read() as cursor:
-                cursor.execute("SELECT 1")
+                cursor.execute(TEST_SQL_SELECT_ONE)
         finally:
             manager.close()
 
@@ -932,7 +1274,7 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
         manager = DatabaseManager(self.db_path, busy_timeout_ms=0)
         try:
             with manager.read() as cursor:
-                cursor.execute("SELECT 1")
+                cursor.execute(TEST_SQL_SELECT_ONE)
         finally:
             manager.close()
 
@@ -941,7 +1283,7 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
         manager = DatabaseManager(self.db_path, busy_timeout_ms=-1000)
         try:
             with manager.read() as cursor:
-                cursor.execute("SELECT 1")
+                cursor.execute(TEST_SQL_SELECT_ONE)
         finally:
             manager.close()
 
@@ -951,7 +1293,6 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
 
         Creates a table to ensure the database file exists, changes the file mode to read-only, attempts a write that may either succeed or raise sqlite3.OperationalError depending on the platform/SQLite build, restores the original permissions, and closes the manager to ensure cleanup.
         """
-        import os
         import stat
 
         # Create manager
@@ -985,7 +1326,7 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
         try:
             # Create test data
             with manager.write() as cursor:
-                cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
+                cursor.execute(TEST_SQL_CREATE_TABLE)
                 cursor.execute("INSERT INTO test (id, value) VALUES (1, 'test')")
 
             results = []

@@ -14,21 +14,54 @@ import threading
 import time
 from contextlib import contextmanager
 from types import ModuleType
-from typing import Any, Iterator, NamedTuple, NoReturn
+from typing import Any, Final, Iterator, NamedTuple, NoReturn, Sequence, cast
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 import mmrelay.paths as paths_module
 from mmrelay.config import (
     get_app_path,
 )
+from mmrelay.constants.config import (
+    CONFIG_SECTION_COMMUNITY_PLUGINS,
+    CONFIG_SECTION_CUSTOM_PLUGINS,
+    CONFIG_SECTION_PLUGINS,
+)
+from mmrelay.constants.formats import DEFAULT_TEXT_ENCODING
 from mmrelay.constants.plugins import (
     COMMIT_HASH_PATTERN,
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,
     DEFAULT_BRANCHES,
+    DEFAULT_PLUGIN_PRIORITY,
+    DEFAULT_SUBPROCESS_TIMEOUT_SECONDS,
+    GIT_BRANCH_CMD,
+    GIT_CHECKOUT_CMD,
+    GIT_CLONE_CMD,
+    GIT_CLONE_FILTER_BLOB_NONE,
+    GIT_COMMAND_TIMEOUT_SECONDS,
+    GIT_COMMIT_DEREF_SUFFIX,
+    GIT_DEFAULT_BRANCH_SENTINEL,
+    GIT_FETCH_CMD,
+    GIT_FETCH_DEPTH_ONE,
+    GIT_PULL_CMD,
+    GIT_REF_HEAD,
+    GIT_REMOTE_ORIGIN,
+    GIT_RETRY_ATTEMPTS,
+    GIT_RETRY_DELAY_SECONDS,
+    GIT_REV_PARSE_CMD,
+    GIT_TAGS_FLAG,
+    GIT_TERMINAL_PROMPT_DISABLED,
+    GIT_TERMINAL_PROMPT_ENV,
+    PIP_INSTALL_MISSING_DEP_TIMEOUT,
+    PIP_INSTALL_TIMEOUT_SECONDS,
     PIP_SOURCE_FLAGS,
     PIPX_ENVIRONMENT_KEYS,
+    PLUGIN_TYPE_COMMUNITY,
+    PLUGIN_TYPE_CUSTOM,
     REF_NAME_PATTERN,
     RISKY_REQUIREMENT_PREFIXES,
+    SCHEDULER_LOOP_WAIT_SECONDS,
+    SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS,
+    SENSITIVE_URL_PARAMS,
 )
 from mmrelay.log_utils import get_logger
 
@@ -44,6 +77,10 @@ except ImportError:
 config = None
 
 logger = get_logger(name="Plugins")
+
+_SENSITIVE_URL_PARAMS_LOWER: Final[frozenset[str]] = frozenset(
+    param.lower() for param in SENSITIVE_URL_PARAMS
+)
 
 sorted_active_plugins: list[Any] = []
 plugins_loaded = False
@@ -67,6 +104,7 @@ _global_scheduler_stop_event: threading.Event | None = None
 
 # Plugin dependency directory (may not be set if base dir can't be resolved)
 _PLUGIN_DEPS_DIR: str | None = None
+PLUGIN_REQUIREMENTS_FILENAME: Final[str] = "requirements.txt"
 
 
 def _is_safe_plugin_name(name: str) -> bool:
@@ -464,19 +502,10 @@ def _redact_url(url: str) -> str:
             netloc = s.netloc
 
         # Always redact sensitive query parameters
-        sensitive = {
-            "token",
-            "access_token",
-            "auth",
-            "key",
-            "password",
-            "pwd",
-            "private_token",
-            "oauth_token",
-            "x-access-token",
-        }
         q = parse_qsl(s.query, keep_blank_values=True)
-        redacted = [(k, "***" if k.lower() in sensitive else v) for k, v in q]
+        redacted = [
+            (k, "***" if k.lower() in _SENSITIVE_URL_PARAMS_LOWER else v) for k, v in q
+        ]
         query = urlencode(redacted)
         return urlunsplit((s.scheme, netloc, s.path, query, s.fragment))
     except (ValueError, TypeError, AttributeError) as exc:
@@ -771,7 +800,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
         repo_name: Human-readable repository name used in log messages and warnings.
     """
 
-    requirements_path = os.path.join(repo_path, "requirements.txt")
+    requirements_path = os.path.join(repo_path, PLUGIN_REQUIREMENTS_FILENAME)
     if not os.path.isfile(requirements_path):
         return
 
@@ -813,8 +842,6 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                     len(flagged_requirements),
                     repo_name,
                 )
-        else:
-            pass
 
         installed_packages = False
 
@@ -843,7 +870,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                         "--requirement",
                         temp_path,
                     ]
-                    _run(cmd, timeout=600)
+                    _run(cmd, timeout=PIP_INSTALL_TIMEOUT_SECONDS)
                     installed_packages = True
                 finally:
                     # Clean up the temporary file
@@ -892,7 +919,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
 
                 try:
                     cmd.extend(["-r", temp_path])
-                    _run(cmd, timeout=600)
+                    _run(cmd, timeout=PIP_INSTALL_TIMEOUT_SECONDS)
                     installed_packages = True
                 finally:
                     # Clean up the temporary file
@@ -909,7 +936,11 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
             _refresh_dependency_paths()
         else:
             logger.info("No dependency installation run for plugin %s", repo_name)
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (
+        OSError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+    ):
         logger.exception(
             "Error installing requirements for plugin %s (requirements: %s)",
             repo_name,
@@ -975,7 +1006,7 @@ def get_custom_plugin_dirs() -> list[str]:
 
     The directories include the user-specific custom plugins directory and a local directory for backward compatibility.
     """
-    return _get_plugin_dirs("custom")
+    return _get_plugin_dirs(PLUGIN_TYPE_CUSTOM)
 
 
 def get_community_plugin_dirs() -> list[str]:
@@ -987,12 +1018,12 @@ def get_community_plugin_dirs() -> list[str]:
     Returns:
         list[str]: Filesystem paths to search for community plugins, ordered from highest to lowest priority.
     """
-    return _get_plugin_dirs("community")
+    return _get_plugin_dirs(PLUGIN_TYPE_COMMUNITY)
 
 
 def _run(
     cmd: list[str],
-    timeout: float = 120,
+    timeout: float = DEFAULT_SUBPROCESS_TIMEOUT_SECONDS,
     retry_attempts: int = 1,
     retry_delay: float = 1,
     **kwargs: Any,
@@ -1054,26 +1085,37 @@ def _run(
 
 
 def _run_git(
-    cmd: list[str], timeout: float = 120, **kwargs: Any
+    cmd: list[str],
+    timeout: float = GIT_COMMAND_TIMEOUT_SECONDS,
+    retry_attempts: int | None = None,
+    retry_delay: float | None = None,
+    **kwargs: Any,
 ) -> subprocess.CompletedProcess[str]:
     """
-    Execute a git command with conservative retry defaults and a non-interactive environment.
+    Execute a git command with a non-interactive environment.
 
     Parameters:
         cmd (list[str]): Command and arguments to run (e.g., ['git', 'clone', '...']).
         timeout (float): Maximum seconds to wait for each attempt.
-        **kwargs: Additional subprocess options (for example `env`, `retry_attempts`, `retry_delay`) that modify execution.
+        retry_attempts (int | None): Optional retry count. When omitted, `_run()`
+            default behavior is used (single attempt).
+        retry_delay (float | None): Optional delay between retries in seconds.
+        **kwargs: Additional subprocess options (for example `env`) that modify execution.
 
     Returns:
         subprocess.CompletedProcess[str]: Completed process containing `returncode`, `stdout`, and `stderr`.
     """
-    kwargs.setdefault("retry_attempts", 3)
-    kwargs.setdefault("retry_delay", 2)
+    if retry_attempts is not None:
+        kwargs.setdefault("retry_attempts", retry_attempts)
+    if retry_delay is not None:
+        kwargs.setdefault("retry_delay", retry_delay)
     # Ensure non-interactive git by default
     env = dict(os.environ)
     if "env" in kwargs:
         env.update(kwargs["env"])
-    env.setdefault("GIT_TERMINAL_PROMPT", "0")
+    env[GIT_TERMINAL_PROMPT_ENV] = (
+        GIT_TERMINAL_PROMPT_DISABLED  # Enforce non-interactive, cannot be overridden
+    )
     kwargs["env"] = env
     return _run(cmd, timeout=timeout, **kwargs)
 
@@ -1125,10 +1167,20 @@ def _fetch_commit_with_fallback(repo_path: str, ref_value: str, repo_name: str) 
     """
     try:
         _run_git(
-            ["git", "-C", repo_path, "fetch", "--depth=1", "origin", ref_value],
-            timeout=120,
+            [
+                "git",
+                "-C",
+                repo_path,
+                GIT_FETCH_CMD,
+                GIT_FETCH_DEPTH_ONE,
+                GIT_REMOTE_ORIGIN,
+                ref_value,
+            ],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            retry_attempts=GIT_RETRY_ATTEMPTS,
+            retry_delay=GIT_RETRY_DELAY_SECONDS,
         )
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         logger.warning(
             "Could not fetch commit %s for %s from remote; trying general fetch",
             ref_value,
@@ -1137,10 +1189,12 @@ def _fetch_commit_with_fallback(repo_path: str, ref_value: str, repo_name: str) 
         # Fall back to fetching everything
         try:
             _run_git(
-                ["git", "-C", repo_path, "fetch", "origin"],
-                timeout=120,
+                ["git", "-C", repo_path, GIT_FETCH_CMD, GIT_REMOTE_ORIGIN],
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+                retry_attempts=GIT_RETRY_ATTEMPTS,
+                retry_delay=GIT_RETRY_DELAY_SECONDS,
             )
-        except subprocess.CalledProcessError as e:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             logger.warning("Fallback fetch also failed for %s: %s", repo_name, e)
             return False
     return True
@@ -1168,11 +1222,18 @@ def _update_existing_repo_to_commit(
         try:
             # Resolve both HEAD and the ref_value to full commit hashes for a safe comparison.
             current_full = _run_git(
-                ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
+                ["git", "-C", repo_path, GIT_REV_PARSE_CMD, GIT_REF_HEAD],
+                capture_output=True,
             ).stdout.strip()
             # Using ^{commit} ensures we're resolving to a commit object.
             target_full = _run_git(
-                ["git", "-C", repo_path, "rev-parse", f"{ref_value}^{{commit}}"],
+                [
+                    "git",
+                    "-C",
+                    repo_path,
+                    GIT_REV_PARSE_CMD,
+                    f"{ref_value}{GIT_COMMIT_DEREF_SUFFIX}",
+                ],
                 capture_output=True,
             ).stdout.strip()
 
@@ -1181,22 +1242,28 @@ def _update_existing_repo_to_commit(
                     "Repository %s is already at commit %s", repo_name, ref_value
                 )
                 return True
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             # This can happen if ref_value is not a local commit.
             # We can proceed to the more robust checking and fetching logic below.
             pass
 
         # Try a direct checkout first (commit may already be available locally)
         try:
-            _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
-        except subprocess.CalledProcessError:
+            _run_git(
+                ["git", "-C", repo_path, GIT_CHECKOUT_CMD, ref_value],
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             logger.info("Commit %s not found locally, attempting to fetch", ref_value)
             if not _fetch_commit_with_fallback(repo_path, ref_value, repo_name):
                 return False
-            _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+            _run_git(
+                ["git", "-C", repo_path, GIT_CHECKOUT_CMD, ref_value],
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            )
         logger.info("Updated repository %s to commit %s", repo_name, ref_value)
         return True
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         logger.exception(
             "Failed to checkout commit %s for %s",
             ref_value,
@@ -1229,19 +1296,30 @@ def _clone_new_repo_to_commit(
     try:
         # First clone the repository (default branch)
         _run_git(
-            ["git", "clone", "--filter=blob:none", repo_url, repo_name],
+            ["git", GIT_CLONE_CMD, GIT_CLONE_FILTER_BLOB_NONE, repo_url, repo_name],
             cwd=plugins_dir,
-            timeout=120,
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            # _run_git retries cannot clean a partially created destination between attempts.
+            # Use a single clone attempt here so we do not fail retries with
+            # "destination path already exists".
+            retry_attempts=1,
         )
         logger.info(f"Cloned repository {repo_name} from {_redact_url(repo_url)}")
 
         # If we're already at the requested commit, skip extra work
         try:
             current_full = _run_git(
-                ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
+                ["git", "-C", repo_path, GIT_REV_PARSE_CMD, GIT_REF_HEAD],
+                capture_output=True,
             ).stdout.strip()
             target_full = _run_git(
-                ["git", "-C", repo_path, "rev-parse", f"{ref_value}^{{commit}}"],
+                [
+                    "git",
+                    "-C",
+                    repo_path,
+                    GIT_REV_PARSE_CMD,
+                    f"{ref_value}{GIT_COMMIT_DEREF_SUFFIX}",
+                ],
                 capture_output=True,
             ).stdout.strip()
             if current_full == target_full:
@@ -1249,23 +1327,33 @@ def _clone_new_repo_to_commit(
                     "Repository %s is already at commit %s", repo_name, ref_value
                 )
                 return True
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             pass
 
         # Then checkout the specific commit
         try:
             # Try direct checkout first (commit might be available from clone)
-            _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
-        except subprocess.CalledProcessError:
+            _run_git(
+                ["git", "-C", repo_path, GIT_CHECKOUT_CMD, ref_value],
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             # If direct checkout fails, try to fetch the specific commit
             logger.info(f"Commit {ref_value} not available, attempting to fetch")
             if not _fetch_commit_with_fallback(repo_path, ref_value, repo_name):
                 return False
             # Try checkout again after fetch
-            _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+            _run_git(
+                ["git", "-C", repo_path, GIT_CHECKOUT_CMD, ref_value],
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            )
         logger.info(f"Checked out repository {repo_name} to commit {ref_value}")
         return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ):
         logger.exception(
             f"Error cloning repository {repo_name}; please manually clone into {repo_path}"
         )
@@ -1287,11 +1375,17 @@ def _try_checkout_and_pull_ref(
         True if the checkout and pull succeeded, False otherwise.
     """
     try:
-        _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
-        _run_git(["git", "-C", repo_path, "pull", "origin", ref_value], timeout=120)
+        _run_git(
+            ["git", "-C", repo_path, GIT_CHECKOUT_CMD, ref_value],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+        )
+        _run_git(
+            ["git", "-C", repo_path, GIT_PULL_CMD, GIT_REMOTE_ORIGIN, ref_value],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+        )
         logger.info("Updated repository %s to %s %s", repo_name, ref_type, ref_value)
         return True
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         logger.warning(
             "Failed to update %s %s for %s",
             ref_type,
@@ -1320,33 +1414,52 @@ def _try_fetch_and_checkout_tag(repo_path: str, ref_value: str, repo_name: str) 
         # Try to fetch the tag
         try:
             _run_git(
-                ["git", "-C", repo_path, "fetch", "origin", f"refs/tags/{ref_value}"],
-                timeout=120,
+                [
+                    "git",
+                    "-C",
+                    repo_path,
+                    GIT_FETCH_CMD,
+                    GIT_REMOTE_ORIGIN,
+                    f"refs/tags/{ref_value}",
+                ],
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+                retry_attempts=GIT_RETRY_ATTEMPTS,
+                retry_delay=GIT_RETRY_DELAY_SECONDS,
             )
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             try:
-                _run_git(["git", "-C", repo_path, "fetch", "--tags"], timeout=120)
-            except subprocess.CalledProcessError:
+                _run_git(
+                    ["git", "-C", repo_path, GIT_FETCH_CMD, GIT_TAGS_FLAG],
+                    timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+                    retry_attempts=GIT_RETRY_ATTEMPTS,
+                    retry_delay=GIT_RETRY_DELAY_SECONDS,
+                )
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                 # If that fails, try fetching with an explicit refspec to force updating the local tag
                 _run_git(
                     [
                         "git",
                         "-C",
                         repo_path,
-                        "fetch",
-                        "origin",
+                        GIT_FETCH_CMD,
+                        GIT_REMOTE_ORIGIN,
                         f"refs/tags/{ref_value}:refs/tags/{ref_value}",
                     ],
-                    timeout=120,
+                    timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+                    retry_attempts=GIT_RETRY_ATTEMPTS,
+                    retry_delay=GIT_RETRY_DELAY_SECONDS,
                 )
 
         # Checkout the tag
-        _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+        _run_git(
+            ["git", "-C", repo_path, GIT_CHECKOUT_CMD, ref_value],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+        )
         logger.info(
             "Successfully fetched and checked out tag %s for %s", ref_value, repo_name
         )
         return True
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return False
     except FileNotFoundError:
         logger.exception(
@@ -1370,12 +1483,23 @@ def _try_checkout_as_branch(repo_path: str, ref_value: str, repo_name: str) -> b
         bool: `True` if the repository was successfully fetched, checked out, and pulled to the specified branch; `False` otherwise.
     """
     try:
-        _run_git(["git", "-C", repo_path, "fetch", "origin", ref_value], timeout=120)
-        _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
-        _run_git(["git", "-C", repo_path, "pull", "origin", ref_value], timeout=120)
+        _run_git(
+            ["git", "-C", repo_path, GIT_FETCH_CMD, GIT_REMOTE_ORIGIN, ref_value],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            retry_attempts=GIT_RETRY_ATTEMPTS,
+            retry_delay=GIT_RETRY_DELAY_SECONDS,
+        )
+        _run_git(
+            ["git", "-C", repo_path, GIT_CHECKOUT_CMD, ref_value],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+        )
+        _run_git(
+            ["git", "-C", repo_path, GIT_PULL_CMD, GIT_REMOTE_ORIGIN, ref_value],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+        )
         logger.info(f"Updated repository {repo_name} to branch {ref_value}")
         return True
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return False
     except FileNotFoundError:
         logger.exception("Error updating repository %s; git not found.", repo_name)
@@ -1383,7 +1507,7 @@ def _try_checkout_as_branch(repo_path: str, ref_value: str, repo_name: str) -> b
 
 
 def _fallback_to_default_branches(
-    repo_path: str, default_branches: list[str], ref_value: str, repo_name: str
+    repo_path: str, default_branches: Sequence[str], ref_value: str, repo_name: str
 ) -> bool:
     """
     Try each name in `default_branches` in order to check out and pull that branch in the repository; leave the repository unchanged if none succeed.
@@ -1399,15 +1523,26 @@ def _fallback_to_default_branches(
     """
     for default_branch in default_branches:
         try:
-            _run_git(["git", "-C", repo_path, "checkout", default_branch], timeout=120)
             _run_git(
-                ["git", "-C", repo_path, "pull", "origin", default_branch], timeout=120
+                ["git", "-C", repo_path, GIT_CHECKOUT_CMD, default_branch],
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            )
+            _run_git(
+                [
+                    "git",
+                    "-C",
+                    repo_path,
+                    GIT_PULL_CMD,
+                    GIT_REMOTE_ORIGIN,
+                    default_branch,
+                ],
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
             )
             logger.info(
                 f"Using {default_branch} instead of {ref_value} for {repo_name}"
             )
             return True
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             continue
 
     logger.warning(
@@ -1422,7 +1557,7 @@ def _update_existing_repo_to_branch_or_tag(
     ref_value: str,
     repo_name: str,
     is_default_branch: bool,
-    default_branches: list[str],
+    default_branches: Sequence[str],
 ) -> bool:
     """
     Update an existing Git repository to the specified branch or tag.
@@ -1439,41 +1574,70 @@ def _update_existing_repo_to_branch_or_tag(
         bool: `True` if the repository was updated to the requested ref (or an accepted fallback), `False` otherwise.
     """
     try:
-        _run_git(["git", "-C", repo_path, "fetch", "origin"], timeout=120)
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        _run_git(
+            ["git", "-C", repo_path, GIT_FETCH_CMD, GIT_REMOTE_ORIGIN],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            retry_attempts=GIT_RETRY_ATTEMPTS,
+            retry_delay=GIT_RETRY_DELAY_SECONDS,
+        )
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ) as e:
         logger.warning(f"Error fetching from remote: {e}")
         if isinstance(e, FileNotFoundError):
             logger.exception("Error updating repository %s; git not found.", repo_name)
             return False
 
     if is_default_branch:
-        if _try_checkout_and_pull_ref(repo_path, ref_value, repo_name, ref_type):
-            return True
-        other_default = "main" if ref_value == "master" else "master"
-        logger.warning(f"Branch {ref_value} not found, trying {other_default}")
-        if _try_checkout_and_pull_ref(repo_path, other_default, repo_name, "branch"):
-            return True
+        default_branch_candidates = [ref_value] + [
+            branch_name for branch_name in default_branches if branch_name != ref_value
+        ]
+        for branch_name in default_branch_candidates:
+            if branch_name != ref_value:
+                logger.warning("Branch %s not found, trying %s", ref_value, branch_name)
+            if _try_checkout_and_pull_ref(repo_path, branch_name, repo_name, "branch"):
+                return True
         logger.warning(
             "Could not checkout any default branch, repository update failed"
         )
         return False
 
     if ref_type == "branch":
-        return _try_checkout_and_pull_ref(repo_path, ref_value, repo_name, "branch")
+        if not _try_checkout_and_pull_ref(repo_path, ref_value, repo_name, "branch"):
+            logger.warning(
+                "Failed to update %s to branch %s",
+                repo_name,
+                ref_value,
+            )
+            return False
+        return True
 
     # Handle tags
     try:
         current_commit = _run_git(
-            ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
+            ["git", "-C", repo_path, GIT_REV_PARSE_CMD, GIT_REF_HEAD],
+            capture_output=True,
         ).stdout.strip()
         tag_commit = _run_git(
-            ["git", "-C", repo_path, "rev-parse", f"{ref_value}^{{commit}}"],
+            [
+                "git",
+                "-C",
+                repo_path,
+                GIT_REV_PARSE_CMD,
+                f"{ref_value}{GIT_COMMIT_DEREF_SUFFIX}",
+            ],
             capture_output=True,
         ).stdout.strip()
         if current_commit == tag_commit:
             logger.info(f"Repository {repo_name} is already at tag {ref_value}")
             return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ):
         pass  # Tag doesn't exist locally or git not found
 
     if _try_fetch_and_checkout_tag(repo_path, ref_value, repo_name):
@@ -1615,39 +1779,28 @@ def _clone_new_repo_to_branch_or_tag(
     clone_commands = []
 
     if is_default_branch:
-        clone_commands.append(
-            (
-                [
-                    "git",
-                    "clone",
-                    "--filter=blob:none",
-                    "--branch",
-                    ref_value,
-                    repo_url,
-                    repo_name,
-                ],
-                ref_value,
+        default_branch_candidates = [ref_value] + [
+            branch_name for branch_name in DEFAULT_BRANCHES if branch_name != ref_value
+        ]
+        for branch_name in default_branch_candidates:
+            clone_commands.append(
+                (
+                    [
+                        "git",
+                        GIT_CLONE_CMD,
+                        GIT_CLONE_FILTER_BLOB_NONE,
+                        GIT_BRANCH_CMD,
+                        branch_name,
+                        repo_url,
+                        repo_name,
+                    ],
+                    branch_name,
+                )
             )
-        )
-        other_default = "main" if ref_value == "master" else "master"
         clone_commands.append(
             (
-                [
-                    "git",
-                    "clone",
-                    "--filter=blob:none",
-                    "--branch",
-                    other_default,
-                    repo_url,
-                    repo_name,
-                ],
-                other_default,
-            )
-        )
-        clone_commands.append(
-            (
-                ["git", "clone", "--filter=blob:none", repo_url, repo_name],
-                "default branch",
+                ["git", GIT_CLONE_CMD, GIT_CLONE_FILTER_BLOB_NONE, repo_url, repo_name],
+                GIT_DEFAULT_BRANCH_SENTINEL,
             )
         )
     elif ref_type == "branch":
@@ -1655,9 +1808,9 @@ def _clone_new_repo_to_branch_or_tag(
             (
                 [
                     "git",
-                    "clone",
-                    "--filter=blob:none",
-                    "--branch",
+                    GIT_CLONE_CMD,
+                    GIT_CLONE_FILTER_BLOB_NONE,
+                    GIT_BRANCH_CMD,
                     ref_value,
                     repo_url,
                     repo_name,
@@ -1667,8 +1820,8 @@ def _clone_new_repo_to_branch_or_tag(
         )
         clone_commands.append(
             (
-                ["git", "clone", "--filter=blob:none", repo_url, repo_name],
-                "default branch",
+                ["git", GIT_CLONE_CMD, GIT_CLONE_FILTER_BLOB_NONE, repo_url, repo_name],
+                GIT_DEFAULT_BRANCH_SENTINEL,
             )
         )
     else:  # tag
@@ -1676,16 +1829,26 @@ def _clone_new_repo_to_branch_or_tag(
         # and then handle tag checkout in post-clone step.
         clone_commands.append(
             (
-                ["git", "clone", "--filter=blob:none", repo_url, repo_name],
-                "default branch",
+                ["git", GIT_CLONE_CMD, GIT_CLONE_FILTER_BLOB_NONE, repo_url, repo_name],
+                GIT_DEFAULT_BRANCH_SENTINEL,
             )
         )
 
+    last_exc: subprocess.CalledProcessError | subprocess.TimeoutExpired | None = None
     for command, branch_name in clone_commands:
         try:
             if os.path.isdir(repo_path):
                 shutil.rmtree(repo_path, ignore_errors=True)
-            _run_git(command, cwd=plugins_dir, timeout=120)
+            # _run_git retries cannot clean a partially created destination between attempts.
+            # Use a single clone attempt per strategy to avoid retries failing with
+            # "destination path already exists".
+            clone_retry_attempts = 1
+            _run_git(
+                command,
+                cwd=plugins_dir,
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+                retry_attempts=clone_retry_attempts,
+            )
             logger.info(
                 "Cloned repository %s from %s at %s %s",
                 repo_name,
@@ -1701,7 +1864,7 @@ def _clone_new_repo_to_branch_or_tag(
                     # If already at the tag's commit, skip extra work
                     try:
                         _cp = _run_git(
-                            ["git", "-C", repo_path, "rev-parse", "HEAD"],
+                            ["git", "-C", repo_path, GIT_REV_PARSE_CMD, GIT_REF_HEAD],
                             capture_output=True,
                         )
                         current = _cp.stdout.strip()
@@ -1710,15 +1873,15 @@ def _clone_new_repo_to_branch_or_tag(
                                 "git",
                                 "-C",
                                 repo_path,
-                                "rev-parse",
-                                f"{ref_value}^{{commit}}",
+                                GIT_REV_PARSE_CMD,
+                                f"{ref_value}{GIT_COMMIT_DEREF_SUFFIX}",
                             ],
                             capture_output=True,
                         )
                         tag_commit = _cp.stdout.strip()
                         if current == tag_commit:
                             return True
-                    except subprocess.CalledProcessError:
+                    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                         pass  # Continue to fetch and checkout
                     success = _try_fetch_and_checkout_tag(
                         repo_path, ref_value, repo_name
@@ -1728,7 +1891,8 @@ def _clone_new_repo_to_branch_or_tag(
 
             if success:
                 return True
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            last_exc = e
             logger.warning(
                 f"Could not clone with {ref_type} {branch_name}, trying next option."
             )
@@ -1737,9 +1901,19 @@ def _clone_new_repo_to_branch_or_tag(
             logger.exception(f"Error cloning repository {repo_name}; git not found.")
             return False
 
-    logger.exception(
-        f"Error cloning repository {repo_name}; please manually clone into {repo_path}"
-    )
+    if last_exc:
+        logger.error(
+            "Error cloning repository %s; please manually clone into %s: %s",
+            repo_name,
+            repo_path,
+            last_exc,
+        )
+    else:
+        logger.error(
+            "Error cloning repository %s; please manually clone into %s",
+            repo_name,
+            repo_path,
+        )
     return False
 
 
@@ -1776,53 +1950,48 @@ def _clone_or_update_repo_validated(
     # Commits are handled differently from branches and tags
     is_commit = ref_type == "commit"
 
-    if os.path.isdir(repo_path):
-        # Repository exists, update it
-        try:
+    try:
+        if os.path.isdir(repo_path):
+            # Repository exists, update it
             # Handle commits differently from branches and tags
             if is_commit:
                 return _update_existing_repo_to_commit(repo_path, ref_value, repo_name)
-            else:
-                return _update_existing_repo_to_branch_or_tag(
-                    repo_path,
-                    ref_type,
-                    ref_value,
-                    repo_name,
-                    is_default_branch,
-                    default_branches,
-                )
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.exception(
-                "Error updating repository %s; please check or update %s manually",
-                repo_name,
+            return _update_existing_repo_to_branch_or_tag(
                 repo_path,
+                ref_type,
+                ref_value,
+                repo_name,
+                is_default_branch,
+                default_branches,
             )
-            return False
-    else:
+
         # Repository doesn't exist, clone it
-        try:
-            # Handle commits differently from branches and tags
-            if is_commit:
-                return _clone_new_repo_to_commit(
-                    repo_url, repo_path, ref_value, repo_name, plugins_dir
-                )
-            else:
-                return _clone_new_repo_to_branch_or_tag(
-                    repo_url,
-                    repo_path,
-                    ref_type,
-                    ref_value,
-                    repo_name,
-                    plugins_dir,
-                    is_default_branch,
-                )
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.exception(
-                "Error cloning repository %s; please manually clone into %s",
-                repo_name,
-                repo_path,
+        # Handle commits differently from branches and tags
+        if is_commit:
+            return _clone_new_repo_to_commit(
+                repo_url, repo_path, ref_value, repo_name, plugins_dir
             )
-            return False
+        return _clone_new_repo_to_branch_or_tag(
+            repo_url,
+            repo_path,
+            ref_type,
+            ref_value,
+            repo_name,
+            plugins_dir,
+            is_default_branch,
+        )
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        FileNotFoundError,
+    ):
+        logger.warning(
+            "Error cloning/updating repository %s at %s %s",
+            repo_name,
+            ref_type,
+            ref_value,
+        )
+        return False
 
 
 def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -> bool:
@@ -1888,7 +2057,9 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                     plugin_path = os.path.join(root, filename)
                     module_name = (
                         "plugin_"
-                        + hashlib.sha256(plugin_path.encode("utf-8")).hexdigest()
+                        + hashlib.sha256(
+                            plugin_path.encode(DEFAULT_TEXT_ENCODING)
+                        ).hexdigest()
                     )
                     spec = importlib.util.spec_from_file_location(
                         module_name, plugin_path
@@ -1975,7 +2146,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                     )
                                 _run(
                                     [pipx_path, "inject", "mmrelay", missing_pkg],
-                                    timeout=300,
+                                    timeout=PIP_INSTALL_MISSING_DEP_TIMEOUT,
                                 )
                             else:
                                 in_venv = (
@@ -1996,7 +2167,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                 ]
                                 if not in_venv:
                                     cmd += ["--user"]
-                                _run(cmd, timeout=300)
+                                _run(cmd, timeout=PIP_INSTALL_MISSING_DEP_TIMEOUT)
 
                             logger.info(
                                 f"Successfully installed {missing_pkg}, retrying plugin load"
@@ -2031,7 +2202,11 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                     plugin_path,
                                 )
 
-                        except (subprocess.CalledProcessError, FileNotFoundError):
+                        except (
+                            OSError,
+                            subprocess.CalledProcessError,
+                            subprocess.TimeoutExpired,
+                        ):
                             logger.exception(
                                 f"Failed to automatically install {missing_pkg}. "
                                 f"Please install manually:\n"
@@ -2104,15 +2279,15 @@ def start_global_scheduler() -> None:
         """
         Runs the global scheduler loop that executes scheduled jobs until stopped.
 
-        Continuously calls `schedule.run_pending()` (if the `schedule` library is available) and waits up to 1 second between iterations. The loop exits when the module-level stop event is set.
+        Continuously calls `schedule.run_pending()` (if the `schedule` library is available) and waits up to ``SCHEDULER_LOOP_WAIT_SECONDS`` between iterations. The loop exits when the module-level stop_event is set.
         """
         logger.debug("Global scheduler thread started")
         # Capture stop_event locally to avoid races if globals are reset.
         while not stop_event.is_set():
             if schedule is not None:
                 schedule.run_pending()
-            # Wait up to 1 second or until stop is requested
-            stop_event.wait(1)
+            # Wait until stop is requested or timeout elapses
+            stop_event.wait(SCHEDULER_LOOP_WAIT_SECONDS)
         logger.debug("Global scheduler thread stopped")
 
     _global_scheduler_thread = threading.Thread(
@@ -2126,7 +2301,7 @@ def stop_global_scheduler() -> None:
     """
     Stop the global scheduler thread.
 
-    Signals the scheduler loop to stop, waits up to 5 seconds for the thread to terminate, clears all scheduled jobs, and resets the scheduler state.
+    Signals the scheduler loop to stop, waits up to ``SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS`` for the thread to terminate, clears all scheduled jobs, and resets the scheduler state.
     """
     global _global_scheduler_thread, _global_scheduler_stop_event
 
@@ -2141,7 +2316,7 @@ def stop_global_scheduler() -> None:
 
     # Wait for thread to finish
     if _global_scheduler_thread.is_alive():
-        _global_scheduler_thread.join(timeout=5)
+        _global_scheduler_thread.join(timeout=SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS)
         if _global_scheduler_thread.is_alive():
             logger.warning("Global scheduler thread did not stop within timeout")
 
@@ -2182,6 +2357,13 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
     if config is None:
         logger.error("No configuration available. Cannot load plugins.")
         return []
+    if not isinstance(config, dict):
+        logger.error(
+            "Invalid plugin configuration type: expected mapping, got %s",
+            type(config).__name__,
+        )
+        return []
+    config_dict = cast(dict[str, Any], config)
 
     # Import core plugins
     from mmrelay.plugins.debug_plugin import Plugin as DebugPlugin
@@ -2211,15 +2393,50 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
 
     plugins = core_plugins.copy()
 
+    def _section_dict(section_name: str) -> dict[str, Any]:
+        section = config_dict.get(section_name, {})
+        if isinstance(section, dict):
+            return section
+        logger.warning("Ignoring invalid %s config; expected a mapping.", section_name)
+        return {}
+
+    def _active_plugin_names(section_name: str, section: dict[str, Any]) -> list[str]:
+        active_plugins: list[str] = []
+        for plugin_name, plugin_info in section.items():
+            if not isinstance(plugin_name, str):
+                logger.warning(
+                    "Ignoring invalid %s plugin key %r; expected a string.",
+                    section_name,
+                    plugin_name,
+                )
+                continue
+            if not isinstance(plugin_info, dict):
+                logger.warning(
+                    "Ignoring invalid %s plugin entry for '%s'; expected a mapping.",
+                    section_name,
+                    plugin_name,
+                )
+                continue
+            active = plugin_info.get("active", False)
+            if isinstance(active, bool) and active:
+                active_plugins.append(plugin_name)
+            elif active is not None and not isinstance(active, bool):
+                logger.warning(
+                    "Ignoring non-boolean 'active' value for %s plugin '%s'; expected true/false.",
+                    section_name,
+                    plugin_name,
+                )
+        return active_plugins
+
+    core_plugins_config = _section_dict(CONFIG_SECTION_PLUGINS)
+
     # Process and load custom plugins
-    custom_plugins_config = config.get("custom-plugins", {})
+    custom_plugins_config = _section_dict(CONFIG_SECTION_CUSTOM_PLUGINS)
     custom_plugin_dirs = get_custom_plugin_dirs()
 
-    active_custom_plugins = [
-        plugin_name
-        for plugin_name, plugin_info in custom_plugins_config.items()
-        if plugin_info.get("active", False)
-    ]
+    active_custom_plugins = _active_plugin_names(
+        CONFIG_SECTION_CUSTOM_PLUGINS, custom_plugins_config
+    )
 
     if active_custom_plugins:
         logger.debug(
@@ -2269,7 +2486,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
             )
 
     # Process and download community plugins
-    community_plugins_config = config.get("community-plugins", {})
+    community_plugins_config = _section_dict(CONFIG_SECTION_COMMUNITY_PLUGINS)
     community_plugin_dirs = get_community_plugin_dirs()
 
     if not community_plugin_dirs:
@@ -2281,11 +2498,10 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         community_plugins_dir = community_plugin_dirs[0]
 
     # Create community plugins directory if needed
-    active_community_plugins = [
-        plugin_name
-        for plugin_name, plugin_info in community_plugins_config.items()
-        if plugin_info.get("active", False)
-    ]
+    active_community_plugins = _active_plugin_names(
+        CONFIG_SECTION_COMMUNITY_PLUGINS, community_plugins_config
+    )
+    ready_community_plugins = []
 
     if active_community_plugins:
         # Ensure all community plugin directories exist
@@ -2301,105 +2517,157 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
             f"Loading active community plugins: {', '.join(active_community_plugins)}"
         )
 
-    # Only process community plugins if config section exists and is a dictionary
-    if isinstance(community_plugins_config, dict):
-        for plugin_name, plugin_info in community_plugins_config.items():
-            if not plugin_info.get("active", False):
-                logger.debug(
-                    f"Skipping community plugin {plugin_name} - not active in config"
+    # Only process community plugins explicitly enabled in config.
+    for plugin_name, plugin_info in community_plugins_config.items():
+        if not isinstance(plugin_name, str):
+            logger.warning(
+                "Ignoring invalid %s plugin key %r; expected a string.",
+                CONFIG_SECTION_COMMUNITY_PLUGINS,
+                plugin_name,
+            )
+            continue
+        if not isinstance(plugin_info, dict):
+            logger.warning(
+                "Ignoring invalid %s plugin entry for '%s'; expected a mapping.",
+                CONFIG_SECTION_COMMUNITY_PLUGINS,
+                plugin_name,
+            )
+            continue
+
+        active = plugin_info.get("active", False)
+        if not isinstance(active, bool):
+            if active is not None:
+                logger.warning(
+                    "Ignoring non-boolean 'active' value for %s plugin '%s'; expected true/false.",
+                    CONFIG_SECTION_COMMUNITY_PLUGINS,
+                    plugin_name,
+                )
+            logger.debug(
+                f"Skipping community plugin {plugin_name} - not active in config"
+            )
+            continue
+        if not active:
+            logger.debug(
+                f"Skipping community plugin {plugin_name} - not active in config"
+            )
+            continue
+
+        repo_url = plugin_info.get("repository")
+
+        # Support commit, tag, and branch parameters
+        commit = plugin_info.get("commit")
+        tag = plugin_info.get("tag")
+        branch = plugin_info.get("branch")
+
+        # Validate that repo_url and ref fields are strings if provided
+        if repo_url is not None and not isinstance(repo_url, str):
+            logger.warning(
+                "Ignoring community plugin '%s': repository must be a string.",
+                plugin_name,
+            )
+            continue
+        invalid_ref_field = next(
+            (
+                field_name
+                for field_name, field_value in (
+                    ("commit", commit),
+                    ("tag", tag),
+                    ("branch", branch),
+                )
+                if field_value is not None and not isinstance(field_value, str)
+            ),
+            None,
+        )
+        if invalid_ref_field is not None:
+            logger.warning(
+                "Ignoring community plugin '%s': %s must be a string.",
+                plugin_name,
+                invalid_ref_field,
+            )
+            continue
+
+        # Determine what to use (commit, tag, branch, or default)
+        # Priority: commit > tag > branch
+        if commit:
+            if tag or branch:
+                logger.warning(
+                    f"Commit specified along with tag/branch for plugin {plugin_name}, using commit"
+                )
+            ref = {"type": "commit", "value": commit}
+        elif tag and branch:
+            logger.warning(
+                f"Both tag and branch specified for plugin {plugin_name}, using tag"
+            )
+            ref = {"type": "tag", "value": tag}
+        elif tag:
+            ref = {"type": "tag", "value": tag}
+        elif branch:
+            ref = {"type": "branch", "value": branch}
+        else:
+            # Default to the first configured default branch if neither is specified.
+            ref = {"type": "branch", "value": DEFAULT_BRANCHES[0]}
+
+        if repo_url:
+            if community_plugins_dir is None:
+                logger.warning(
+                    "Skipping community plugin %s: no accessible plugin directory",
+                    plugin_name,
                 )
                 continue
 
-            repo_url = plugin_info.get("repository")
-
-            # Support commit, tag, and branch parameters
-            commit = plugin_info.get("commit")
-            tag = plugin_info.get("tag")
-            branch = plugin_info.get("branch")
-
-            # Determine what to use (commit, tag, branch, or default)
-            # Priority: commit > tag > branch
-            if commit:
-                if tag or branch:
-                    logger.warning(
-                        f"Commit specified along with tag/branch for plugin {plugin_name}, using commit"
-                    )
-                ref = {"type": "commit", "value": commit}
-            elif tag and branch:
-                logger.warning(
-                    f"Both tag and branch specified for plugin {plugin_name}, using tag"
+            # Clone to the user directory by default (derive name using the same logic as the clone path)
+            validation_result = _validate_clone_inputs(repo_url, ref)
+            if not validation_result.is_valid or not validation_result.repo_name:
+                logger.error(
+                    "Invalid repository URL for community plugin %s: %s",
+                    plugin_name,
+                    _redact_url(repo_url),
                 )
-                ref = {"type": "tag", "value": tag}
-            elif tag:
-                ref = {"type": "tag", "value": tag}
-            elif branch:
-                ref = {"type": "branch", "value": branch}
-            else:
-                # Default to main branch if neither is specified
-                ref = {"type": "branch", "value": "main"}
-
-            if repo_url:
-                if community_plugins_dir is None:
-                    logger.warning(
-                        "Skipping community plugin %s: no accessible plugin directory",
-                        plugin_name,
-                    )
-                    continue
-
-                # Clone to the user directory by default (derive name using the same logic as the clone path)
-                validation_result = _validate_clone_inputs(repo_url, ref)
-                if not validation_result.is_valid or not validation_result.repo_name:
-                    logger.error(
-                        "Invalid repository URL for community plugin %s: %s",
-                        plugin_name,
-                        _redact_url(repo_url),
-                    )
-                    continue
-                repo_name = validation_result.repo_name
-                if not _is_safe_plugin_name(repo_name):
-                    logger.error(
-                        "Repository name '%s' rejected: contains invalid characters or path traversal",
-                        repo_name,
-                    )
-                    continue
-                repo_path = os.path.join(community_plugins_dir, repo_name)
-                if not _is_path_contained(community_plugins_dir, repo_path):
-                    logger.error(
-                        "Plugin repo path '%s' is not contained within allowed root '%s'",
-                        repo_path,
-                        community_plugins_dir,
-                    )
-                    continue
-                if (
-                    validation_result.repo_url is None
-                    or validation_result.ref_type is None
-                    or validation_result.ref_value is None
-                ):
-                    logger.error(
-                        "Validation returned no repository URL or ref for community plugin %s",
-                        plugin_name,
-                    )
-                    continue
-
-                # Call public helper so tests and integrations can patch this seam.
-                success = clone_or_update_repo(
-                    validation_result.repo_url,
-                    ref,
+                continue
+            repo_name = validation_result.repo_name
+            if not _is_safe_plugin_name(repo_name):
+                logger.error(
+                    "Repository name '%s' rejected: contains invalid characters or path traversal",
+                    repo_name,
+                )
+                continue
+            repo_path = os.path.join(community_plugins_dir, repo_name)
+            if not _is_path_contained(community_plugins_dir, repo_path):
+                logger.error(
+                    "Plugin repo path '%s' is not contained within allowed root '%s'",
+                    repo_path,
                     community_plugins_dir,
                 )
-                if not success:
-                    logger.warning(
-                        f"Failed to clone/update plugin {plugin_name}, skipping"
-                    )
-                    continue
-                _install_requirements_for_repo(repo_path, repo_name)
-            else:
-                logger.error("Repository URL not specified for a community plugin")
-                logger.error("Please specify the repository URL in config.yaml")
+                continue
+            if (
+                validation_result.repo_url is None
+                or validation_result.ref_type is None
+                or validation_result.ref_value is None
+            ):
+                logger.error(
+                    "Validation returned no repository URL or ref for community plugin %s",
+                    plugin_name,
+                )
                 continue
 
-    # Only load community plugins that are explicitly enabled
-    for plugin_name in active_community_plugins:
+            # Call public helper so tests and integrations can patch this seam.
+            success = clone_or_update_repo(
+                validation_result.repo_url,
+                ref,
+                community_plugins_dir,
+            )
+            if not success:
+                logger.warning(f"Failed to clone/update plugin {plugin_name}, skipping")
+                continue
+            _install_requirements_for_repo(repo_path, repo_name)
+            ready_community_plugins.append(plugin_name)
+        else:
+            logger.error("Repository URL not specified for a community plugin")
+            logger.error("Please specify the repository URL in config.yaml")
+            continue
+
+    # Only load community plugins that were successfully synced
+    for plugin_name in ready_community_plugins:
         plugin_info = community_plugins_config[plugin_name]
         repo_url = plugin_info.get("repository")
         if repo_url:
@@ -2467,23 +2735,67 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         # Determine if the plugin is active based on the configuration
         if plugin in core_plugins:
             # Core plugins: default to inactive unless specified otherwise
-            plugin_config = config.get("plugins", {}).get(plugin_name, {})
-            is_active = plugin_config.get("active", False)
+            plugin_config = core_plugins_config.get(plugin_name, {})
+            if not isinstance(plugin_config, dict):
+                logger.warning(
+                    "Ignoring invalid %s plugin entry for '%s'; expected a mapping.",
+                    CONFIG_SECTION_PLUGINS,
+                    plugin_name,
+                )
+                plugin_config = {}
+            raw_active = plugin_config.get("active", False)
+            if isinstance(raw_active, bool):
+                is_active = raw_active
+            else:
+                if raw_active is not None:
+                    logger.warning(
+                        "Ignoring non-boolean 'active' value for plugin '%s'; expected true/false.",
+                        plugin_name,
+                    )
+                is_active = False
         else:
             # Custom and community plugins: default to inactive unless specified
-            if plugin_name in config.get("custom-plugins", {}):
-                plugin_config = config.get("custom-plugins", {}).get(plugin_name, {})
+            # Custom plugins take precedence over community plugins.
+            if plugin_name in custom_plugins_config:
+                plugin_config = custom_plugins_config.get(plugin_name, {})
             elif plugin_name in community_plugins_config:
                 plugin_config = community_plugins_config.get(plugin_name, {})
             else:
                 plugin_config = {}
 
-            is_active = plugin_config.get("active", False)
+            if not isinstance(plugin_config, dict):
+                logger.warning(
+                    "Ignoring invalid plugin config for '%s'; expected a mapping.",
+                    plugin_name,
+                )
+                plugin_config = {}
+            raw_active = plugin_config.get("active", False)
+            if isinstance(raw_active, bool):
+                is_active = raw_active
+            else:
+                if raw_active is not None:
+                    logger.warning(
+                        "Ignoring non-boolean 'active' value for plugin '%s'; expected true/false.",
+                        plugin_name,
+                    )
+                is_active = False
 
         if is_active:
-            plugin.priority = plugin_config.get(
-                "priority", getattr(plugin, "priority", 100)
-            )
+            default_priority = getattr(plugin, "priority", DEFAULT_PLUGIN_PRIORITY)
+            if not isinstance(default_priority, int) or isinstance(
+                default_priority, bool
+            ):
+                default_priority = DEFAULT_PLUGIN_PRIORITY
+            raw_priority = plugin_config.get("priority", default_priority)
+            if isinstance(raw_priority, int) and not isinstance(raw_priority, bool):
+                plugin.priority = raw_priority
+            else:
+                logger.warning(
+                    "Ignoring invalid priority for '%s'; expected an integer, got %s.",
+                    plugin_name,
+                    type(raw_priority).__name__,
+                )
+                plugin.priority = default_priority
             try:
                 plugin.start()
             except Exception:

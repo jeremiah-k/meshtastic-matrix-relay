@@ -9,6 +9,7 @@ from nio import (
     RoomMessageText,
 )
 
+from mmrelay.constants.plugins import DEBUG_PLUGIN_PRIORITY
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -20,7 +21,7 @@ class Plugin(BasePlugin):
     before logging to keep output readable.
 
     Configuration:
-        priority: 1 (runs first, before other plugins)
+        priority: Configured via the DEBUG_PLUGIN_PRIORITY constant (runs first, before other plugins)
 
     Never intercepts messages (always returns False) so other plugins
     can still process the same packets.
@@ -28,7 +29,7 @@ class Plugin(BasePlugin):
 
     plugin_name = "debug"
     is_core_plugin = True
-    priority = 1
+    priority = DEBUG_PLUGIN_PRIORITY
 
     async def handle_meshtastic_message(
         self,
@@ -52,7 +53,7 @@ class Plugin(BasePlugin):
         _ = formatted_message, longname, meshnet_name
         packet = self.strip_raw(packet)
 
-        self.logger.debug(f"Packet received: {packet}")
+        self.logger.debug("Packet received: %s", packet)
         return False
 
     async def handle_room_message(

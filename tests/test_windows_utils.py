@@ -6,12 +6,11 @@ This module tests the Windows-specific utilities added for compatibility improve
 
 import os
 import sys
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
+from mmrelay.constants.app import CONFIG_FILENAME, WINDOWS_VTP_FLAG
 from mmrelay.windows_utils import (
     check_windows_requirements,
     get_windows_error_message,
@@ -76,6 +75,62 @@ class TestSetupWindowsConsole(unittest.TestCase):
             setup_windows_console()
         except Exception:
             self.fail("setup_windows_console should handle exceptions gracefully")
+
+    def test_setup_windows_console_enables_utf8_and_vt_mode(self):
+        """Windows console setup should reconfigure streams and enable VT mode."""
+        mock_stdout = MagicMock()
+        mock_stderr = MagicMock()
+        mock_kernel32 = MagicMock()
+        mock_stdout_handle = MagicMock()
+        mock_stderr_handle = MagicMock()
+
+        def _get_console_mode(_handle, mode_ref):
+            mode_ref._obj.value = 7
+            return True
+
+        mock_kernel32.GetStdHandle.side_effect = [
+            mock_stdout_handle,
+            mock_stderr_handle,
+        ]
+        mock_kernel32.GetConsoleMode.side_effect = _get_console_mode
+
+        with (
+            patch("mmrelay.windows_utils.is_windows", return_value=True),
+            patch.object(sys, "stdout", mock_stdout),
+            patch.object(sys, "stderr", mock_stderr),
+            patch("ctypes.windll", create=True) as mock_windll,
+        ):
+            mock_windll.kernel32 = mock_kernel32
+            setup_windows_console()
+
+        mock_stdout.reconfigure.assert_called_once_with(encoding="utf-8")
+        mock_stderr.reconfigure.assert_called_once_with(encoding="utf-8")
+        self.assertEqual(mock_kernel32.GetConsoleMode.call_count, 2)
+        self.assertEqual(mock_kernel32.SetConsoleMode.call_count, 2)
+        set_calls = mock_kernel32.SetConsoleMode.call_args_list
+        self.assertIs(set_calls[0].args[0], mock_stdout_handle)
+        self.assertEqual(set_calls[0].args[1], 7 | WINDOWS_VTP_FLAG)
+        self.assertIs(set_calls[1].args[0], mock_stderr_handle)
+        self.assertEqual(set_calls[1].args[1], 7 | WINDOWS_VTP_FLAG)
+
+    def test_setup_windows_console_skips_invalid_std_handles(self):
+        """Invalid console handles should skip mode probes cleanly."""
+        mock_stdout = MagicMock()
+        mock_stderr = MagicMock()
+        mock_kernel32 = MagicMock()
+        mock_kernel32.GetStdHandle.side_effect = [None, -1]
+
+        with (
+            patch("mmrelay.windows_utils.is_windows", return_value=True),
+            patch.object(sys, "stdout", mock_stdout),
+            patch.object(sys, "stderr", mock_stderr),
+            patch("ctypes.windll", create=True) as mock_windll,
+        ):
+            mock_windll.kernel32 = mock_kernel32
+            setup_windows_console()
+
+        mock_kernel32.GetConsoleMode.assert_not_called()
+        mock_kernel32.SetConsoleMode.assert_not_called()
 
 
 class TestGetWindowsErrorMessage(unittest.TestCase):
@@ -176,6 +231,18 @@ class TestCheckWindowsRequirements(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertIn("Consider using a virtual environment", result)
 
+    def test_check_windows_requirements_returns_none_when_clean(self):
+        """No compatibility warnings should return None."""
+        with (
+            patch("mmrelay.windows_utils.is_windows", return_value=True),
+            patch("sys.version_info", (3, 12, 0)),
+            patch("sys.base_prefix", "/usr"),
+            patch("sys.prefix", "/venv"),
+            patch("os.getcwd", return_value="C:\\relay"),
+            patch("importlib.util.find_spec", return_value=None),
+        ):
+            self.assertIsNone(check_windows_requirements())
+
 
 class TestTestConfigGenerationWindows(unittest.TestCase):
     """Test cases for test_config_generation_windows function."""
@@ -199,16 +266,16 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
         mock_get_sample_config_path.return_value = "/path/to/sample_config.yaml"
         mock_exists.return_value = True
 
-        with patch("importlib.resources.files") as mock_files:
+        with (
+            patch("importlib.resources.files") as mock_files,
+            patch("mmrelay.config.get_config_paths") as mock_get_config_paths,
+            patch("os.makedirs"),
+        ):
             mock_joinpath = MagicMock()
             mock_joinpath.read_text.return_value = "sample: config"
             mock_files.return_value.joinpath.return_value = mock_joinpath
-
-            with patch("mmrelay.config.get_config_paths") as mock_get_config_paths:
-                mock_get_config_paths.return_value = ["/path/to/config.yaml"]
-
-                with patch("os.makedirs"):
-                    result = windows_test_config_generation(None)
+            mock_get_config_paths.return_value = ["/path/to/config.yaml"]
+            result = windows_test_config_generation(None)
 
         # Verify
         self.assertEqual(result["overall_status"], "ok")
@@ -225,6 +292,178 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
 
         self.assertEqual(result["overall_status"], "partial")
         self.assertEqual(result["sample_config_path"]["status"], "error")
+
+    def test_test_config_generation_windows_sample_path_missing(self):
+        """Missing sample config path should mark sample test as error."""
+        with tempfile.TemporaryDirectory() as tmp_path:
+            missing_sample = os.path.join(tmp_path, "missing_sample.yaml")
+            config_path = os.path.join(tmp_path, CONFIG_FILENAME)
+            with (
+                patch("mmrelay.windows_utils.is_windows", return_value=True),
+                patch(
+                    "mmrelay.tools.get_sample_config_path",
+                    return_value=missing_sample,
+                ),
+                patch("os.path.exists", return_value=False),
+                patch("importlib.resources.files") as mock_files,
+                patch("mmrelay.config.get_config_paths", return_value=[config_path]),
+            ):
+                mock_joinpath = MagicMock()
+                mock_joinpath.read_text.return_value = "sample: config"
+                mock_files.return_value.joinpath.return_value = mock_joinpath
+                result = windows_test_config_generation(None)
+
+        self.assertEqual(result["sample_config_path"]["status"], "error")
+        self.assertEqual(result["overall_status"], "partial")
+
+    def test_test_config_generation_windows_importlib_resources_error(self):
+        """importlib.resources errors should be captured in diagnostics."""
+        with tempfile.TemporaryDirectory() as tmp_path:
+            sample_config = os.path.join(tmp_path, "sample_config.yaml")
+            config_path = os.path.join(tmp_path, CONFIG_FILENAME)
+            with (
+                patch("mmrelay.windows_utils.is_windows", return_value=True),
+                patch(
+                    "mmrelay.tools.get_sample_config_path",
+                    return_value=sample_config,
+                ),
+                patch("os.path.exists", return_value=True),
+                patch(
+                    "importlib.resources.files",
+                    side_effect=FileNotFoundError("missing"),
+                ),
+                patch("mmrelay.config.get_config_paths", return_value=[config_path]),
+            ):
+                result = windows_test_config_generation(None)
+
+        self.assertEqual(result["importlib_resources"]["status"], "error")
+        self.assertEqual(result["overall_status"], "partial")
+
+    def test_test_config_generation_windows_config_paths_error(self):
+        """Config path resolution failures should be recorded as errors."""
+        with tempfile.TemporaryDirectory() as tmp_path:
+            sample_config = os.path.join(tmp_path, "sample_config.yaml")
+            with (
+                patch("mmrelay.windows_utils.is_windows", return_value=True),
+                patch(
+                    "mmrelay.tools.get_sample_config_path",
+                    return_value=sample_config,
+                ),
+                patch("os.path.exists", return_value=True),
+                patch("importlib.resources.files") as mock_files,
+                patch(
+                    "mmrelay.config.get_config_paths", side_effect=OSError("paths fail")
+                ),
+            ):
+                mock_joinpath = MagicMock()
+                mock_joinpath.read_text.return_value = "sample: config"
+                mock_files.return_value.joinpath.return_value = mock_joinpath
+                result = windows_test_config_generation(None)
+
+        self.assertEqual(result["config_paths"]["status"], "error")
+        self.assertEqual(result["directory_creation"]["status"], "error")
+
+    def test_test_config_generation_windows_creates_missing_dirs(self):
+        """Directory creation diagnostic should report created directories."""
+        with tempfile.TemporaryDirectory() as tmp_path:
+            sample_config = os.path.join(tmp_path, "sample_config.yaml")
+            new_dir = os.path.join(tmp_path, "new")
+            new_config = os.path.join(tmp_path, "new", CONFIG_FILENAME)
+            with (
+                patch("mmrelay.windows_utils.is_windows", return_value=True),
+                patch(
+                    "mmrelay.tools.get_sample_config_path",
+                    return_value=sample_config,
+                ),
+                patch("importlib.resources.files") as mock_files,
+                patch("mmrelay.config.get_config_paths", return_value=[new_config]),
+                patch("os.makedirs") as mock_makedirs,
+            ):
+                mock_joinpath = MagicMock()
+                mock_joinpath.read_text.return_value = "sample: config"
+                mock_files.return_value.joinpath.return_value = mock_joinpath
+
+                def _exists_side_effect(path: str) -> bool:
+                    if path == sample_config:
+                        return True
+                    return False
+
+                with patch("os.path.exists", side_effect=_exists_side_effect):
+                    result = windows_test_config_generation(None)
+
+        mock_makedirs.assert_called_once_with(new_dir, exist_ok=True)
+        self.assertEqual(result["directory_creation"]["status"], "ok")
+        self.assertIn(new_dir, result["directory_creation"]["details"])
+
+    def test_test_config_generation_windows_directory_creation_oserror(self):
+        """Directory creation OSError should be captured as diagnostic error."""
+        with tempfile.TemporaryDirectory() as tmp_path:
+            sample_config = os.path.join(tmp_path, "sample_config.yaml")
+            new_config = os.path.join(tmp_path, "new", CONFIG_FILENAME)
+            with (
+                patch("mmrelay.windows_utils.is_windows", return_value=True),
+                patch(
+                    "mmrelay.tools.get_sample_config_path",
+                    return_value=sample_config,
+                ),
+                patch("importlib.resources.files") as mock_files,
+                patch("mmrelay.config.get_config_paths", return_value=[new_config]),
+                patch("os.path.exists", side_effect=lambda p: p == sample_config),
+                patch("os.makedirs", side_effect=OSError("cannot create")),
+            ):
+                mock_joinpath = MagicMock()
+                mock_joinpath.read_text.return_value = "sample: config"
+                mock_files.return_value.joinpath.return_value = mock_joinpath
+                result = windows_test_config_generation(None)
+
+        self.assertEqual(result["directory_creation"]["status"], "error")
+
+    # Note: patches builtins.sum to force OSError - implementation uses sum() for status aggregation
+    def test_test_config_generation_windows_outer_oserror_sets_overall_error(self):
+        """Unexpected outer OSError should mark overall_status=error with details.
+
+        This validates the outer OSError handler by forcing the status aggregation
+        helper to raise after inner check handlers have completed.
+        """
+        with tempfile.TemporaryDirectory() as tmp_path:
+            sample_config = os.path.join(tmp_path, "sample_config.yaml")
+            config_path = os.path.join(tmp_path, CONFIG_FILENAME)
+            with (
+                patch("mmrelay.windows_utils.is_windows", return_value=True),
+                patch(
+                    "mmrelay.tools.get_sample_config_path",
+                    return_value=sample_config,
+                ),
+                patch("os.path.exists", return_value=True),
+                patch("importlib.resources.files") as mock_files,
+                patch("mmrelay.config.get_config_paths", return_value=[config_path]),
+                patch("builtins.sum", side_effect=OSError("sum failure")),
+            ):
+                mock_joinpath = MagicMock()
+                mock_joinpath.read_text.return_value = "sample: config"
+                mock_files.return_value.joinpath.return_value = mock_joinpath
+                result = windows_test_config_generation(None)
+
+        self.assertEqual(result["overall_status"], "error")
+        self.assertIn("sum failure", result.get("error", ""))
+
+    def test_test_config_generation_windows_error_status_when_all_checks_fail(self):
+        """Three or more check errors should produce overall_status='error'."""
+        with (
+            patch("mmrelay.windows_utils.is_windows", return_value=True),
+            patch(
+                "mmrelay.tools.get_sample_config_path", side_effect=OSError("sample")
+            ),
+            patch(
+                "importlib.resources.files", side_effect=FileNotFoundError("importlib")
+            ),
+            patch(
+                "mmrelay.config.get_config_paths", side_effect=OSError("config paths")
+            ),
+        ):
+            result = windows_test_config_generation(None)
+
+        self.assertEqual(result["overall_status"], "error")
 
 
 class TestGetWindowsInstallGuidance(unittest.TestCase):

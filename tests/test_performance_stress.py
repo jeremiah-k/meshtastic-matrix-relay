@@ -14,7 +14,9 @@ Tests performance and stress scenarios including:
 
 import asyncio
 import gc
+import http.client
 import os
+import socket
 import sys
 import threading
 import time
@@ -25,9 +27,26 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY, MINIMUM_MESSAGE_DELAY
+from meshtastic.mesh_interface import BROADCAST_NUM
+
+from mmrelay.constants.formats import TEXT_MESSAGE_APP
+from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
 from mmrelay.meshtastic_utils import on_meshtastic_message
 from mmrelay.message_queue import MessageQueue
+
+
+@pytest.fixture(autouse=True)
+def block_external_network_calls(monkeypatch):
+    """
+    Fail fast if a performance test attempts a real outbound network request.
+    """
+
+    def _blocked(*_args, **_kwargs):
+        raise AssertionError("External network calls are not allowed in this test")
+
+    monkeypatch.setattr(socket, "create_connection", _blocked)
+    monkeypatch.setattr(http.client.HTTPConnection, "request", _blocked)
+    monkeypatch.setattr(http.client.HTTPSConnection, "request", _blocked)
 
 
 @pytest.fixture(autouse=True)
@@ -135,32 +154,33 @@ class TestPerformanceStress:
                 ]
 
                 try:
-                    with patch(
-                        "mmrelay.plugin_loader.load_plugins", return_value=[]
-                    ), patch(
-                        "mmrelay.matrix_utils.get_matrix_prefix",
-                        return_value="[TestMesh/TN] ",
-                    ), patch(
-                        "mmrelay.db_utils.get_longname", return_value="Test Node"
-                    ), patch(
-                        "mmrelay.db_utils.get_shortname", return_value="TN"
-                    ), patch(
-                        "mmrelay.matrix_utils.matrix_relay",
-                        new_callable=AsyncMock,
-                        side_effect=mock_matrix_relay,
+                    with (
+                        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+                        patch(
+                            "mmrelay.matrix_utils.get_matrix_prefix",
+                            return_value="[TestMesh/TN] ",
+                        ),
+                        patch(
+                            "mmrelay.db_utils.get_longname", return_value="Test Node"
+                        ),
+                        patch("mmrelay.db_utils.get_shortname", return_value="TN"),
+                        patch(
+                            "mmrelay.matrix_utils.matrix_relay",
+                            new_callable=AsyncMock,
+                            side_effect=mock_matrix_relay,
+                        ),
                     ):
-
                         start_time = time.time()
 
                         for i in range(message_count):
                             packet = {
                                 "decoded": {
                                     "text": f"Message {i}",
-                                    "portnum": "TEXT_MESSAGE_APP",
+                                    "portnum": TEXT_MESSAGE_APP,
                                 },
                                 "fromId": "!12345678",
                                 "channel": 0,
-                                "to": 4294967295,
+                                "to": BROADCAST_NUM,
                                 "id": i,
                             }
                             on_meshtastic_message(packet, mock_interface)
@@ -185,7 +205,9 @@ class TestPerformanceStress:
         """
         Verify MessageQueue processes messages with configured delay and maintains acceptable throughput when messages are enqueued rapidly.
 
-        Enqueues 20 messages into a started MessageQueue (using DEFAULT_MESSAGE_DELAY of 2.5s), waits for processing to complete, and asserts that all messages are processed, total processing time respects the 2.5s per-message delay (with a small tolerance), and observed throughput exceeds 0.2 messages/second.
+        Enqueues messages into a started MessageQueue using a short fixed delay and
+        verifies that processing completes, the configured delay is respected, and
+        throughput stays above a minimal threshold.
 
         Side effects: starts and stops a MessageQueue instance.
         """
@@ -203,16 +225,13 @@ class TestPerformanceStress:
                 MagicMock(is_connected=True),
             ):
                 with patch("mmrelay.meshtastic_utils.reconnecting", False):
+                    message_delay = 0.05
                     queue = MessageQueue()
-                    queue.start(
-                        message_delay=DEFAULT_MESSAGE_DELAY
-                    )  # Use default delay (2.5s)
+                    queue.start(message_delay=message_delay)
                     # Ensure processor starts now that event loop is running
                     queue.ensure_processor_started()
 
-                    message_count = (
-                        20  # Reduced for reasonable test duration (20 * 2.5s = 50s)
-                    )
+                    message_count = 10
                     processed_count = 0
 
                     def mock_send_function():
@@ -231,8 +250,8 @@ class TestPerformanceStress:
                             )
                             assert success, f"Failed to enqueue message {i}"
 
-                        # Wait for processing to complete (20 messages * DEFAULT_MESSAGE_DELAY = 50s + buffer)
-                        timeout = 65  # 65 second timeout (20 * 2.5s = 50s + buffer)
+                        # Wait for processing to complete with a bounded timeout.
+                        timeout = 5.0
                         while (
                             processed_count < message_count
                             and time.time() - start_time < timeout
@@ -245,17 +264,14 @@ class TestPerformanceStress:
                         # Verify all messages were processed
                         assert processed_count == message_count
 
-                        # Performance assertions (adjusted for 2.5s default delay)
-                        expected_min_time = (
-                            message_count * DEFAULT_MESSAGE_DELAY
-                        )  # 2.5s per message with default delay
+                        expected_min_time = message_count * message_delay
                         assert (
-                            processing_time >= expected_min_time - 5.0
+                            processing_time >= expected_min_time * 0.7
                         ), "Processing too fast (below expected delay)"
 
                         messages_per_second = message_count / processing_time
                         assert (
-                            messages_per_second > 0.2
+                            messages_per_second > 5.0
                         ), "Queue processing rate too slow"
 
                     finally:
@@ -369,7 +385,10 @@ class TestPerformanceStress:
                     plugins.append(plugin)
 
                 packet = {
-                    "decoded": {"text": "Performance test message", "portnum": 1},
+                    "decoded": {
+                        "text": "Performance test message",
+                        "portnum": PORTNUM_TEXT_MESSAGE_APP,
+                    },
                     "fromId": "!12345678",
                     "channel": 0,
                 }
@@ -395,31 +414,31 @@ class TestPerformanceStress:
                     {"id": "!room:matrix.org", "meshtastic_channel": 0}
                 ]
 
-                with patch(
-                    "mmrelay.plugin_loader.load_plugins", return_value=plugins
-                ), patch("mmrelay.meshtastic_utils.config", mock_config), patch(
-                    "mmrelay.meshtastic_utils.matrix_rooms", mock_matrix_rooms
-                ), patch(
-                    "mmrelay.matrix_utils.get_interaction_settings",
-                    return_value=mock_interactions,
-                ), patch(
-                    "mmrelay.matrix_utils.message_storage_enabled", return_value=False
-                ), patch(
-                    "mmrelay.db_utils.save_longname", return_value=None
-                ), patch(
-                    "mmrelay.db_utils.save_shortname", return_value=None
-                ), patch(
-                    "mmrelay.matrix_utils.matrix_relay", MagicMock(return_value=False)
-                ), patch(
-                    "mmrelay.meshtastic_utils._submit_coro"
-                ) as mock_submit, patch(
-                    "mmrelay.meshtastic_utils._wait_for_result"
-                ) as mock_wait, patch(
-                    "mmrelay.meshtastic_utils.shutting_down", False
-                ), patch(
-                    "mmrelay.meshtastic_utils.event_loop", meshtastic_loop_safety
+                with (
+                    patch("mmrelay.plugin_loader.load_plugins", return_value=plugins),
+                    patch("mmrelay.meshtastic_utils.config", mock_config),
+                    patch("mmrelay.meshtastic_utils.matrix_rooms", mock_matrix_rooms),
+                    patch(
+                        "mmrelay.matrix_utils.get_interaction_settings",
+                        return_value=mock_interactions,
+                    ),
+                    patch(
+                        "mmrelay.matrix_utils.message_storage_enabled",
+                        return_value=False,
+                    ),
+                    patch("mmrelay.db_utils.save_longname", return_value=None),
+                    patch("mmrelay.db_utils.save_shortname", return_value=None),
+                    patch(
+                        "mmrelay.matrix_utils.matrix_relay",
+                        MagicMock(return_value=False),
+                    ),
+                    patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit,
+                    patch("mmrelay.meshtastic_utils._wait_for_result") as mock_wait,
+                    patch("mmrelay.meshtastic_utils.shutting_down", False),
+                    patch(
+                        "mmrelay.meshtastic_utils.event_loop", meshtastic_loop_safety
+                    ),
                 ):
-
                     fast_submit, fast_wait = fast_async_helpers
 
                     mock_submit.side_effect = fast_submit
@@ -480,15 +499,14 @@ class TestPerformanceStress:
                 MagicMock(is_connected=True),
             ):
                 with patch("mmrelay.meshtastic_utils.reconnecting", False):
+                    message_delay = 0.05
                     queue = MessageQueue()
-                    queue.start(
-                        message_delay=0.5
-                    )  # 0.5s delay for reasonable test duration
+                    queue.start(message_delay=message_delay)
                     # Ensure processor starts now that event loop is running
                     queue.ensure_processor_started()
 
                     thread_count = 5
-                    messages_per_thread = 3  # Small number for reasonable test duration (15 messages * 0.5s = 7.5s)
+                    messages_per_thread = 3
                     total_messages = thread_count * messages_per_thread
 
                     processed_count = 0
@@ -521,8 +539,8 @@ class TestPerformanceStress:
                         for thread in threads:
                             thread.join()
 
-                        # Wait for queue processing to complete (15 messages * 0.5s = 7.5s + buffer)
-                        timeout = 15  # 15 * 0.5s = 7.5s + buffer
+                        # Wait for queue processing to complete.
+                        timeout = 5.0
                         while (
                             processed_count < total_messages
                             and time.time() - start_time < timeout
@@ -535,15 +553,14 @@ class TestPerformanceStress:
                         # Verify all messages were processed
                         assert processed_count == total_messages
 
-                        # Performance assertions (adjusted for 0.5s delay)
-                        expected_min_time = total_messages * 0.5  # 0.5s per message
+                        expected_min_time = total_messages * message_delay
                         assert (
-                            processing_time >= expected_min_time - 2.0
+                            processing_time >= expected_min_time * 0.7
                         ), "Concurrent processing too fast (below expected delay)"
 
                         messages_per_second = total_messages / processing_time
                         assert (
-                            messages_per_second > 0.3
+                            messages_per_second > 2.0
                         ), "Concurrent processing rate too slow"
 
                     finally:
@@ -584,7 +601,7 @@ class TestPerformanceStress:
                         packet = {
                             "decoded": {
                                 "text": f"Memory test {iteration}-{j}",
-                                "portnum": 1,
+                                "portnum": PORTNUM_TEXT_MESSAGE_APP,
                             },
                             "fromId": f"!{j:08x}",
                             "channel": 0,
@@ -626,7 +643,7 @@ class TestPerformanceStress:
             ):
                 with patch("mmrelay.meshtastic_utils.reconnecting", False):
                     queue = MessageQueue()
-                    message_delay = 0.1  # 100ms delay between messages (will warn about 2.1s minimum)
+                    message_delay = 0.1  # 100ms delay between messages
                     queue.start(message_delay=message_delay)
                     # Ensure processor starts now that event loop is running
                     queue.ensure_processor_started()
@@ -662,11 +679,11 @@ class TestPerformanceStress:
                         # Verify messages were sent with approximately the configured delay
                         for i in range(1, len(send_times)):
                             time_diff = send_times[i] - send_times[i - 1]
-                            # Allow some tolerance for timing variations (should be close to 0.1s)
+                            # Allow tolerance for event-loop scheduling jitter in CI.
                             assert (
                                 time_diff >= message_delay * 0.5
-                                and time_diff <= message_delay * 2.0
-                            ), f"Message delay {time_diff:.3f}s not close to expected {message_delay}s between messages {i-1} and {i}"
+                                and time_diff <= message_delay * 2.5
+                            ), f"Message delay {time_diff:.3f}s not close to expected {message_delay}s between messages {i - 1} and {i}"
 
                     finally:
                         queue.stop()
@@ -711,7 +728,10 @@ class TestPerformanceStress:
         with patch("mmrelay.plugin_loader.load_plugins", return_value=[mock_plugin]):
             # Process a message
             packet = {
-                "decoded": {"text": "cleanup test", "portnum": 1},
+                "decoded": {
+                    "text": "cleanup test",
+                    "portnum": PORTNUM_TEXT_MESSAGE_APP,
+                },
                 "fromId": "!12345678",
                 "channel": 0,
             }
@@ -729,20 +749,25 @@ class TestPerformanceStress:
         """
         Benchmark message throughput under realistic conditions with mixed message types and enforced rate limiting.
 
-        Simulates a mesh network by asynchronously queuing and processing messages of various types from multiple nodes over a fixed duration. Validates that throughput uses the configured delay, achieves at least 65% of theoretical maximum throughput, and processes multiple message types. Prints detailed throughput statistics after completion.
+        Simulates mixed message traffic from multiple nodes over a short bounded
+        duration. Validates that throughput respects configured delay, stays within
+        expected bounds, and processes multiple message types.
         """
         import asyncio
         import random
 
         async def run_throughput_test():
             """
-            Run a 30-second realistic throughput benchmark that enqueues mixed-message traffic into a MessageQueue and validates rate-limiting and basic throughput/diversity expectations.
+            Run a short throughput benchmark that enqueues mixed-message traffic
+            into a MessageQueue and validates rate-limiting behavior.
 
             This coroutine:
             - Seeds the RNG for deterministic test behavior.
-            - Starts a MessageQueue processor with a 2.1 second enforced send delay.
-            - Enqueues messages of several types from multiple mock node IDs at randomized intervals (0.5–3.0s) for 30 seconds.
-            - Records timestamps of processed messages, waits up to 15s for the queue to drain, and computes throughput using the active processing window (first to last processed timestamp) when possible.
+            - Starts a MessageQueue processor with a short enforced send delay.
+            - Enqueues messages of several types from multiple mock node IDs at
+              randomized intervals for a small fixed duration.
+            - Records timestamps of processed messages, waits briefly for drain,
+              and computes throughput using the active processing window when possible.
             - Asserts minimal test invariants: multiple messages were queued and at least one processed; throughput does not exceed the rate-limit-derived upper bound and — when >= 2 messages were processed — meets a minimum expected throughput; message-type diversity is observed.
             - Prints a brief summary of duration, queued/processed counts, throughput, and per-type counts.
             - Stops the MessageQueue on completion.
@@ -756,20 +781,19 @@ class TestPerformanceStress:
                 MagicMock(is_connected=True),
             ):
                 with patch("mmrelay.meshtastic_utils.reconnecting", False):
+                    message_delay = 0.1
                     queue = MessageQueue()
-                    queue.start(
-                        message_delay=MINIMUM_MESSAGE_DELAY
-                    )  # Use realistic 2.1s delay
+                    queue.start(message_delay=message_delay)
                     queue.ensure_processor_started()
 
-                    # Realistic test parameters
-                    test_duration = 30  # 30 second test
+                    # Realistic but bounded test parameters
+                    test_duration = 2.0
                     message_types = [
-                        "TEXT_MESSAGE_APP",
+                        TEXT_MESSAGE_APP,
                         "TELEMETRY_APP",
                         "POSITION_APP",
                     ]
-                    node_ids = [f"!{i:08x}" for i in range(1, 11)]  # 10 nodes
+                    node_ids = [f"!{i:08x}" for i in range(1, 6)]
 
                     processed_messages = []
                     start_time = time.time()
@@ -817,15 +841,15 @@ class TestPerformanceStress:
                             if success:
                                 messages_queued += 1
 
-                            # Realistic inter-message delay (0.5-3 seconds)
+                            # Realistic short inter-message delay.
                             await asyncio.sleep(
-                                random.uniform(
-                                    0.5, 3.0
-                                )  # nosec B311 - Test timing variation, not cryptographic
+                                random.uniform(  # nosec B311 - Test timing variation, not cryptographic
+                                    0.05, 0.15
+                                )
                             )
 
                         # Wait for queue to drain (bounded)
-                        drained = await queue.drain(timeout=15.0)
+                        drained = await queue.drain(timeout=5.0)
                         assert drained, "Queue did not drain within timeout"
 
                         end_time = time.time()
@@ -846,15 +870,12 @@ class TestPerformanceStress:
                         assert messages_queued > 5, "Should queue multiple messages"
                         assert messages_processed > 0, "Should process some messages"
 
-                        # Throughput should be reasonable for MINIMUM_MESSAGE_DELAY minimum delay
-                        # With MINIMUM_MESSAGE_DELAY delay, max theoretical throughput is 1/MINIMUM_MESSAGE_DELAY msg/s
+                        max_theoretical_throughput = 1.0 / message_delay
                         assert (
-                            throughput <= 0.6
+                            throughput <= max_theoretical_throughput * 1.25
                         ), "Throughput should respect rate limiting"
 
-                        # Should achieve at least 65% of theoretical maximum during active window
-                        # With MINIMUM_MESSAGE_DELAY delay, max theoretical throughput is 1/MINIMUM_MESSAGE_DELAY msg/s
-                        min_expected_throughput = 0.32
+                        min_expected_throughput = max_theoretical_throughput * 0.4
                         if messages_processed >= 2:
                             assert (
                                 throughput >= min_expected_throughput

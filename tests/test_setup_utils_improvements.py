@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import MagicMock, mock_open, patch
 
 from mmrelay.setup_utils import (
+    SYSTEMD_SERVICE_FILENAME,
     check_lingering_enabled,
     check_loginctl_available,
     enable_lingering,
@@ -15,7 +16,7 @@ from mmrelay.setup_utils import (
 class TestPatchCoverageImprovements(unittest.TestCase):
     """Test the specific lines changed in the patch for coverage."""
 
-    def test_warning_messages_in_setup_utils(self):
+    def test_warning_messages_in_setup_utils(self) -> None:
         """Test that warning messages are logged via logger."""
         # Test warning message in get_template_service_path
         from mmrelay.setup_utils import get_template_service_path
@@ -27,13 +28,16 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         # Should log warning
         self.assertIsNone(result)
         mock_logger.warning.assert_called()
-        # Check that warning contains service file path info
+        # Check that warning contains service file path info (uses constant)
         call_args = mock_logger.warning.call_args_list
         self.assertTrue(
-            any("Could not find mmrelay.service" in str(call) for call in call_args)
+            any(
+                "Could not find" in str(call) and SYSTEMD_SERVICE_FILENAME in str(call)
+                for call in call_args
+            )
         )
 
-    def test_exception_handling_improvements(self):
+    def test_exception_handling_improvements(self) -> None:
         """
         Verify is_service_enabled returns False and logs a warning when subprocess.run raises an OSError.
 
@@ -55,7 +59,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
             )
         )
 
-    def test_is_service_active_exception_handling(self):
+    def test_is_service_active_exception_handling(self) -> None:
         """Test is_service_active exception handling."""
         with patch("subprocess.run", side_effect=OSError("Test error")):
             with patch("mmrelay.setup_utils.logger") as mock_logger:
@@ -72,7 +76,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
             )
         )
 
-    def test_check_loginctl_available_exception_handling(self):
+    def test_check_loginctl_available_exception_handling(self) -> None:
         """Test check_loginctl_available exception handling."""
         with patch("shutil.which", return_value="/usr/bin/loginctl"):
             with patch("subprocess.run", side_effect=OSError("Test error")):
@@ -90,7 +94,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
             )
         )
 
-    def test_check_lingering_enabled_exception_handling(self):
+    def test_check_lingering_enabled_exception_handling(self) -> None:
         """Test check_lingering_enabled exception handling."""
         with patch("shutil.which", return_value="/usr/bin/loginctl"):
             with patch("subprocess.run", side_effect=OSError("Test error")):
@@ -105,7 +109,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
             any("Error checking lingering status" in str(call) for call in call_args)
         )
 
-    def test_enable_lingering_exception_handling(self):
+    def test_enable_lingering_exception_handling(self) -> None:
         """Test enable_lingering exception handling."""
         with patch("subprocess.run", side_effect=OSError("Test error")):
             with patch("mmrelay.setup_utils.logger") as mock_logger:
@@ -119,7 +123,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
             any("Error enabling lingering" in str(call) for call in call_args)
         )
 
-    def test_cli_exception_logging_path(self):
+    def test_cli_exception_logging_path(self) -> None:
         """Test CLI exception logging by testing the config function directly."""
         # Test the config function that has improved exception handling
         from mmrelay.config import check_e2ee_enabled_silently
@@ -131,7 +135,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         # Should return False when no config is found
         self.assertFalse(result)
 
-    def test_is_e2ee_enabled_function(self):
+    def test_is_e2ee_enabled_function(self) -> None:
         """Test the new is_e2ee_enabled function in config.py."""
         from mmrelay.config import is_e2ee_enabled
 
@@ -141,10 +145,10 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         # Test with empty config (line 349)
         self.assertFalse(is_e2ee_enabled({}))
 
-        # Test with False config (line 349)
+        # Test with False config (line 349) - edge case handling
         self.assertFalse(is_e2ee_enabled(False))
 
-        # Test with empty string config (line 349)
+        # Test with empty string config (line 349) - edge case handling
         self.assertFalse(is_e2ee_enabled(""))
 
         # Test with encryption enabled (legacy)
@@ -161,7 +165,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         }
         self.assertFalse(is_e2ee_enabled(config_disabled))
 
-    def test_check_e2ee_enabled_silently_function(self):
+    def test_check_e2ee_enabled_silently_function(self) -> None:
         """Test the new check_e2ee_enabled_silently function."""
         from mmrelay.config import check_e2ee_enabled_silently
 
@@ -177,7 +181,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
             result = check_e2ee_enabled_silently(mock_args)
             self.assertFalse(result)
 
-    def test_config_edge_cases_for_coverage(self):
+    def test_config_edge_cases_for_coverage(self) -> None:
         """Test additional config.py edge cases for coverage."""
         from mmrelay.config import is_e2ee_enabled
 
@@ -196,7 +200,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         none_matrix_config = {"matrix": None}
         self.assertFalse(is_e2ee_enabled(none_matrix_config))
 
-    def test_config_silent_check_exception_paths(self):
+    def test_config_silent_check_exception_paths(self) -> None:
         """Test exception handling paths in check_e2ee_enabled_silently."""
         from mmrelay.config import check_e2ee_enabled_silently
 
@@ -219,7 +223,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
                     result = check_e2ee_enabled_silently(mock_args)
                     self.assertFalse(result)
 
-    def test_config_silent_check_falsy_config(self):
+    def test_config_silent_check_falsy_config(self) -> None:
         """Test the falsy config check (line 381) in check_e2ee_enabled_silently."""
         from mmrelay.config import check_e2ee_enabled_silently
 

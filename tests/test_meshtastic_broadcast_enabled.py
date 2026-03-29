@@ -4,6 +4,16 @@ import sys
 
 import pytest
 
+from mmrelay.constants.config import (
+    CONFIG_KEY_BROADCAST_ENABLED,
+    CONFIG_SECTION_MESHTASTIC,
+)
+from mmrelay.constants.network import (
+    CONFIG_KEY_CONNECTION_TYPE,
+    CONFIG_KEY_SERIAL_PORT,
+    CONNECTION_TYPE_SERIAL,
+)
+
 # Ensure src is importable if project uses a src layout similar to the provided script
 THIS_DIR = os.path.dirname(__file__)
 CANDIDATE_SRC = os.path.join(THIS_DIR, "src")
@@ -29,16 +39,16 @@ def _import_targets():
 
 def _base_config_no_broadcast():
     return {
-        "meshtastic": {
-            "connection_type": "serial",
-            "serial_port": "/dev/ttyUSB0",
+        CONFIG_SECTION_MESHTASTIC: {
+            CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_SERIAL,
+            CONFIG_KEY_SERIAL_PORT: "/dev/ttyUSB0",
         }
     }
 
 
 def _base_config_with(value):
     cfg = _base_config_no_broadcast()
-    cfg["meshtastic"]["broadcast_enabled"] = value
+    cfg["meshtastic"][CONFIG_KEY_BROADCAST_ENABLED] = value
     return cfg
 
 
@@ -48,7 +58,7 @@ class TestBroadcastEnabledConfig:
         cfg = _base_config_no_broadcast()
 
         # Per PR: missing broadcast_enabled should not raise when required=False
-        result = get_val(cfg, "broadcast_enabled", DEFAULT, required=False)
+        result = get_val(cfg, CONFIG_KEY_BROADCAST_ENABLED, DEFAULT, required=False)
         assert (
             result == DEFAULT
         ), "Expected missing broadcast_enabled to return the default value"
@@ -57,7 +67,7 @@ class TestBroadcastEnabledConfig:
         get_val, DEFAULT = _import_targets()
         cfg = _base_config_no_broadcast()
         custom_default = not DEFAULT  # flip the default to detect which was used
-        result = get_val(cfg, "broadcast_enabled", custom_default)
+        result = get_val(cfg, CONFIG_KEY_BROADCAST_ENABLED, custom_default)
         assert (
             result == custom_default
         ), "Expected missing key to use the provided default when required not explicitly True"
@@ -68,23 +78,23 @@ class TestBroadcastEnabledConfig:
         with pytest.raises(Exception):  # noqa
             # We don't tie to a specific exception type unless the code exports one;
             # if the implementation uses KeyError/ValueError, this assertion still holds.
-            get_val(cfg, "broadcast_enabled", DEFAULT, required=True)
+            get_val(cfg, CONFIG_KEY_BROADCAST_ENABLED, DEFAULT, required=True)
 
     def test_present_true_is_returned(self):
         get_val, DEFAULT = _import_targets()
         cfg = _base_config_with(True)
-        assert get_val(cfg, "broadcast_enabled", DEFAULT) is True
+        assert get_val(cfg, CONFIG_KEY_BROADCAST_ENABLED, DEFAULT) is True
 
     def test_present_false_is_returned(self):
         get_val, DEFAULT = _import_targets()
         cfg = _base_config_with(False)
-        assert get_val(cfg, "broadcast_enabled", DEFAULT) is False
+        assert get_val(cfg, CONFIG_KEY_BROADCAST_ENABLED, DEFAULT) is False
 
     def test_unexpected_string_value_either_converted_or_raises(self):
         get_val, DEFAULT = _import_targets()
         cfg = _base_config_with("true")
         try:
-            result = get_val(cfg, "broadcast_enabled", DEFAULT)
+            result = get_val(cfg, CONFIG_KEY_BROADCAST_ENABLED, DEFAULT)
         except Exception:
             # If the implementation validates types strictly, this is acceptable.
             return
@@ -95,14 +105,14 @@ class TestBroadcastEnabledConfig:
     def test_missing_meshtastic_section_required_false_returns_default(self):
         get_val, DEFAULT = _import_targets()
         cfg = {}  # no meshtastic section at all
-        result = get_val(cfg, "broadcast_enabled", DEFAULT, required=False)
+        result = get_val(cfg, CONFIG_KEY_BROADCAST_ENABLED, DEFAULT, required=False)
         assert result == DEFAULT
 
     def test_missing_meshtastic_section_required_true_raises(self):
         get_val, DEFAULT = _import_targets()
         cfg = {}
         with pytest.raises(Exception):  # noqa
-            get_val(cfg, "broadcast_enabled", DEFAULT, required=True)
+            get_val(cfg, CONFIG_KEY_BROADCAST_ENABLED, DEFAULT, required=True)
 
     def test_default_constant_is_boolean(self):
         _, DEFAULT = _import_targets()
@@ -114,7 +124,7 @@ class TestBroadcastEnabledConfig:
         get_val, DEFAULT = _import_targets()
         cfg = _base_config_no_broadcast()
         override = not DEFAULT
-        result = get_val(cfg, "broadcast_enabled", override, required=False)
+        result = get_val(cfg, CONFIG_KEY_BROADCAST_ENABLED, override, required=False)
         assert (
             result == override
         ), "Explicit default passed to function should be returned when key is absent and required=False"

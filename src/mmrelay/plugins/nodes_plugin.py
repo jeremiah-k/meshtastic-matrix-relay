@@ -11,7 +11,18 @@ from nio import (
     RoomMessageText,
 )
 
+from mmrelay.constants.domain import (
+    RELATIVE_TIME_DAYS_THRESHOLD,
+    SECONDS_PER_DAY,
+    SECONDS_PER_HOUR,
+    SECONDS_PER_MINUTE,
+    UNKNOWN_NODE_VALUE,
+)
+from mmrelay.constants.formats import DATE_FORMAT_LONG, SNR_UNIT_SUFFIX
+from mmrelay.log_utils import get_logger
 from mmrelay.plugins.base_plugin import BasePlugin
+
+logger = get_logger(__name__)
 
 
 def get_relative_time(timestamp: float) -> str:
@@ -26,8 +37,9 @@ def get_relative_time(timestamp: float) -> str:
                 - "Just now" for times less than 60 seconds ago
                 - "<N> minutes ago" for times between 60 seconds and 1 hour
                 - "<N> hours ago" for times between 1 hour and 24 hours
-                - "<N> days ago" for times between 1 day and 7 days
-                - a formatted date "Mon DD, YYYY" for times older than 7 days
+                - "<N> days ago" for times between 1 day and RELATIVE_TIME_DAYS_THRESHOLD days
+                - a timestamp formatted with DATE_FORMAT_LONG when
+                  delta > RELATIVE_TIME_DAYS_THRESHOLD * SECONDS_PER_DAY
     """
     now = datetime.now()
     dt = datetime.fromtimestamp(timestamp)
@@ -35,25 +47,30 @@ def get_relative_time(timestamp: float) -> str:
     # Calculate the time difference between the current time and the given timestamp
     delta = now - dt
 
-    # Extract the relevant components from the time difference
-    days = delta.days
-    seconds = delta.seconds
+    # Compute signed total seconds and guard against future timestamps
+    total_seconds = int(delta.total_seconds())
+    if total_seconds <= 0:
+        return "Just now"
 
     # Convert the time difference into a relative timeframe
-    if days > 7:
+    if total_seconds > RELATIVE_TIME_DAYS_THRESHOLD * SECONDS_PER_DAY:
         return dt.strftime(
-            "%b %d, %Y"
-        )  # Return the timestamp in a specific format if it's older than 7 days
-    elif days >= 1:
-        return f"{days} days ago"
-    elif seconds >= 3600:
-        hours = seconds // 3600
-        return f"{hours} hours ago"
-    elif seconds >= 60:
-        minutes = seconds // 60
-        return f"{minutes} minutes ago"
-    else:
-        return "Just now"
+            DATE_FORMAT_LONG
+        )  # Return formatted date if older than RELATIVE_TIME_DAYS_THRESHOLD days
+
+    days = total_seconds // SECONDS_PER_DAY
+    if days >= 1:
+        return f"{days} day{'s' if days != 1 else ''} ago"
+
+    hours = total_seconds // SECONDS_PER_HOUR
+    if hours >= 1:
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+
+    minutes = total_seconds // SECONDS_PER_MINUTE
+    if minutes >= 1:
+        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+
+    return "Just now"
 
 
 class Plugin(BasePlugin):
@@ -99,9 +116,9 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
 
             user = info.get("user")
             user_info = user if isinstance(user, dict) else {}
-            short_name = user_info.get("shortName") or "Unknown"
-            long_name = user_info.get("longName") or "Unknown"
-            hw_model = user_info.get("hwModel") or "Unknown"
+            short_name = user_info.get("shortName") or UNKNOWN_NODE_VALUE
+            long_name = user_info.get("longName") or UNKNOWN_NODE_VALUE
+            hw_model = user_info.get("hwModel") or UNKNOWN_NODE_VALUE
 
             hops = "? hops away"
             hops_away = info.get("hopsAway")
@@ -116,17 +133,19 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
             snr = ""
             snr_value = info.get("snr")
             if snr_value is not None:
-                snr = f"{snr_value} dB"
+                snr = f"{snr_value}{SNR_UNIT_SUFFIX}"
 
             last_heard = "?"
             last_heard_timestamp = info.get("lastHeard")
             if last_heard_timestamp is not None:
                 try:
                     parsed_last_heard = float(last_heard_timestamp)
-                    now_ts = datetime.now().timestamp()
-                    if 0 < parsed_last_heard <= now_ts:
+                    if parsed_last_heard > 0:
                         last_heard = get_relative_time(parsed_last_heard)
                 except (TypeError, ValueError, OverflowError, OSError):
+                    logger.debug(
+                        "Failed to parse lastHeard timestamp: %s", last_heard_timestamp
+                    )
                     last_heard = "?"
 
             voltage = "?V"

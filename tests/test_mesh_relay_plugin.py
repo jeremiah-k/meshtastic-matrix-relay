@@ -19,7 +19,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
+from mmrelay.constants.formats import (
+    MATRIX_PACKET_KEY,
+    MATRIX_SUPPRESS_KEY,
+    TEXT_MESSAGE_APP,
+)
 from mmrelay.plugins.mesh_relay_plugin import Plugin
+from tests.constants import TEST_ROOM_ID_1
 
 
 class TestMeshRelayPlugin(unittest.TestCase):
@@ -155,16 +162,25 @@ class TestMeshRelayPlugin(unittest.TestCase):
         # Should not modify string payload
         self.assertEqual(result["decoded"]["payload"], "string payload")
 
-    def test_matches_valid_radio_packet_message(self):
+    def test_matches_valid_radio_packet_message_with_legacy_packet_field(self):
         """
-        Test that the matches method returns True for an event containing a valid radio packet message.
+        Test that matches() upgrades legacy packet content to MATRIX_PACKET_KEY.
         """
         event = MagicMock()
-        event.source = {"content": {"body": "Processed TEXT_MESSAGE_APP radio packet"}}
+        event.source = {
+            "content": {
+                "body": "Processed TEXT_MESSAGE_APP radio packet",
+                "packet": '{"decoded":{"portnum":1,"payload":"QQ=="},"toId":"!dest"}',
+            }
+        }
 
         result = self.plugin.matches(event)
 
         self.assertTrue(result)
+        self.assertEqual(
+            event.source["content"][MATRIX_PACKET_KEY],
+            event.source["content"]["packet"],
+        )
 
     def test_matches_invalid_message_format(self):
         """
@@ -199,6 +215,21 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
         self.assertFalse(result)
 
+    def test_matches_returns_true_for_suppressed_packet_marker(self):
+        """MATRIX_SUPPRESS_KEY with MATRIX_PACKET_KEY should match without regex body parsing."""
+        event = MagicMock()
+        event.source = {
+            "content": {
+                MATRIX_SUPPRESS_KEY: True,
+                MATRIX_PACKET_KEY: '{"test": "data"}',
+                "body": 123,
+            }
+        }
+
+        result = self.plugin.matches(event)
+
+        self.assertTrue(result)
+
     @patch("mmrelay.plugins.mesh_relay_plugin.config", None)
     @patch("mmrelay.matrix_utils.connect_matrix")
     def test_handle_meshtastic_message_no_config(self, mock_connect):
@@ -211,7 +242,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
         mock_connect.return_value = mock_matrix_client
 
         packet = {
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "test"},
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "test"},
             "channel": 0,
         }
 
@@ -249,12 +280,10 @@ class TestMeshRelayPlugin(unittest.TestCase):
         mock_connect.return_value = mock_matrix_client
 
         # Mock config with no matching channel
-        mock_config.get.return_value = [
-            {"meshtastic_channel": 1, "id": "!room1:matrix.org"}
-        ]
+        mock_config.get.return_value = [{"meshtastic_channel": 1, "id": TEST_ROOM_ID_1}]
 
         packet = {
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "test"},
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "test"},
             "channel": 0,  # Channel 0 not mapped
         }
 
@@ -271,7 +300,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
             # Should log debug message
             self.plugin.logger.debug.assert_called_with(
-                "Skipping message from unmapped channel 0"
+                "Skipping message from unmapped channel %s", 0
             )
 
             # Should not send any Matrix messages
@@ -295,12 +324,10 @@ class TestMeshRelayPlugin(unittest.TestCase):
         mock_connect.return_value = mock_matrix_client
 
         # Mock config with matching channel
-        mock_config.get.return_value = [
-            {"meshtastic_channel": 0, "id": "!room1:matrix.org"}
-        ]
+        mock_config.get.return_value = [{"meshtastic_channel": 0, "id": TEST_ROOM_ID_1}]
 
         packet = {
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "test"},
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "test"},
             "channel": 0,
         }
 
@@ -321,13 +348,15 @@ class TestMeshRelayPlugin(unittest.TestCase):
             mock_matrix_client.room_send.assert_called_once()
             call_args = mock_matrix_client.room_send.call_args
 
-            self.assertEqual(call_args.kwargs["room_id"], "!room1:matrix.org")
-            self.assertEqual(call_args.kwargs["message_type"], "m.room.message")
+            self.assertEqual(call_args.kwargs["room_id"], TEST_ROOM_ID_1)
+            self.assertEqual(
+                call_args.kwargs["message_type"], MATRIX_EVENT_TYPE_ROOM_MESSAGE
+            )
 
             content = call_args.kwargs["content"]
             self.assertEqual(content["msgtype"], "m.text")
             self.assertTrue(content["mmrelay_suppress"])
-            self.assertIn("meshtastic_packet", content)
+            self.assertIn(MATRIX_PACKET_KEY, content)
             self.assertEqual(content["body"], "Processed TEXT_MESSAGE_APP radio packet")
 
         import asyncio
@@ -350,12 +379,10 @@ class TestMeshRelayPlugin(unittest.TestCase):
         mock_connect.return_value = mock_matrix_client
 
         # Mock config with channel 0 mapped (default channel)
-        mock_config.get.return_value = [
-            {"meshtastic_channel": 0, "id": "!room1:matrix.org"}
-        ]
+        mock_config.get.return_value = [{"meshtastic_channel": 0, "id": TEST_ROOM_ID_1}]
 
         packet = {
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "test"}
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "test"}
             # No channel field - should default to 0
         }
 
@@ -421,7 +448,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
             # Should log debug message
             self.plugin.logger.debug.assert_called_with(
-                "Skipping message from unmapped room !test:matrix.org"
+                "Skipping message from unmapped room %s", "!test:matrix.org"
             )
 
         import asyncio
@@ -455,7 +482,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
             # Should log debug message
             self.plugin.logger.debug.assert_called_with(
-                "Skipping message from unmapped room !test:matrix.org"
+                "Skipping message from unmapped room %s", "!test:matrix.org"
             )
 
         import asyncio
@@ -516,7 +543,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
         room = MagicMock()
         room.room_id = "!test:matrix.org"
         event = MagicMock()
-        event.source = {"content": {"meshtastic_packet": "invalid json"}}
+        event.source = {"content": {MATRIX_PACKET_KEY: "invalid json"}}
 
         async def run_test():
             """
@@ -571,7 +598,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
         event = MagicMock()
         # Valid packet JSON
         packet_json = '{"decoded": {"portnum": "TEXT_MESSAGE_APP", "payload": "SGVsbG8gV29ybGQ="}, "toId": "!1234567890"}'
-        event.source = {"content": {"meshtastic_packet": packet_json}}
+        event.source = {"content": {MATRIX_PACKET_KEY: packet_json}}
 
         async def run_test():
             """
@@ -592,7 +619,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
             # Verify packet properties
             self.assertEqual(mesh_packet.channel, 1)
-            self.assertEqual(mesh_packet.decoded.portnum, "TEXT_MESSAGE_APP")
+            self.assertEqual(mesh_packet.decoded.portnum, TEXT_MESSAGE_APP)
             self.assertEqual(
                 mesh_packet.decoded.payload, b"Hello World"
             )  # base64 decoded
@@ -620,14 +647,14 @@ class TestMeshRelayPlugin(unittest.TestCase):
     def test_iter_room_configs_dict_entries(self, mock_config):
         """_iter_room_configs should filter dict values and ignore non-dict entries."""
         mock_config.get.return_value = {
-            "room1": {"id": "!room1:matrix.org", "meshtastic_channel": 0},
+            "room1": {"id": TEST_ROOM_ID_1, "meshtastic_channel": 0},
             "room2": "ignore-me",
         }
 
         rooms = self.plugin._iter_room_configs()
 
         self.assertEqual(len(rooms), 1)
-        self.assertEqual(rooms[0]["id"], "!room1:matrix.org")
+        self.assertEqual(rooms[0]["id"], TEST_ROOM_ID_1)
 
     @patch("mmrelay.matrix_utils.connect_matrix", new_callable=AsyncMock)
     def test_handle_meshtastic_message_no_matrix_client(self, mock_connect_matrix):
@@ -718,7 +745,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
         event = MagicMock()
         event.source = {
             "content": {
-                "meshtastic_packet": '{"decoded": {"portnum": 1, "payload": "QQ=="}, "toId": "!dest"}'
+                MATRIX_PACKET_KEY: '{"decoded": {"portnum": 1, "payload": "QQ=="}, "toId": "!dest"}'
             }
         }
 
@@ -753,7 +780,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
         room = MagicMock()
         room.room_id = "!test:matrix.org"
         event = MagicMock()
-        event.source = {"content": {"meshtastic_packet": '{"decoded": {"portnum": 1}}'}}
+        event.source = {"content": {MATRIX_PACKET_KEY: '{"decoded": {"portnum": 1}}'}}
 
         async def run_test():
             result = await self.plugin.handle_room_message(room, event, "full_message")
@@ -783,7 +810,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
         event = MagicMock()
         event.source = {
             "content": {
-                "meshtastic_packet": '{"decoded": {"portnum": 1, "payload": 123}, "toId": "!dest"}'
+                MATRIX_PACKET_KEY: '{"decoded": {"portnum": 1, "payload": 123}, "toId": "!dest"}'
             }
         }
 

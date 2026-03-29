@@ -14,6 +14,7 @@ from pathlib import Path
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
 from tests.test_e2ee_encryption import (
     E2EETestFramework,
     MockEncryptedRoom,
@@ -57,7 +58,7 @@ async def test_room_send_parameters():
     # Simulate a room_send call
     await mock_client.room_send(
         room_id="!test:example.org",
-        message_type="m.room.message",
+        message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
         content={"msgtype": "m.text", "body": "Test"},
         ignore_unverified_devices=True,
     )

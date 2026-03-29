@@ -1,5 +1,4 @@
 import asyncio
-import re
 from typing import Any
 
 from meshtastic.mesh_interface import BROADCAST_NUM
@@ -13,9 +12,13 @@ from nio import (
     RoomMessageText,
 )
 
-from mmrelay.constants.formats import TEXT_MESSAGE_APP
-from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
-from mmrelay.constants.plugins import MAX_PUNCTUATION_LENGTH
+from mmrelay.constants.formats import DEFAULT_CHANNEL, TEXT_MESSAGE_APP
+from mmrelay.constants.messages import (
+    PING_FALLBACK_RESPONSE,
+    PING_MATRIX_RESPONSE,
+    PORTNUM_TEXT_MESSAGE_APP,
+)
+from mmrelay.constants.plugins import MAX_PUNCTUATION_LENGTH, PING_COMMAND_REGEX
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -99,10 +102,12 @@ class Plugin(BasePlugin):
             return False
 
         message = packet["decoded"]["text"].strip()
-        channel = packet.get("channel", 0)  # Default to channel 0 if not provided
+        channel = packet.get(
+            "channel", DEFAULT_CHANNEL
+        )  # Default to channel 0 if not provided
 
         # Updated regex to match optional punctuation before and after "ping"
-        match = re.search(r"(?<!\w)([!?]*)(ping)([!?]*)(?!\w)", message, re.IGNORECASE)
+        match = PING_COMMAND_REGEX.search(message)
 
         if not match:
             return False
@@ -150,7 +155,7 @@ class Plugin(BasePlugin):
 
         # Construct reply message
         reply_message = (
-            "Pong..."
+            PING_FALLBACK_RESPONSE
             if total_punc_length > MAX_PUNCTUATION_LENGTH
             else pre_punc + base_response + post_punc
         )
@@ -205,7 +210,7 @@ class Plugin(BasePlugin):
         full_message: str,
     ) -> bool:
         """
-        Reply "pong!" in the Matrix room when the event matches this plugin's trigger.
+        Reply with the configured ping response in the Matrix room when the event matches this plugin's trigger.
 
         Parameters:
             room (MatrixRoom): The room containing the event; used to determine the target room_id for the reply.
@@ -220,5 +225,5 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        await self.send_matrix_message(room.room_id, "pong!")
+        await self.send_matrix_message(room.room_id, PING_MATRIX_RESPONSE)
         return True

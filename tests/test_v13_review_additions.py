@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
+from mmrelay.constants.app import CONFIG_FILENAME
 from mmrelay.migrate import (
     _cleanup_lock_file,
     _is_mmrelay_running,
@@ -52,7 +53,7 @@ class TestPathsGaps:
                 paths = get_config_paths()
                 path_strs = [str(p) for p in paths]
                 # We expect C:\legacy\appdata\config.yaml to be in candidates
-                assert any("legacy" in s and "config.yaml" in s for s in path_strs)
+                assert any("legacy" in s and CONFIG_FILENAME in s for s in path_strs)
 
     def test_get_legacy_dirs_docker(self):
         """Test detection of Docker legacy paths."""
@@ -69,7 +70,7 @@ class TestPathsGaps:
                 with patch("mmrelay.paths.Path.home", return_value=Path("/home/user")):
                     with patch(
                         "mmrelay.paths.platformdirs.user_data_dir",
-                        return_value="/tmp/noexist",
+                        return_value=os.path.join(tempfile.gettempdir(), "noexist"),
                     ):
                         legacy = get_legacy_dirs()
                         assert Path("/data") in legacy
@@ -137,7 +138,7 @@ class TestMigrateGaps:
     @patch("mmrelay.migrate.atexit.register")
     def test_register_lock_cleanup(self, mock_atexit, mock_signal):
         """Test registration of lock cleanup handlers."""
-        lock_path = Path("/tmp/migrate.lock")
+        lock_path = Path(tempfile.gettempdir()) / "migrate.lock"
         _register_lock_cleanup(lock_path)
 
         mock_atexit.assert_called_once()

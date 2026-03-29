@@ -10,7 +10,6 @@ import logging
 import math
 import os
 import platform
-import re
 import shutil
 import sys
 from collections.abc import Mapping
@@ -35,13 +34,32 @@ from mmrelay.config import (
     set_secure_file_permissions,
     validate_yaml_syntax,
 )
-from mmrelay.constants.app import WINDOWS_PLATFORM
+from mmrelay.constants.app import (
+    DISK_SPACE_CRITICAL_DATABASE_GB,
+    DISK_SPACE_OK_GB,
+    DISK_SPACE_WARN_GB,
+    WINDOWS_PLATFORM,
+)
+from mmrelay.constants.cli import (
+    FORBIDDEN_HOME_DIRECTORIES_UNIX,
+    WINDOWS_FORBIDDEN_HOME_ENV_KEYS,
+)
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
     CONFIG_KEY_BOT_USER_ID,
+    CONFIG_KEY_DEVICE_ID,
     CONFIG_KEY_HOMESERVER,
+    CONFIG_KEY_PASSWORD,
+    CONFIG_SECTION_DATABASE_LEGACY,
     CONFIG_SECTION_MATRIX,
     CONFIG_SECTION_MESHTASTIC,
+    REQUIRED_CREDENTIALS_KEYS,
+)
+from mmrelay.constants.formats import (
+    HOSTNAME_PATTERN,
+    MAC_ADDRESS_PATTERN,
+    UNIX_SERIAL_PORT_PATTERN,
+    WINDOWS_SERIAL_PORT_PATTERN,
 )
 from mmrelay.constants.network import (
     CONFIG_KEY_BLE_ADDRESS,
@@ -52,11 +70,19 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_NETWORK,
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
+    MAX_HOSTNAME_LABEL_LENGTH,
+    MAX_HOSTNAME_LENGTH,
+    MESHTASTIC_CHANNEL_MAX,
+    MESHTASTIC_CHANNEL_MIN,
+    MINIMUM_MESSAGE_DELAY,
 )
 from mmrelay.e2ee_utils import E2EEStatus
 from mmrelay.log_utils import get_logger
 from mmrelay.paths import ensure_directories
 from mmrelay.tools import get_sample_config_path
+
+# Sentinel object for --password flag without value (prompts for password)
+_PASSWORD_PROMPT_SENTINEL = object()
 
 # Lazy-initialized logger to avoid circular imports and filesystem access during import
 _logger: logging.Logger | None = None
@@ -86,8 +112,12 @@ def _get_logger() -> logging.Logger:
         RuntimeError: If the logger could not be initialized.
     """
     global _logger
-    if _logger is None:
-        _logger = get_logger(__name__)
+    named_logger = logging.getLogger(__name__)
+    needs_refresh = _logger is None or _logger.name != __name__ or not _logger.handlers
+    if needs_refresh:
+        # Preserve temporary handlers (e.g., unittest.assertLogs) by reusing
+        # the stdlib logger when it has handlers; otherwise create via get_logger.
+        _logger = named_logger if named_logger.handlers else get_logger(__name__)
     if _logger is None:
         raise RuntimeError("Logger must be initialized")
     return _logger
@@ -191,36 +221,25 @@ def _apply_dir_overrides(args: argparse.Namespace | None) -> None:
     import mmrelay.paths
 
     expanded_home = os.path.expanduser(home_override)
-    absolute_home = os.path.abspath(expanded_home)
+    absolute_home = os.path.realpath(os.path.abspath(expanded_home))
 
     # Prevent using critical system directories as the home directory
     # Note: Only block truly critical paths - containers may use paths like /app or /data
     # Using lower-case comparison for cross-platform compatibility
     forbidden_paths = {
-        # Unix system directories
-        "/",
-        "/etc",
-        "/usr",
-        "/bin",
-        "/sbin",
-        "/boot",
-        "/dev",
-        "/proc",
-        "/sys",
+        os.path.realpath(os.path.abspath(path)).lower()
+        for path in FORBIDDEN_HOME_DIRECTORIES_UNIX
     }
     # Add Windows-specific system paths dynamically from environment variables
     # This handles cases where Windows is installed on a different drive
     if sys.platform == "win32":
-        system_root = os.environ.get("SystemRoot")
-        if system_root:
-            forbidden_paths.add(system_root.lower())
-        program_files = os.environ.get("ProgramFiles")
-        if program_files:
-            forbidden_paths.add(program_files.lower())
-        program_files_x86 = os.environ.get("ProgramFiles(x86)")
-        if program_files_x86:
-            forbidden_paths.add(program_files_x86.lower())
-    if str(absolute_home).lower() in forbidden_paths:
+        for env_key in WINDOWS_FORBIDDEN_HOME_ENV_KEYS:
+            env_value = os.environ.get(env_key)
+            if env_value:
+                forbidden_paths.add(
+                    os.path.realpath(os.path.abspath(env_value)).lower()
+                )
+    if absolute_home.lower() in forbidden_paths:
         print(
             f"Error: Setting MMRELAY_HOME to a critical system directory ('{absolute_home}') is not allowed.",
             file=sys.stderr,
@@ -387,7 +406,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     login_parser.add_argument(
         "--username",
-        help="Matrix username (with or without @ and :server). If provided, --homeserver and --password are also required.",
+        help="Matrix username localpart (recommended, e.g., bot) or full user ID (e.g., @bot:example.com). If provided, --homeserver and --password are also required.",
     )
     login_parser.add_argument(
         "--password",
@@ -409,9 +428,8 @@ def parse_arguments() -> argparse.Namespace:
     logout_parser.add_argument(
         "--password",
         nargs="?",
-        const="",
+        const=_PASSWORD_PROMPT_SENTINEL,
         help="Password for verification. If no value provided, will prompt securely.",
-        type=str,
     )
     logout_parser.add_argument(
         "-y",
@@ -536,7 +554,7 @@ def _validate_credentials_json(
     """
     Validate a Matrix credentials.json located relative to the given configuration.
 
-    Searches for a credentials.json file (honoring an explicit credentials_path in `config` when present) and verifies it contains non-empty string values for "homeserver", "access_token", and "user_id". The "device_id" field is optional; if missing, a warning is logged noting potential session tracking issues. On validation failure this function prints concise, user-facing error messages and guidance to run the authentication login flow.
+    Searches for a credentials.json file (honoring an explicit credentials_path in `config` when present) and verifies it contains non-empty string values for required auth fields ("homeserver" and "access_token"). The "user_id" and "device_id" fields are optional for legacy compatibility; a missing or invalid device_id is logged as a warning because it can impact session tracking. On validation failure this function prints concise, user-facing error messages and guidance to run the authentication login flow.
 
     Parameters:
         config_path (str): Path to the configuration file used to locate credentials.json.
@@ -587,7 +605,7 @@ def _validate_credentials_json(
             )
             continue
 
-        required_fields = ["homeserver", "access_token", "user_id"]
+        required_fields = list(REQUIRED_CREDENTIALS_KEYS)
         missing_fields = [
             field
             for field in required_fields
@@ -606,11 +624,12 @@ def _validate_credentials_json(
             continue
 
         # Optional device_id for legacy compatibility
-        if not _is_valid_non_empty_string(credentials.get("device_id")):
+        if not _is_valid_non_empty_string(credentials.get(CONFIG_KEY_DEVICE_ID)):
             _get_logger().warning(
-                "Credentials file at %s is missing 'device_id'. "
+                "Credentials file at %s is missing '%s'. "
                 "This may cause issues with session tracking.",
                 credentials_path,
+                CONFIG_KEY_DEVICE_ID,
             )
 
         return True
@@ -643,7 +662,7 @@ def _has_valid_password_auth(matrix_section: Mapping[str, Any] | None) -> bool:
     if not isinstance(matrix_section, Mapping):
         return False
 
-    pwd = matrix_section.get("password")
+    pwd = matrix_section.get(CONFIG_KEY_PASSWORD)
     homeserver = matrix_section.get(CONFIG_KEY_HOMESERVER)
     bot_user_id = matrix_section.get(CONFIG_KEY_BOT_USER_ID)
 
@@ -1067,12 +1086,11 @@ def _is_valid_serial_port(port: str) -> bool:
     if is_windows:
         # Windows: COM1, COM3, COM10, etc.
         # COM followed by one or more digits (COM1, COM10, COM100, COM1000, etc.)
-        return re.match(r"^COM\d+$", port) is not None
+        return WINDOWS_SERIAL_PORT_PATTERN.match(port) is not None
     else:
         # Linux/macOS: /dev/ttyUSB0, /dev/ttyACM0, /dev/cu.usbserial*, etc.
         # Must start with /dev/tty or /dev/cu followed by at least one character
-        linux_pattern = r"^/dev/(tty|cu).+$"
-        return re.match(linux_pattern, port) is not None
+        return UNIX_SERIAL_PORT_PATTERN.match(port) is not None
 
 
 def _is_valid_host(host: str) -> bool:
@@ -1097,17 +1115,16 @@ def _is_valid_host(host: str) -> bool:
 
     # Validate as hostname (alphanumeric with hyphens and dots)
     # RFC 952 and RFC 1123 hostname rules
-    hostname_pattern = r"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$"
-    if not re.match(hostname_pattern, host):
+    if not HOSTNAME_PATTERN.match(host):
         return False
 
     # Check length limits (hostname max 253 chars, each label max 63)
-    if len(host) > 253:
+    if len(host) > MAX_HOSTNAME_LENGTH:
         return False
 
     labels = host.split(".")
     for label in labels:
-        if len(label) > 63 or len(label) == 0:
+        if len(label) > MAX_HOSTNAME_LABEL_LENGTH or len(label) == 0:
             return False
 
     return True
@@ -1130,8 +1147,7 @@ def _is_valid_ble_address(address: str) -> bool:
         return False
 
     # Check for standard MAC address: AA:BB:CC:DD:EE:FF (6 groups of 2 hex chars)
-    mac_pattern = r"^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
-    if re.match(mac_pattern, trimmed_address):
+    if MAC_ADDRESS_PATTERN.match(trimmed_address):
         return True
 
     # Device name: non-empty string without colons (to avoid confusion with MAC)
@@ -1207,7 +1223,8 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                 # Check matrix section requirements based on credentials.json availability
                 if has_valid_credentials:
                     # With credentials.json, no matrix section fields are required
-                    # (homeserver, access_token, user_id, device_id all come from credentials.json)
+                    # (homeserver/access_token come from credentials.json; user_id/device_id may be
+                    # absent and recovered at runtime via whoami/store)
                     if CONFIG_SECTION_MATRIX not in config:
                         # Create empty matrix section if missing - no fields required
                         config[CONFIG_SECTION_MATRIX] = {}
@@ -1248,7 +1265,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             CONFIG_KEY_BOT_USER_ID,
                         ]
                         token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
-                        pwd = matrix_section.get("password")
+                        pwd = matrix_section.get(CONFIG_KEY_PASSWORD)
                         has_token = _is_valid_non_empty_string(token)
                         # Allow explicitly empty password strings; require the value to be a string
                         # (reject unquoted numeric types)
@@ -1346,22 +1363,25 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             f"Error: Room {room['id']} is missing the 'meshtastic_channel' field"
                         )
                         print(
-                            "   Add the 'meshtastic_channel' field (0-7 for primary channels):"
+                            f"   Add the 'meshtastic_channel' field ({MESHTASTIC_CHANNEL_MIN}-{MESHTASTIC_CHANNEL_MAX} for primary channels):"
                         )
                         print(f'     - id: "{room["id"]}"')
-                        print("       meshtastic_channel: 0")
+                        print(f"       meshtastic_channel: {MESHTASTIC_CHANNEL_MIN}")
                         return False
 
                     meshtastic_channel = room["meshtastic_channel"]
                     if (
-                        not isinstance(meshtastic_channel, int)
-                        or not 0 <= meshtastic_channel <= 7
+                        isinstance(meshtastic_channel, bool)
+                        or not isinstance(meshtastic_channel, int)
+                        or not MESHTASTIC_CHANNEL_MIN
+                        <= meshtastic_channel
+                        <= MESHTASTIC_CHANNEL_MAX
                     ):
                         print(
                             f"Error: Room {room['id']} has invalid 'meshtastic_channel' value: {meshtastic_channel}"
                         )
                         print(
-                            "   meshtastic_channel must be a non-negative integer (0-7 for primary channels)"
+                            f"   meshtastic_channel must be a non-negative integer ({MESHTASTIC_CHANNEL_MIN}-{MESHTASTIC_CHANNEL_MAX} for primary channels)"
                         )
                         return False
 
@@ -1555,9 +1575,9 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             return False
 
                         # Special validation for message_delay
-                        if option == "message_delay" and value < 2.0:
+                        if option == "message_delay" and value < MINIMUM_MESSAGE_DELAY:
                             print(
-                                f"Error: 'message_delay' must be at least 2.0 seconds (firmware limitation), got: {value}",
+                                f"Error: 'message_delay' must be at least {MINIMUM_MESSAGE_DELAY} seconds (firmware limitation), got: {value}",
                                 file=sys.stderr,
                             )
                             return False
@@ -1577,7 +1597,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                         print(warning)
 
                 # Check for deprecated db section
-                if "db" in config:
+                if CONFIG_SECTION_DATABASE_LEGACY in config:
                     print(
                         "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
                         file=sys.stderr,
@@ -2050,11 +2070,15 @@ def _print_system_health(paths_info: dict[str, Any]) -> None:
             free_gb = usage.free / (1024**3)
             total_gb = usage.total / (1024**3)
             used_pct = (usage.used / usage.total) * 100
-            status = "✅" if free_gb > 1 else "⚠️" if free_gb > 0.1 else "❌"
+            status = (
+                "✅"
+                if free_gb >= DISK_SPACE_OK_GB
+                else "⚠️" if free_gb >= DISK_SPACE_WARN_GB else "❌"
+            )
             print(
                 f"   {status} {free_gb:.1f} GB free of {total_gb:.1f} GB ({used_pct:.0f}% used)"
             )
-            if free_gb < 0.5:
+            if free_gb <= DISK_SPACE_CRITICAL_DATABASE_GB:
                 print("       ⚠️  Low disk space - database/logs may fail")
         else:
             print("   ⚠️  HOME directory not accessible")
@@ -2262,11 +2286,20 @@ def handle_auth_status(args: argparse.Namespace) -> int:
                 with open(credentials_path, "r", encoding="utf-8") as f:
                     credentials = json.load(f)
 
-                required = ("homeserver", "access_token", "user_id")
-                if not all(
-                    isinstance(credentials.get(k), str) and credentials.get(k).strip()
-                    for k in required
-                ):
+                if not isinstance(credentials, dict):
+                    print(
+                        f"⚠️  Skipping invalid credentials.json at {credentials_path} "
+                        "(top-level JSON must be an object)"
+                    )
+                    continue
+
+                required = REQUIRED_CREDENTIALS_KEYS
+                missing_required = [
+                    key
+                    for key in required
+                    if not _is_valid_non_empty_string(credentials.get(key))
+                ]
+                if missing_required:
                     print(
                         f"⚠️  Skipping invalid credentials.json at {credentials_path} "
                         "(missing required fields)"
@@ -2274,11 +2307,11 @@ def handle_auth_status(args: argparse.Namespace) -> int:
                     continue
 
                 if not (
-                    isinstance(credentials.get("device_id"), str)
-                    and credentials["device_id"].strip()
+                    isinstance(credentials.get(CONFIG_KEY_DEVICE_ID), str)
+                    and credentials[CONFIG_KEY_DEVICE_ID].strip()
                 ):
                     print(
-                        f"⚠️  credentials.json at {credentials_path} is missing 'device_id' "
+                        f"⚠️  credentials.json at {credentials_path} is missing '{CONFIG_KEY_DEVICE_ID}' "
                         "(may cause session tracking issues)"
                     )
             except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
@@ -2289,8 +2322,24 @@ def handle_auth_status(args: argparse.Namespace) -> int:
             else:
                 print(f"✅ Found credentials.json at: {credentials_path}")
                 print(f"   Homeserver: {credentials.get('homeserver')}")
-                print(f"   User ID: {credentials.get('user_id')}")
-                print(f"   Device ID: {credentials.get('device_id')}")
+                user_id_value = credentials.get("user_id")
+                user_id_display = (
+                    user_id_value
+                    if _is_valid_non_empty_string(user_id_value)
+                    else "<missing>"
+                )
+                device_id_value = credentials.get(CONFIG_KEY_DEVICE_ID)
+                device_id_display = (
+                    device_id_value
+                    if _is_valid_non_empty_string(device_id_value)
+                    else "<missing>"
+                )
+                print(f"   User ID: {user_id_display}")
+                print(f"   Device ID: {device_id_display}")
+                if user_id_display == "<missing>":
+                    print(
+                        "   Note: user_id is optional and can be recovered at runtime via whoami."
+                    )
                 return 0
 
     print("❌ No credentials.json found")
@@ -2332,23 +2381,20 @@ def handle_auth_logout(args: argparse.Namespace) -> int:
         # Handle password input
         password = getattr(args, "password", None)
 
-        if (
-            password is None
-            or password
-            == ""  # nosec B105 (user-entered secret; prompting securely via getpass)
-        ):
-            # No --password flag or --password with no value, prompt securely
+        if password is None or password is _PASSWORD_PROMPT_SENTINEL:
+            # No --password flag (None) or bare --password (sentinel), prompt securely
             import getpass
 
             password = getpass.getpass("Enter Matrix password for verification: ")
-        else:
-            # --password VALUE provided, warn about security
+        elif password:
+            # --password VALUE provided (non-empty), warn about security
             print(
                 "⚠️  Warning: Supplying password as argument exposes it in shell history and process list."
             )
             print(
                 "   For better security, use --password without a value to prompt securely."
             )
+        # else: password is empty string "", accept without warning (user explicitly provided empty)
 
         # Confirm the action unless forced
         if not getattr(args, "yes", False):

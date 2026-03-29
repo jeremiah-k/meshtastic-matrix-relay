@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from mmrelay.constants.app import CREDENTIALS_FILENAME
+from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID, CONFIG_KEY_USER_ID
 from mmrelay.matrix_utils import MatrixAuthInfo, _perform_matrix_login
 
 
@@ -34,7 +36,7 @@ def mock_client():
 async def test_whoami_discovers_missing_device_id(mock_client, tmp_path):
     """Test that whoami is called to discover missing device_id and credentials are updated."""
     access_token = secrets.token_hex(16)
-    credentials_path = str(tmp_path / "credentials.json")
+    credentials_path = str(tmp_path / CREDENTIALS_FILENAME)
     auth_info = MatrixAuthInfo(
         homeserver="https://matrix.org",
         access_token=access_token,
@@ -64,7 +66,7 @@ async def test_whoami_discovers_missing_device_id(mock_client, tmp_path):
             assert discovered_device_id == "DISCOVERED_DEVICE"
             mock_client.whoami.assert_awaited_once()
             # Credentials should be updated with device_id
-            assert auth_info.credentials["device_id"] == "DISCOVERED_DEVICE"
+            assert auth_info.credentials[CONFIG_KEY_DEVICE_ID] == "DISCOVERED_DEVICE"
             mock_save.assert_called_once_with(
                 auth_info.credentials, credentials_path=auth_info.credentials_path
             )
@@ -80,7 +82,7 @@ async def test_whoami_discovers_missing_device_id(mock_client, tmp_path):
 async def test_user_id_mismatch_handles_gracefully(mock_client, tmp_path):
     """Test that user_id mismatch between credentials and whoami is handled by preferring whoami."""
     access_token = secrets.token_hex(16)
-    credentials_path = str(tmp_path / "credentials.json")
+    credentials_path = str(tmp_path / CREDENTIALS_FILENAME)
     auth_info = MatrixAuthInfo(
         homeserver="https://matrix.org",
         access_token=access_token,
@@ -113,7 +115,9 @@ async def test_user_id_mismatch_handles_gracefully(mock_client, tmp_path):
                     for call in mock_logger.warning.call_args_list
                 )
                 # Credentials should be updated to correct user_id
-                assert auth_info.credentials["user_id"] == "@correct:matrix.org"
+                assert (
+                    auth_info.credentials[CONFIG_KEY_USER_ID] == "@correct:matrix.org"
+                )
                 # client.user_id should be updated
                 assert mock_client.user_id == "@correct:matrix.org"
 
@@ -122,7 +126,7 @@ async def test_user_id_mismatch_handles_gracefully(mock_client, tmp_path):
 async def test_whoami_failure_handles_gracefully(mock_client, tmp_path):
     """Test that whoami failure is handled gracefully with a warning."""
     access_token = secrets.token_hex(16)
-    credentials_path = str(tmp_path / "credentials.json")
+    credentials_path = str(tmp_path / CREDENTIALS_FILENAME)
     auth_info = MatrixAuthInfo(
         homeserver="https://matrix.org",
         access_token=access_token,
@@ -148,6 +152,36 @@ async def test_whoami_failure_handles_gracefully(mock_client, tmp_path):
             for call in mock_logger.warning.call_args_list
         )
         # Login session restoration should NOT be called because we don't have a device_id
+        mock_client.restore_login.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_whoami_oserror_handles_gracefully(mock_client, tmp_path):
+    """OSError during whoami should be treated as best-effort discovery failure."""
+    access_token = secrets.token_hex(16)
+    credentials_path = str(tmp_path / CREDENTIALS_FILENAME)
+    auth_info = MatrixAuthInfo(
+        homeserver="https://matrix.org",
+        access_token=access_token,
+        user_id="@test:matrix.org",
+        device_id=None,
+        credentials={
+            "homeserver": "https://matrix.org",
+            "user_id": "@test:matrix.org",
+            "access_token": access_token,
+        },
+        credentials_path=credentials_path,
+    )
+
+    mock_client.whoami.side_effect = OSError("TLS handshake failed")
+
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        await _perform_matrix_login(mock_client, auth_info)
+
+        assert any(
+            "Failed to discover device_id via whoami" in call.args[0]
+            for call in mock_logger.warning.call_args_list
+        )
         mock_client.restore_login.assert_not_called()
 
 

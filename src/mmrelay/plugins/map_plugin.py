@@ -1,30 +1,73 @@
 import asyncio
 import importlib
-import os
 import re
-from typing import Any, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
-import PIL.ImageDraw
 import s2sphere
 import staticmaps
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (
-    AsyncClient,
     MatrixRoom,
     ReactionEvent,
     RoomMessageEmote,
     RoomMessageNotice,
     RoomMessageText,
 )
-from PIL import Image as PILImage, ImageFont, ImageDraw as _PILImageDraw
+from PIL import Image as PILImage
+from PIL import ImageDraw as _PILImageDraw
+from PIL import ImageFont
 
+from mmrelay.constants.formats import (
+    DEFAULT_LABEL_FONT_SIZE,
+    DEFAULT_MAP_ZOOM,
+    LABEL_ARROW_SIZE_PX,
+    LABEL_MARGIN_PX,
+    MAP_IMAGE_FILENAME,
+    MAP_LABEL_FILL_COLOR,
+    MAP_LABEL_FONT_FAMILY,
+    MAP_LABEL_FONT_FILE,
+    MAP_LABEL_FONT_SIZE,
+    MAP_LABEL_OUTLINE_COLOR,
+    MAP_LABEL_OUTLINE_WIDTH,
+    MAP_LABEL_TEXT_COLOR,
+    MAP_ZOOM_MAX,
+    MAP_ZOOM_MIN,
+    RGBA_CHANNEL_MAX,
+)
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
 from mmrelay.constants.plugins import (
-    S2_PRECISION_BITS_TO_METERS_CONSTANT,
     MAX_MAP_IMAGE_SIZE,
+    S2_PRECISION_BITS_TO_METERS_CONSTANT,
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.plugins.base_plugin import BasePlugin
+
+
+def _normalize_rgba(
+    color: tuple[int, int, int, int],
+) -> tuple[float, float, float, float]:
+    red, green, blue, alpha = color
+    return (
+        red / RGBA_CHANNEL_MAX,
+        green / RGBA_CHANNEL_MAX,
+        blue / RGBA_CHANNEL_MAX,
+        alpha / RGBA_CHANNEL_MAX,
+    )
+
+
+# Cairo colors (normalized RGBA 0-1) derived from RGBA constants
+CAIRO_LABEL_FILL_COLOR = _normalize_rgba(MAP_LABEL_FILL_COLOR)
+CAIRO_LABEL_OUTLINE_COLOR = _normalize_rgba(MAP_LABEL_OUTLINE_COLOR)
+CAIRO_LABEL_TEXT_COLOR = _normalize_rgba(MAP_LABEL_TEXT_COLOR)
+
+# SVG colors (hex) and opacities derived from RGBA constants
+SVG_LABEL_FILL_COLOR = f"#{MAP_LABEL_FILL_COLOR[0]:02x}{MAP_LABEL_FILL_COLOR[1]:02x}{MAP_LABEL_FILL_COLOR[2]:02x}"
+SVG_LABEL_OUTLINE_COLOR = f"#{MAP_LABEL_OUTLINE_COLOR[0]:02x}{MAP_LABEL_OUTLINE_COLOR[1]:02x}{MAP_LABEL_OUTLINE_COLOR[2]:02x}"
+SVG_LABEL_TEXT_COLOR = f"#{MAP_LABEL_TEXT_COLOR[0]:02x}{MAP_LABEL_TEXT_COLOR[1]:02x}{MAP_LABEL_TEXT_COLOR[2]:02x}"
+SVG_LABEL_FILL_OPACITY = MAP_LABEL_FILL_COLOR[3] / float(RGBA_CHANNEL_MAX)
+SVG_LABEL_OUTLINE_OPACITY = MAP_LABEL_OUTLINE_COLOR[3] / float(RGBA_CHANNEL_MAX)
+SVG_LABEL_TEXT_OPACITY = MAP_LABEL_TEXT_COLOR[3] / float(RGBA_CHANNEL_MAX)
 
 
 def precision_bits_to_meters(bits: int) -> float | None:
@@ -90,21 +133,26 @@ _PILImageDraw.ImageDraw.textsize = textsize  # type: ignore[attr-defined]
 
 
 class TextLabel(staticmaps.Object):  # type: ignore[misc]
-    def __init__(self, latlng: s2sphere.LatLng, text: str, fontSize: int = 12) -> None:
+    def __init__(
+        self,
+        latlng: s2sphere.LatLng,
+        text: str,
+        font_size: int = DEFAULT_LABEL_FONT_SIZE,
+    ) -> None:
         """
         Initialize a TextLabel anchored at a geographic LatLng with the provided text and font size.
 
         Parameters:
             latlng (s2sphere.LatLng): Geographic anchor point for the label.
             text (str): Label text to render.
-            fontSize (int): Font size in pixels used for rendering (default 12).
+            font_size (int): Font size in pixels used for rendering (default DEFAULT_LABEL_FONT_SIZE).
         """
         staticmaps.Object.__init__(self)
         self._latlng = latlng
         self._text = text
-        self._margin = 4
-        self._arrow = 16
-        self._font_size = fontSize
+        self._margin = LABEL_MARGIN_PX
+        self._arrow = LABEL_ARROW_SIZE_PX
+        self._font_size = font_size
 
     def latlng(self) -> s2sphere.LatLng:
         return self._latlng
@@ -133,7 +181,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         """
         Render a balloon marker with an arrow and centered text at the object's geographic location using a Pillow renderer.
 
-        Draws a white-filled balloon with a red outline and black centered text; the renderer converts the label's latitude/longitude to pixel coordinates and provides the drawing context.
+        Draws a balloon with colors from MAP_LABEL_FILL_COLOR, MAP_LABEL_OUTLINE_COLOR, and MAP_LABEL_TEXT_COLOR constants; the renderer converts the label's latitude/longitude to pixel coordinates and provides the drawing context, offsets used to position and paint the label.
 
         Parameters:
             renderer (staticmaps.PillowRenderer): Renderer that provides coordinate transformation, drawing surface, and offsets used to position and paint the label.
@@ -141,8 +189,20 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         x, y = renderer.transformer().ll2pixel(self.latlng())
         x = x + renderer.offset_x()
 
-        # Updated to use textbbox instead of textsize
-        bbox = renderer.draw().textbbox((0, 0), self._text)
+        try:
+            font = ImageFont.truetype(MAP_LABEL_FONT_FILE, self._font_size)
+        except OSError:
+            logger.debug("Failed to load font %s, using default", MAP_LABEL_FONT_FILE)
+            try:
+                font = ImageFont.load_default(size=self._font_size)
+            except TypeError:
+                logger.warning(
+                    "Pillow version does not support sized default font; "
+                    "text may appear smaller than expected"
+                )
+                font = ImageFont.load_default()
+
+        bbox = renderer.draw().textbbox((0, 0), self._text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         w = max(self._arrow, tw + 2 * self._margin)
         h = th + 2 * self._margin
@@ -157,12 +217,18 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
             (x - self._arrow / 2, y - self._arrow),
         ]
 
-        renderer.draw().polygon(path, fill=(255, 255, 255, 255))
-        renderer.draw().line(path, fill=(255, 0, 0, 255))
+        closed_path = [*path, path[0]]
+        renderer.draw().polygon(path, fill=MAP_LABEL_FILL_COLOR)
+        renderer.draw().line(
+            closed_path,
+            fill=MAP_LABEL_OUTLINE_COLOR,
+            width=MAP_LABEL_OUTLINE_WIDTH,
+        )
         renderer.draw().text(
             (x - tw / 2, y - self._arrow - h / 2 - th / 2),
             self._text,
-            fill=(0, 0, 0, 255),
+            fill=MAP_LABEL_TEXT_COLOR,
+            font=font,
         )
 
     def render_cairo(self, renderer: staticmaps.CairoRenderer) -> None:
@@ -181,7 +247,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
 
         ctx = renderer.context()
         ctx.select_font_face(
-            "Sans",
+            MAP_LABEL_FONT_FAMILY,
             getattr(cairo, "FONT_SLANT_NORMAL", 0),
             getattr(cairo, "FONT_WEIGHT_NORMAL", 0),
         )
@@ -202,28 +268,26 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
             (x - self._arrow / 2, y - self._arrow),
         ]
 
-        ctx.set_source_rgb(1, 1, 1)
+        ctx.set_source_rgba(*CAIRO_LABEL_FILL_COLOR)
         ctx.new_path()
         for p in path:
             ctx.line_to(*p)
         ctx.close_path()
         ctx.fill()
 
-        ctx.set_source_rgb(1, 0, 0)
-        ctx.set_line_width(1)
+        ctx.set_source_rgba(*CAIRO_LABEL_OUTLINE_COLOR)
+        ctx.set_line_width(MAP_LABEL_OUTLINE_WIDTH)
         ctx.new_path()
         for p in path:
             ctx.line_to(*p)
         ctx.close_path()
         ctx.stroke()
 
-        ctx.set_source_rgb(0, 0, 0)
-        ctx.set_line_width(1)
+        ctx.set_source_rgba(*CAIRO_LABEL_TEXT_COLOR)
         ctx.move_to(
             x - tw / 2 - x_bearing, y - self._arrow - h / 2 - y_bearing - th / 2
         )
         ctx.show_text(self._text)
-        ctx.stroke()
 
     def render_svg(self, renderer: staticmaps.SvgRenderer) -> None:
         """
@@ -242,10 +306,11 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         h = th + 2 * self._margin
 
         path = renderer.drawing().path(
-            fill="#ffffff",
-            stroke="#ff0000",
-            stroke_width=1,
-            opacity=1.0,
+            fill=SVG_LABEL_FILL_COLOR,
+            fill_opacity=SVG_LABEL_FILL_OPACITY,
+            stroke=SVG_LABEL_OUTLINE_COLOR,
+            stroke_opacity=SVG_LABEL_OUTLINE_OPACITY,
+            stroke_width=MAP_LABEL_OUTLINE_WIDTH,
         )
         path.push(f"M {x} {y}")
         path.push(f" l {self._arrow / 2} {-self._arrow}")
@@ -263,9 +328,10 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
                 text_anchor="middle",
                 dominant_baseline="central",
                 insert=(x, y - self._arrow - h / 2),
-                font_family="sans-serif",
+                font_family=MAP_LABEL_FONT_FAMILY,
                 font_size=f"{self._font_size}px",
-                fill="#000000",
+                fill=SVG_LABEL_TEXT_COLOR,
+                fill_opacity=SVG_LABEL_TEXT_OPACITY,
             )
         )
 
@@ -338,7 +404,9 @@ def get_map(
                     color=color_cls(0, 0, 0, 64),
                 )
             )
-        context.add_object(TextLabel(radio, str(location["label"]), fontSize=50))
+        context.add_object(
+            TextLabel(radio, str(location["label"]), font_size=MAP_LABEL_FONT_SIZE)
+        )
 
     # render non-anti-aliased png
     if image_size:
@@ -358,11 +426,11 @@ class Plugin(BasePlugin):
 
     Commands:
         !map: Generate map with default settings
-        !map zoom=N: Set zoom level (0-30)
+        !map zoom=N: Set zoom level
         !map size=W,H: Set image dimensions (max 1000x1000)
 
     Configuration:
-        zoom (int): Default zoom level (default: 8)
+        zoom (int): Default zoom level (default: 12)
         image_width/image_height (int): Default image size (default: 1000x1000)
         anonymize (bool): Deprecated; coordinates are not altered by this plugin.
         radius (int): Deprecated; retained for backward compatibility.
@@ -417,7 +485,7 @@ class Plugin(BasePlugin):
     def get_matrix_commands(self) -> list[str]:
         """
         List the Matrix command names registered by this plugin.
-        
+
         Returns:
             list[str]: Command names the plugin handles; empty list if the plugin has no configured name.
         """
@@ -473,15 +541,19 @@ class Plugin(BasePlugin):
         image_size = size_match.groups() if size_match else (None, None)
 
         try:
+            configured_zoom = int(self.config.get("zoom", DEFAULT_MAP_ZOOM))
+        except (TypeError, ValueError):
+            configured_zoom = DEFAULT_MAP_ZOOM
+        if not MAP_ZOOM_MIN <= configured_zoom <= MAP_ZOOM_MAX:
+            configured_zoom = DEFAULT_MAP_ZOOM
+
+        try:
             zoom = int(zoom)  # type: ignore[arg-type]
         except (TypeError, ValueError):
-            try:
-                zoom = int(self.config.get("zoom", 8))
-            except (TypeError, ValueError):
-                zoom = 8
+            zoom = configured_zoom
 
-        if not 0 <= zoom <= 30:
-            zoom = 8
+        if not MAP_ZOOM_MIN <= zoom <= MAP_ZOOM_MAX:
+            zoom = configured_zoom
 
         try:
             image_size = (int(image_size[0]), int(image_size[1]))  # type: ignore[arg-type]
@@ -568,17 +640,19 @@ class Plugin(BasePlugin):
         )
 
         try:
-            await send_image(matrix_client, room.room_id, pillow_image, "location.png")
+            await send_image(
+                matrix_client, room.room_id, pillow_image, MAP_IMAGE_FILENAME
+            )
         except ImageUploadError:
             self.logger.exception("Failed to send map image")
             await matrix_client.room_send(
                 room_id=room.room_id,
-                message_type="m.room.message",
+                message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
                 content={
                     "msgtype": "m.notice",
                     "body": "Failed to generate map: Image upload failed.",
                 },
             )
-            return False
+            return True
 
         return True

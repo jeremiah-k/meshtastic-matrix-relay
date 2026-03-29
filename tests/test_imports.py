@@ -12,6 +12,13 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
+from mmrelay.constants.config import (
+    CONFIG_KEY_PREFIX_ENABLED,
+    CONFIG_SECTION_MATRIX,
+    CONFIG_SECTION_MESHTASTIC,
+)
+
+
 def test_basic_imports():
     """
     Verify that core project modules and functions can be imported and are accessible under the mocking setup.
@@ -49,12 +56,12 @@ def test_prefix_functions():
     from mmrelay.matrix_utils import get_matrix_prefix, get_meshtastic_prefix
 
     # Test meshtastic prefix
-    config = {"meshtastic": {"prefix_enabled": True}}
+    config = {CONFIG_SECTION_MESHTASTIC: {CONFIG_KEY_PREFIX_ENABLED: True}}
     prefix = get_meshtastic_prefix(config, "TestUser")
     assert isinstance(prefix, str)
 
     # Test matrix prefix
-    matrix_config = {"matrix": {"prefix_enabled": True}}
+    matrix_config = {CONFIG_SECTION_MATRIX: {CONFIG_KEY_PREFIX_ENABLED: True}}
     matrix_prefix = get_matrix_prefix(
         matrix_config, "TestLong", "TestShort", "TestMesh"
     )

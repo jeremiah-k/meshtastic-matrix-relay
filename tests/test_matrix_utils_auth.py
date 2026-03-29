@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -8,6 +10,7 @@ import pytest
 
 from mmrelay.cli_utils import _cleanup_local_session_data, logout_matrix_bot
 from mmrelay.config import get_e2ee_store_dir, load_credentials, save_credentials
+from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 from mmrelay.matrix_utils import (
     NioLocalTransportError,
     _can_auto_create_credentials,
@@ -154,7 +157,7 @@ async def test_connect_matrix_alias_resolution_success(
             "homeserver": "https://matrix.org",
             "access_token": "test_token",
             "user_id": "@test:matrix.org",
-            "device_id": "test_device_id",
+            CONFIG_KEY_DEVICE_ID: "test_device_id",
         }
 
         mock_client_instance = MagicMock()
@@ -252,7 +255,7 @@ async def test_connect_matrix_alias_resolution_failure(
             "homeserver": "https://matrix.org",
             "access_token": "test_token",
             "user_id": "@test:matrix.org",
-            "device_id": "test_device_id",
+            CONFIG_KEY_DEVICE_ID: "test_device_id",
         }
 
         mock_client_instance = MagicMock()
@@ -361,7 +364,7 @@ async def test_connect_matrix_with_e2ee_credentials(
         "homeserver": "https://matrix.example.org",
         "user_id": "@bot:example.org",
         "access_token": "test_token",
-        "device_id": "TEST_DEVICE",
+        CONFIG_KEY_DEVICE_ID: "TEST_DEVICE",
     }
     mock_listdir.return_value = ["test.db"]
     mock_ssl_context.return_value = MagicMock()
@@ -926,7 +929,7 @@ async def test_logout_matrix_bot_password_verification_success():
         "homeserver": "https://matrix.org",
         "user_id": "@test:matrix.org",
         "access_token": "test_token",
-        "device_id": "test_device",
+        CONFIG_KEY_DEVICE_ID: "test_device",
     }
 
     with (
@@ -968,7 +971,7 @@ async def test_logout_matrix_bot_password_verification_failure():
         "homeserver": "https://matrix.org",
         "user_id": "@test:matrix.org",
         "access_token": "test_token",
-        "device_id": "test_device",
+        CONFIG_KEY_DEVICE_ID: "test_device",
     }
 
     with (
@@ -998,7 +1001,7 @@ async def test_logout_matrix_bot_server_logout_failure():
         "homeserver": "https://matrix.org",
         "user_id": "@test:matrix.org",
         "access_token": "test_token",
-        "device_id": "test_device",
+        CONFIG_KEY_DEVICE_ID: "test_device",
     }
 
     with (
@@ -1056,7 +1059,7 @@ def test_load_credentials_success(
         "homeserver": "https://matrix.example.org",
         "user_id": "@bot:example.org",
         "access_token": "test_token",
-        "device_id": "TEST_DEVICE",
+        CONFIG_KEY_DEVICE_ID: "TEST_DEVICE",
     }
 
     credentials = load_credentials()
@@ -1065,7 +1068,7 @@ def test_load_credentials_success(
     assert credentials["homeserver"] == "https://matrix.example.org"
     assert credentials["user_id"] == "@bot:example.org"
     assert credentials["access_token"] == "test_token"
-    assert credentials["device_id"] == "TEST_DEVICE"
+    assert credentials[CONFIG_KEY_DEVICE_ID] == "TEST_DEVICE"
 
 
 @patch("mmrelay.config.get_credentials_path")
@@ -1107,7 +1110,7 @@ def test_save_credentials(
         "homeserver": "https://matrix.example.org",
         "user_id": "@bot:example.org",
         "access_token": "test_token",
-        "device_id": "TEST_DEVICE",
+        CONFIG_KEY_DEVICE_ID: "TEST_DEVICE",
     }
 
     try:
@@ -1242,7 +1245,7 @@ async def test_logout_matrix_bot_missing_user_id_fetch_success():
     mock_credentials = {
         "homeserver": "https://matrix.org",
         "access_token": "test_token",
-        "device_id": "test_device",
+        CONFIG_KEY_DEVICE_ID: "test_device",
     }
 
     with (
@@ -1302,7 +1305,7 @@ async def test_logout_matrix_bot_timeout():
         "homeserver": "https://matrix.org",
         "user_id": "@test:matrix.org",
         "access_token": "test_token",
-        "device_id": "test_device",
+        CONFIG_KEY_DEVICE_ID: "test_device",
     }
 
     with (
@@ -1351,32 +1354,27 @@ async def test_login_matrix_bot_uses_loaded_config_for_save_path(
     mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
     mock_main_client.close = AsyncMock()
 
-    loaded_config = {"matrix": {"credentials_path": "/tmp/explicit-creds.json"}}
+    tmpdir = tempfile.gettempdir()
+    credentials_path = os.path.join(tmpdir, "test-creds.json")
+    loaded_config = {"matrix": {"credentials_path": credentials_path}}
     resolved_configs = []
 
-    def _capture_resolve_config(config_data):
+    def _capture_explicit_path(config):
         """
-        Capture a configuration object for test-side inspection and return a credential file path that differs on first vs subsequent calls.
+        Capture the config passed to get_explicit_credentials_path and return the test path.
 
-        Appends the provided config_data to the module-level resolved_configs list. On the first invocation returns "/tmp/existing-creds.json"; on all later invocations returns "/tmp/saved-creds.json".
-
-        Parameters:
-            config_data (Any): Configuration object to record for later inspection.
-
-        Returns:
-            str: "/tmp/existing-creds.json" for the first call, "/tmp/saved-creds.json" for subsequent calls.
+        This verifies that _resolve_credentials_save_path passes the correct config to
+        get_explicit_credentials_path, which is the real behavior being tested.
         """
-        resolved_configs.append(config_data)
-        if len(resolved_configs) == 1:
-            return "/tmp/existing-creds.json"
-        return "/tmp/saved-creds.json"
+        resolved_configs.append(config)
+        return credentials_path
 
     with (
         patch("mmrelay.config.load_config", return_value=loaded_config),
         patch("mmrelay.config.is_e2ee_enabled", return_value=False),
         patch(
-            "mmrelay.matrix_utils._resolve_credentials_save_path",
-            side_effect=_capture_resolve_config,
+            "mmrelay.matrix_utils.get_explicit_credentials_path",
+            side_effect=_capture_explicit_path,
         ),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
     ):
@@ -1391,8 +1389,7 @@ async def test_login_matrix_bot_uses_loaded_config_for_save_path(
     assert result is True
     assert resolved_configs == [loaded_config, loaded_config]
     assert (
-        mock_save_credentials.call_args.kwargs["credentials_path"]
-        == "/tmp/saved-creds.json"
+        mock_save_credentials.call_args.kwargs["credentials_path"] == credentials_path
     )
 
 
@@ -1422,12 +1419,14 @@ async def test_login_matrix_bot_existing_credentials_and_e2ee_check_exceptions(
     mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
     mock_main_client.close = AsyncMock()
 
+    credentials_path = os.path.join(tempfile.gettempdir(), "creds.json")
+
     with (
         patch("mmrelay.config.load_config", return_value={}),
         patch("mmrelay.config.is_e2ee_enabled", side_effect=ValueError("bad-e2ee")),
         patch(
-            "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            "mmrelay.matrix_utils.get_credentials_path",
+            return_value=Path(credentials_path),
         ),
         patch(
             "mmrelay.matrix_utils.os.path.exists", side_effect=OSError("exists-fail")

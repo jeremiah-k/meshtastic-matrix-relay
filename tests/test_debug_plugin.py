@@ -9,6 +9,7 @@ Tests the debug plugin functionality including:
 - Priority and configuration
 """
 
+import asyncio
 import os
 import sys
 import unittest
@@ -17,6 +18,7 @@ from unittest.mock import MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.plugins import DEBUG_PLUGIN_PRIORITY
 from mmrelay.plugins.debug_plugin import Plugin
 
 
@@ -38,9 +40,9 @@ class TestDebugPlugin(unittest.TestCase):
 
     def test_plugin_priority(self):
         """
-        Verify that the debug plugin's priority is set to 1, ensuring it executes early in the plugin chain.
+        Verify that the debug plugin's priority matches DEBUG_PLUGIN_PRIORITY, ensuring it executes early in the plugin chain.
         """
-        self.assertEqual(self.plugin.priority, 1)
+        self.assertEqual(self.plugin.priority, DEBUG_PLUGIN_PRIORITY)
 
     def test_description_property(self):
         """Test that the plugin has a description."""
@@ -79,13 +81,11 @@ class TestDebugPlugin(unittest.TestCase):
 
             # Should log the cleaned packet
             self.plugin.logger.debug.assert_called_once_with(
-                f"Packet received: {cleaned_packet}"
+                "Packet received: %s", cleaned_packet
             )
 
             # Should return False (never intercepts messages)
             self.assertFalse(result)
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -103,8 +103,6 @@ class TestDebugPlugin(unittest.TestCase):
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertFalse(result)
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -125,8 +123,6 @@ class TestDebugPlugin(unittest.TestCase):
             """
             result = await self.plugin.handle_room_message(room, event, full_message)
             self.assertFalse(result)
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -151,8 +147,6 @@ class TestDebugPlugin(unittest.TestCase):
 
             # Should return False
             self.assertFalse(result)
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -193,8 +187,6 @@ class TestDebugPlugin(unittest.TestCase):
             # Should return False
             self.assertFalse(result)
 
-        import asyncio
-
         asyncio.run(run_test())
 
     def test_plugin_never_intercepts_messages(self):
@@ -225,8 +217,6 @@ class TestDebugPlugin(unittest.TestCase):
                 room, event, "!important_command"
             )
             self.assertFalse(matrix_result)
-
-        import asyncio
 
         asyncio.run(run_test())
 

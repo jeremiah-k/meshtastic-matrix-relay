@@ -26,7 +26,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from meshtastic.mesh_interface import BROADCAST_NUM
 
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
+from mmrelay.constants.plugins import WEATHER_UNITS_IMPERIAL, WEATHER_UNITS_METRIC
 from mmrelay.plugins.weather_plugin import Plugin
+from tests.constants import (
+    TEST_LAT_NYC,
+    TEST_LON_NYC,
+    TEST_MESHTASTIC_ID,
+    TEST_NODE_NUM,
+)
 
 
 def _normalize_emoji(s: str) -> str:
@@ -79,7 +86,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         """
         self.plugin = Plugin()
         self.plugin.logger = MagicMock()
-        self.plugin.config = {"units": "metric"}
+        self.plugin.config = {"units": WEATHER_UNITS_METRIC}
 
         # Mock the is_channel_enabled method
         self.plugin.is_channel_enabled = MagicMock(return_value=True)
@@ -308,6 +315,13 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(cmd)
         self.assertIsNone(args)
 
+    def test_normalize_mode_falls_back_to_weather(self):
+        """Unknown forecast mode should normalize to the default weather command."""
+        self.assertEqual(self.plugin._normalize_mode("hourly"), "hourly")
+        self.assertEqual(self.plugin._normalize_mode("daily"), "daily")
+        self.assertEqual(self.plugin._normalize_mode("unsupported-mode"), "weather")
+        self.assertEqual(self.plugin._normalize_mode(""), "weather")
+
     async def test_handle_room_message_with_override(self):
         """
         Matrix-side weather command should parse coordinates and send a forecast.
@@ -352,9 +366,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_response = _make_ok_response(self.sample_weather_data)
         mock_get.return_value = mock_response
 
-        self.plugin.config = {"units": "metric"}
+        self.plugin.config = {"units": WEATHER_UNITS_METRIC}
 
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
+        forecast = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
 
         # Should make API request with correct parameters
         mock_get.assert_called_once()
@@ -367,9 +381,11 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         params = kwargs.get("params")
         self.assertIn("api.open-meteo.com", url)
         if params:
-            self.assertEqual(float(params.get("latitude")), 40.7128)
+            self.assertEqual(float(params.get("latitude")), TEST_LAT_NYC)
             # Longitude formatting may vary; compare numerically (allow slight rounding)
-            self.assertAlmostEqual(float(params.get("longitude")), -74.0060, places=3)
+            self.assertAlmostEqual(
+                float(params.get("longitude")), TEST_LON_NYC, places=3
+            )
             self.assertEqual(int(params.get("forecast_days")), 3)
             self.assertEqual(params.get("timezone"), "auto")
             hourly = params.get("hourly") or ""
@@ -381,9 +397,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             ):
                 self.assertIn(field, hourly)
         else:
-            self.assertIn("latitude=40.7128", url)
+            self.assertIn(f"latitude={TEST_LAT_NYC}", url)
             # May be formatted without trailing zero
-            self.assertIn("longitude=-74.006", url)
+            self.assertIn(f"longitude={TEST_LON_NYC}", url)
             self.assertIn("forecast_days=3", url)
             self.assertIn("timezone=auto", url)
             for field in (
@@ -417,9 +433,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         """
         mock_get.return_value = _make_ok_response(self.sample_weather_data)
 
-        self.plugin.config = {"units": "imperial"}
+        self.plugin.config = {"units": WEATHER_UNITS_IMPERIAL}
 
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
+        forecast = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
 
         # Should convert temperatures to Fahrenheit
         # 22.5°C = 72.5°F
@@ -453,7 +469,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_get.return_value = _make_ok_response(early_morning_data)
 
         # Current time is 2:00 AM (index 2); near-term forecasts use hourly mode
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
+        forecast = self.plugin.generate_forecast(
+            TEST_LAT_NYC, TEST_LON_NYC, mode="hourly"
+        )
         self.assertIn("+3h", forecast)
         self.assertIn("+6h", forecast)
         self.assertIn("+12h", forecast)
@@ -484,7 +502,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_get.return_value = _make_ok_response(late_evening_data)
 
         # Current time is 22:00 (index 22); near-term forecasts use hourly mode
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
+        forecast = self.plugin.generate_forecast(
+            TEST_LAT_NYC, TEST_LON_NYC, mode="hourly"
+        )
         self.assertIn("+3h", forecast)
         self.assertIn("+6h", forecast)
         self.assertIn("+12h", forecast)
@@ -514,7 +534,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_get.return_value = _make_ok_response(limited_data)
 
         # Current time is 21:00 (index 21); near-term forecasts use hourly mode
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
+        forecast = self.plugin.generate_forecast(
+            TEST_LAT_NYC, TEST_LON_NYC, mode="hourly"
+        )
         self.assertIn("+3h", forecast)
         self.assertIn("+6h", forecast)
 
@@ -542,7 +564,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_get.return_value = _make_ok_response(timezone_data)
 
         # Should not raise an exception and should parse correctly
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
+        forecast = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
         self.assertIn("25.0°C", forecast)
         self.assertIn("☀️ Clear sky", forecast)
 
@@ -570,7 +592,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_get.return_value = _make_ok_response(offset_data)
 
         # Should parse timezone offset correctly (16:30 -> hour 16)
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
+        forecast = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
         self.assertIn("22.0°C", forecast)
         self.assertIn("⛅️ Partly cloudy", forecast)
 
@@ -596,7 +618,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_get.return_value = _make_ok_response(invalid_time_data)
 
         # Should not raise; falls back to hour=0
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
+        forecast = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
         self.assertIn("Now:", forecast)
         self.assertIn("20.0°C", forecast)  # Current temp
 
@@ -608,10 +630,40 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         # Mock the requests.get to raise an HTTPError
         mock_get.side_effect = requests.exceptions.HTTPError("500 Server Error")
 
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
+        forecast = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
         # HTTP errors are caught and handled gracefully
         # The test should pass with either error message since both indicate proper error handling
         self.assertIn("Error", forecast)
+
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    def test_generate_forecast_malformed_data_returns_parse_error(self, mock_get):
+        """Malformed payloads should be caught by the parse-error handler."""
+        malformed_payload = {
+            "current_weather": None,
+            "hourly": {},
+        }
+        mock_get.return_value = _make_ok_response(malformed_payload)
+
+        forecast = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
+        self.assertEqual(forecast, "Error parsing weather data.")
+
+    def test_build_daily_forecast_imperial_converts_temperatures(self):
+        """Daily forecast builder should convert temperatures in imperial mode."""
+        daily_data = {
+            "daily": {
+                "weathercode": [1],
+                "temperature_2m_max": [10.0],
+                "temperature_2m_min": [0.0],
+                "time": ["2026-03-26"],
+            }
+        }
+        output = self.plugin._build_daily_forecast(
+            daily_data,
+            units="imperial",
+            temperature_unit="°F",
+            daily_days=1,
+        )
+        self.assertIn("50.0°F/32.0°F", output)
 
     @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_empty_hourly_data(self, mock_get):
@@ -637,7 +689,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
+        forecast = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
         self.assertEqual(forecast, "Weather data temporarily unavailable.")
 
     @patch("mmrelay.plugins.weather_plugin.requests.get")
@@ -668,7 +720,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
+        forecast = self.plugin.generate_forecast(
+            TEST_LAT_NYC, TEST_LON_NYC, mode="hourly"
+        )
         self.assertIn("+3h", forecast)
         self.assertIn("+6h", forecast)
 
@@ -685,7 +739,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
+        forecast = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
 
         # Should use night weather descriptions
         self.assertIn(_normalize_emoji("🌙🌤️ Mainly clear"), _normalize_emoji(forecast))
@@ -705,7 +759,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
+        forecast = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
 
         # Should handle unknown weather codes gracefully
         self.assertIn("❓ Unknown", forecast)
@@ -727,6 +781,28 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             packet, "formatted_message", "longname", "meshnet_name"
         )
         self.assertFalse(result)
+
+    def test_parse_location_override_validates_format_and_bounds(self):
+        """Location override parser should accept valid coords and reject invalid input."""
+        self.assertEqual(
+            self.plugin._parse_location_override(f"{TEST_LAT_NYC},{TEST_LON_NYC}"),
+            (TEST_LAT_NYC, TEST_LON_NYC),
+        )
+        self.assertIsNone(self.plugin._parse_location_override("40.7"))
+        self.assertIsNone(self.plugin._parse_location_override("95,10"))
+        self.assertIsNone(
+            self.plugin._parse_location_override("40,-200")
+        )  # longitude out of bounds
+        self.assertIsNone(self.plugin._parse_location_override("abc,def"))
+
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    def test_geocode_location_request_error_returns_none(self, mock_get):
+        """Request failures during geocoding should return None."""
+        import requests
+
+        mock_get.side_effect = requests.exceptions.RequestException("network down")
+        self.assertIsNone(self.plugin._geocode_location("Chicago"))
+        self.plugin.logger.exception.assert_called_with("Error geocoding location")
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     async def test_handle_meshtastic_message_no_weather_command(self, mock_connect):
@@ -760,7 +836,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         Verifies that the plugin checks channel enablement, does not handle the message, and returns False when the channel is disabled.
         """
         mock_client = MagicMock()
-        mock_client.myInfo.my_node_num = 123456789
+        mock_client.myInfo.my_node_num = TEST_NODE_NUM
         mock_connect.return_value = mock_client
 
         self.plugin.is_channel_enabled = MagicMock(return_value=False)
@@ -796,9 +872,11 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
         # Mock meshtastic client
         mock_client = MagicMock()
-        mock_client.myInfo.my_node_num = 123456789
+        mock_client.myInfo.my_node_num = TEST_NODE_NUM
         mock_client.nodes = {
-            "!12345678": {"position": {"latitude": 40.7128, "longitude": -74.0060}}
+            TEST_MESHTASTIC_ID: {
+                "position": {"latitude": TEST_LAT_NYC, "longitude": TEST_LON_NYC}
+            }
         }
         mock_connect.return_value = mock_client
 
@@ -808,8 +886,8 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         packet = {
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
-            "fromId": "!12345678",
-            "to": 123456789,  # Direct message to relay
+            "fromId": TEST_MESHTASTIC_ID,
+            "to": TEST_NODE_NUM,  # Direct message to relay
         }
 
         result = await self.plugin.handle_meshtastic_message(
@@ -821,7 +899,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         # Should send direct message response
         self.plugin.send_message.assert_called_once()
         call_args = self.plugin.send_message.call_args
-        self.assertEqual(call_args.kwargs["destination_id"], "!12345678")
+        self.assertEqual(call_args.kwargs["destination_id"], TEST_MESHTASTIC_ID)
         self.assertIn(
             _normalize_emoji("Now: 🌤️ Mainly clear"),
             _normalize_emoji(call_args.kwargs["text"]),
@@ -841,9 +919,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         """
         # Mock meshtastic client
         mock_client = MagicMock()
-        mock_client.myInfo.my_node_num = 123456789
+        mock_client.myInfo.my_node_num = TEST_NODE_NUM
         mock_client.nodes = {
-            "!12345678": {
+            TEST_MESHTASTIC_ID: {
                 # No position data
             }
         }
@@ -855,7 +933,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         packet = {
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
-            "fromId": "!12345678",
+            "fromId": TEST_MESHTASTIC_ID,
             "to": BROADCAST_NUM,  # BROADCAST_NUM
         }
 
@@ -882,8 +960,8 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         Commands with an explicit lat/lon should use the override even if the node lacks position data.
         """
         mock_client = MagicMock()
-        mock_client.myInfo.my_node_num = 123456789
-        mock_client.nodes = {"!12345678": {}}
+        mock_client.myInfo.my_node_num = TEST_NODE_NUM
+        mock_client.nodes = {TEST_MESHTASTIC_ID: {}}
         mock_connect.return_value = mock_client
 
         self.plugin.generate_forecast = MagicMock(return_value="OK")
@@ -894,7 +972,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
                 "text": "!weather 37.77,-122.42",
             },
             "channel": 0,
-            "fromId": "!12345678",
+            "fromId": TEST_MESHTASTIC_ID,
             "to": BROADCAST_NUM,  # BROADCAST_NUM
         }
 
@@ -914,8 +992,8 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         Free-form location strings should be geocoded when coordinates are not available.
         """
         mock_client = MagicMock()
-        mock_client.myInfo.my_node_num = 123456789
-        mock_client.nodes = {"!12345678": {}}
+        mock_client.myInfo.my_node_num = TEST_NODE_NUM
+        mock_client.nodes = {TEST_MESHTASTIC_ID: {}}
         mock_connect.return_value = mock_client
 
         self.plugin._geocode_location = MagicMock(return_value=(10.0, 20.0))
@@ -924,7 +1002,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         packet = {
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather Boston"},
             "channel": 0,
-            "fromId": "!12345678",
+            "fromId": TEST_MESHTASTIC_ID,
             "to": BROADCAST_NUM,  # BROADCAST_NUM
         }
 
@@ -945,7 +1023,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         When the requesting node lacks a position, the mesh-average location should be used.
         """
         mock_client = MagicMock()
-        mock_client.myInfo.my_node_num = 123456789
+        mock_client.myInfo.my_node_num = TEST_NODE_NUM
         mock_client.nodes = {
             "!requester": {},
             "!node1": {"position": {"latitude": 10.0, "longitude": 10.0}},
@@ -989,9 +1067,11 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
         # Mock meshtastic client
         mock_client = MagicMock()
-        mock_client.myInfo.my_node_num = 123456789
+        mock_client.myInfo.my_node_num = TEST_NODE_NUM
         mock_client.nodes = {
-            "!12345678": {"position": {"latitude": 40.7128, "longitude": -74.0060}}
+            TEST_MESHTASTIC_ID: {
+                "position": {"latitude": TEST_LAT_NYC, "longitude": TEST_LON_NYC}
+            }
         }
         mock_connect.return_value = mock_client
 
@@ -1001,7 +1081,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         packet = {
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
-            "fromId": "!12345678",
+            "fromId": TEST_MESHTASTIC_ID,
             "to": BROADCAST_NUM,  # BROADCAST_NUM
         }
 
@@ -1032,7 +1112,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         """
         # Mock meshtastic client with no nodes
         mock_client = MagicMock()
-        mock_client.myInfo.my_node_num = 123456789
+        mock_client.myInfo.my_node_num = TEST_NODE_NUM
         mock_client.nodes = {}  # No nodes
         mock_connect.return_value = mock_client
 
@@ -1057,12 +1137,12 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         Test that handling a Meshtastic message without a channel field defaults to channel 0 and checks channel enablement accordingly.
         """
         mock_client = MagicMock()
-        mock_client.myInfo.my_node_num = 123456789
+        mock_client.myInfo.my_node_num = TEST_NODE_NUM
         mock_connect.return_value = mock_client
 
         packet = {
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
-            "fromId": "!12345678",
+            "fromId": TEST_MESHTASTIC_ID,
             # No channel field - should default to 0
         }
 
@@ -1119,7 +1199,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
             # Mock logger to capture warning
             with patch.object(self.plugin, "logger") as mock_logger:
-                result = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
+                result = self.plugin.generate_forecast(
+                    TEST_LAT_NYC, TEST_LON_NYC, mode="hourly"
+                )
 
                 # Should still return a forecast (using fallback indexing)
                 self.assertIn("Now:", result)
@@ -1140,7 +1222,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
             # Should re-raise the exception
             with self.assertRaises(RuntimeError):
-                self.plugin.generate_forecast(40.7128, -74.0060)
+                self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
 
     async def test_handle_meshtastic_message_broadcast_message_detection(self):
         """Test that broadcast messages are properly detected."""
@@ -1151,14 +1233,16 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
                 "portnum": PORTNUM_TEXT_MESSAGE_APP,
                 "text": "!weather",  # Use "text" not "payload"
             },
-            "fromId": 123456789,
+            "fromId": TEST_NODE_NUM,
             "to": BROADCAST_NUM,  # Broadcast message
             "channel": 0,
         }
 
         # Mock the plugin methods and meshtastic connection
         self.plugin.is_channel_enabled = MagicMock(return_value=True)
-        self.plugin.get_node_location = MagicMock(return_value=(40.7128, -74.0060))
+        self.plugin.get_node_location = MagicMock(
+            return_value=(TEST_LAT_NYC, TEST_LON_NYC)
+        )
         self.plugin.generate_forecast = MagicMock(return_value="Test forecast")
         self.plugin.send_message = MagicMock()
 
@@ -1189,7 +1273,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
         plugin = Plugin()
 
-        result = plugin.generate_forecast(40.7128, -74.0060)
+        result = plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
 
         self.assertEqual(result, "Error fetching weather data.")
 
@@ -1220,23 +1304,6 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             mock_packet, "!weather", "Tester", "mesh"
         )
         self.assertTrue(result)
-
-    @patch("mmrelay.plugins.weather_plugin.requests.get")
-    def test_generate_forecast_attribute_error_fallback(self, mock_get):
-        """Test generate_forecast handles AttributeError with fallback detection."""
-        # Mock requests to raise AttributeError
-        mock_response = MagicMock()
-        mock_response.raise_for_status.side_effect = AttributeError("Some error")
-        # Mock the exception to have requests module
-        mock_response.raise_for_status.__module__ = "requests"
-        mock_get.return_value = mock_response
-
-        plugin = Plugin()
-
-        # Test the method
-        result = plugin.generate_forecast(40.7128, -74.0060)
-        # Should return fetching error when raise_for_status fails with AttributeError
-        self.assertEqual(result, "Error fetching weather data.")
 
 
 if __name__ == "__main__":

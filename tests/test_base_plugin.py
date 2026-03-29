@@ -26,6 +26,10 @@ import schedule
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.database import DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
+from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
+from mmrelay.constants.plugins import DEFAULT_PLUGIN_PRIORITY
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -33,6 +37,7 @@ class MockPlugin(BasePlugin):
     """Mock plugin implementation for testing BasePlugin functionality."""
 
     plugin_name = "test_plugin"
+    is_core_plugin = False
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
@@ -55,6 +60,12 @@ class MockPlugin(BasePlugin):
             _full_message: The full message content.
         """
         return False
+
+
+class CoreMockPlugin(MockPlugin):
+    """Mock plugin with is_core_plugin=True for testing core plugin behavior."""
+
+    is_core_plugin = True
 
 
 class TestBasePlugin(unittest.TestCase):
@@ -114,11 +125,13 @@ class TestBasePlugin(unittest.TestCase):
 
     def test_plugin_initialization_with_class_name(self):
         """Test plugin initialization using class-level plugin_name."""
-        plugin = MockPlugin()
+        plugin = CoreMockPlugin()
 
         self.assertEqual(plugin.plugin_name, "test_plugin")
-        self.assertEqual(plugin.max_data_rows_per_node, 100)
-        self.assertEqual(plugin.priority, 10)
+        self.assertEqual(
+            plugin.max_data_rows_per_node, DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE
+        )
+        self.assertEqual(plugin.priority, DEFAULT_PLUGIN_PRIORITY)
         self.assertTrue(plugin.config["active"])
 
     def test_plugin_initialization_with_parameter_name(self):
@@ -180,7 +193,7 @@ class TestBasePlugin(unittest.TestCase):
 
         Verifies that the plugin is active, the response delay is set to 3.0 seconds, and the enabled channels are [0, 1] when these values are provided in the configuration.
         """
-        plugin = MockPlugin()
+        plugin = CoreMockPlugin()
 
         self.assertTrue(plugin.config["active"])
         self.assertEqual(plugin.response_delay, 3.0)
@@ -202,6 +215,106 @@ class TestBasePlugin(unittest.TestCase):
             self.assertEqual(plugin.response_delay, 2.5)  # DEFAULT_MESSAGE_DELAY
             self.assertEqual(plugin.channels, [])
 
+    def test_non_core_plugin_preserves_inferred_type_with_legacy_plugins_config(self):
+        """Legacy 'plugins' config should not demote inferred custom/community plugin type."""
+        legacy_config = {"plugins": {"test_plugin": {"active": True}}}
+        class_file = "/tmp/custom_plugins/test_plugin.py"  # nosec B108
+
+        with (
+            patch("mmrelay.plugins.base_plugin.config", legacy_config),
+            patch(
+                "mmrelay.plugins.base_plugin.inspect.getfile", return_value=class_file
+            ),
+            patch(
+                "mmrelay.plugin_loader.get_custom_plugin_dirs",
+                return_value=["/tmp/custom_plugins"],  # nosec B108
+            ),
+            patch("mmrelay.plugin_loader.get_community_plugin_dirs", return_value=[]),
+        ):
+            plugin = MockPlugin()
+
+        self.assertEqual(plugin.plugin_type, "custom")
+        self.assertTrue(plugin.config["active"])
+
+    def test_non_core_plugin_uses_legacy_plugins_global_require_mention_fallback(self):
+        """Non-core plugins should honor legacy plugins.require_bot_mention fallback."""
+        legacy_global = {
+            "plugins": {"require_bot_mention": True},
+            "custom-plugins": {"test_plugin": {"active": True}},
+        }
+        class_file = "/tmp/custom_plugins/test_plugin.py"  # nosec B108
+
+        with (
+            patch("mmrelay.plugins.base_plugin.config", legacy_global),
+            patch(
+                "mmrelay.plugins.base_plugin.inspect.getfile", return_value=class_file
+            ),
+            patch(
+                "mmrelay.plugin_loader.get_custom_plugin_dirs",
+                return_value=["/tmp/custom_plugins"],  # nosec B108
+            ),
+            patch("mmrelay.plugin_loader.get_community_plugin_dirs", return_value=[]),
+        ):
+            plugin = MockPlugin()
+
+        self.assertTrue(plugin.get_require_bot_mention())
+
+    def test_non_core_plugin_prefers_own_section_global_require_mention(self):
+        """Non-core plugins should prioritize section-local global over legacy fallback."""
+        section_precedence = {
+            "plugins": {"require_bot_mention": True},
+            "custom-plugins": {
+                "require_bot_mention": False,
+                "test_plugin": {"active": True},
+            },
+        }
+        class_file = "/tmp/custom_plugins/test_plugin.py"  # nosec B108
+
+        with (
+            patch("mmrelay.plugins.base_plugin.config", section_precedence),
+            patch(
+                "mmrelay.plugins.base_plugin.inspect.getfile", return_value=class_file
+            ),
+            patch(
+                "mmrelay.plugin_loader.get_custom_plugin_dirs",
+                return_value=["/tmp/custom_plugins"],  # nosec B108
+            ),
+            patch("mmrelay.plugin_loader.get_community_plugin_dirs", return_value=[]),
+        ):
+            plugin = MockPlugin()
+
+        self.assertFalse(plugin.get_require_bot_mention())
+
+    def test_non_core_plugin_with_legacy_plugin_stanza_keeps_inferred_global_precedence(
+        self,
+    ):
+        """Inferred non-core tier globals should outrank legacy plugins fallback."""
+        mixed_precedence = {
+            "plugins": {
+                "require_bot_mention": True,
+                "test_plugin": {"active": True},
+            },
+            "custom-plugins": {"require_bot_mention": False},
+        }
+        class_file = "/tmp/custom_plugins/test_plugin.py"  # nosec B108
+
+        with (
+            patch("mmrelay.plugins.base_plugin.config", mixed_precedence),
+            patch(
+                "mmrelay.plugins.base_plugin.inspect.getfile", return_value=class_file
+            ),
+            patch(
+                "mmrelay.plugin_loader.get_custom_plugin_dirs",
+                return_value=["/tmp/custom_plugins"],  # nosec B108
+            ),
+            patch("mmrelay.plugin_loader.get_community_plugin_dirs", return_value=[]),
+        ):
+            plugin = MockPlugin()
+
+        self.assertEqual(plugin.plugin_type, "custom")
+        self.assertTrue(plugin.config["active"])
+        self.assertFalse(plugin.get_require_bot_mention())
+
     def test_start_stop_schedule_thread(self):
         """Plugins should register and clear scheduled jobs via start/stop."""
         with (
@@ -219,7 +332,7 @@ class TestBasePlugin(unittest.TestCase):
 
     def test_response_delay_minimum_enforcement(self):
         """
-        Test that the plugin enforces a minimum response delay of 2.1 seconds when configured with a lower value.
+        Test that the plugin enforces a minimum response delay when configured with a lower value.
         """
         config_low_delay = {
             "plugins": {"test_plugin": {"active": True}},
@@ -229,7 +342,7 @@ class TestBasePlugin(unittest.TestCase):
         with patch("mmrelay.plugins.base_plugin.config", config_low_delay):
             plugin = MockPlugin()
             self.assertEqual(
-                plugin.response_delay, 2.1
+                plugin.response_delay, MINIMUM_MESSAGE_DELAY
             )  # Should be enforced to minimum
 
     def test_response_delay_smart_logging(self):
@@ -248,14 +361,17 @@ class TestBasePlugin(unittest.TestCase):
             # First plugin instance - should log WARNING (generic + specific)
             with self.assertLogs("Plugins", level="WARNING") as cm1:
                 plugin1 = MockPlugin()
-                self.assertEqual(plugin1.response_delay, 2.1)
+                self.assertEqual(plugin1.response_delay, MINIMUM_MESSAGE_DELAY)
 
                 # Should have two warnings: generic + specific
                 self.assertEqual(len(cm1.output), 2)
                 self.assertIn(
-                    "One or more plugins have message_delay below 2.1s", cm1.output[0]
+                    f"One or more plugins have message_delay below {MINIMUM_MESSAGE_DELAY}s",
+                    cm1.output[0],
                 )
-                self.assertIn("below minimum of 2.1s", cm1.output[1])
+                self.assertIn(
+                    f"below minimum of {MINIMUM_MESSAGE_DELAY}s", cm1.output[1]
+                )
 
             # Second plugin instance with same delay - should NOT log additional warnings
             # but should log a debug message for troubleshooting.
@@ -264,7 +380,7 @@ class TestBasePlugin(unittest.TestCase):
             with patch.object(logger, "warning") as mock_warning:
                 with patch.object(logger, "debug") as mock_debug:
                     plugin2 = MockPlugin()
-                    self.assertEqual(plugin2.response_delay, 2.1)
+                    self.assertEqual(plugin2.response_delay, MINIMUM_MESSAGE_DELAY)
 
                     # Warning should not be called the second time
                     mock_warning.assert_not_called()
@@ -272,7 +388,9 @@ class TestBasePlugin(unittest.TestCase):
                     # A debug message should be logged for subsequent occurrences
                     mock_debug.assert_called_once()
                     debug_call_args = mock_debug.call_args[0][0]
-                    self.assertIn("below minimum of 2.1s", debug_call_args)
+                    self.assertIn(
+                        f"below minimum of {MINIMUM_MESSAGE_DELAY}s", debug_call_args
+                    )
 
                     # Verify the delay value is tracked in the global set
                     self.assertIn(0.5, self._warned_delay_values)
@@ -292,12 +410,13 @@ class TestBasePlugin(unittest.TestCase):
             # First plugin with low delay - should show generic + specific warning
             with self.assertLogs("Plugins", level="WARNING") as cm1:
                 plugin1 = MockPlugin()
-                self.assertEqual(plugin1.response_delay, 2.1)
+                self.assertEqual(plugin1.response_delay, MINIMUM_MESSAGE_DELAY)
 
                 # Should have two warnings: generic + specific
                 self.assertEqual(len(cm1.output), 2)
                 self.assertIn(
-                    "One or more plugins have message_delay below 2.1s", cm1.output[0]
+                    f"One or more plugins have message_delay below {MINIMUM_MESSAGE_DELAY}s",
+                    cm1.output[0],
                 )
                 self.assertIn("message_delay of 0.5s is below minimum", cm1.output[1])
 
@@ -306,7 +425,7 @@ class TestBasePlugin(unittest.TestCase):
             with patch.object(logger, "warning") as mock_warning:
                 with patch.object(logger, "debug") as mock_debug:
                     plugin2 = MockPlugin()
-                    self.assertEqual(plugin2.response_delay, 2.1)
+                    self.assertEqual(plugin2.response_delay, MINIMUM_MESSAGE_DELAY)
 
                     mock_warning.assert_not_called()
                     mock_debug.assert_called_once()
@@ -319,7 +438,7 @@ class TestBasePlugin(unittest.TestCase):
             with patch("mmrelay.plugins.base_plugin.config", config_different_delay):
                 with self.assertLogs("Plugins", level="WARNING") as cm3:
                     plugin3 = MockPlugin()
-                    self.assertEqual(plugin3.response_delay, 2.1)
+                    self.assertEqual(plugin3.response_delay, MINIMUM_MESSAGE_DELAY)
 
                     # Should have only 1 warning: specific (generic already shown)
                     self.assertEqual(len(cm3.output), 1)
@@ -348,12 +467,12 @@ class TestBasePlugin(unittest.TestCase):
         with patch("mmrelay.plugins.base_plugin.config", config_low_delay_1):
             with self.assertLogs("Plugins", level="WARNING") as cm_generic:
                 plugin1 = MockPlugin()
-                self.assertEqual(plugin1.response_delay, 2.1)
+                self.assertEqual(plugin1.response_delay, MINIMUM_MESSAGE_DELAY)
 
                 # Should have two warnings in Plugins logger: generic + specific delay
                 self.assertEqual(len(cm_generic.output), 2)
                 self.assertIn(
-                    "One or more plugins have message_delay below 2.1s",
+                    f"One or more plugins have message_delay below {MINIMUM_MESSAGE_DELAY}s",
                     cm_generic.output[0],
                 )
                 self.assertIn("0.5s is below minimum", cm_generic.output[1])
@@ -361,7 +480,7 @@ class TestBasePlugin(unittest.TestCase):
         with patch("mmrelay.plugins.base_plugin.config", config_low_delay_2):
             with self.assertLogs("Plugins", level="WARNING") as cm2:
                 plugin2 = MockPlugin()
-                self.assertEqual(plugin2.response_delay, 2.1)
+                self.assertEqual(plugin2.response_delay, MINIMUM_MESSAGE_DELAY)
 
                 # Should have one warning for 1.0s delay (different value, generic already shown)
                 self.assertEqual(len(cm2.output), 1)
@@ -475,7 +594,7 @@ class TestBasePlugin(unittest.TestCase):
         """
         Test that is_channel_enabled returns True for a channel that is enabled in the plugin configuration.
         """
-        plugin = MockPlugin()
+        plugin = CoreMockPlugin()
 
         result = plugin.is_channel_enabled(0)
         self.assertTrue(result)
@@ -564,7 +683,9 @@ class TestBasePlugin(unittest.TestCase):
             mock_matrix_client.room_send.assert_called_once()
             call_args = mock_matrix_client.room_send.call_args
             self.assertEqual(call_args.kwargs["room_id"], "!room:matrix.org")
-            self.assertEqual(call_args.kwargs["message_type"], "m.room.message")
+            self.assertEqual(
+                call_args.kwargs["message_type"], MATRIX_EVENT_TYPE_ROOM_MESSAGE
+            )
 
         asyncio.run(run_test())
 
@@ -664,7 +785,7 @@ class TestBasePlugin(unittest.TestCase):
         """
         Tests that the get_plugin_data_dir method returns the correct plugin data directory path using the patched utility function.
         """
-        plugin = MockPlugin()
+        plugin = CoreMockPlugin()
 
         with patch("mmrelay.plugins.base_plugin.get_plugin_data_dir") as mock_get_dir:
             mock_get_dir.return_value = "/path/to/plugin/data"
@@ -1271,7 +1392,7 @@ class TestBasePlugin(unittest.TestCase):
         """Test get_plugin_data_dir with subdirectory (lines 607-609)."""
         mock_get_dir.return_value = "/base/plugin/dir/subdir"
 
-        plugin = MockPlugin()
+        plugin = CoreMockPlugin()
         result = plugin.get_plugin_data_dir("subdir")
 
         expected_path = "/base/plugin/dir/subdir"

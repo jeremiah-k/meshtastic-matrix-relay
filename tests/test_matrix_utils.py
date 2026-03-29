@@ -13,6 +13,14 @@ import pytest
 from nio import SyncError, ToDeviceError, ToDeviceResponse
 
 import mmrelay.matrix_utils as matrix_utils_module
+from mmrelay.constants.app import CREDENTIALS_FILENAME
+from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
+from mmrelay.constants.formats import (
+    DETECTION_SENSOR_APP,
+    MATRIX_SUPPRESS_KEY,
+    TEXT_MESSAGE_APP,
+)
 from mmrelay.matrix_utils import (
     ImageUploadError,
     NioLocalTransportError,
@@ -45,7 +53,18 @@ from mmrelay.matrix_utils import (
     upload_image,
     validate_prefix_format,
 )
+from tests.constants import (
+    TEST_BOT_USER_ID,
+    TEST_ROOM_ID,
+    TEST_USER_ID,
+)
 from tests.helpers import InlineExecutorLoop
+
+# Test constants for login_matrix_bot tests (avoids Ruff S106 warnings)
+TEST_HOMESERVER = "https://matrix.org"
+TEST_USERNAME = "user"
+TEST_PASSWORD = "pass"
+TEST_FULL_MXID = "@user:matrix.org"
 
 # Matrix room message handling tests - converted from unittest.TestCase to standalone pytest functions
 #
@@ -169,7 +188,7 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
             "meshtastic_shortname": "Trak",
             "meshtastic_meshnet": "remote",
             "meshtastic_text": "Hello from remote mesh",
-            "meshtastic_portnum": "TEXT_MESSAGE_APP",
+            "meshtastic_portnum": TEXT_MESSAGE_APP,
         }
     }
 
@@ -288,8 +307,8 @@ async def test_on_room_message_reply_enabled(
             "message_interactions": {"replies": True},
             "meshnet_name": "test_mesh",
         },
-        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-        "matrix": {"bot_user_id": "@bot:matrix.org"},
+        "matrix_rooms": [{"id": TEST_ROOM_ID, "meshtastic_channel": 0}],
+        "matrix": {"bot_user_id": TEST_BOT_USER_ID},
     }
     mock_handle_matrix_reply.return_value = True
     mock_event.source = {
@@ -462,7 +481,7 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
             return_value=(
                 "meshtastic_id",
-                "!room:matrix.org",
+                TEST_ROOM_ID,
                 "original_text",
                 "test_mesh",
             ),
@@ -528,7 +547,7 @@ async def test_on_room_message_reaction_disabled(
                 }
             }
         },
-        sender="@user:matrix.org",
+        sender=TEST_USER_ID,
         server_timestamp=1234567890,
     )
 
@@ -590,7 +609,7 @@ async def test_on_room_message_detection_sensor_enabled(
     mock_event.source = {
         "content": {
             "body": "Detection data",
-            "meshtastic_portnum": "DETECTION_SENSOR_APP",
+            "meshtastic_portnum": DETECTION_SENSOR_APP,
         }
     }
 
@@ -684,7 +703,7 @@ async def test_on_room_message_detection_sensor_disabled(
     mock_event.source = {
         "content": {
             "body": "Detection data",
-            "meshtastic_portnum": "DETECTION_SENSOR_APP",
+            "meshtastic_portnum": DETECTION_SENSOR_APP,
         }
     }
 
@@ -718,7 +737,7 @@ async def test_on_room_message_detection_sensor_broadcast_disabled(
     mock_event.source = {
         "content": {
             "body": "Detection data",
-            "meshtastic_portnum": "DETECTION_SENSOR_APP",
+            "meshtastic_portnum": DETECTION_SENSOR_APP,
         }
     }
     test_config["meshtastic"]["detection_sensor"] = True
@@ -749,7 +768,7 @@ async def test_on_room_message_detection_sensor_connect_failure(
     mock_event.source = {
         "content": {
             "body": "Detection data",
-            "meshtastic_portnum": "DETECTION_SENSOR_APP",
+            "meshtastic_portnum": DETECTION_SENSOR_APP,
         }
     }
     test_config["meshtastic"]["detection_sensor"] = True
@@ -818,7 +837,7 @@ async def test_on_room_message_suppressed_message_returns(
 ):
     """Suppressed messages should exit early without relaying."""
     mock_event.source = {
-        "content": {"body": "Suppressed message", "mmrelay_suppress": True}
+        "content": {"body": "Suppressed message", MATRIX_SUPPRESS_KEY: True}
     }
 
     with (
@@ -908,7 +927,7 @@ async def test_on_room_message_reaction_missing_mapping_logs_debug(
 
     mock_event = MockReactionEvent(
         source={"content": {"m.relates_to": {"event_id": "missing", "key": "x"}}},
-        sender="@user:matrix.org",
+        sender=TEST_USER_ID,
         server_timestamp=1,
     )
 
@@ -918,7 +937,7 @@ async def test_on_room_message_reaction_missing_mapping_logs_debug(
             "message_interactions": {"reactions": True, "replies": False},
         },
         "matrix_rooms": [{"id": mock_room.room_id, "meshtastic_channel": 0}],
-        "matrix": {"bot_user_id": "@bot:matrix.org"},
+        "matrix": {"bot_user_id": TEST_BOT_USER_ID},
     }
 
     monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
@@ -964,7 +983,7 @@ async def test_on_room_message_local_reaction_queue_failure_logs(
 
     mock_event = MockReactionEvent(
         source={"content": {"m.relates_to": {"event_id": "orig", "key": "x"}}},
-        sender="@user:matrix.org",
+        sender=TEST_USER_ID,
         server_timestamp=1,
     )
 
@@ -975,7 +994,7 @@ async def test_on_room_message_local_reaction_queue_failure_logs(
             "message_interactions": {"reactions": True, "replies": False},
         },
         "matrix_rooms": [{"id": mock_room.room_id, "meshtastic_channel": 0}],
-        "matrix": {"bot_user_id": "@bot:matrix.org"},
+        "matrix": {"bot_user_id": TEST_BOT_USER_ID},
     }
 
     monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
@@ -1030,7 +1049,7 @@ async def test_on_room_message_reply_handled_short_circuits(
             "message_interactions": {"reactions": False, "replies": True},
         },
         "matrix_rooms": [{"id": mock_room.room_id, "meshtastic_channel": 0}],
-        "matrix": {"bot_user_id": "@bot:matrix.org"},
+        "matrix": {"bot_user_id": TEST_BOT_USER_ID},
     }
 
     monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
@@ -1403,7 +1422,7 @@ def test_get_msgs_to_keep_config_default():
     Test that the default message retention value is returned when no configuration is set.
     """
     result = _get_msgs_to_keep_config()
-    assert result == 500
+    assert result == DEFAULT_MSGS_TO_KEEP
 
 
 @patch("mmrelay.matrix_utils.config", {"db": {"msg_map": {"msgs_to_keep": 100}}})
@@ -2749,7 +2768,7 @@ async def test_send_room_image():
     mock_client.room_send.assert_called_once()
     call_args = mock_client.room_send.call_args
     assert call_args[1]["room_id"] == "!room:matrix.org"
-    assert call_args[1]["message_type"] == "m.room.message"
+    assert call_args[1]["message_type"] == MATRIX_EVENT_TYPE_ROOM_MESSAGE
     content = call_args[1]["content"]
     assert content["msgtype"] == "m.image"
     assert content["url"] == "mxc://matrix.org/test123"
@@ -3275,7 +3294,7 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
         "access_token": "test_token",
         "device_id": discovered_device_id,
     }
-    assert call_args[1]["credentials_path"].endswith("credentials.json")
+    assert call_args[1]["credentials_path"].endswith(CREDENTIALS_FILENAME)
 
 
 @pytest.mark.asyncio
@@ -3320,14 +3339,77 @@ async def test_connect_matrix_sync_timeout_closes_client(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.MATRIX_INITIAL_SYNC_MAX_ATTEMPTS", 3, raising=False
+    )
+    mock_sleep = AsyncMock()
+    monkeypatch.setattr("mmrelay.matrix_utils.asyncio.sleep", mock_sleep)
 
     with pytest.raises(ConnectionError):
         await connect_matrix()
 
     mock_client.close.assert_awaited_once()
+    assert mock_client.sync.await_count == 3
+    assert [call.args[0] for call in mock_sleep.await_args_list] == [
+        matrix_utils_module.MATRIX_SYNC_RETRY_DELAY_SECS,
+        min(
+            matrix_utils_module.MATRIX_SYNC_RETRY_DELAY_SECS * 2.0,
+            matrix_utils_module.MATRIX_INITIAL_SYNC_RETRY_MAX_DELAY_SECS,
+        ),
+    ]
     import mmrelay.matrix_utils as mx
 
     assert mx.matrix_client is None
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_sync_timeout_retry_then_success(monkeypatch):
+    """A transient initial-sync timeout should retry and succeed without failing startup."""
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.sync = AsyncMock(
+        side_effect=[asyncio.TimeoutError(), SimpleNamespace()]
+    )
+    mock_client.close = AsyncMock()
+    mock_client.should_upload_keys = False
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+
+    def fake_async_client(*_args, **_kwargs):
+        return mock_client
+
+    monkeypatch.setattr("mmrelay.matrix_utils.AsyncClient", fake_async_client)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.config",
+        {
+            "matrix": {
+                "homeserver": "https://example.org",
+                "access_token": "token",
+                "bot_user_id": "@bot:example.org",
+                "encryption": {"enabled": True},
+            },
+            "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+        },
+        raising=False,
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.MATRIX_INITIAL_SYNC_MAX_ATTEMPTS", 0, raising=False
+    )
+    mock_sleep = AsyncMock()
+    monkeypatch.setattr("mmrelay.matrix_utils.asyncio.sleep", mock_sleep)
+
+    client = await connect_matrix()
+
+    assert client is mock_client
+    assert mock_client.sync.await_count == 2
+    mock_sleep.assert_awaited_once_with(
+        matrix_utils_module.MATRIX_SYNC_RETRY_DELAY_SECS
+    )
 
 
 @pytest.mark.asyncio
@@ -3936,7 +4018,7 @@ async def test_connect_matrix_credentials_load_exception_uses_config(
         "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
     }
 
-    candidate_path = tmp_path / "credentials.json"
+    candidate_path = tmp_path / CREDENTIALS_FILENAME
     candidate_path.write_text('{"invalid": true}', encoding="utf-8")
 
     with (
@@ -3946,7 +4028,7 @@ async def test_connect_matrix_credentials_load_exception_uses_config(
         ),
         patch(
             "mmrelay.matrix_utils.get_credentials_path",
-            return_value=tmp_path / "credentials.json",
+            return_value=tmp_path / CREDENTIALS_FILENAME,
         ),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
@@ -4187,7 +4269,9 @@ async def test_connect_matrix_missing_required_fields_returns_none():
 
     assert result is None
     assert any(
-        "Matrix section is missing required field: access_token" in call.args[0]
+        "Matrix section is missing required field"
+        in " ".join(str(arg) for arg in call.args)
+        and "access_token" in " ".join(str(arg) for arg in call.args)
         for call in mock_logger.error.call_args_list
     )
 
@@ -4507,7 +4591,7 @@ async def test_connect_matrix_e2ee_store_path_uses_e2ee_section(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_connect_matrix_e2ee_store_path_default(monkeypatch):
+async def test_connect_matrix_e2ee_store_path_default(monkeypatch, tmp_path):
     """Default store path should be used when no store_path is configured."""
     mock_client = MagicMock()
     mock_client.rooms = {}
@@ -4548,12 +4632,9 @@ async def test_connect_matrix_e2ee_store_path_default(monkeypatch):
         raising=False,
     )
 
-    default_path = "/tmp/default-store"
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.get_e2ee_store_dir",
-        lambda: default_path,
-        raising=False,
-    )
+    from mmrelay.config import get_e2ee_store_dir as config_get_e2ee_store_dir
+
+    default_path = str(config_get_e2ee_store_dir())
     client_calls = []
 
     def fake_async_client(*_args, **_kwargs):
@@ -4569,7 +4650,8 @@ async def test_connect_matrix_e2ee_store_path_default(monkeypatch):
         patch("mmrelay.matrix_utils.os.makedirs"),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch(
-            "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
+            "mmrelay.e2ee_utils.get_e2ee_status",
+            return_value={"overall_status": "ok"},
         ),
         patch("mmrelay.e2ee_utils.get_room_encryption_warnings", return_value=[]),
     ):
@@ -5004,7 +5086,7 @@ async def test_connect_matrix_e2ee_store_missing_db_files_warns(
     mock_listdir.return_value = ["notes.txt"]
 
     def exists_side_effect(path):
-        if path.endswith("credentials.json"):
+        if path.endswith(CREDENTIALS_FILENAME):
             return False
         if path == "/test/store":
             return True
@@ -5080,7 +5162,7 @@ async def test_connect_matrix_e2ee_store_missing_db_files_warns(
 
 
 @pytest.mark.asyncio
-async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch):
+async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch, tmp_path):
     """E2EE-enabled connections should wait for key sharing delay."""
     mock_client = MagicMock()
     mock_client.rooms = {}
@@ -5155,7 +5237,10 @@ async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch):
                 "homeserver": "https://example.org",
                 "access_token": "token",
                 "bot_user_id": "@bot:example.org",
-                "encryption": {"enabled": True, "store_path": "/tmp/store"},
+                "encryption": {
+                    "enabled": True,
+                    "store_path": str(tmp_path / "mmrelay-store"),
+                },
             },
             "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
         }
@@ -5211,7 +5296,7 @@ async def test_connect_matrix_legacy_config(
         # Verify AsyncClient was created without E2EE
         mock_async_client.assert_called_once()
         call_args = mock_async_client.call_args
-        assert call_args[1].get("device_id") is None
+        assert "device_id" not in call_args[1]
         assert call_args[1].get("store_path") is None
 
         # Verify sync was called
@@ -5222,7 +5307,7 @@ async def test_connect_matrix_legacy_config(
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
 async def test_login_matrix_bot_e2ee_store_path_created(
-    _mock_ssl_context, mock_async_client, _mock_save_credentials
+    _mock_ssl_context, mock_async_client, _mock_save_credentials, tmp_path
 ):
     """E2EE-enabled logins should create a store path."""
     mock_discovery_client = AsyncMock()
@@ -5239,10 +5324,13 @@ async def test_login_matrix_bot_e2ee_store_path_created(
     mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
     mock_main_client.close = AsyncMock()
 
+    from mmrelay.config import get_e2ee_store_dir as config_get_e2ee_store_dir
+
+    store_path = str(config_get_e2ee_store_dir())
+
     with (
         patch("mmrelay.config.load_config", return_value={"matrix": {}}),
         patch("mmrelay.config.is_e2ee_enabled", return_value=True),
-        patch("mmrelay.matrix_utils.get_e2ee_store_dir", return_value="/tmp/store"),
         patch("mmrelay.matrix_utils.os.makedirs") as mock_makedirs,
         patch(
             "mmrelay.matrix_utils._normalize_bot_user_id",
@@ -5251,14 +5339,17 @@ async def test_login_matrix_bot_e2ee_store_path_created(
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
     assert result is True
-    mock_makedirs.assert_called_once_with("/tmp/store", exist_ok=True)
+    assert any(
+        call.args == (store_path,) and call.kwargs == {"exist_ok": True}
+        for call in mock_makedirs.call_args_list
+    )
 
 
 @patch("mmrelay.matrix_utils.save_credentials")
@@ -5312,9 +5403,9 @@ async def test_login_matrix_bot_api_login_debug_path(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5387,9 +5478,9 @@ async def test_login_matrix_bot_login_response_unexpected(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5432,16 +5523,17 @@ async def test_login_matrix_bot_whoami_fallback_when_missing_user_id(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
     assert result is True
     assert mock_save_credentials.call_args.args[0]["user_id"] == "@fallback:matrix.org"
     assert any(
-        "whoami failed, using fallback user_id" in call.args[0]
+        "whoami response did not include user_id; using login response user_id"
+        in call.args[0]
         for call in mock_logger.warning.call_args_list
     )
 
@@ -5478,9 +5570,9 @@ async def test_login_matrix_bot_logout_others_warns(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=True,
         )
 
@@ -5523,9 +5615,9 @@ async def test_login_matrix_bot_save_credentials_failure_triggers_cleanup(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5564,9 +5656,9 @@ async def test_login_matrix_bot_login_timeout(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5619,9 +5711,9 @@ async def test_login_matrix_bot_login_exception_guidance(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5683,15 +5775,97 @@ async def test_login_matrix_bot_login_response_status_codes(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
     assert result is False
     assert any(
         expected_log in call.args[0] for call in mock_logger.error.call_args_list
+    )
+    mock_main_client.close.assert_awaited_once()
+
+
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
+async def test_login_matrix_bot_forbidden_with_localpart_suggests_full_mxid(
+    _mock_ssl_context,
+    mock_async_client,
+):
+    """401/M_FORBIDDEN guidance should suggest full MXID when localpart was used."""
+    mock_discovery_client = AsyncMock()
+    mock_main_client = AsyncMock()
+    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
+
+    mock_discovery_client.discovery_info.return_value = SimpleNamespace(
+        homeserver_url="https://matrix.org"
+    )
+    mock_discovery_client.close = AsyncMock()
+    mock_main_client.login.return_value = MagicMock(
+        access_token=None, status_code=401, message="M_FORBIDDEN"
+    )
+    mock_main_client.close = AsyncMock()
+
+    with (
+        patch("mmrelay.config.load_config", return_value={}),
+        patch("mmrelay.config.is_e2ee_enabled", return_value=False),
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        result = await login_matrix_bot(
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
+            logout_others=False,
+        )
+
+    assert result is False
+    assert any(
+        "retry with a full Matrix ID" in call.args[0]
+        for call in mock_logger.error.call_args_list
+    )
+    mock_main_client.close.assert_awaited_once()
+
+
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
+async def test_login_matrix_bot_forbidden_with_full_mxid_skips_full_mxid_hint(
+    _mock_ssl_context,
+    mock_async_client,
+):
+    """Full MXID input should not log redundant full-MXID retry guidance."""
+    mock_discovery_client = AsyncMock()
+    mock_main_client = AsyncMock()
+    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
+
+    mock_discovery_client.discovery_info.return_value = SimpleNamespace(
+        homeserver_url="https://matrix.org"
+    )
+    mock_discovery_client.close = AsyncMock()
+    mock_main_client.login.return_value = MagicMock(
+        access_token=None, status_code=401, message="M_FORBIDDEN"
+    )
+    mock_main_client.close = AsyncMock()
+
+    with (
+        patch("mmrelay.config.load_config", return_value={}),
+        patch("mmrelay.config.is_e2ee_enabled", return_value=False),
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        result = await login_matrix_bot(
+            homeserver=TEST_HOMESERVER,
+            username=TEST_FULL_MXID,
+            password=TEST_PASSWORD,
+            logout_others=False,
+        )
+
+    assert result is False
+    assert not any(
+        "retry with a full Matrix ID" in call.args[0]
+        for call in mock_logger.error.call_args_list
     )
     mock_main_client.close.assert_awaited_once()
 
@@ -5728,9 +5902,9 @@ async def test_login_matrix_bot_whoami_exception_uses_fallback(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5738,6 +5912,97 @@ async def test_login_matrix_bot_whoami_exception_uses_fallback(
     assert mock_save_credentials.call_args.args[0]["user_id"] == "@fallback:matrix.org"
     assert any(
         "whoami call failed" in call.args[0]
+        for call in mock_logger.warning.call_args_list
+    )
+
+
+@patch("mmrelay.matrix_utils.save_credentials")
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
+async def test_login_matrix_bot_whoami_oserror_uses_fallback(
+    _mock_normalize,
+    _mock_ssl_context,
+    mock_async_client,
+    mock_save_credentials,
+):
+    """OSError from whoami should warn and fall back to login response user_id."""
+    mock_discovery_client = AsyncMock()
+    mock_main_client = AsyncMock()
+    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
+
+    mock_discovery_client.discovery_info.return_value = SimpleNamespace(
+        homeserver_url="https://matrix.org"
+    )
+    mock_discovery_client.close = AsyncMock()
+    mock_main_client.login.return_value = MagicMock(
+        access_token="token", device_id="DEV", user_id="@fallback:matrix.org"
+    )
+    mock_main_client.whoami.side_effect = OSError("network down")
+    mock_main_client.close = AsyncMock()
+
+    with (
+        patch("mmrelay.config.load_config", return_value={}),
+        patch("mmrelay.config.is_e2ee_enabled", return_value=False),
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        result = await login_matrix_bot(
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
+            logout_others=False,
+        )
+
+    assert result is True
+    assert mock_save_credentials.call_args.args[0]["user_id"] == "@fallback:matrix.org"
+    assert any(
+        "whoami call failed" in call.args[0]
+        for call in mock_logger.warning.call_args_list
+    )
+
+
+@patch("mmrelay.matrix_utils.save_credentials")
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
+async def test_login_matrix_bot_saves_credentials_without_user_id_when_unknown(
+    _mock_ssl_context,
+    mock_async_client,
+    mock_save_credentials,
+):
+    """If whoami and login response omit user_id, credentials should still save."""
+    mock_discovery_client = AsyncMock()
+    mock_main_client = AsyncMock()
+    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
+
+    mock_discovery_client.discovery_info.return_value = SimpleNamespace(
+        homeserver_url="https://matrix.org"
+    )
+    mock_discovery_client.close = AsyncMock()
+    mock_main_client.login.return_value = MagicMock(
+        access_token="token", device_id="DEV", user_id=None
+    )
+    mock_main_client.whoami.return_value = MagicMock(user_id=None)
+    mock_main_client.close = AsyncMock()
+
+    with (
+        patch("mmrelay.config.load_config", return_value={}),
+        patch("mmrelay.config.is_e2ee_enabled", return_value=False),
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        result = await login_matrix_bot(
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
+            logout_others=False,
+        )
+
+    assert result is True
+    saved_credentials = mock_save_credentials.call_args.args[0]
+    assert "user_id" not in saved_credentials
+    assert any(
+        "saving credentials without user_id" in call.args[0]
         for call in mock_logger.warning.call_args_list
     )
 
@@ -5775,9 +6040,9 @@ async def test_login_matrix_bot_e2ee_config_load_exception_disables_e2ee(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5827,8 +6092,8 @@ async def test_login_matrix_bot_no_password_warns(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
             password=None,
             logout_others=False,
         )
@@ -5866,7 +6131,7 @@ async def test_login_matrix_bot_no_password_warns(
         mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
         mock_main_client.close = AsyncMock()
 
-        credentials_path = str(tmp_path / "credentials.json")
+        credentials_path = str(tmp_path / CREDENTIALS_FILENAME)
         mock_load_credentials.side_effect = OSError("boom")
 
         with (
@@ -5883,9 +6148,9 @@ async def test_login_matrix_bot_no_password_warns(
             patch("mmrelay.matrix_utils.logger") as mock_logger,
         ):
             result = await login_matrix_bot(
-                homeserver="https://matrix.org",
-                username="user",
-                password="pass",
+                homeserver=TEST_HOMESERVER,
+                username=TEST_USERNAME,
+                password=TEST_PASSWORD,
                 logout_others=False,
             )
 
@@ -5934,9 +6199,9 @@ async def test_login_matrix_bot_api_login_debug_failure_logs(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 

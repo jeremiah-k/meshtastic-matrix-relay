@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.setup_utils import (
     SYSTEMCTL,
+    SYSTEMD_SERVICE_FILENAME,
     check_lingering_enabled,
     create_service_file,
     enable_lingering,
@@ -56,7 +57,7 @@ class TestSetupUtils(unittest.TestCase):
         """
         # Create temporary directory for testing
         self.test_dir = tempfile.mkdtemp()
-        self.test_service_path = Path(self.test_dir) / "mmrelay.service"
+        self.test_service_path = Path(self.test_dir) / SYSTEMD_SERVICE_FILENAME
 
     def tearDown(self):
         """
@@ -120,7 +121,7 @@ class TestSetupUtils(unittest.TestCase):
 
         result = get_resolved_exec_start()
 
-        expected = "ExecStart=/usr/local/bin/mmrelay --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
+        expected = "ExecStart=/usr/local/bin/mmrelay --home %h/.mmrelay"
         self.assertEqual(result, expected)
 
     @patch("shutil.which")
@@ -130,7 +131,7 @@ class TestSetupUtils(unittest.TestCase):
 
         result = get_resolved_exec_start()
 
-        expected = f"ExecStart={sys.executable} -m mmrelay --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
+        expected = f"ExecStart={sys.executable} -m mmrelay --home %h/.mmrelay"
         self.assertEqual(result, expected)
 
     @patch("mmrelay.setup_utils.logger")
@@ -138,12 +139,28 @@ class TestSetupUtils(unittest.TestCase):
         """Test that log_service_commands logs the correct commands."""
         log_service_commands()
 
-        # Verify all expected commands were logged
+        # Verify all expected commands were logged with %-formatting
         expected_calls = [
-            call("  systemctl --user start mmrelay.service    # Start the service"),
-            call("  systemctl --user stop mmrelay.service     # Stop the service"),
-            call("  systemctl --user restart mmrelay.service  # Restart the service"),
-            call("  systemctl --user status mmrelay.service   # Check service status"),
+            call(
+                "  %s --user start %s      # Start the service",
+                SYSTEMCTL,
+                SYSTEMD_SERVICE_FILENAME,
+            ),
+            call(
+                "  %s --user stop %s       # Stop the service",
+                SYSTEMCTL,
+                SYSTEMD_SERVICE_FILENAME,
+            ),
+            call(
+                "  %s --user restart %s    # Restart the service",
+                SYSTEMCTL,
+                SYSTEMD_SERVICE_FILENAME,
+            ),
+            call(
+                "  %s --user status %s     # Check service status",
+                SYSTEMCTL,
+                SYSTEMD_SERVICE_FILENAME,
+            ),
         ]
         mock_logger.info.assert_has_calls(expected_calls)
 
@@ -238,7 +255,32 @@ class TestSetupUtils(unittest.TestCase):
         """
         mock_home.return_value = Path("/home/user")
 
-        service_path = get_user_service_path()
+        with patch.dict("os.environ", {"XDG_CONFIG_HOME": ""}):
+            service_path = get_user_service_path()
+
+        expected_path = Path("/home/user/.config/systemd/user/mmrelay.service")
+        self.assertEqual(service_path, expected_path)
+
+    @patch("mmrelay.setup_utils.Path.home")
+    def test_get_user_service_path_with_absolute_xdg_config_home(self, mock_home):
+        """Absolute XDG_CONFIG_HOME should be used for service path resolution."""
+        mock_home.return_value = Path("/home/user")
+
+        with patch.dict("os.environ", {"XDG_CONFIG_HOME": "/var/lib/xdg-config"}):
+            service_path = get_user_service_path()
+
+        expected_path = Path("/var/lib/xdg-config/systemd/user/mmrelay.service")
+        self.assertEqual(service_path, expected_path)
+
+    @patch("mmrelay.setup_utils.Path.home")
+    def test_get_user_service_path_with_relative_xdg_config_home_falls_back(
+        self, mock_home
+    ):
+        """Relative XDG_CONFIG_HOME should be ignored to avoid CWD-relative writes."""
+        mock_home.return_value = Path("/home/user")
+
+        with patch.dict("os.environ", {"XDG_CONFIG_HOME": "relative/config"}):
+            service_path = get_user_service_path()
 
         expected_path = Path("/home/user/.config/systemd/user/mmrelay.service")
         self.assertEqual(service_path, expected_path)
@@ -336,6 +378,23 @@ class TestSetupUtils(unittest.TestCase):
 
         self.assertIsNotNone(path)
         self.assertTrue(path.endswith("share/mmrelay/mmrelay.service"))  # type: ignore[optional-attr]
+
+    @patch.dict(
+        os.environ,
+        {"MMRELAY_SERVICE_OVERRIDE": "~/override-dir/mmrelay.service"},
+        clear=False,
+    )
+    @patch("os.path.exists")
+    def test_get_template_service_path_expands_override(self, mock_exists):
+        """Override path should expand user/env markers before existence checks."""
+        expanded_override = os.path.abspath(
+            os.path.expanduser("~/override-dir/mmrelay.service")
+        )
+        mock_exists.side_effect = lambda path: path == expanded_override
+
+        path = get_template_service_path()
+
+        self.assertEqual(path, expanded_override)
 
     @patch("mmrelay.setup_utils.get_service_template_path")
     @patch("os.path.exists")
@@ -661,9 +720,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         self, mock_get_template, mock_get_executable, mock_read_service
     ):
         """
-        Test that service_needs_update returns True when the executable path in the service file differs from the current executable.
-
-        Verifies that the function detects when the service file's ExecStart path does not match the current executable and provides an appropriate reason.
+        Test that service_needs_update flags missing home configuration.
         """
         mock_read_service.return_value = "ExecStart=/old/path/mmrelay"
         mock_get_executable.return_value = "/new/path/mmrelay"
@@ -672,7 +729,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         needs_update, reason = service_needs_update()
 
         self.assertTrue(needs_update)
-        self.assertIn("does not use an acceptable executable", reason)
+        self.assertIn("missing home configuration", reason)
 
     @patch("mmrelay.setup_utils.read_service_file")
     @patch("mmrelay.setup_utils.get_template_service_path")
@@ -750,7 +807,8 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_is_service_active.side_effect = mock_service_active_side_effect
 
         # Call the function - should complete early when service becomes active
-        wait_for_service_start()
+        with patch("time.sleep", return_value=None):
+            wait_for_service_start()
 
         # Verify is_service_active was called multiple times
         self.assertGreaterEqual(mock_is_service_active.call_count, 5)
@@ -814,9 +872,11 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         self, mock_read_service, mock_exists
     ):
         """
-        Verifies that service_needs_update flags an update when the service file's PATH environment is missing common user-bin locations.
+        Verifies that service_needs_update flags an update when PATH lookup is used without a hardened PATH environment.
 
-        Sets up a service file whose ExecStart uses the current Python interpreter (via `-m mmrelay`), mocks a template path and a located mmrelay executable, and asserts that service_needs_update returns `True` with a reason mentioning that the service PATH does not include common user-bin locations.
+        Sets up a service file whose ExecStart uses `mmrelay` via PATH, includes `--home`,
+        and omits PATH environment entries. service_needs_update should return `True`
+        with a reason mentioning missing common user-bin locations.
         """
         # Mock existing service file without proper PATH environment
         mock_exists.return_value = True
@@ -824,12 +884,12 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
     Description=MMRelay Service
     
     [Service]
-    ExecStart={} -m mmrelay
+    ExecStart=mmrelay --home %h/.mmrelay
     Restart=on-failure
     
     [Install]
     WantedBy=default.target
-    """.format(sys.executable)
+    """
 
         # Mock template path and acceptable executables
         with (
@@ -848,6 +908,320 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             self.assertIn(
                 "Service PATH does not include common user-bin locations", reason
             )
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    def test_service_needs_update_rejects_empty_home_equals_value(
+        self, mock_read_service, mock_exists
+    ) -> None:
+        """`--home=` without a value should be treated as missing home config."""
+        mock_exists.return_value = True
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+ExecStart=mmrelay --home=
+Environment=PATH=%h/.local/bin
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/var/lib/mmrelay/template.service",
+        ):
+            result, reason = service_needs_update()
+
+        self.assertTrue(result)
+        self.assertIn("missing home configuration", reason)
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    def test_service_needs_update_rejects_standalone_home_without_value(
+        self, mock_read_service, mock_exists
+    ) -> None:
+        """Standalone `--home` without a following value should be invalid."""
+        mock_exists.return_value = True
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+ExecStart=mmrelay --home
+Environment=PATH=%h/.local/bin
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/var/lib/mmrelay/template.service",
+        ):
+            result, reason = service_needs_update()
+
+        self.assertTrue(result)
+        self.assertIn("missing home configuration", reason)
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    def test_service_needs_update_rejects_empty_mmrelay_home_environment(
+        self, mock_read_service, mock_exists
+    ) -> None:
+        """Empty MMRELAY_HOME assignment should not satisfy home config checks."""
+        mock_exists.return_value = True
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+Environment=MMRELAY_HOME=
+ExecStart=/opt/mmrelay/bin/mmrelay-wrapper
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/var/lib/mmrelay/template.service",
+        ):
+            result, reason = service_needs_update()
+
+        self.assertTrue(result)
+        self.assertIn("missing home configuration", reason)
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    def test_service_needs_update_path_substring_does_not_satisfy_lookup(
+        self, mock_read_service, mock_exists
+    ) -> None:
+        """Unrelated env values containing '/.local/bin' substrings should not pass PATH checks."""
+        mock_exists.return_value = True
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+ExecStart=mmrelay --home %h/.mmrelay
+Environment=SOME_DIR=/opt/.local/bin-cache
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/var/lib/mmrelay/template.service",
+        ):
+            result, reason = service_needs_update()
+
+        self.assertTrue(result)
+        self.assertIn("Service PATH does not include common user-bin locations", reason)
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("os.path.getmtime")
+    def test_service_needs_update_absolute_launcher_does_not_require_path(
+        self, mock_getmtime, mock_read_service, mock_exists
+    ):
+        """Absolute custom launchers may rely on MMRELAY_HOME without requiring --home/PATH."""
+        mock_exists.return_value = True
+        mock_getmtime.side_effect = [1, 1]
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+Environment=MMRELAY_HOME=%h/.mmrelay
+ExecStart=/opt/mmrelay/bin/mmrelay-wrapper
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/var/lib/mmrelay/template.service",
+        ):
+            result, reason = service_needs_update()
+
+        self.assertFalse(result)
+        self.assertIn("up to date", reason)
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("os.path.getmtime")
+    def test_service_needs_update_env_launcher_with_assignments_supported(
+        self, mock_getmtime, mock_read_service, mock_exists
+    ):
+        """`/usr/bin/env MMRELAY_HOME=... mmrelay` should be treated as valid."""
+        mock_exists.return_value = True
+        mock_getmtime.side_effect = [1, 1]
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+Environment=PATH=%h/.local/bin
+ExecStart=/usr/bin/env MMRELAY_HOME=%h/.mmrelay mmrelay
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/var/lib/mmrelay/template.service",
+        ):
+            result, reason = service_needs_update()
+
+        self.assertFalse(result)
+        self.assertIn("up to date", reason)
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("os.path.getmtime")
+    def test_service_needs_update_env_launcher_with_inline_path_supported(
+        self, mock_getmtime, mock_read_service, mock_exists
+    ):
+        """Inline PATH assignment in ExecStart env launchers should satisfy PATH checks."""
+        mock_exists.return_value = True
+        mock_getmtime.side_effect = [1, 1]
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+ExecStart=/usr/bin/env PATH=%h/.local/bin MMRELAY_HOME=%h/.mmrelay mmrelay
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/var/lib/mmrelay/template.service",
+        ):
+            result, reason = service_needs_update()
+
+        self.assertFalse(result)
+        self.assertIn("up to date", reason)
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("os.path.getmtime")
+    def test_service_needs_update_quoted_mmrelay_home_environment_supported(
+        self, mock_getmtime, mock_read_service, mock_exists
+    ):
+        """Quoted Environment=MMRELAY_HOME should be recognized as valid home config."""
+        mock_exists.return_value = True
+        mock_getmtime.side_effect = [1, 1]
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+Environment="MMRELAY_HOME=%h/.mmrelay"
+ExecStart=/opt/mmrelay/bin/mmrelay-wrapper
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/var/lib/mmrelay/template.service",
+        ):
+            result, reason = service_needs_update()
+
+        self.assertFalse(result)
+        self.assertIn("up to date", reason)
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("os.path.getmtime")
+    def test_service_needs_update_multi_assignment_environment_supported(
+        self, mock_getmtime, mock_read_service, mock_exists
+    ):
+        """Environment lines with multiple assignments should detect MMRELAY_HOME."""
+        mock_exists.return_value = True
+        mock_getmtime.side_effect = [1, 1]
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+Environment=PYTHONUNBUFFERED=1 MMRELAY_HOME=%h/.mmrelay
+ExecStart=/opt/mmrelay/bin/mmrelay-wrapper
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/var/lib/mmrelay/template.service",
+        ):
+            result, reason = service_needs_update()
+
+        self.assertFalse(result)
+        self.assertIn("up to date", reason)
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("os.path.getmtime")
+    def test_service_needs_update_env_launcher_requires_command_token(
+        self, mock_getmtime, mock_read_service, mock_exists
+    ):
+        """`/usr/bin/env` launchers without a command token should be rejected."""
+        mock_exists.return_value = True
+        mock_getmtime.side_effect = [1, 1]
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+ExecStart=/usr/bin/env MMRELAY_HOME=%h/.mmrelay
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/var/lib/mmrelay/template.service",
+        ):
+            result, reason = service_needs_update()
+
+        self.assertTrue(result)
+        self.assertIn("invalid ExecStart env launcher", reason)
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    def test_service_needs_update_home_dir_not_matched_as_home_flag(
+        self, mock_read_service, mock_exists
+    ) -> None:
+        """Verify --home-dir is not matched as --home flag (token-level detection)."""
+        mock_exists.return_value = True
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/mmrelay --home-dir /some/path
+Environment=PATH=/usr/bin
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/var/lib/mmrelay/template.service",
+        ):
+            needs_update, message = service_needs_update()
+            self.assertTrue(needs_update)
+            self.assertIn("missing home configuration", message)
 
     @patch.dict(os.environ, {}, clear=True)
     @patch("getpass.getuser")
@@ -1135,12 +1509,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         path = get_template_service_path()
 
         self.assertIsNone(path)
-        self.assertTrue(
-            any(
-                "Could not find mmrelay.service in any of these locations:"
-                in call_args.args[0]
-                for call_args in mock_logger.warning.call_args_list
-            )
+        mock_logger.warning.assert_any_call(
+            "Could not find %s in any of these locations:",
+            SYSTEMD_SERVICE_FILENAME,
         )
 
     @patch("mmrelay.setup_utils.read_service_file", return_value=None)

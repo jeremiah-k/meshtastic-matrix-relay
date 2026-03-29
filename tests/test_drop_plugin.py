@@ -10,15 +10,50 @@ Tests the message drop and pickup functionality including:
 - Error handling for invalid positions
 """
 
+import asyncio
 import os
 import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from tests.constants import TEST_LAT_NYC, TEST_LON_NYC
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.plugins.drop_plugin import Plugin
+
+
+@pytest.mark.asyncio
+@patch("mmrelay.plugins.drop_plugin.connect_meshtastic", return_value=None)
+async def test_handle_meshtastic_message_returns_false_for_drop_command_without_client(
+    _mock_connect,
+):
+    """When client is unavailable, command should still be marked handled to prevent relay."""
+    plugin = Plugin()
+    plugin.config = {"radius_km": 5}
+    plugin.logger = MagicMock()
+    plugin.store_node_data = MagicMock()
+    plugin.get_node_data = MagicMock(return_value=[])
+    plugin.set_node_data = MagicMock()
+
+    packet = {
+        "fromId": "!12345678",
+        "decoded": {
+            "portnum": TEXT_MESSAGE_APP,
+            "text": "!drop cached message",
+        },
+    }
+
+    result = await plugin.handle_meshtastic_message(
+        packet, "formatted", "longname", "meshnet"
+    )
+    assert result is True
+    plugin.set_node_data.assert_not_called()
+    plugin.store_node_data.assert_not_called()
 
 
 class TestDropPlugin(unittest.TestCase):
@@ -42,7 +77,7 @@ class TestDropPlugin(unittest.TestCase):
         self.mock_meshtastic_client.nodes = {
             "node1": {
                 "user": {"id": "!12345678"},
-                "position": {"latitude": 40.7128, "longitude": -74.0060},
+                "position": {"latitude": TEST_LAT_NYC, "longitude": TEST_LON_NYC},
             },
             "node2": {
                 "user": {"id": "!87654321"},
@@ -64,8 +99,8 @@ class TestDropPlugin(unittest.TestCase):
         position = self.plugin.get_position(self.mock_meshtastic_client, "!12345678")
 
         self.assertIsNotNone(position)
-        self.assertEqual(position["latitude"], 40.7128)
-        self.assertEqual(position["longitude"], -74.0060)
+        self.assertEqual(position["latitude"], TEST_LAT_NYC)
+        self.assertEqual(position["longitude"], TEST_LON_NYC)
 
     def test_get_position_with_node_no_position(self):
         """
@@ -95,7 +130,7 @@ class TestDropPlugin(unittest.TestCase):
         packet = {
             "fromId": "!12345678",
             "decoded": {
-                "portnum": "TEXT_MESSAGE_APP",
+                "portnum": TEXT_MESSAGE_APP,
                 "text": "!drop This is a test message",
             },
         }
@@ -118,9 +153,7 @@ class TestDropPlugin(unittest.TestCase):
             stored_data = call_args[0][1]
             self.assertEqual(stored_data["text"], "This is a test message")
             self.assertEqual(stored_data["originator"], "!12345678")
-            self.assertEqual(stored_data["location"], (40.7128, -74.0060))
-
-        import asyncio
+            self.assertEqual(stored_data["location"], (TEST_LAT_NYC, TEST_LON_NYC))
 
         asyncio.run(run_test())
 
@@ -132,9 +165,9 @@ class TestDropPlugin(unittest.TestCase):
         mock_connect.return_value = self.mock_meshtastic_client
 
         packet = {
-            "fromId": "!11111111",  # Node without position
+            "fromId": "!11111111",
             "decoded": {
-                "portnum": "TEXT_MESSAGE_APP",
+                "portnum": TEXT_MESSAGE_APP,
                 "text": "!drop This should fail",
             },
         }
@@ -152,8 +185,6 @@ class TestDropPlugin(unittest.TestCase):
                 "Position of dropping node is not known. Skipping ..."
             )
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.plugins.drop_plugin.connect_meshtastic")
@@ -168,7 +199,7 @@ class TestDropPlugin(unittest.TestCase):
         packet = {
             "fromId": "!12345678",
             "decoded": {
-                "portnum": "TEXT_MESSAGE_APP",
+                "portnum": TEXT_MESSAGE_APP,
                 "text": "Just a regular message",
             },
         }
@@ -182,8 +213,6 @@ class TestDropPlugin(unittest.TestCase):
             )
             self.assertFalse(result)
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.plugins.drop_plugin.connect_meshtastic")
@@ -196,8 +225,8 @@ class TestDropPlugin(unittest.TestCase):
         packet = {
             "fromId": "!12345678",
             "decoded": {
-                "portnum": "TEXT_MESSAGE_APP",
-                "text": "!drop",  # No message content
+                "portnum": TEXT_MESSAGE_APP,
+                "text": "!drop",
             },
         }
 
@@ -209,8 +238,6 @@ class TestDropPlugin(unittest.TestCase):
                 packet, "formatted_message", "longname", "meshnet_name"
             )
             self.assertFalse(result)
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -230,7 +257,7 @@ class TestDropPlugin(unittest.TestCase):
         # Mock stored messages
         stored_messages = [
             {
-                "location": (40.7128, -74.0060),  # Same as node1 location
+                "location": (TEST_LAT_NYC, TEST_LON_NYC),  # Same as node1 location
                 "text": "Pickup this message",
                 "originator": "!99999999",  # Different from packet sender
             }
@@ -239,8 +266,8 @@ class TestDropPlugin(unittest.TestCase):
         self.plugin.get_node_data.return_value = stored_messages
 
         packet = {
-            "fromId": "!12345678",  # Node1 with position
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "Some message"},
+            "fromId": "!12345678",
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "Some message"},
         }
 
         async def run_test():
@@ -258,8 +285,6 @@ class TestDropPlugin(unittest.TestCase):
 
             # Should clear the messages (empty list)
             self.plugin.set_node_data.assert_called_once_with("!NODE_MSGS!", [])
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -288,8 +313,8 @@ class TestDropPlugin(unittest.TestCase):
         self.plugin.get_node_data.return_value = stored_messages
 
         packet = {
-            "fromId": "!12345678",  # Node1 with position
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "Some message"},
+            "fromId": "!12345678",
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "Some message"},
         }
 
         async def run_test():
@@ -310,8 +335,6 @@ class TestDropPlugin(unittest.TestCase):
                 "!NODE_MSGS!", stored_messages
             )
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.plugins.drop_plugin.haversine")
@@ -330,7 +353,7 @@ class TestDropPlugin(unittest.TestCase):
         # Mock stored messages from the same originator
         stored_messages = [
             {
-                "location": (40.7128, -74.0060),
+                "location": (TEST_LAT_NYC, TEST_LON_NYC),
                 "text": "Own message",
                 "originator": "!12345678",  # Same as packet sender
             }
@@ -339,8 +362,8 @@ class TestDropPlugin(unittest.TestCase):
         self.plugin.get_node_data.return_value = stored_messages
 
         packet = {
-            "fromId": "!12345678",  # Same as originator
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "Some message"},
+            "fromId": "!12345678",
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "Some message"},
         }
 
         async def run_test():
@@ -361,8 +384,6 @@ class TestDropPlugin(unittest.TestCase):
             self.plugin.set_node_data.assert_called_once_with(
                 "!NODE_MSGS!", stored_messages
             )
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -392,7 +413,7 @@ class TestDropPlugin(unittest.TestCase):
 
         packet = {
             "fromId": "!12345678",
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "Some message"},
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "Some message"},
         }
 
         async def run_test():
@@ -413,8 +434,6 @@ class TestDropPlugin(unittest.TestCase):
                 "!NODE_MSGS!", stored_messages
             )
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.plugins.drop_plugin.connect_meshtastic")
@@ -427,8 +446,8 @@ class TestDropPlugin(unittest.TestCase):
         mock_connect.return_value = self.mock_meshtastic_client
 
         packet = {
-            "fromId": "!relay123",  # Same as relay node ID
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "Message from relay"},
+            "fromId": "!relay123",
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "Message from relay"},
         }
 
         async def run_test():
@@ -444,8 +463,6 @@ class TestDropPlugin(unittest.TestCase):
 
             # Should return False for non-drop messages (not processed)
             self.assertFalse(result)
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -468,8 +485,6 @@ class TestDropPlugin(unittest.TestCase):
             result = await self.plugin.handle_room_message(room, event, "full_message")
             self.assertTrue(result)
             self.plugin.matches.assert_called_once_with(event)
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -495,8 +510,6 @@ class TestDropPlugin(unittest.TestCase):
             result = await self.plugin.handle_room_message(room, event, "full_message")
             self.assertFalse(result)  # Returns False when no match
             mock_matches.assert_called_once_with(event)
-
-        import asyncio
 
         asyncio.run(run_test())
 

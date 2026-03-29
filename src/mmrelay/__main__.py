@@ -21,7 +21,12 @@ if __name__ == "__main__":
         sys.exit(1)
     except KeyboardInterrupt:
         print("Interrupted.", file=sys.stderr)
-        sys.exit(130)
+        try:
+            from mmrelay.constants.app import EXIT_CODE_SIGINT
+
+            sys.exit(EXIT_CODE_SIGINT)
+        except ImportError:
+            sys.exit(130)  # POSIX convention: 128 + SIGINT(2)
     except SystemExit:
         raise
     except Exception as e:

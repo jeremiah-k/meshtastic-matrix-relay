@@ -11,19 +11,30 @@ Inline comments explain test assertions and expected behavior for clarity.
 import os
 import shutil
 import sqlite3
+import subprocess  # nosec B404  # test: testing subprocess behavior
 import sys
+import tempfile
+import time
 from pathlib import Path
 from unittest import mock
 
 import pytest
 
+from mmrelay.constants.app import (
+    CONFIG_FILENAME,
+    CREDENTIALS_FILENAME,
+    DATABASE_FILENAME,
+)
+from mmrelay.constants.migration import MIGRATION_BACKUP_DIRNAME
 from mmrelay.migrate import (
-    BACKUP_DIRNAME,
     MigrationError,
     _backup_file,
     _dir_has_entries,
     _find_legacy_data,
     _get_most_recent_database,
+    _get_staging_path,
+    _is_mmrelay_running,
+    _is_windows_file_in_use_error,
     _path_is_within_home,
     migrate_config,
     migrate_credentials,
@@ -120,7 +131,7 @@ class TestFindLegacyData:
         """Test finding credentials.json."""
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
-        creds = legacy_root_dir / "credentials.json"
+        creds = legacy_root_dir / CREDENTIALS_FILENAME
         creds.write_text('{"test": "data"}')
 
         findings = _find_legacy_data(legacy_root_dir)
@@ -128,11 +139,161 @@ class TestFindLegacyData:
         assert findings[0]["type"] == "credentials"
         assert findings[0]["path"] == str(creds)
 
+
+class TestMigrateAdditionalCoverage:
+    """Targeted coverage tests for migration helper branches."""
+
+    def test_is_windows_file_in_use_error_detects_winerror(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Windows winerror lock codes should be detected as file-in-use errors."""
+        exc = OSError("in use")
+        exc.winerror = 32  # type: ignore[attr-defined] # WINERR_SHARING_VIOLATION
+        monkeypatch.setattr(sys, "platform", "win32")
+
+        assert _is_windows_file_in_use_error(exc) is True
+
+    def test_is_mmrelay_running_uses_ps_fallback_when_proc_cmdline_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When /proc cmdline is unavailable, ps output should be used for verification."""
+        monkeypatch.setattr(sys, "platform", "linux")
+        monkeypatch.setattr(
+            "mmrelay.migrate.shutil.which", lambda cmd: f"/usr/bin/{cmd}"
+        )
+        monkeypatch.setattr("mmrelay.migrate.os.getpid", lambda: 100)
+        original_exists = Path.exists
+
+        def selective_exists(self: Path) -> bool:
+            if "/proc" in str(self) and "cmdline" in str(self):
+                return False
+            return original_exists(self)
+
+        monkeypatch.setattr(Path, "exists", selective_exists)
+
+        responses = [
+            subprocess.CompletedProcess(
+                args=["pgrep", "-f", "mmrelay"], returncode=0, stdout="101\n", stderr=""
+            ),
+            subprocess.CompletedProcess(
+                args=["ps", "-p", "101", "-o", "command="],
+                returncode=0,
+                stdout="/usr/bin/mmrelay --daemon\n",
+                stderr="",
+            ),
+        ]
+
+        with mock.patch(
+            "mmrelay.migrate.subprocess.run", side_effect=responses
+        ) as mock_run:
+            assert _is_mmrelay_running() is True
+
+        called_commands = [call[0][0] for call in mock_run.call_args_list]
+        assert any(
+            "pgrep" in str(cmd) for cmd in called_commands
+        ), f"pgrep not called: {called_commands}"
+        assert any(
+            "ps" in str(cmd) for cmd in called_commands
+        ), f"ps fallback not called: {called_commands}"
+
+    def test_migrate_config_success_cleans_staging_file(self, tmp_path: Path) -> None:
+        """Successful config migration should unlink any leftover staging file."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        (legacy_root / CONFIG_FILENAME).write_text("matrix: {}\n", encoding="utf-8")
+
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        staging_path = _get_staging_path(new_home, "config")
+
+        staging_path.parent.mkdir(parents=True, exist_ok=True)
+        staging_path.write_text("stale staging data", encoding="utf-8")
+        assert staging_path.exists(), "Precondition: staging file should exist"
+
+        result = migrate_config([legacy_root], new_home, dry_run=False, force=False)
+
+        assert result["success"] is True
+        assert not staging_path.exists(), "Staging file should be cleaned up"
+        assert (
+            new_home / CONFIG_FILENAME
+        ).exists(), "config.yaml was not moved to target"
+
+    def test_migrate_database_skips_paths_resolving_to_target_and_reports_already_migrated(
+        self, tmp_path: Path
+    ) -> None:
+        """Candidate paths resolving to target should be skipped and return already_migrated."""
+        if sys.platform == "win32":
+            pytest.skip("Symlinks not supported reliably on Windows")
+
+        new_home = tmp_path / "home"
+        new_db_dir = new_home / "database"
+        new_db_dir.mkdir(parents=True)
+        target_db = new_db_dir / DATABASE_FILENAME
+        with sqlite3.connect(target_db):
+            pass
+
+        symlink_root = tmp_path / "symlink_root"
+        symlink_root.mkdir()
+        partial_root = tmp_path / "partial_root"
+        partial_root.mkdir()
+        try:
+            (symlink_root / DATABASE_FILENAME).symlink_to(target_db)
+            (partial_root / "data").symlink_to(new_db_dir, target_is_directory=True)
+        except OSError as exc:
+            pytest.skip(f"Symlinks unavailable in this environment: {exc}")
+
+        result = migrate_database(
+            [symlink_root, partial_root],
+            new_home,
+            dry_run=False,
+            force=True,
+        )
+
+        assert result["success"] is True
+        assert result["action"] == "already_migrated"
+
+    def test_migrate_database_inserts_most_recent_and_appends_extra_sidecars(
+        self, tmp_path: Path
+    ) -> None:
+        """Most-recent legacy DB selection should include discovered sidecars."""
+        legacy_root_old = tmp_path / "legacy_old"
+        legacy_root_old.mkdir()
+        old_db = legacy_root_old / DATABASE_FILENAME
+        with sqlite3.connect(old_db):
+            pass
+
+        legacy_root_new = tmp_path / "legacy_new"
+        legacy_root_new.mkdir()
+        most_recent = legacy_root_new / DATABASE_FILENAME
+        with sqlite3.connect(most_recent):
+            pass
+        extra_sidecar = legacy_root_new / "meshtastic.sqlite-wal"
+        extra_sidecar.write_text("", encoding="utf-8")
+
+        now = time.time()
+        os.utime(old_db, (now - 120, now - 120))
+        os.utime(most_recent, (now, now))
+        os.utime(extra_sidecar, (now + 5, now + 5))
+
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+
+        result = migrate_database(
+            [legacy_root_new, legacy_root_old],
+            new_home,
+            dry_run=False,
+            force=True,
+        )
+
+        assert result["success"] is True
+        assert (new_home / "database" / most_recent.name).exists()
+        assert (new_home / "database" / extra_sidecar.name).exists()
+
     def test_find_legacy_data_database(self, tmp_path: Path) -> None:
         """Test finding meshtastic.sqlite."""
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
-        db = legacy_root_dir / "meshtastic.sqlite"
+        db = legacy_root_dir / DATABASE_FILENAME
         db.write_text("sqlite db")
 
         findings = _find_legacy_data(legacy_root_dir)
@@ -143,7 +304,7 @@ class TestFindLegacyData:
         """Test finding database with WAL/SHM sidecars."""
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
-        db = legacy_root_dir / "meshtastic.sqlite"
+        db = legacy_root_dir / DATABASE_FILENAME
         db.write_text("sqlite db")
         wal = legacy_root_dir / "meshtastic.sqlite-wal"
         wal.write_text("wal data")
@@ -161,7 +322,7 @@ class TestFindLegacyData:
         legacy_root_dir.mkdir()
         data_dir = legacy_root_dir / "data"
         data_dir.mkdir()
-        db = data_dir / "meshtastic.sqlite"
+        db = data_dir / DATABASE_FILENAME
         db.write_text("sqlite db")
 
         findings = _find_legacy_data(legacy_root_dir)
@@ -211,13 +372,13 @@ class TestFindLegacyData:
         legacy_root_dir.mkdir()
 
         # Create files that would be found multiple times
-        db = legacy_root_dir / "meshtastic.sqlite"
+        db = legacy_root_dir / DATABASE_FILENAME
         db.write_text("db")
 
         # Database layout with nested database (should dedupe)
         database_dir = legacy_root_dir / "database"
         database_dir.mkdir()
-        db2 = database_dir / "meshtastic.sqlite"
+        db2 = database_dir / DATABASE_FILENAME
         db2.write_text("db2")
 
         findings = _find_legacy_data(legacy_root_dir)
@@ -230,7 +391,7 @@ class TestFindLegacyData:
         """Test finding config.yaml."""
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
-        config = legacy_root_dir / "config.yaml"
+        config = legacy_root_dir / CONFIG_FILENAME
         config.write_text("config")
 
         findings = _find_legacy_data(legacy_root_dir)
@@ -243,16 +404,16 @@ class TestFindLegacyData:
         """Test duplicate findings are skipped by path string."""
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
-        creds = legacy_root_dir / "credentials.json"
+        creds = legacy_root_dir / CREDENTIALS_FILENAME
         creds.write_text("creds")
-        config = legacy_root_dir / "config.yaml"
+        config = legacy_root_dir / CONFIG_FILENAME
         config.write_text("config")
 
         creds_str = str(creds)
         original_str = Path.__str__
 
         def fake_str(self: Path) -> str:
-            if self.name == "config.yaml":
+            if self.name == CONFIG_FILENAME:
                 return creds_str
             return original_str(self)
 
@@ -277,7 +438,7 @@ class TestVerifyMigration:
         home.mkdir()
         matrix_dir = home / "matrix"
         matrix_dir.mkdir()
-        (matrix_dir / "credentials.json").write_text("creds")
+        (matrix_dir / CREDENTIALS_FILENAME).write_text("creds")
         database_dir = home / "database"
         database_dir.mkdir()
         logs_dir = home / "logs"
@@ -293,7 +454,7 @@ class TestVerifyMigration:
 
         paths_info = {
             "home": str(home),
-            "credentials_path": str(matrix_dir / "credentials.json"),
+            "credentials_path": str(matrix_dir / CREDENTIALS_FILENAME),
             "database_dir": str(database_dir),
             "logs_dir": str(logs_dir),
             "plugins_dir": str(plugins_dir),
@@ -324,10 +485,10 @@ class TestVerifyMigration:
         home.mkdir()
         matrix_dir = home / "matrix"
         matrix_dir.mkdir()
-        (matrix_dir / "credentials.json").write_text("creds")
+        (matrix_dir / CREDENTIALS_FILENAME).write_text("creds")
         database_dir = home / "database"
         database_dir.mkdir()
-        (database_dir / "meshtastic.sqlite").write_text("db")
+        (database_dir / DATABASE_FILENAME).write_text("db")
         logs_dir = home / "logs"
         logs_dir.mkdir()
         plugins_dir = home / "plugins"
@@ -337,7 +498,7 @@ class TestVerifyMigration:
 
         paths_info = {
             "home": str(home),
-            "credentials_path": str(matrix_dir / "credentials.json"),
+            "credentials_path": str(matrix_dir / CREDENTIALS_FILENAME),
             "database_dir": str(database_dir),
             "logs_dir": str(logs_dir),
             "plugins_dir": str(plugins_dir),
@@ -364,7 +525,7 @@ class TestVerifyMigration:
         home.mkdir()
         database_dir = tmp_path / "outside_db"
         database_dir.mkdir()
-        (database_dir / "meshtastic.sqlite").write_text("db")
+        (database_dir / DATABASE_FILENAME).write_text("db")
         logs_dir = home / "logs"
         logs_dir.mkdir()
         plugins_dir = home / "plugins"
@@ -381,7 +542,7 @@ class TestVerifyMigration:
 
         paths_info = {
             "home": str(home),
-            "credentials_path": str(home / "matrix" / "credentials.json"),
+            "credentials_path": str(home / "matrix" / CREDENTIALS_FILENAME),
             "database_dir": str(database_dir),
             "logs_dir": str(logs_dir),
             "plugins_dir": str(plugins_dir),
@@ -406,12 +567,14 @@ class TestVerifyMigration:
     ) -> None:
         """Test verification output when no legacy data is present and ok=True."""
         report = {
-            "home": "/tmp/home",
+            "home": os.path.join(tempfile.gettempdir(), "home"),
             "artifacts": [
                 {
                     "key": "credentials",
-                    "label": "credentials.json",
-                    "path": "/tmp/home/matrix/credentials.json",
+                    "label": CREDENTIALS_FILENAME,
+                    "path": os.path.join(
+                        tempfile.gettempdir(), "home", "matrix", CREDENTIALS_FILENAME
+                    ),
                     "exists": True,
                     "inside_home": True,
                     "not_applicable": False,
@@ -449,8 +612,6 @@ class TestGetMostRecentDatabase:
 
         Creates two files with a small time difference and asserts the function returns the path of the file with the later modification time.
         """
-        import time
-
         # Create multiple databases to test sorting with different mtimes
         db1 = tmp_path / "db1.sqlite"
         db1.write_text("db1")
@@ -469,8 +630,6 @@ class TestGetMostRecentDatabase:
 
     def test_get_most_recent_database_with_sidecars(self, tmp_path: Path) -> None:
         """Test selecting most recent database with sidecars."""
-        import time
-
         # Create older database
         old_db = tmp_path / "old.sqlite"
         old_db.write_text("old db")
@@ -570,7 +729,7 @@ class TestBackupFile:
 
         # Should have timestamp in name
         assert backup_path.name.startswith("test.txt.bak.")
-        assert backup_path.parent == src_path.parent / ".migration_backups"
+        assert backup_path.parent == src_path.parent / MIGRATION_BACKUP_DIRNAME
 
     def test_backup_file_custom_suffix(self, tmp_path: Path) -> None:
         """Test backup with custom suffix."""
@@ -591,12 +750,12 @@ class TestMigrateCredentialsEdgeCases:
         """Test move removes an existing credentials directory."""
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
-        old_creds = legacy_root_dir / "credentials.json"
+        old_creds = legacy_root_dir / CREDENTIALS_FILENAME
         old_creds.write_text("creds")
 
         new_home = tmp_path / "home"
         new_home.mkdir()
-        new_creds = new_home / "matrix" / "credentials.json"
+        new_creds = new_home / "matrix" / CREDENTIALS_FILENAME
         new_creds.parent.mkdir(parents=True, exist_ok=True)
         new_creds.mkdir()
 
@@ -614,12 +773,12 @@ class TestMigrateCredentialsEdgeCases:
         """Test move removes an existing credentials file."""
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
-        old_creds = legacy_root_dir / "credentials.json"
+        old_creds = legacy_root_dir / CREDENTIALS_FILENAME
         old_creds.write_text("creds")
 
         new_home = tmp_path / "home"
         new_home.mkdir()
-        new_creds = new_home / "matrix" / "credentials.json"
+        new_creds = new_home / "matrix" / CREDENTIALS_FILENAME
         new_creds.parent.mkdir(parents=True, exist_ok=True)
         new_creds.write_text("old")
 
@@ -634,12 +793,12 @@ class TestMigrateCredentialsEdgeCases:
         """Test backup failure aborts credentials migration."""
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
-        old_creds = legacy_root_dir / "credentials.json"
+        old_creds = legacy_root_dir / CREDENTIALS_FILENAME
         old_creds.write_text("new-creds")
 
         new_home = tmp_path / "home"
         new_home.mkdir()
-        new_creds = new_home / "matrix" / "credentials.json"
+        new_creds = new_home / "matrix" / CREDENTIALS_FILENAME
         new_creds.parent.mkdir(parents=True, exist_ok=True)
         new_creds.write_text("old-creds")
 
@@ -668,12 +827,12 @@ class TestMigrateConfigEdgeCases:
         """Test move removes an existing config directory before migrating."""
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
-        old_config = legacy_root_dir / "config.yaml"
+        old_config = legacy_root_dir / CONFIG_FILENAME
         old_config.write_text("config")
 
         new_home = tmp_path / "home"
         new_home.mkdir()
-        new_config = new_home / "config.yaml"
+        new_config = new_home / CONFIG_FILENAME
         new_config.mkdir()
 
         result = migrate_config([legacy_root_dir], new_home, dry_run=False, force=True)
@@ -686,12 +845,12 @@ class TestMigrateConfigEdgeCases:
         """Test move removes an existing config file before migrating."""
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
-        old_config = legacy_root_dir / "config.yaml"
+        old_config = legacy_root_dir / CONFIG_FILENAME
         old_config.write_text("config")
 
         new_home = tmp_path / "home"
         new_home.mkdir()
-        new_config = new_home / "config.yaml"
+        new_config = new_home / CONFIG_FILENAME
         new_config.write_text("old")
 
         result = migrate_config([legacy_root_dir], new_home, dry_run=False, force=True)
@@ -703,12 +862,12 @@ class TestMigrateConfigEdgeCases:
         """Test backup failure aborts config migration."""
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
-        old_config = legacy_root_dir / "config.yaml"
+        old_config = legacy_root_dir / CONFIG_FILENAME
         old_config.write_text("new-config")
 
         new_home = tmp_path / "home"
         new_home.mkdir()
-        new_config = new_home / "config.yaml"
+        new_config = new_home / CONFIG_FILENAME
         new_config.write_text("old-config")
 
         original_copy2 = shutil.copy2
@@ -728,7 +887,7 @@ class TestMigrateConfigEdgeCases:
         """Test migrate_config returns error on move failure."""
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
-        old_config = legacy_root_dir / "config.yaml"
+        old_config = legacy_root_dir / CONFIG_FILENAME
         old_config.write_text("config")
 
         new_home = tmp_path / "home"
@@ -744,7 +903,7 @@ class TestMigrateConfigEdgeCases:
         """Test move doesn't delete config when already at target location."""
         new_home = tmp_path / "home"
         new_home.mkdir()
-        config = new_home / "config.yaml"
+        config = new_home / CONFIG_FILENAME
         config.write_text("my-config")
 
         # Config is already in new_home (not a legacy root)
@@ -782,7 +941,7 @@ class TestMigrateDatabaseEdgeCases:
         legacy_root_dir.mkdir()
 
         # Create a candidate
-        db = legacy_root_dir / "meshtastic.sqlite"
+        db = legacy_root_dir / DATABASE_FILENAME
         db.write_text("db")
 
         with mock.patch("mmrelay.migrate._get_most_recent_database", return_value=None):
@@ -800,14 +959,14 @@ class TestMigrateDatabaseEdgeCases:
         new_db_dir.mkdir()
 
         # Create existing database to backup (must exist for backup to be attempted)
-        existing_db = new_db_dir / "meshtastic.sqlite"
+        existing_db = new_db_dir / DATABASE_FILENAME
         conn = sqlite3.connect(existing_db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.close()
 
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
-        legacy_db = legacy_root_dir / "meshtastic.sqlite"
+        legacy_db = legacy_root_dir / DATABASE_FILENAME
         conn = sqlite3.connect(legacy_db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.close()
@@ -832,12 +991,12 @@ class TestMigrateDatabaseEdgeCases:
                 The value returned by shutil.copy2 (typically the destination path).
 
             Raises:
-                OSError: Simulated failure on the first invocation when the destination name contains "meshtastic.sqlite"
+                OSError: Simulated failure on the first invocation when the destination name contains DATABASE_FILENAME
                 and the destination path contains "new_home".
             """
             call_count[0] += 1
             # First call should be backup (dest exists)
-            if call_count[0] == 1 and "meshtastic.sqlite" in str(dst):
+            if call_count[0] == 1 and DATABASE_FILENAME in str(dst):
                 # Check if we're backing up existing (not copying from legacy)
                 if "new_home" in str(dst):
                     raise OSError
@@ -856,7 +1015,7 @@ class TestMigrateDatabaseEdgeCases:
 
         database_dir = legacy_root_dir / "database"
         database_dir.mkdir()
-        legacy_db = database_dir / "meshtastic.sqlite"
+        legacy_db = database_dir / DATABASE_FILENAME
         conn = sqlite3.connect(legacy_db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.close()
@@ -869,8 +1028,48 @@ class TestMigrateDatabaseEdgeCases:
         )
 
         assert result["success"] is True
-        assert (new_home / "database" / "meshtastic.sqlite").exists()
+        assert (new_home / "database" / DATABASE_FILENAME).exists()
         assert (new_home / "database" / "meshtastic.sqlite-wal").exists()
+
+    def test_migrate_database_removes_destination_only_sidecars(
+        self, tmp_path: Path
+    ) -> None:
+        """Destination-only sidecars should be backed up and removed before final move."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        new_db_dir = new_home / "database"
+        new_db_dir.mkdir()
+
+        existing_db = new_db_dir / DATABASE_FILENAME
+        conn = sqlite3.connect(existing_db)
+        conn.execute("CREATE TABLE test (id INTEGER)")
+        conn.close()
+        stale_wal = new_db_dir / "meshtastic.sqlite-wal"
+        stale_wal.write_text("stale wal", encoding="utf-8")
+
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        legacy_db = legacy_root_dir / DATABASE_FILENAME
+        conn = sqlite3.connect(legacy_db)
+        conn.execute("CREATE TABLE test (id INTEGER)")
+        conn.close()
+
+        result = migrate_database(
+            [legacy_root_dir], new_home, dry_run=False, force=True
+        )
+
+        assert result["success"] is True
+        assert (new_db_dir / DATABASE_FILENAME).exists()
+        assert not stale_wal.exists()
+        assert str(stale_wal) not in result.get("migrated_files", [])
+
+        restore_paths = {
+            entry.get("restore_path")
+            for entry in result.get("backed_up_files", [])
+            if isinstance(entry, dict)
+        }
+        assert str(new_db_dir / DATABASE_FILENAME) in restore_paths
+        assert str(stale_wal) in restore_paths
 
     def test_migrate_database_selected_group_missing(self, tmp_path: Path) -> None:
         """Test when selected_group is empty."""
@@ -879,7 +1078,7 @@ class TestMigrateDatabaseEdgeCases:
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
 
-        db = legacy_root_dir / "meshtastic.sqlite"
+        db = legacy_root_dir / DATABASE_FILENAME
         db.write_text("db")
 
         with mock.patch(
@@ -899,7 +1098,7 @@ class TestMigrateDatabaseEdgeCases:
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
 
-        legacy_db = legacy_root_dir / "meshtastic.sqlite"
+        legacy_db = legacy_root_dir / DATABASE_FILENAME
         conn = sqlite3.connect(legacy_db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.close()
@@ -925,7 +1124,7 @@ class TestMigrateDatabaseEdgeCases:
         new_home.mkdir()
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
-        legacy_db = legacy_root_dir / "meshtastic.sqlite"
+        legacy_db = legacy_root_dir / DATABASE_FILENAME
         legacy_db.write_text("legacy")
 
         with mock.patch("shutil.copy2", side_effect=OSError("Mock copy error")):
@@ -943,7 +1142,7 @@ class TestMigrateDatabaseEdgeCases:
 
         data_dir = legacy_root_dir / "data"
         data_dir.mkdir()
-        legacy_db = data_dir / "meshtastic.sqlite"
+        legacy_db = data_dir / DATABASE_FILENAME
         conn = sqlite3.connect(legacy_db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.close()
@@ -958,7 +1157,7 @@ class TestMigrateDatabaseEdgeCases:
         )
 
         assert result["success"] is True
-        assert (new_home / "database" / "meshtastic.sqlite").exists()
+        assert (new_home / "database" / DATABASE_FILENAME).exists()
         assert (new_home / "database" / "meshtastic.sqlite-wal").exists()
         assert (new_home / "database" / "meshtastic.sqlite-shm").exists()
 
@@ -971,18 +1170,18 @@ class TestMigrateDatabaseEdgeCases:
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
 
-        legacy_db = legacy_root_dir / "meshtastic.sqlite"
+        legacy_db = legacy_root_dir / DATABASE_FILENAME
         conn = sqlite3.connect(legacy_db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.close()
 
-        dest_path = new_home / "database" / "meshtastic.sqlite"
+        dest_path = new_home / "database" / DATABASE_FILENAME
         original_unlink = Path.unlink
 
         def failing_unlink(self: Path, *args: object, **kwargs: object) -> None:
             if self == dest_path:
                 raise OSError("unlink failed")
-            original_unlink(self, *args, **kwargs)
+            original_unlink(self, *args, **kwargs)  # type: ignore[arg-type]
 
         monkeypatch.setattr(Path, "unlink", failing_unlink)
 
@@ -1005,18 +1204,18 @@ class TestMigrateDatabaseEdgeCases:
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
 
-        legacy_db = legacy_root_dir / "meshtastic.sqlite"
+        legacy_db = legacy_root_dir / DATABASE_FILENAME
         conn = sqlite3.connect(legacy_db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.close()
 
-        dest_path = new_home / "database" / "meshtastic.sqlite"
+        dest_path = new_home / "database" / DATABASE_FILENAME
         original_unlink = Path.unlink
 
         def failing_unlink(self: Path, *args: object, **kwargs: object) -> None:
             if self == dest_path:
                 raise OSError("unlink failed")
-            original_unlink(self, *args, **kwargs)
+            original_unlink(self, *args, **kwargs)  # type: ignore[arg-type]
 
         monkeypatch.setattr(Path, "unlink", failing_unlink)
 
@@ -1036,7 +1235,7 @@ class TestMigrateDatabaseEdgeCases:
         legacy_root_dir.mkdir()
 
         # Create valid SQLite database
-        legacy_db = legacy_root_dir / "meshtastic.sqlite"
+        legacy_db = legacy_root_dir / DATABASE_FILENAME
         conn = sqlite3.connect(legacy_db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.close()
@@ -1060,7 +1259,7 @@ class TestMigrateDatabaseEdgeCases:
         legacy_root_dir.mkdir()
 
         # Create valid SQLite database
-        legacy_db = legacy_root_dir / "meshtastic.sqlite"
+        legacy_db = legacy_root_dir / DATABASE_FILENAME
         conn = sqlite3.connect(legacy_db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.close()
@@ -1576,7 +1775,7 @@ class TestMigratePluginsEdgeCases:
         assert not old_plugins_dir.exists(), "Old plugins directory should be moved"
 
         # The backup directory should exist (moved there for cleanup)
-        backup_dir = legacy_root_dir / BACKUP_DIRNAME
+        backup_dir = legacy_root_dir / MIGRATION_BACKUP_DIRNAME
         assert backup_dir.exists(), "Backup directory should exist"
 
         # Find the backup of the old plugins directory (has timestamp suffix)
@@ -1599,7 +1798,7 @@ class TestMigrateGpxtrackerEdgeCases:
         new_home.mkdir()
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
-        config = legacy_root_dir / "config.yaml"
+        config = legacy_root_dir / CONFIG_FILENAME
         config.write_text("test: config")
 
         # Mock yaml import to fail
@@ -1633,7 +1832,8 @@ class TestMigrateGpxtrackerEdgeCases:
         )
 
         assert result["success"] is True
-        assert "gpxtracker plugin not configured" in result["message"]
+        assert result["action"] == "scan_skipped_pyyaml"
+        assert "PyYAML is unavailable" in result["message"]
 
     def test_migrate_gpxtracker_backup_failure(self, tmp_path: Path) -> None:
         """Test handling of GPX file backup failure."""
@@ -1652,7 +1852,7 @@ class TestMigrateGpxtrackerEdgeCases:
         gpx_dir.mkdir()
         gpx_file = gpx_dir / "track.gpx"
         gpx_file.write_text("track")
-        config = legacy_root_dir / "config.yaml"
+        config = legacy_root_dir / CONFIG_FILENAME
         config.write_text(
             f"community-plugins:\n  gpxtracker:\n    gpx_directory: {gpx_dir}\n"
         )
@@ -1689,7 +1889,7 @@ class TestMigrateGpxtrackerEdgeCases:
         gpx_dir.mkdir()
         (gpx_dir / "track.gpx").write_text("track")
 
-        config = legacy_root_dir / "config.yaml"
+        config = legacy_root_dir / CONFIG_FILENAME
         config.write_text(f"""
 community-plugins:
   gpxtracker:
@@ -1713,7 +1913,7 @@ community-plugins:
         gpx_dir = legacy_root_dir / "gpx"
         gpx_dir.mkdir()
 
-        config = legacy_root_dir / "config.yaml"
+        config = legacy_root_dir / CONFIG_FILENAME
         config.write_text(
             f"community-plugins:\n  gpxtracker:\n    gpx_directory: {gpx_dir}\n"
         )
@@ -1734,7 +1934,7 @@ community-plugins:
         legacy_root_dir.mkdir()
 
         # Create legacy config with gpx_directory pointing to non-existent path
-        config = legacy_root_dir / "config.yaml"
+        config = legacy_root_dir / CONFIG_FILENAME
         config.write_text("""
 community-plugins:
   gpxtracker:
@@ -1780,7 +1980,7 @@ community-plugins:
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
 
-        config = legacy_root_dir / "config.yaml"
+        config = legacy_root_dir / CONFIG_FILENAME
         config.write_text(
             "community-plugins:\n  gpxtracker:\n    gpx_directory: /tmp/gpx\n"
         )
@@ -1818,7 +2018,7 @@ community-plugins:
         legacy_root_dir.mkdir()
         (legacy_root_dir / "plugins").mkdir()
 
-        config = legacy_root_dir / "config.yaml"
+        config = legacy_root_dir / CONFIG_FILENAME
         config.write_text("community-plugins: [")
 
         paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root_dir)]}

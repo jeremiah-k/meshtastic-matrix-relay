@@ -1,5 +1,6 @@
 import io
 import json
+import math
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -15,13 +16,24 @@ from nio import (
 )
 from PIL import Image
 
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
+from mmrelay.constants.formats import (
+    GRAPH_IMAGE_FORMAT,
+    GRAPH_XLABEL_ROTATION_DEGREES,
+    HOUR_FORMAT,
+    TELEMETRY_APP_PORTNUM,
+    TELEMETRY_GRAPH_FILENAME,
+)
+from mmrelay.constants.messages import MSG_GRAPH_UPLOAD_FAILED
+from mmrelay.constants.plugins import TELEMETRY_DEFAULT_HOURS, TELEMETRY_MAX_DATA_ROWS
+from mmrelay.meshtastic_utils import _get_portnum_name
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
 class Plugin(BasePlugin):
     plugin_name = "telemetry"
     is_core_plugin = True
-    max_data_rows_per_node = 50
+    max_data_rows_per_node = TELEMETRY_MAX_DATA_ROWS
 
     def commands(self) -> list[str]:
         """
@@ -40,14 +52,16 @@ class Plugin(BasePlugin):
         Returns:
             str: The text "Graph of avg Mesh telemetry value for last 12 hours".
         """
-        return "Graph of avg Mesh telemetry value for last 12 hours"
+        return f"Graph of avg Mesh telemetry value for last {TELEMETRY_DEFAULT_HOURS} hours"
 
-    def _generate_timeperiods(self, hours: int = 12) -> list[datetime]:
+    def _generate_timeperiods(
+        self, hours: int = TELEMETRY_DEFAULT_HOURS
+    ) -> list[datetime]:
         """
         Generate hourly datetime anchors spanning the past `hours` hours up to the current time.
 
         Parameters:
-            hours (int): Number of hours to look back from now (default 12).
+            hours (int): Number of hours to look back from now (default TELEMETRY_DEFAULT_HOURS).
 
         Returns:
             list[datetime]: Hourly datetime objects from (now - hours) up to and including now.
@@ -55,7 +69,7 @@ class Plugin(BasePlugin):
         end_time = datetime.now()
         start_time = end_time - timedelta(hours=hours)
 
-        # Create a list of hourly intervals for the last 12 hours
+        # Create a list of hourly intervals for the specified time period
         hourly_intervals = []
         current_time = start_time
         while current_time <= end_time:
@@ -74,7 +88,7 @@ class Plugin(BasePlugin):
         """
         Record device telemetry from an incoming Meshtastic telemetry packet for the sending node.
 
-        When `packet` contains `decoded.portnum == "TELEMETRY_APP"` and `decoded.telemetry.deviceMetrics`, extracts the telemetry timestamp and the `batteryLevel`, `voltage`, and `airUtilTx` fields (each `None` if missing) and appends a telemetry record for the sender identified by `packet["fromId"]`. Other packet contents are not modified.
+        When `packet` contains a normalized `decoded.portnum` matching `TELEMETRY_APP_PORTNUM` (numeric values and enum-name strings are both accepted), `decoded.telemetry.deviceMetrics`, and a `fromId`, extracts the telemetry timestamp and the `batteryLevel`, `voltage`, and `airUtilTx` fields (each `None` if missing) and appends a telemetry record for that sender. Other packet contents are not modified.
 
         Parameters:
             packet (dict): Meshtastic packet expected to include `decoded` with `portnum` and `telemetry.deviceMetrics`.
@@ -86,32 +100,46 @@ class Plugin(BasePlugin):
             bool: `False` always; telemetry is recorded but the message is not consumed by this handler.
         """
         _ = formatted_message, longname, meshnet_name
+        decoded = packet.get("decoded")
+        if not isinstance(decoded, dict):
+            return False
+        telemetry = decoded.get("telemetry")
+        device_metrics = (
+            telemetry.get("deviceMetrics") if isinstance(telemetry, dict) else None
+        )
         if (
-            "decoded" in packet
-            and "portnum" in packet["decoded"]
-            and packet["decoded"]["portnum"] == "TELEMETRY_APP"
-            and "telemetry" in packet["decoded"]
-            and "deviceMetrics" in packet["decoded"]["telemetry"]
+            _get_portnum_name(decoded.get("portnum")) == TELEMETRY_APP_PORTNUM
+            and isinstance(telemetry, dict)
+            and isinstance(device_metrics, dict)
         ):
+            from_id = packet.get("fromId")
+            if from_id is None:
+                return False
             telemetry_data = []
-            data = self.get_node_data(meshtastic_id=packet["fromId"])
+            data = self.get_node_data(meshtastic_id=from_id)
             if data:
                 telemetry_data = data if isinstance(data, list) else [data]
-            packet_data = packet["decoded"]["telemetry"]
-            device_metrics = packet_data["deviceMetrics"]
 
+            telemetry_time = telemetry.get("time")
+            if not isinstance(telemetry_time, (int, float)) or not math.isfinite(
+                telemetry_time
+            ):
+                telemetry_time = None
             telemetry_data.append(
                 {
-                    "time": packet_data["time"],
+                    "time": (
+                        telemetry_time
+                        if telemetry_time is not None
+                        else packet.get("rxTime")
+                    ),
                     "batteryLevel": device_metrics.get("batteryLevel"),
                     "voltage": device_metrics.get("voltage"),
                     "airUtilTx": device_metrics.get("airUtilTx"),
                 }
             )
-            self.set_node_data(meshtastic_id=packet["fromId"], node_data=telemetry_data)
+            self.set_node_data(meshtastic_id=from_id, node_data=telemetry_data)
             return False
 
-        # Return False for non-telemetry packets
         return False
 
     def get_matrix_commands(self) -> list[str]:
@@ -184,18 +212,24 @@ class Plugin(BasePlugin):
                 node_data_rows (list[dict[str, Any]]): Records containing a "time" POSIX timestamp (seconds) and a telemetry value under the key named by the enclosing `telemetry_option`; values are appended to the outer `hourly_averages` dictionary for the matching hourly interval.
             """
             for record in node_data_rows:
-                record_time = datetime.fromtimestamp(
-                    record["time"]
-                )  # Replace with your timestamp field name
-                telemetry_value = record[
-                    telemetry_option
-                ]  # Replace with your battery level field name
+                if not isinstance(record, dict):
+                    continue
+                timestamp = record.get("time")
+                telemetry_value = record.get(telemetry_option)
+                if timestamp is None or telemetry_value is None:
+                    continue
+                try:
+                    record_time = datetime.fromtimestamp(timestamp)
+                    value = float(telemetry_value)
+                    if not math.isfinite(value):
+                        continue
+                except (TypeError, ValueError, OSError, OverflowError):
+                    continue
                 for i in range(len(hourly_intervals) - 1):
                     if hourly_intervals[i] <= record_time < hourly_intervals[i + 1]:
-                        if telemetry_value is not None:
-                            if i not in hourly_averages:
-                                hourly_averages[i] = []
-                            hourly_averages[i].append(telemetry_value)
+                        if i not in hourly_averages:
+                            hourly_averages[i] = []
+                        hourly_averages[i].append(value)
                         break
 
         if node:
@@ -233,7 +267,7 @@ class Plugin(BasePlugin):
         average_values = list(final_averages.values())
 
         # Convert the hourly intervals to strings
-        hourly_strings = [hour.strftime("%H") for hour in hourly_intervals]
+        hourly_strings = [hour.strftime(HOUR_FORMAT) for hour in hourly_intervals]
 
         # Create the plot
         fig, ax = plt.subplots()
@@ -249,29 +283,31 @@ class Plugin(BasePlugin):
         ax.set_ylabel(f"{telemetry_option}")
 
         # Rotate the x-axis labels for readability
-        plt.xticks(rotation=45)
+        plt.xticks(rotation=GRAPH_XLABEL_ROTATION_DEGREES)
 
         # Save the plot as a PIL image
         buf = io.BytesIO()
-        fig.savefig(buf, format="png", bbox_inches="tight")
+        fig.savefig(buf, format=GRAPH_IMAGE_FORMAT, bbox_inches="tight")
         plt.close(fig)
         buf.seek(0)
-        img = Image.open(buf)
-        pil_image = Image.frombytes(mode="RGBA", size=img.size, data=img.tobytes())
+        with Image.open(buf) as img:
+            pil_image = img.copy() if img.mode == "RGBA" else img.convert("RGBA")
 
         from mmrelay.matrix_utils import ImageUploadError, send_image
 
         try:
-            await send_image(matrix_client, room.room_id, pil_image, "graph.png")
+            await send_image(
+                matrix_client, room.room_id, pil_image, TELEMETRY_GRAPH_FILENAME
+            )
         except ImageUploadError:
             self.logger.exception("Failed to send telemetry graph")
             await matrix_client.room_send(
                 room_id=room.room_id,
-                message_type="m.room.message",
+                message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
                 content={
                     "msgtype": "m.notice",
-                    "body": "Failed to generate graph: Image upload failed.",
+                    "body": MSG_GRAPH_UPLOAD_FAILED,
                 },
             )
-            return False
+            return True
         return True

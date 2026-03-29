@@ -5,6 +5,10 @@ import serial
 
 import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.network import (
+    CONNECTION_TYPE_BLE,
+    CONNECTION_TYPE_NETWORK,
+    CONNECTION_TYPE_SERIAL,
+    CONNECTION_TYPE_TCP,
     DEFAULT_MESHTASTIC_TIMEOUT,
     DEFAULT_TCP_PORT,
     ERRNO_BAD_FILE_DESCRIPTOR,
@@ -16,7 +20,9 @@ def test_connect_meshtastic_returns_existing_client(reset_meshtastic_globals):
     mock_client = MagicMock()
     mu.meshtastic_client = mock_client
 
-    config = {"meshtastic": {"connection_type": "tcp", "host": "127.0.0.1"}}
+    config = {
+        "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "127.0.0.1"}
+    }
 
     with patch(
         "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface"
@@ -44,7 +50,12 @@ def test_connect_meshtastic_network_alias_warns_and_uses_tcp(reset_meshtastic_gl
         ),
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,
     ):
-        config = {"meshtastic": {"connection_type": "network", "host": "127.0.0.1"}}
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_NETWORK,
+                "host": "127.0.0.1",
+            }
+        }
         result = connect_meshtastic(passed_config=config)
 
     assert result is mock_client
@@ -59,7 +70,7 @@ def test_connect_meshtastic_network_alias_warns_and_uses_tcp(reset_meshtastic_gl
 
 
 def test_connect_meshtastic_retry_limit_deprecated_warning(reset_meshtastic_globals):
-    config = {"meshtastic": {"connection_type": "tcp", "retry_limit": 1}}
+    config = {"meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "retry_limit": 1}}
 
     with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
         result = connect_meshtastic(passed_config=config)
@@ -72,7 +83,11 @@ def test_connect_meshtastic_retry_limit_deprecated_warning(reset_meshtastic_glob
 
 def test_connect_meshtastic_invalid_retries_falls_back(reset_meshtastic_globals):
     config = {
-        "meshtastic": {"connection_type": "tcp", "host": "127.0.0.1", "retries": "bad"}
+        "meshtastic": {
+            "connection_type": CONNECTION_TYPE_TCP,
+            "host": "127.0.0.1",
+            "retries": "bad",
+        }
     }
 
     with (
@@ -90,7 +105,7 @@ def test_connect_meshtastic_invalid_retries_falls_back(reset_meshtastic_globals)
 def test_connect_meshtastic_serial_missing_port_returns_none(
     reset_meshtastic_globals,
 ):
-    config = {"meshtastic": {"connection_type": "serial"}}
+    config = {"meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL}}
 
     with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
         result = connect_meshtastic(passed_config=config)
@@ -108,7 +123,7 @@ def test_connect_meshtastic_serial_port_not_found_retries(
 ):
     config = {
         "meshtastic": {
-            "connection_type": "serial",
+            "connection_type": CONNECTION_TYPE_SERIAL,
             "serial_port": "/dev/ttyUSB0",
             "retries": 1,
         }
@@ -123,7 +138,7 @@ def test_connect_meshtastic_serial_port_not_found_retries(
 def test_connect_meshtastic_ble_missing_address_returns_none(
     reset_meshtastic_globals,
 ):
-    config = {"meshtastic": {"connection_type": "ble"}}
+    config = {"meshtastic": {"connection_type": CONNECTION_TYPE_BLE}}
 
     with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
         result = connect_meshtastic(passed_config=config)
@@ -139,7 +154,7 @@ def test_connect_meshtastic_ble_recovers_from_stale_worker(
     ble_address = "AA:BB:CC:DD:EE:FF"
     config = {
         "meshtastic": {
-            "connection_type": "ble",
+            "connection_type": CONNECTION_TYPE_BLE,
             "ble_address": ble_address,
             "retries": 1,
         }
@@ -202,7 +217,7 @@ def test_connect_meshtastic_ble_recovers_from_stale_worker(
 def test_connect_meshtastic_tcp_missing_host_returns_none(
     reset_meshtastic_globals,
 ):
-    config = {"meshtastic": {"connection_type": "tcp"}}
+    config = {"meshtastic": {"connection_type": CONNECTION_TYPE_TCP}}
 
     with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
         result = connect_meshtastic(passed_config=config)
@@ -232,7 +247,7 @@ def test_connect_meshtastic_tcp_invalid_port_uses_default(reset_meshtastic_globa
     ):
         config = {
             "meshtastic": {
-                "connection_type": "tcp",
+                "connection_type": CONNECTION_TYPE_TCP,
                 "host": "127.0.0.1",
                 "port": 70000,
             }
@@ -271,7 +286,9 @@ def test_connect_meshtastic_logs_firmware_version_on_success(
         ),
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,
     ):
-        config = {"meshtastic": {"connection_type": "tcp", "host": "127.0.0.1"}}
+        config = {
+            "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "127.0.0.1"}
+        }
         result = connect_meshtastic(passed_config=config)
 
     assert result is mock_client
@@ -295,7 +312,7 @@ def test_connect_meshtastic_timeout_breaks_on_shutdown(reset_meshtastic_globals)
     ):
         config = {
             "meshtastic": {
-                "connection_type": "tcp",
+                "connection_type": CONNECTION_TYPE_TCP,
                 "host": "127.0.0.1",
                 "retries": 1,
             }
@@ -319,7 +336,7 @@ def test_connect_meshtastic_timeout_respects_retry_limit(
     ):
         config = {
             "meshtastic": {
-                "connection_type": "tcp",
+                "connection_type": CONNECTION_TYPE_TCP,
                 "host": "127.0.0.1",
                 "retries": 1,
             }
@@ -347,7 +364,7 @@ def test_connect_meshtastic_serial_exception_retries_then_fails(
     ):
         config = {
             "meshtastic": {
-                "connection_type": "serial",
+                "connection_type": CONNECTION_TYPE_SERIAL,
                 "serial_port": "/dev/ttyUSB0",
                 "retries": 1,
             }
@@ -372,7 +389,7 @@ def test_connect_meshtastic_unexpected_exception_exhausts_retries(
     ):
         config = {
             "meshtastic": {
-                "connection_type": "tcp",
+                "connection_type": CONNECTION_TYPE_TCP,
                 "host": "127.0.0.1",
                 "retries": 1,
             }
@@ -443,7 +460,7 @@ class TestBleDegradedStateSubmissionBlocking:
         ble_address = "AA:BB:CC:DD:EE:FF"
         config = {
             "meshtastic": {
-                "connection_type": "ble",
+                "connection_type": CONNECTION_TYPE_BLE,
                 "ble_address": ble_address,
                 "retries": 1,
             }
@@ -492,7 +509,7 @@ class TestBleDegradedStateSubmissionBlocking:
         ble_address = "AA:BB:CC:DD:EE:FF"
         config = {
             "meshtastic": {
-                "connection_type": "ble",
+                "connection_type": CONNECTION_TYPE_BLE,
                 "ble_address": ble_address,
                 "retries": 1,
             }
@@ -551,7 +568,7 @@ class TestBleDegradedStateSubmissionBlocking:
         ble_address = "AA:BB:CC:DD:EE:FF"
         config = {
             "meshtastic": {
-                "connection_type": "ble",
+                "connection_type": CONNECTION_TYPE_BLE,
                 "ble_address": ble_address,
                 "retries": 1,
             }
@@ -598,7 +615,7 @@ class TestBleDegradedStateSubmissionBlocking:
         ble_address = "AA:BB:CC:DD:EE:FF"
         config = {
             "meshtastic": {
-                "connection_type": "ble",
+                "connection_type": CONNECTION_TYPE_BLE,
                 "ble_address": ble_address,
                 "retries": 1,
             }

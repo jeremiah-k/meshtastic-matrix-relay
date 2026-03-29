@@ -13,6 +13,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from mmrelay.constants.app import CONFIG_FILENAME, CREDENTIALS_FILENAME
+from mmrelay.constants.messages import MSG_E2EE_NO_AUTH
 from mmrelay.e2ee_utils import (
     _check_credentials_available,
     get_e2ee_status,
@@ -27,8 +29,8 @@ def e2ee_test_config():
     Yields:
         tuple: (temp_dir, config_path, credentials_path, base_config)
             - temp_dir (str): Path to the temporary directory created for the test.
-            - config_path (str): Path within temp_dir for the config file (config.yaml).
-            - credentials_path (str): Path within temp_dir for the credentials file (credentials.json).
+            - config_path (str): Path within temp_dir for the config file.
+            - credentials_path (str): Path within temp_dir for the credentials file.
             - base_config (dict): Minimal configuration dict with E2EE enabled, a meshtastic meshnet_name,
               and one example matrix room mapping.
 
@@ -37,8 +39,8 @@ def e2ee_test_config():
     """
     # Create temporary directory
     temp_dir = tempfile.mkdtemp()
-    config_path = os.path.join(temp_dir, "config.yaml")
-    credentials_path = os.path.join(temp_dir, "matrix", "credentials.json")
+    config_path = os.path.join(temp_dir, CONFIG_FILENAME)
+    credentials_path = os.path.join(temp_dir, "matrix", CREDENTIALS_FILENAME)
 
     # Basic config
     base_config = {
@@ -77,7 +79,7 @@ def test_credentials_found_in_legacy_location(
 
         # Mock paths_info with legacy sources
         mock_resolve_all_paths.return_value = {
-            "credentials_path": "/primary/matrix/credentials.json",
+            "credentials_path": f"/primary/matrix/{CREDENTIALS_FILENAME}",
             "legacy_sources": ["/legacy1", "/legacy2", "/legacy3"],
             "legacy_active": True,
         }
@@ -88,12 +90,12 @@ def test_credentials_found_in_legacy_location(
             Simulate os.path.exists responses for test credential paths, returning True only for the legacy2 credentials file.
 
             Parameters:
-                path (str): Path to check; the function looks for "credentials.json" and the substrings "primary", "legacy1", "legacy2", or "legacy3" to decide the simulated result.
+                path (str): Path to check; the function looks for the credentials filename and the substrings "primary", "legacy1", "legacy2", or "legacy3" to decide the simulated result.
 
             Returns:
                 bool: True if the path refers to the credentials file in "legacy2", False otherwise.
             """
-            if "credentials.json" in path:
+            if CREDENTIALS_FILENAME in path:
                 # Primary location doesn't have it
                 if "primary" in path:
                     return False
@@ -118,7 +120,7 @@ def test_credentials_found_in_legacy_location(
         # Verify overall status is ready (other requirements met)
         assert status["overall_status"] == "ready"
         # Verify no authentication issue
-        assert "Matrix authentication not configured" not in status["issues"]
+        assert MSG_E2EE_NO_AUTH not in status["issues"]
 
         # Verify it stopped checking after first match (legacy2)
         # Should have checked primary, then legacy1, then legacy2
@@ -155,7 +157,7 @@ def test_credentials_not_found_in_legacy_locations(
 
         # Mock paths_info with legacy sources
         mock_resolve_all_paths.return_value = {
-            "credentials_path": "/primary/matrix/credentials.json",
+            "credentials_path": f"/primary/matrix/{CREDENTIALS_FILENAME}",
             "legacy_sources": ["/legacy1", "/legacy2"],
             "legacy_active": True,
         }
@@ -180,14 +182,14 @@ def test_credentials_not_found_in_legacy_locations(
         # Verify overall status is incomplete (credentials missing)
         assert status["overall_status"] == "incomplete"
         # Verify authentication issue is present
-        assert "Matrix authentication not configured" in status["issues"]
+        assert MSG_E2EE_NO_AUTH in status["issues"]
 
         # Verify all locations were checked
         calls = mock_exists.call_args_list
         paths_checked = [call[0][0] for call in calls]
         # Should have checked primary and both legacy locations
         assert len(paths_checked) >= 3
-        assert "/primary/matrix/credentials.json" in paths_checked
+        assert f"/primary/matrix/{CREDENTIALS_FILENAME}" in paths_checked
 
 
 @patch("sys.platform", "linux")
@@ -210,7 +212,7 @@ def test_credentials_in_legacy_during_deprecation_window(
 
     # Mock paths_info with legacy sources
     mock_resolve_all_paths.return_value = {
-        "credentials_path": "/primary/matrix/credentials.json",
+        "credentials_path": f"/primary/matrix/{CREDENTIALS_FILENAME}",
         "legacy_sources": ["/legacy1", "/legacy2"],
     }
 
@@ -223,9 +225,9 @@ def test_credentials_in_legacy_during_deprecation_window(
             path (str): Filesystem path to check.
 
         Returns:
-            bool: True if `path` contains "credentials.json" and "legacy2", False otherwise.
+            bool: True if `path` contains the credentials filename and "legacy2", False otherwise.
         """
-        if "credentials.json" in path:
+        if CREDENTIALS_FILENAME in path:
             # Primary doesn't have it
             if "primary" in path:
                 return False
@@ -250,7 +252,7 @@ def test_credentials_in_legacy_during_deprecation_window(
     paths_checked = [call[0][0] for call in calls]
     # Should have checked primary, legacy1, and legacy2
     assert len(paths_checked) >= 3
-    assert "/primary/matrix/credentials.json" in paths_checked
+    assert f"/primary/matrix/{CREDENTIALS_FILENAME}" in paths_checked
 
 
 @patch("sys.platform", "linux")
@@ -272,7 +274,7 @@ def test_no_credentials_during_deprecation_window(
 
     # Mock paths_info with legacy sources
     mock_resolve_all_paths.return_value = {
-        "credentials_path": "/primary/matrix/credentials.json",
+        "credentials_path": f"/primary/matrix/{CREDENTIALS_FILENAME}",
         "legacy_sources": ["/legacy1", "/legacy2"],
     }
 
@@ -299,7 +301,7 @@ def test_no_credentials_during_deprecation_window(
     paths_checked = [call[0][0] for call in calls]
     # Should have checked primary and both legacy locations
     assert len(paths_checked) >= 3
-    assert "/primary/matrix/credentials.json" in paths_checked
+    assert f"/primary/matrix/{CREDENTIALS_FILENAME}" in paths_checked
 
 
 @patch("sys.platform", "linux")
@@ -321,7 +323,7 @@ def test_deprecation_window_not_active(
 
     # Mock paths_info with legacy sources (should not be checked)
     mock_resolve_all_paths.return_value = {
-        "credentials_path": "/primary/matrix/credentials.json",
+        "credentials_path": f"/primary/matrix/{CREDENTIALS_FILENAME}",
         "legacy_sources": ["/legacy1", "/legacy2"],
     }
 
@@ -336,5 +338,5 @@ def test_deprecation_window_not_active(
 
     calls = mock_exists.call_args_list
     paths_checked = [call[0][0] for call in calls]
-    assert "/primary/matrix/credentials.json" in paths_checked
+    assert f"/primary/matrix/{CREDENTIALS_FILENAME}" in paths_checked
     assert not any("legacy" in path for path in paths_checked)
