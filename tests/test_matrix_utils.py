@@ -3339,14 +3339,77 @@ async def test_connect_matrix_sync_timeout_closes_client(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.MATRIX_INITIAL_SYNC_MAX_ATTEMPTS", 3, raising=False
+    )
+    mock_sleep = AsyncMock()
+    monkeypatch.setattr("mmrelay.matrix_utils.asyncio.sleep", mock_sleep)
 
     with pytest.raises(ConnectionError):
         await connect_matrix()
 
     mock_client.close.assert_awaited_once()
+    assert mock_client.sync.await_count == 3
+    assert [call.args[0] for call in mock_sleep.await_args_list] == [
+        matrix_utils_module.MATRIX_SYNC_RETRY_DELAY_SECS,
+        min(
+            matrix_utils_module.MATRIX_SYNC_RETRY_DELAY_SECS * 2.0,
+            matrix_utils_module.MATRIX_INITIAL_SYNC_RETRY_MAX_DELAY_SECS,
+        ),
+    ]
     import mmrelay.matrix_utils as mx
 
     assert mx.matrix_client is None
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_sync_timeout_retry_then_success(monkeypatch):
+    """A transient initial-sync timeout should retry and succeed without failing startup."""
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.sync = AsyncMock(
+        side_effect=[asyncio.TimeoutError(), SimpleNamespace()]
+    )
+    mock_client.close = AsyncMock()
+    mock_client.should_upload_keys = False
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+
+    def fake_async_client(*_args, **_kwargs):
+        return mock_client
+
+    monkeypatch.setattr("mmrelay.matrix_utils.AsyncClient", fake_async_client)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.config",
+        {
+            "matrix": {
+                "homeserver": "https://example.org",
+                "access_token": "token",
+                "bot_user_id": "@bot:example.org",
+                "encryption": {"enabled": True},
+            },
+            "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+        },
+        raising=False,
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.MATRIX_INITIAL_SYNC_MAX_ATTEMPTS", 0, raising=False
+    )
+    mock_sleep = AsyncMock()
+    monkeypatch.setattr("mmrelay.matrix_utils.asyncio.sleep", mock_sleep)
+
+    client = await connect_matrix()
+
+    assert client is mock_client
+    assert mock_client.sync.await_count == 2
+    mock_sleep.assert_awaited_once_with(
+        matrix_utils_module.MATRIX_SYNC_RETRY_DELAY_SECS
+    )
 
 
 @pytest.mark.asyncio

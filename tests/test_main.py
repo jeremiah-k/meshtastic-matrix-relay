@@ -2643,6 +2643,45 @@ class TestCoerceConfigBool(unittest.TestCase):
             mock_logger.debug.assert_not_called()
 
 
+class TestAsyncioExceptionFiltering(unittest.TestCase):
+    """Tests for filtering noisy asyncio background task timeout logs."""
+
+    def test_suppresses_unretrieved_keys_query_timeout(self):
+        """Known keys_query timeout contexts should be treated as suppressible noise."""
+        from mmrelay.main import _should_suppress_unretrieved_matrix_task_timeout
+
+        class _DummyCode:
+            co_name = "keys_query"
+
+        class _DummyCoro:
+            cr_code = _DummyCode()
+
+        class _DummyTask:
+            def get_coro(self):
+                return _DummyCoro()
+
+            def __repr__(self) -> str:
+                return "<Task coro=keys_query()>"
+
+        context = {
+            "message": "Task exception was never retrieved",
+            "exception": asyncio.TimeoutError(),
+            "future": _DummyTask(),
+        }
+        self.assertTrue(_should_suppress_unretrieved_matrix_task_timeout(context))
+
+    def test_does_not_suppress_non_timeout_background_exceptions(self):
+        """Non-timeout exceptions should not be filtered."""
+        from mmrelay.main import _should_suppress_unretrieved_matrix_task_timeout
+
+        context = {
+            "message": "Task exception was never retrieved",
+            "exception": RuntimeError("boom"),
+            "future": object(),
+        }
+        self.assertFalse(_should_suppress_unretrieved_matrix_task_timeout(context))
+
+
 class TestStartupRollback(unittest.TestCase):
     """Tests for startup rollback in main() exception handler."""
 

@@ -128,9 +128,12 @@ from mmrelay.constants.messages import (
 )
 from mmrelay.constants.network import (
     MATRIX_EARLY_SYNC_TIMEOUT,
+    MATRIX_INITIAL_SYNC_MAX_ATTEMPTS,
+    MATRIX_INITIAL_SYNC_RETRY_MAX_DELAY_SECS,
     MATRIX_LOGIN_TIMEOUT,
     MATRIX_ROOM_SEND_TIMEOUT,
     MATRIX_SYNC_OPERATION_TIMEOUT,
+    MATRIX_SYNC_RETRY_DELAY_SECS,
     MATRIX_TO_DEVICE_TIMEOUT,
     MILLISECONDS_PER_SECOND,
 )
@@ -2021,162 +2024,200 @@ async def _perform_initial_sync(
     invite_safe_filter: dict[str, Any] = {"room": {"invite": {"limit": 0}}}
     sync_response: Any | None = None
 
-    try:
-        sync_response = await asyncio.wait_for(
-            client.sync(timeout=MATRIX_EARLY_SYNC_TIMEOUT, full_state=True),
-            timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
-        )
-    except asyncio.TimeoutError:
-        logger.exception(
-            f"Initial sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds"
-        )
-        logger.error(
-            "This indicates a network connectivity issue or slow Matrix server."
-        )
-        logger.error("Troubleshooting steps:")
-        logger.error("1. Check your internet connection")
-        logger.error(f"2. Verify the homeserver is accessible: {matrix_homeserver}")
-        logger.error(
-            "3. Try again in a few minutes - the server may be temporarily overloaded"
-        )
-        logger.error(
-            "4. Consider using a different Matrix homeserver if the problem persists"
-        )
-        raise MatrixSyncTimeoutError() from None
-    except asyncio.CancelledError:
-        logger.exception("Initial sync cancelled")
-        raise
-    except JSONSCHEMA_VALIDATION_ERROR as exc:
-        logger.exception("Initial sync response failed schema validation.")
-        logger.warning(
-            "This usually indicates a non-compliant homeserver or proxy response."
-        )
-        logger.warning(
-            "Retrying initial sync without invites to tolerate invalid invite_state payloads."
-        )
+    max_sync_attempts = MATRIX_INITIAL_SYNC_MAX_ATTEMPTS
+    sync_attempt = 1
+    retry_delay = MATRIX_SYNC_RETRY_DELAY_SECS
+
+    while True:
         try:
             sync_response = await asyncio.wait_for(
-                client.sync(
-                    timeout=MATRIX_EARLY_SYNC_TIMEOUT,
-                    full_state=False,
-                    sync_filter=invite_safe_filter,
-                ),
+                client.sync(timeout=MATRIX_EARLY_SYNC_TIMEOUT, full_state=True),
                 timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
             )
-            cast(Any, client).mmrelay_sync_filter = invite_safe_filter
-            cast(Any, client).mmrelay_first_sync_filter = invite_safe_filter
-            logger.info(
-                "Initial sync completed after invite-safe retry. "
-                "Invite handling is disabled for subsequent syncs."
+            break
+        except asyncio.TimeoutError:
+            reached_attempt_limit = (
+                max_sync_attempts > 0 and sync_attempt >= max_sync_attempts
             )
-        except JSONSCHEMA_VALIDATION_ERROR:
-            logger.exception("Invite-safe sync retry failed")
+            if not reached_attempt_limit:
+                attempt_display = (
+                    f"{sync_attempt}/{max_sync_attempts}"
+                    if max_sync_attempts > 0
+                    else f"{sync_attempt}/∞"
+                )
+                logger.warning(
+                    "Initial sync timed out after %.1f seconds (attempt %s); retrying in %.1fs",
+                    MATRIX_SYNC_OPERATION_TIMEOUT,
+                    attempt_display,
+                    retry_delay,
+                )
+                await asyncio.sleep(retry_delay)
+                sync_attempt += 1
+                retry_delay = min(
+                    retry_delay * 2.0, MATRIX_INITIAL_SYNC_RETRY_MAX_DELAY_SECS
+                )
+                continue
+
+            logger.exception(
+                "Initial sync timed out after %.1f seconds (final attempt %d/%d)",
+                MATRIX_SYNC_OPERATION_TIMEOUT,
+                sync_attempt,
+                max_sync_attempts,
+            )
+            logger.error(
+                "This indicates a network connectivity issue or slow Matrix server."
+            )
+            logger.error("Troubleshooting steps:")
+            logger.error("1. Check your internet connection")
+            logger.error(f"2. Verify the homeserver is accessible: {matrix_homeserver}")
+            logger.error(
+                "3. Try again in a few minutes - the server may be temporarily overloaded"
+            )
+            logger.error(
+                "4. Consider using a different Matrix homeserver if the problem persists"
+            )
+            raise MatrixSyncTimeoutError() from None
+        except asyncio.CancelledError:
+            logger.exception("Initial sync cancelled")
+            raise
+        except JSONSCHEMA_VALIDATION_ERROR as exc:
+            logger.exception("Initial sync response failed schema validation.")
             logger.warning(
-                "Invite-safe sync retry failed schema validation; "
-                "attempting to ignore invalid invite_state payloads."
+                "This usually indicates a non-compliant homeserver or proxy response."
             )
-
-            async def _sync_ignore_invalid_invites() -> Any:
-                """
-                Perform a Matrix sync using an invite-safe filter while ignoring malformed or schema-invalid invite_state payloads.
-
-                Temporarily treats invalid invite_state values as empty for the duration of the sync to avoid schema validation failures, then restores the original nio SyncResponse behavior.
-
-                Returns:
-                    The sync response object (typically a `nio.responses.SyncResponse`).
-                """
-                import nio.responses as nio_responses
-
-                original_descriptor = vars(nio_responses.SyncResponse).get(
-                    "_get_invite_state"
-                )
-                original_callable = getattr(
-                    nio_responses.SyncResponse, "_get_invite_state", None
-                )
-
-                def _safe_get_invite_state(parsed_dict: Any) -> list[Any]:
-                    """
-                    Extract invite-state events from a parsed invite payload.
-
-                    Parameters:
-                        parsed_dict (Any): Parsed invite payload; expected to be a dict containing an "events" key.
-
-                    Returns:
-                        list[Any]: The list of invite-state events if present and successfully processed, otherwise an empty list.
-                    """
-                    if not isinstance(parsed_dict, dict) or "events" not in parsed_dict:
-                        return []
-                    try:
-                        if callable(original_callable):
-                            return cast(
-                                list[Any],
-                                original_callable(parsed_dict),
-                            )
-                    except JSONSCHEMA_VALIDATION_ERROR:
-                        logger.warning(
-                            "Invalid invite_state payload; ignoring invite_state events."
-                        )
-                        return []
-                    return []
-
-                try:
-                    nio_responses.SyncResponse._get_invite_state = staticmethod(  # pyright: ignore[reportAttributeAccessIssue]  # type: ignore[misc]
-                        _safe_get_invite_state
-                    )
-                    return await asyncio.wait_for(
-                        client.sync(
-                            timeout=MATRIX_EARLY_SYNC_TIMEOUT,
-                            full_state=False,
-                            sync_filter=invite_safe_filter,
-                        ),
-                        timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
-                    )
-                finally:
-                    if original_descriptor is not None:
-                        nio_responses.SyncResponse._get_invite_state = (
-                            original_descriptor
-                        )
-                    else:
-                        # Descriptor didn't exist in class dict; remove it if we added it.
-                        # This avoids leaking the patch if it was shadowing a base class.
-                        if "_get_invite_state" in nio_responses.SyncResponse.__dict__:
-                            try:
-                                del nio_responses.SyncResponse._get_invite_state
-                            except (AttributeError, TypeError):
-                                pass
-
+            logger.warning(
+                "Retrying initial sync without invites to tolerate invalid invite_state payloads."
+            )
             try:
-                sync_response = await _sync_ignore_invalid_invites()
+                sync_response = await asyncio.wait_for(
+                    client.sync(
+                        timeout=MATRIX_EARLY_SYNC_TIMEOUT,
+                        full_state=False,
+                        sync_filter=invite_safe_filter,
+                    ),
+                    timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
+                )
                 cast(Any, client).mmrelay_sync_filter = invite_safe_filter
                 cast(Any, client).mmrelay_first_sync_filter = invite_safe_filter
                 logger.info(
-                    "Initial sync completed after invite-safe retry "
-                    "with invalid invite_state payloads ignored."
+                    "Initial sync completed after invite-safe retry. "
+                    "Invite handling is disabled for subsequent syncs."
                 )
-            except (ImportError, AttributeError):
-                logger.debug("Invite-safe sync retry handler failed", exc_info=True)
-            except asyncio.CancelledError:
-                logger.exception("Invite-ignoring sync retry cancelled")
-                raise
-            except SYNC_RETRY_EXCEPTIONS:
-                logger.exception("Invite-ignoring sync retry failed")
-        except asyncio.TimeoutError:
-            logger.exception(
-                "Invite-safe sync retry timed out after %s seconds",
-                MATRIX_SYNC_OPERATION_TIMEOUT,
-            )
-        except asyncio.CancelledError:
-            logger.exception("Invite-safe sync retry cancelled")
-            raise
-        except NIO_COMM_EXCEPTIONS:
-            logger.exception("Invite-safe sync retry failed")
+            except JSONSCHEMA_VALIDATION_ERROR:
+                logger.exception("Invite-safe sync retry failed")
+                logger.warning(
+                    "Invite-safe sync retry failed schema validation; "
+                    "attempting to ignore invalid invite_state payloads."
+                )
 
-        if sync_response is None:
+                async def _sync_ignore_invalid_invites() -> Any:
+                    """
+                    Perform a Matrix sync using an invite-safe filter while ignoring malformed or schema-invalid invite_state payloads.
+
+                    Temporarily treats invalid invite_state values as empty for the duration of the sync to avoid schema validation failures, then restores the original nio SyncResponse behavior.
+
+                    Returns:
+                        The sync response object (typically a `nio.responses.SyncResponse`).
+                    """
+                    import nio.responses as nio_responses
+
+                    original_descriptor = vars(nio_responses.SyncResponse).get(
+                        "_get_invite_state"
+                    )
+                    original_callable = getattr(
+                        nio_responses.SyncResponse, "_get_invite_state", None
+                    )
+
+                    def _safe_get_invite_state(parsed_dict: Any) -> list[Any]:
+                        """
+                        Extract invite-state events from a parsed invite payload.
+
+                        Parameters:
+                            parsed_dict (Any): Parsed invite payload; expected to be a dict containing an "events" key.
+
+                        Returns:
+                            list[Any]: The list of invite-state events if present and successfully processed, otherwise an empty list.
+                        """
+                        if (
+                            not isinstance(parsed_dict, dict)
+                            or "events" not in parsed_dict
+                        ):
+                            return []
+                        try:
+                            if callable(original_callable):
+                                return cast(
+                                    list[Any],
+                                    original_callable(parsed_dict),
+                                )
+                        except JSONSCHEMA_VALIDATION_ERROR:
+                            logger.warning(
+                                "Invalid invite_state payload; ignoring invite_state events."
+                            )
+                            return []
+                        return []
+
+                    try:
+                        nio_responses.SyncResponse._get_invite_state = staticmethod(  # pyright: ignore[reportAttributeAccessIssue]  # type: ignore[misc]
+                            _safe_get_invite_state
+                        )
+                        return await asyncio.wait_for(
+                            client.sync(
+                                timeout=MATRIX_EARLY_SYNC_TIMEOUT,
+                                full_state=False,
+                                sync_filter=invite_safe_filter,
+                            ),
+                            timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
+                        )
+                    finally:
+                        if original_descriptor is not None:
+                            nio_responses.SyncResponse._get_invite_state = (
+                                original_descriptor
+                            )
+                        else:
+                            # Descriptor didn't exist in class dict; remove it if we added it.
+                            # This avoids leaking the patch if it was shadowing a base class.
+                            if (
+                                "_get_invite_state"
+                                in nio_responses.SyncResponse.__dict__
+                            ):
+                                try:
+                                    del nio_responses.SyncResponse._get_invite_state
+                                except (AttributeError, TypeError):
+                                    pass
+
+                try:
+                    sync_response = await _sync_ignore_invalid_invites()
+                    cast(Any, client).mmrelay_sync_filter = invite_safe_filter
+                    cast(Any, client).mmrelay_first_sync_filter = invite_safe_filter
+                    logger.info(
+                        "Initial sync completed after invite-safe retry "
+                        "with invalid invite_state payloads ignored."
+                    )
+                except (ImportError, AttributeError):
+                    logger.debug("Invite-safe sync retry handler failed", exc_info=True)
+                except asyncio.CancelledError:
+                    logger.exception("Invite-ignoring sync retry cancelled")
+                    raise
+                except SYNC_RETRY_EXCEPTIONS:
+                    logger.exception("Invite-ignoring sync retry failed")
+            except asyncio.TimeoutError:
+                logger.exception(
+                    "Invite-safe sync retry timed out after %s seconds",
+                    MATRIX_SYNC_OPERATION_TIMEOUT,
+                )
+            except asyncio.CancelledError:
+                logger.exception("Invite-safe sync retry cancelled")
+                raise
+            except NIO_COMM_EXCEPTIONS:
+                logger.exception("Invite-safe sync retry failed")
+
+            if sync_response is None:
+                logger.exception("Matrix sync failed")
+                raise MatrixSyncFailedError() from exc
+            break
+        except NIO_COMM_EXCEPTIONS as exc:
             logger.exception("Matrix sync failed")
             raise MatrixSyncFailedError() from exc
-    except NIO_COMM_EXCEPTIONS as exc:
-        logger.exception("Matrix sync failed")
-        raise MatrixSyncFailedError() from exc
 
     return sync_response
 

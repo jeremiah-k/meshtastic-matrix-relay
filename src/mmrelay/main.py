@@ -301,6 +301,68 @@ def _requires_continuous_health_monitor(config: dict[str, Any]) -> bool:
     return meshtastic_utils.requires_continuous_health_monitor(config)
 
 
+def _should_suppress_unretrieved_matrix_task_timeout(context: dict[str, Any]) -> bool:
+    """
+    Return True when an asyncio loop exception context represents a known, transient Matrix keys_query timeout task.
+
+    This suppresses noisy "Task exception was never retrieved" logs emitted by third-party
+    background tasks during temporary homeserver/network instability.
+    """
+    message = str(context.get("message", ""))
+    if "Task exception was never retrieved" not in message:
+        return False
+
+    exception = context.get("exception")
+    if not isinstance(exception, asyncio.TimeoutError):
+        return False
+
+    task_like = context.get("task") or context.get("future")
+    if task_like is None:
+        return False
+
+    coro_name = ""
+    get_coro = getattr(task_like, "get_coro", None)
+    if callable(get_coro):
+        coro = get_coro()
+        coro_name = getattr(getattr(coro, "cr_code", None), "co_name", "")
+    task_repr = repr(task_like)
+    return "keys_query" in coro_name or "keys_query" in task_repr
+
+
+def _install_loop_exception_handler(
+    loop: asyncio.AbstractEventLoop,
+) -> Callable[[asyncio.AbstractEventLoop, dict[str, Any]], object] | None:
+    """
+    Install an asyncio exception handler that de-noises known transient Matrix background timeouts.
+
+    Returns the previous exception handler so callers can restore it during shutdown.
+    """
+    previous_handler = loop.get_exception_handler()
+
+    def _handler(
+        current_loop: asyncio.AbstractEventLoop, context: dict[str, Any]
+    ) -> None:
+        if _should_suppress_unretrieved_matrix_task_timeout(context):
+            matrix_logger.warning(
+                "Background Matrix key query timed out; continuing (transient network/homeserver issue)."
+            )
+            exception = context.get("exception")
+            if isinstance(exception, BaseException):
+                matrix_logger.debug(
+                    "Suppressed unretrieved Matrix background task timeout",
+                    exc_info=(type(exception), exception, exception.__traceback__),
+                )
+            return
+
+        if previous_handler is not None:
+            previous_handler(current_loop, context)
+        else:
+            current_loop.default_exception_handler(context)
+
+    loop.set_exception_handler(_handler)
+    return previous_handler
+
+
 async def main(config: dict[str, Any]) -> None:
     """
     Run the relay: initialize core services, connect to Meshtastic and Matrix, run the Matrix sync loop with health-monitoring and retry behavior, and perform an orderly shutdown.
@@ -321,6 +383,13 @@ async def main(config: dict[str, Any]) -> None:
 
     loop = asyncio.get_running_loop()
     meshtastic_utils.event_loop = loop
+    previous_loop_exception_handler: (
+        Callable[[asyncio.AbstractEventLoop, dict[str, Any]], object] | None
+    ) = None
+    if hasattr(loop, "get_exception_handler") and hasattr(
+        loop, "set_exception_handler"
+    ):
+        previous_loop_exception_handler = _install_loop_exception_handler(loop)
 
     # Initialize the SQLite database
     initialize_database()
@@ -1001,6 +1070,8 @@ async def main(config: dict[str, Any]) -> None:
     except KeyboardInterrupt:
         shutdown()
     finally:
+        if hasattr(loop, "set_exception_handler"):
+            loop.set_exception_handler(previous_loop_exception_handler)
         _set_shutdown_flag()
         await _await_background_task_shutdown(
             ready_task,

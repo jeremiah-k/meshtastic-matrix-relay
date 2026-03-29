@@ -61,6 +61,10 @@ MATRIX_ROOM_SEND_TIMEOUT: Final[float] = 10.0  # seconds
 MATRIX_TO_DEVICE_TIMEOUT: Final[float] = 10.0  # seconds
 MATRIX_LOGIN_TIMEOUT: Final[float] = 30.0  # seconds
 MATRIX_SYNC_OPERATION_TIMEOUT: Final[float] = 60.0  # seconds
+# Initial Matrix sync retry policy.
+# 0 means retry indefinitely (recommended for unattended service restarts).
+MATRIX_INITIAL_SYNC_MAX_ATTEMPTS: Final[int] = 0
+MATRIX_INITIAL_SYNC_RETRY_MAX_DELAY_SECS: Final[float] = 60.0
 
 # BLE-specific constants
 BLE_FUTURE_WATCHDOG_SECS: Final[float] = 120.0

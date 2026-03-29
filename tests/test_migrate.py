@@ -1623,6 +1623,15 @@ class TestPerformMigration:
                 "store_dir": str(new_home / "matrix" / "store"),
             },
         )
+        monkeypatch.setattr(
+            migrate_module,
+            "migrate_service",
+            lambda *args, **kwargs: {
+                "success": True,
+                "action": "not_applicable",
+                "message": "Service migration skipped in test",
+            },
+        )
 
         result = perform_migration(force=True)
 
@@ -1651,6 +1660,15 @@ class TestPerformMigration:
                 "logs_dir": str(new_home / "logs"),
                 "plugins_dir": str(new_home / "plugins"),
                 "store_dir": str(new_home / "matrix" / "store"),
+            },
+        )
+        monkeypatch.setattr(
+            migrate_module,
+            "migrate_service",
+            lambda *args, **kwargs: {
+                "success": True,
+                "action": "not_applicable",
+                "message": "Service migration skipped in test",
             },
         )
 

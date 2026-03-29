@@ -12,7 +12,7 @@ import asyncio
 import sqlite3
 import threading
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from functools import lru_cache
 from typing import Any, Generator, Optional
@@ -33,6 +33,7 @@ from mmrelay.constants.database import (
 from mmrelay.log_utils import get_logger
 
 logger = get_logger(__name__)
+_ASYNC_WORKER_POLL_INTERVAL_SECONDS = 0.01
 
 
 def _get_sqlite_runtime_version_info() -> tuple[int, int, int]:
@@ -421,13 +422,13 @@ class DatabaseManager:
                     "DatabaseManager is closing, cannot submit new work"
                 )
             worker_future = self._async_executor.submit(executor_func)
-        wrapped_future: asyncio.Future[Any] = asyncio.wrap_future(worker_future)
         try:
-            return await asyncio.shield(wrapped_future)
+            return await self._await_submitted_future(worker_future)
         except asyncio.CancelledError:
             if write:
                 try:
-                    await wrapped_future
+                    if worker_future.done():
+                        worker_future.result()
                 except asyncio.CancelledError:
                     pass
                 except BaseException:
@@ -438,6 +439,14 @@ class DatabaseManager:
             elif not worker_future.done():
                 worker_future.cancel()
             raise
+
+    async def _await_submitted_future(self, worker_future: Future[Any]) -> Any:
+        """
+        Await completion of a submitted worker future without wrap_future bridging.
+        """
+        while not worker_future.done():
+            await asyncio.sleep(_ASYNC_WORKER_POLL_INTERVAL_SECONDS)
+        return worker_future.result()
 
     # ------------------------------------------------------------------ #
     # Lifecycle

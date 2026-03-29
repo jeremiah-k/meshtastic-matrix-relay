@@ -91,22 +91,21 @@ class TestMigrateGpxtracker(unittest.TestCase):
 class TestPerformMigration(unittest.TestCase):
     """Tests for perform_migration function."""
 
+    @patch("mmrelay.migrate.migrate_service")
     @patch("mmrelay.migrate.migrate_store")
     @patch("mmrelay.migrate.migrate_plugins")
     @patch("mmrelay.migrate.migrate_gpxtracker")
-    @patch("mmrelay.paths.get_home_dir")
-    @patch("mmrelay.paths.resolve_all_paths")
+    @patch("mmrelay.migrate.resolve_all_paths")
     def test_runs_all_migrations(
         self,
         mock_resolve,
-        mock_home,
         mock_gpx,
         mock_plugins,
         mock_store,
+        mock_service,
     ):
         """Test perform_migration runs all migration steps."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_home.return_value = Path(tmpdir)
             legacy_root = Path(tmpdir) / "legacy"
             legacy_root.mkdir()
             mock_resolve.return_value = {
@@ -116,6 +115,10 @@ class TestPerformMigration(unittest.TestCase):
             mock_store.return_value = {"success": True, "message": "Done"}
             mock_plugins.return_value = {"success": True, "message": "Done"}
             mock_gpx.return_value = {"success": True, "message": "Done"}
+            mock_service.return_value = {
+                "success": True,
+                "message": "Service migration skipped in test",
+            }
 
             # Mock running instance check to return False (no running instance)
             with patch("mmrelay.migrate._is_mmrelay_running", return_value=False):
@@ -124,21 +127,17 @@ class TestPerformMigration(unittest.TestCase):
                 self.assertTrue(result.get("success"))
                 self.assertGreaterEqual(len(result.get("migrations", [])), 3)
 
+    @patch("mmrelay.migrate.migrate_service")
     @patch("mmrelay.migrate.migrate_store")
-    @patch("mmrelay.paths.get_home_dir")
-    @patch("mmrelay.paths.get_home_dir")
-    @patch("mmrelay.paths.resolve_all_paths")
+    @patch("mmrelay.migrate.resolve_all_paths")
     def test_returns_error_on_migration_failure(
         self,
         mock_resolve,
-        mock_paths_home,
-        mock_migrate_home,
         mock_store,
+        mock_service,
     ):
         """Test perform_migration returns error when migration fails."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_paths_home.return_value = Path(tmpdir)
-            mock_migrate_home.return_value = Path(tmpdir)
             legacy_root = Path(tmpdir) / "legacy"
             legacy_root.mkdir()
             mock_resolve.return_value = {
@@ -148,6 +147,10 @@ class TestPerformMigration(unittest.TestCase):
             mock_store.return_value = {
                 "success": False,
                 "error": "Test error",
+            }
+            mock_service.return_value = {
+                "success": True,
+                "message": "Service migration skipped in test",
             }
 
             # Mock running instance check to return False (no running instance)
@@ -163,13 +166,12 @@ class TestPerformMigration(unittest.TestCase):
                     store_migration[0].get("result", {}).get("error"), "Test error"
                 )
 
+    @patch("mmrelay.migrate.migrate_service")
     @patch("mmrelay.migrate.migrate_store")
-    @patch("mmrelay.paths.get_home_dir")
-    @patch("mmrelay.paths.resolve_all_paths")
-    def test_dry_run_mode(self, mock_resolve, mock_home, mock_store):
+    @patch("mmrelay.migrate.resolve_all_paths")
+    def test_dry_run_mode(self, mock_resolve, mock_store, mock_service):
         """Test perform_migration in dry run mode."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_home.return_value = Path(tmpdir)
             legacy_root = Path(tmpdir) / "legacy"
             legacy_root.mkdir()
             mock_resolve.return_value = {
@@ -180,6 +182,10 @@ class TestPerformMigration(unittest.TestCase):
                 "success": True,
                 "message": "Done",
                 "dry_run": True,
+            }
+            mock_service.return_value = {
+                "success": True,
+                "message": "Service migration skipped in test",
             }
 
             # Mock running instance check to return False (no running instance)
@@ -192,22 +198,16 @@ class TestPerformMigration(unittest.TestCase):
     @patch("mmrelay.migrate.migrate_database")
     @patch("mmrelay.migrate.migrate_config")
     @patch("mmrelay.migrate.migrate_credentials")
-    @patch("mmrelay.paths.get_home_dir")
-    @patch("mmrelay.paths.get_home_dir")
-    @patch("mmrelay.paths.resolve_all_paths")
+    @patch("mmrelay.migrate.resolve_all_paths")
     def test_database_failure_stops_migration(
         self,
         mock_resolve,
-        mock_paths_home,
-        mock_migrate_home,
         mock_creds,
         mock_config,
         mock_db,
     ):
         """Test perform_migration stops on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_paths_home.return_value = Path(tmpdir)
-            mock_migrate_home.return_value = Path(tmpdir)
             legacy_root = Path(tmpdir) / "legacy"
             legacy_root.mkdir()
             mock_resolve.return_value = {

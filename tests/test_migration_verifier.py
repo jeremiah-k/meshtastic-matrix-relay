@@ -2,6 +2,7 @@ import argparse
 import sqlite3
 import sys
 
+import mmrelay.migrate as migrate_module
 from mmrelay import paths as paths_module
 from mmrelay.cli import handle_doctor_command, handle_verify_migration_command
 from mmrelay.constants.app import CREDENTIALS_FILENAME, DATABASE_FILENAME, LOG_FILENAME
@@ -35,6 +36,15 @@ def test_verify_migration_after_move(tmp_path, monkeypatch):
     monkeypatch.setattr(paths_module, "_home_override", None)
     monkeypatch.setattr(paths_module, "_home_override_source", None)
     monkeypatch.setattr(paths_module, "get_legacy_dirs", lambda: [legacy_root])
+    monkeypatch.setattr(
+        migrate_module,
+        "migrate_service",
+        lambda *args, **kwargs: {
+            "success": True,
+            "action": "not_applicable",
+            "message": "Service migration skipped in test",
+        },
+    )
 
     paths_info = resolve_all_paths()
     assert paths_info["home"] == str(new_home)
