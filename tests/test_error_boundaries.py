@@ -22,6 +22,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
+from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
 from mmrelay.meshtastic_utils import on_meshtastic_message
 from mmrelay.message_queue import MessageQueue
 
@@ -95,7 +97,7 @@ class TestErrorBoundaries(unittest.TestCase):
         working_plugin.handle_meshtastic_message = AsyncMock(return_value=False)
 
         packet = {
-            "decoded": {"text": "test message", "portnum": 1},
+            "decoded": {"text": "test message", "portnum": PORTNUM_TEXT_MESSAGE_APP},
             "fromId": "!12345678",
             "channel": 0,
         }
@@ -144,7 +146,7 @@ class TestErrorBoundaries(unittest.TestCase):
         Simulates failures in database retrieval of node long and short names, verifying that the system uses fallback information from the interface and successfully relays the message to Matrix.
         """
         packet = {
-            "decoded": {"text": "test message", "portnum": 1},
+            "decoded": {"text": "test message", "portnum": PORTNUM_TEXT_MESSAGE_APP},
             "fromId": "!12345678",
             "channel": 0,
         }
@@ -206,7 +208,7 @@ class TestErrorBoundaries(unittest.TestCase):
         Verifies that the system continues processing subsequent messages after an initial Matrix relay failure, ensuring both attempts are made.
         """
         packet = {
-            "decoded": {"text": "test message", "portnum": 1},
+            "decoded": {"text": "test message", "portnum": PORTNUM_TEXT_MESSAGE_APP},
             "fromId": "!12345678",
             "channel": 0,
             "to": 4294967295,
@@ -360,7 +362,7 @@ class TestErrorBoundaries(unittest.TestCase):
         Simulates failures in the database lookups, plugin loading, and Matrix relay while invoking on_meshtastic_message. The test asserts that no exception escapes the call and that at least one error/exception was logged.
         """
         packet = {
-            "decoded": {"text": "test message", "portnum": 1},
+            "decoded": {"text": "test message", "portnum": PORTNUM_TEXT_MESSAGE_APP},
             "fromId": "!12345678",
             "channel": 0,
         }
@@ -517,7 +519,7 @@ class TestErrorBoundaries(unittest.TestCase):
 
                     mmrelay.matrix_utils.config = {
                         "meshtastic": {
-                            "connection_type": "serial",
+                            "connection_type": CONNECTION_TYPE_SERIAL,
                             "serial_port": "/dev/ttyUSB0",
                             "meshnet_name": "TestMesh",
                         },
@@ -606,7 +608,10 @@ class TestErrorBoundaries(unittest.TestCase):
             mmrelay.meshtastic_utils.matrix_rooms = None
 
             packet = {
-                "decoded": {"text": "test message", "portnum": 1},
+                "decoded": {
+                    "text": "test message",
+                    "portnum": PORTNUM_TEXT_MESSAGE_APP,
+                },
                 "fromId": "!12345678",
                 "channel": 0,
             }

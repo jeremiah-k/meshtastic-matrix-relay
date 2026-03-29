@@ -16,6 +16,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.cli import generate_sample_config, main
+from mmrelay.constants.cli import EXIT_CODE_SUCCESS
 
 
 class TestCLIWindowsConsoleSetup(unittest.TestCase):
@@ -55,7 +56,7 @@ class TestCLIWindowsConsoleSetup(unittest.TestCase):
 
         # Should call Windows console setup
         mock_setup_console.assert_called_once()
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
 
     @patch("sys.platform", "linux")
     @patch("mmrelay.cli.parse_arguments")
@@ -79,7 +80,7 @@ class TestCLIWindowsConsoleSetup(unittest.TestCase):
 
         # Should not attempt to import windows_utils
         # (This is implicit - if it tried to import, it would succeed but not call setup)
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
 
     @patch("sys.platform", "win32")
     @patch("mmrelay.cli.parse_arguments")
@@ -103,7 +104,7 @@ class TestCLIWindowsConsoleSetup(unittest.TestCase):
                 result = main()
 
         # Should continue without error
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
 
 
 class TestCLIWindowsErrorHandling(unittest.TestCase):

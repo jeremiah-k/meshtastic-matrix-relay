@@ -21,7 +21,14 @@ from unittest.mock import Mock, patch
 import pytest
 
 import mmrelay.meshtastic_utils as mu
-from mmrelay.constants.network import METADATA_WATCHDOG_SECS
+from mmrelay.constants.network import (
+    CONFIG_KEY_BLE_ADDRESS,
+    CONFIG_KEY_CONNECTION_TYPE,
+    CONNECTION_TYPE_BLE,
+    CONNECTION_TYPE_TCP,
+    METADATA_WATCHDOG_SECS,
+)
+from tests.constants import TEST_BLE_MAC
 
 
 @pytest.fixture(autouse=True)
@@ -53,8 +60,8 @@ class TestExecutorShutdown:
         mock_future.cancel.return_value = True
 
         mu._ble_future = mock_future
-        mu._ble_future_address = "AA:BB:CC:DD:EE:FF"
-        mu._ble_timeout_counts["AA:BB:CC:DD:EE:FF"] = 3
+        mu._ble_future_address = TEST_BLE_MAC
+        mu._ble_timeout_counts[TEST_BLE_MAC] = 3
 
         # Create a mock executor
         mock_executor = Mock(spec=ThreadPoolExecutor)
@@ -66,7 +73,7 @@ class TestExecutorShutdown:
         # Verify future was cancelled
         mock_future.cancel.assert_called_once()
         # Verify address was cleared from timeout counts
-        assert "AA:BB:CC:DD:EE:FF" not in mu._ble_timeout_counts
+        assert TEST_BLE_MAC not in mu._ble_timeout_counts
         # Verify executor was shut down
         mock_executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
         # Shared reference should be cleared to avoid repeated shutdown calls at exit.
@@ -748,7 +755,7 @@ class TestMessageHandlerEdgeCases:
         """Test check_connection with non-dict health_check config."""
         mu.config = {
             "meshtastic": {
-                "connection_type": "tcp",
+                CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_TCP,
                 "health_check": "invalid",  # Not a dict
             }
         }
@@ -767,7 +774,7 @@ class TestMessageHandlerEdgeCases:
         """Test check_connection when probe submission raises RuntimeError."""
         mu.config = {
             "meshtastic": {
-                "connection_type": "tcp",
+                CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_TCP,
                 "health_check": {"enabled": True, "initial_delay": 0},
             }
         }
@@ -803,7 +810,7 @@ class TestMessageHandlerEdgeCases:
         """Test check_connection when probe submission returns None."""
         mu.config = {
             "meshtastic": {
-                "connection_type": "tcp",
+                CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_TCP,
                 "health_check": {"enabled": True, "initial_delay": 0},
             }
         }
@@ -839,7 +846,7 @@ class TestMessageHandlerEdgeCases:
         """Test check_connection when probe fails and not reconnecting."""
         mu.config = {
             "meshtastic": {
-                "connection_type": "tcp",
+                CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_TCP,
                 "health_check": {"enabled": True, "initial_delay": 0},
             }
         }
@@ -886,7 +893,7 @@ class TestMessageHandlerEdgeCases:
         """Test check_connection when probe fails but already reconnecting."""
         mu.config = {
             "meshtastic": {
-                "connection_type": "tcp",
+                CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_TCP,
                 "health_check": {"enabled": True, "initial_delay": 0},
             }
         }
@@ -1353,10 +1360,10 @@ class TestClearBleFuture:
         """Test that when done_future matches _ble_future, all related globals are cleared."""
         mock_future = Mock(spec=Future)
         mu._ble_future = mock_future
-        mu._ble_future_address = "AA:BB:CC:DD:EE:FF"
+        mu._ble_future_address = TEST_BLE_MAC
         mu._ble_future_started_at = time.monotonic()
         mu._ble_future_timeout_secs = 30.0
-        mu._ble_timeout_counts["AA:BB:CC:DD:EE:FF"] = 5
+        mu._ble_timeout_counts[TEST_BLE_MAC] = 5
 
         mu._clear_ble_future(mock_future)
 
@@ -1364,25 +1371,25 @@ class TestClearBleFuture:
         assert mu._ble_future_address is None
         assert mu._ble_future_started_at is None
         assert mu._ble_future_timeout_secs is None
-        assert "AA:BB:CC:DD:EE:FF" not in mu._ble_timeout_counts
+        assert TEST_BLE_MAC not in mu._ble_timeout_counts
 
     def test_clear_ble_future_no_match_does_not_clear(self):
         """Test that _clear_ble_future does not clear when future doesn't match."""
         mock_future1 = Mock(spec=Future)
         mock_future2 = Mock(spec=Future)
         mu._ble_future = mock_future1
-        mu._ble_future_address = "AA:BB:CC:DD:EE:FF"
+        mu._ble_future_address = TEST_BLE_MAC
         mu._ble_future_started_at = time.monotonic()
         mu._ble_future_timeout_secs = 30.0
-        mu._ble_timeout_counts["AA:BB:CC:DD:EE:FF"] = 5
+        mu._ble_timeout_counts[TEST_BLE_MAC] = 5
 
         mu._clear_ble_future(mock_future2)
 
         assert mu._ble_future is mock_future1
-        assert mu._ble_future_address == "AA:BB:CC:DD:EE:FF"
+        assert mu._ble_future_address == TEST_BLE_MAC
         assert mu._ble_future_started_at is not None
         assert mu._ble_future_timeout_secs == 30.0
-        assert mu._ble_timeout_counts.get("AA:BB:CC:DD:EE:FF") == 5
+        assert mu._ble_timeout_counts.get(TEST_BLE_MAC) == 5
 
 
 class TestEnsureBleWorkerAvailableStaleWorker:
@@ -1393,7 +1400,7 @@ class TestEnsureBleWorkerAvailableStaleWorker:
         mock_future = Mock(spec=Future)
         mock_future.done.return_value = False
         mu._ble_future = mock_future
-        mu._ble_future_address = "AA:BB:CC:DD:EE:FF"
+        mu._ble_future_address = TEST_BLE_MAC
         mu._ble_future_started_at = time.monotonic() - 100
         mu._ble_future_timeout_secs = 30.0
 
@@ -1416,7 +1423,7 @@ class TestEnsureBleWorkerAvailableStaleWorker:
                             "mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 3
                         ):
                             mu._ensure_ble_worker_available(
-                                "AA:BB:CC:DD:EE:FF", operation="test"
+                                TEST_BLE_MAC, operation="test"
                             )
 
                             warning_calls = [
@@ -1430,13 +1437,13 @@ class TestEnsureBleWorkerAvailableStaleWorker:
         mock_future = Mock(spec=Future)
         mock_future.done.return_value = False
         mu._ble_future = mock_future
-        mu._ble_future_address = "AA:BB:CC:DD:EE:FF"
+        mu._ble_future_address = TEST_BLE_MAC
         mu._ble_future_started_at = time.monotonic()
         mu._ble_future_timeout_secs = 30.0
 
         with patch("mmrelay.meshtastic_utils._ble_future_stale_grace_secs", 1000.0):
             with pytest.raises(TimeoutError, match="already in progress"):
-                mu._ensure_ble_worker_available("AA:BB:CC:DD:EE:FF", operation="test")
+                mu._ensure_ble_worker_available(TEST_BLE_MAC, operation="test")
 
 
 class TestMaybeResetBleExecutor:
@@ -1448,7 +1455,7 @@ class TestMaybeResetBleExecutor:
         mu._ble_executor._shutdown = False
 
         with patch("mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 10):
-            mu._maybe_reset_ble_executor("AA:BB:CC:DD:EE:FF", timeout_count=3)
+            mu._maybe_reset_ble_executor(TEST_BLE_MAC, timeout_count=3)
 
             mu._ble_executor.shutdown.assert_not_called()
 
@@ -1461,7 +1468,7 @@ class TestMaybeResetBleExecutor:
         mu._ble_future_address = None
 
         with patch("mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 3):
-            mu._maybe_reset_ble_executor("AA:BB:CC:DD:EE:FF", timeout_count=5)
+            mu._maybe_reset_ble_executor(TEST_BLE_MAC, timeout_count=5)
 
             mock_executor.shutdown.assert_called_once_with(
                 wait=False, cancel_futures=True
@@ -1478,7 +1485,7 @@ class TestMaybeResetBleExecutor:
         mu._ble_future_address = None
 
         with patch("mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 3):
-            mu._maybe_reset_ble_executor("AA:BB:CC:DD:EE:FF", timeout_count=5)
+            mu._maybe_reset_ble_executor(TEST_BLE_MAC, timeout_count=5)
 
             assert mock_executor.shutdown.call_count == 2
             assert mu._ble_executor is not mock_executor
@@ -1492,8 +1499,8 @@ class TestBleInterfaceCreationShuttingDown:
         mu.shutting_down = True
         mu.config = {
             "meshtastic": {
-                "connection_type": "ble",
-                "ble_address": "AA:BB:CC:DD:EE:FF",
+                CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_BLE,
+                CONFIG_KEY_BLE_ADDRESS: TEST_BLE_MAC,
             }
         }
 
@@ -1511,8 +1518,8 @@ class TestBleInterfaceCreationShuttingDown:
         mu.meshtastic_client = None
         mu.config = {
             "meshtastic": {
-                "connection_type": "ble",
-                "ble_address": "AA:BB:CC:DD:EE:FF",
+                CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_BLE,
+                CONFIG_KEY_BLE_ADDRESS: TEST_BLE_MAC,
             }
         }
 
@@ -1548,7 +1555,7 @@ class TestBleInterfaceCreationShuttingDown:
                                         mu.connect_meshtastic()
 
                                         mock_ensure.assert_called_once_with(
-                                            "AA:BB:CC:DD:EE:FF",
+                                            TEST_BLE_MAC,
                                             operation="interface creation",
                                         )
 
@@ -1563,8 +1570,8 @@ class TestBleConnectShuttingDown:
         mu.meshtastic_client = None
         mu.config = {
             "meshtastic": {
-                "connection_type": "ble",
-                "ble_address": "AA:BB:CC:DD:EE:FF",
+                CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_BLE,
+                CONFIG_KEY_BLE_ADDRESS: TEST_BLE_MAC,
             }
         }
 
@@ -1579,7 +1586,7 @@ class TestBleConnectShuttingDown:
         mock_interface.connect = Mock()
         mock_interface.getMyNodeInfo = Mock(return_value={"user": {"id": "!abc123"}})
         mock_bleak_client = Mock()
-        mock_bleak_client.address = "AA:BB:CC:DD:EE:FF"
+        mock_bleak_client.address = TEST_BLE_MAC
         mock_client = Mock()
         mock_client.bleak_client = mock_bleak_client
         mock_interface.client = mock_client
@@ -1622,7 +1629,7 @@ class TestBleConnectShuttingDown:
                                     with patch("mmrelay.meshtastic_utils.meshtastic"):
                                         with patch(
                                             "mmrelay.meshtastic_utils._sanitize_ble_address",
-                                            return_value="AA:BB:CC:DD:EE:FF",
+                                            return_value=TEST_BLE_MAC,
                                         ):
                                             mu.connect_meshtastic()
 
@@ -1643,9 +1650,7 @@ class TestBleConnectShuttingDown:
         with patch("mmrelay.meshtastic_utils._ble_future_stale_grace_secs", 1000.0):
             with patch("mmrelay.meshtastic_utils.logger"):
                 with pytest.raises(TimeoutError, match="already in progress"):
-                    mu._ensure_ble_worker_available(
-                        "AA:BB:CC:DD:EE:FF", operation="connect"
-                    )
+                    mu._ensure_ble_worker_available(TEST_BLE_MAC, operation="connect")
 
 
 class TestConnectionLostHandlerClearingStaleBleFuture:
@@ -1656,10 +1661,10 @@ class TestConnectionLostHandlerClearingStaleBleFuture:
         mock_future = Mock(spec=Future)
         mock_future.done.return_value = False
         mu._ble_future = mock_future
-        mu._ble_future_address = "AA:BB:CC:DD:EE:FF"
+        mu._ble_future_address = TEST_BLE_MAC
         mu._ble_future_started_at = time.monotonic()
         mu._ble_future_timeout_secs = 30.0
-        mu._ble_timeout_counts["AA:BB:CC:DD:EE:FF"] = 5
+        mu._ble_timeout_counts[TEST_BLE_MAC] = 5
         mu.meshtastic_client = Mock()
         mu.event_loop = Mock()
         mu.event_loop.is_closed.return_value = False
@@ -1673,7 +1678,7 @@ class TestConnectionLostHandlerClearingStaleBleFuture:
                 assert mu._ble_future_address is None
                 assert mu._ble_future_started_at is None
                 assert mu._ble_future_timeout_secs is None
-                assert "AA:BB:CC:DD:EE:FF" not in mu._ble_timeout_counts
+                assert TEST_BLE_MAC not in mu._ble_timeout_counts
 
     def test_on_lost_meshtastic_connection_clears_ble_timeout_counts(self):
         """Test _ble_timeout_counts is popped for the address."""
@@ -1772,7 +1777,7 @@ class TestBleExecutorDegradedState:
         """Test that BLE executor enters degraded state when orphan count reaches threshold per address."""
         from mmrelay.constants.network import EXECUTOR_ORPHAN_THRESHOLD
 
-        ble_address = "AA:BB:CC:DD:EE:FF"
+        ble_address = TEST_BLE_MAC
         mock_executor = Mock(spec=ThreadPoolExecutor)
         mock_executor._shutdown = False
         mu._ble_executor = mock_executor
@@ -1795,7 +1800,7 @@ class TestBleExecutorDegradedState:
 
     def test_ble_executor_refuses_reset_when_degraded(self):
         """Test that degraded BLE executor refuses to reset for that address."""
-        ble_address = "AA:BB:CC:DD:EE:FF"
+        ble_address = TEST_BLE_MAC
         mu._ble_executor_degraded_addresses = {ble_address}
         mu._ble_executor = Mock(spec=ThreadPoolExecutor)
         mu._ble_future = Mock(spec=Future)
@@ -1810,7 +1815,7 @@ class TestBleExecutorDegradedState:
 
     def test_ble_executor_allows_recovery_for_specific_address(self):
         """Test that reset_executor_degraded_state clears degraded state for specific BLE address."""
-        ble_address = "AA:BB:CC:DD:EE:FF"
+        ble_address = TEST_BLE_MAC
         mu._ble_executor_degraded_addresses = {ble_address}
         mu._ble_executor_orphaned_workers_by_address = {ble_address: 10}
 
@@ -1822,9 +1827,9 @@ class TestBleExecutorDegradedState:
 
     def test_ble_executor_allows_recovery_for_all_addresses(self):
         """Test that reset_executor_degraded_state with reset_all clears all degraded state."""
-        mu._ble_executor_degraded_addresses = {"AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"}
+        mu._ble_executor_degraded_addresses = {TEST_BLE_MAC, "11:22:33:44:55:66"}
         mu._ble_executor_orphaned_workers_by_address = {
-            "AA:BB:CC:DD:EE:FF": 10,
+            TEST_BLE_MAC: 10,
             "11:22:33:44:55:66": 5,
         }
         mu._metadata_executor_degraded = True
@@ -1841,7 +1846,7 @@ class TestBleExecutorDegradedState:
     def test_ble_executor_degraded_state_per_address(self):
         """Test that BLE degraded state is tracked per address."""
 
-        degraded_address = "AA:BB:CC:DD:EE:FF"
+        degraded_address = TEST_BLE_MAC
         healthy_address = "11:22:33:44:55:66"
 
         mu._ble_executor_degraded_addresses = {degraded_address}
@@ -1873,9 +1878,9 @@ class TestReconnectResetsDegradedStateWithoutDeadlock:
         """
         mu._ble_future = None
         mu._ble_future_address = None
-        mu._ble_executor_degraded_addresses = {"AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"}
+        mu._ble_executor_degraded_addresses = {TEST_BLE_MAC, "11:22:33:44:55:66"}
         mu._ble_executor_orphaned_workers_by_address = {
-            "AA:BB:CC:DD:EE:FF": 10,
+            TEST_BLE_MAC: 10,
             "11:22:33:44:55:66": 5,
         }
         mu._metadata_executor_degraded = True
@@ -1911,8 +1916,8 @@ class TestShutdownClearsDegradedState:
 
     def test_shutdown_clears_ble_degraded_state(self):
         """Test that shutdown clears BLE executor degraded state."""
-        mu._ble_executor_degraded_addresses = {"AA:BB:CC:DD:EE:FF"}
-        mu._ble_executor_orphaned_workers_by_address = {"AA:BB:CC:DD:EE:FF": 10}
+        mu._ble_executor_degraded_addresses = {TEST_BLE_MAC}
+        mu._ble_executor_orphaned_workers_by_address = {TEST_BLE_MAC: 10}
 
         mu.shutdown_shared_executors()
 

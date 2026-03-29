@@ -345,7 +345,7 @@ class TestCleanupLocalSessionData:
     @patch(
         "mmrelay.paths.resolve_all_paths",
         return_value={
-            "credentials_path": "/test/config/matrix/credentials.json",
+            "credentials_path": f"/test/config/matrix/{CREDENTIALS_FILENAME}",
             "store_dir": "/test/config/matrix/store",
         },
     )
@@ -357,7 +357,9 @@ class TestCleanupLocalSessionData:
         mock_exists.return_value = True
         result = _cleanup_local_session_data()
         assert result is True
-        mock_remove.assert_called_once_with("/test/config/matrix/credentials.json")
+        mock_remove.assert_called_once_with(
+            f"/test/config/matrix/{CREDENTIALS_FILENAME}"
+        )
         mock_rmtree.assert_called_once_with("/test/config/matrix/store")
 
     @patch("os.path.exists", return_value=False)
@@ -373,7 +375,7 @@ class TestCleanupLocalSessionData:
     @patch(
         "mmrelay.paths.resolve_all_paths",
         return_value={
-            "credentials_path": "/test/config/matrix/credentials.json",
+            "credentials_path": f"/test/config/matrix/{CREDENTIALS_FILENAME}",
             "store_dir": "/test/config/matrix/store",
         },
     )

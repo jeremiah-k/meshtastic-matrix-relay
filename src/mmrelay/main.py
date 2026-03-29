@@ -37,11 +37,13 @@ from mmrelay.constants.app import (
     WINDOWS_PLATFORM,
 )
 from mmrelay.constants.config import (
+    CONFIG_KEY_LEVEL,
     CONFIG_KEY_MESSAGE_DELAY,
     CONFIG_KEY_MSG_MAP,
     CONFIG_KEY_WIPE_ON_RESTART,
     CONFIG_SECTION_DATABASE,
     CONFIG_SECTION_DATABASE_LEGACY,
+    CONFIG_SECTION_LOGGING,
     CONFIG_SECTION_MESHTASTIC,
     REQUIRED_CONFIG_SECTIONS_WITH_CREDENTIALS,
     REQUIRED_CONFIG_SECTIONS_WITHOUT_CREDENTIALS,
@@ -1048,9 +1050,9 @@ def run_main(args: Any) -> int:
     # Handle --log-level option
     if args and args.log_level:
         # Override the log level from config
-        if "logging" not in config:
-            config["logging"] = {}
-        config["logging"]["level"] = args.log_level
+        if CONFIG_SECTION_LOGGING not in config:
+            config[CONFIG_SECTION_LOGGING] = {}
+        config[CONFIG_SECTION_LOGGING][CONFIG_KEY_LEVEL] = args.log_level
 
     # Set the global config variables in each module
     from mmrelay import (

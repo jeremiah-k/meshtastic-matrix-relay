@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from mmrelay.constants.app import CONFIG_FILENAME, CREDENTIALS_FILENAME
+from mmrelay.constants.messages import MSG_E2EE_NO_AUTH
 from mmrelay.e2ee_utils import (
     _check_credentials_available,
     get_e2ee_status,
@@ -119,7 +120,7 @@ def test_credentials_found_in_legacy_location(
         # Verify overall status is ready (other requirements met)
         assert status["overall_status"] == "ready"
         # Verify no authentication issue
-        assert "Matrix authentication not configured" not in status["issues"]
+        assert MSG_E2EE_NO_AUTH not in status["issues"]
 
         # Verify it stopped checking after first match (legacy2)
         # Should have checked primary, then legacy1, then legacy2
@@ -181,7 +182,7 @@ def test_credentials_not_found_in_legacy_locations(
         # Verify overall status is incomplete (credentials missing)
         assert status["overall_status"] == "incomplete"
         # Verify authentication issue is present
-        assert "Matrix authentication not configured" in status["issues"]
+        assert MSG_E2EE_NO_AUTH in status["issues"]
 
         # Verify all locations were checked
         calls = mock_exists.call_args_list

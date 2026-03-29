@@ -119,7 +119,7 @@ class TestConfigEdgeCases(unittest.TestCase):
             ):
                 paths = get_config_paths()
                 self.assertIn(
-                    "/home/test/.mmrelay/config.yaml",
+                    f"/home/test/.mmrelay/{CONFIG_FILENAME}",
                     [os.path.normpath(p) for p in paths],
                 )
 

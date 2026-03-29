@@ -127,7 +127,7 @@ class TestConfig(unittest.TestCase):
             patch("sys.argv", ["mmrelay"]),
         ):
             paths = get_config_paths()
-            self.assertIn(os.path.expanduser("~/.mmrelay/config.yaml"), paths)
+            self.assertIn(os.path.expanduser(f"~/.mmrelay/{CONFIG_FILENAME}"), paths)
 
     @patch("mmrelay.paths.platformdirs.user_data_dir")
     def test_get_config_paths_windows(self, mock_user_data_dir):
@@ -250,7 +250,9 @@ class TestConfigEdgeCases(unittest.TestCase):
 
         # Should contain original data
         self.assertEqual(config["matrix"]["homeserver"], "https://matrix.org")
-        self.assertEqual(config["meshtastic"]["connection_type"], "serial")
+        self.assertEqual(
+            config["meshtastic"]["connection_type"], CONNECTION_TYPE_SERIAL
+        )
 
         # Should handle missing fields gracefully
         self.assertIsInstance(config, dict)
@@ -576,7 +578,7 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
 
     def test_load_meshtastic_tcp_config(self):
         """Test loading TCP Meshtastic configuration."""
-        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = "tcp"
+        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = CONNECTION_TYPE_TCP
         os.environ["MMRELAY_MESHTASTIC_HOST"] = "192.168.1.100"
         custom_port = DEFAULT_TCP_PORT + 1
         os.environ["MMRELAY_MESHTASTIC_PORT"] = str(custom_port)
@@ -584,30 +586,30 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
         config = load_meshtastic_config_from_env()
 
         self.assertIsNotNone(config)
-        self.assertEqual(config["connection_type"], "tcp")
+        self.assertEqual(config["connection_type"], CONNECTION_TYPE_TCP)
         self.assertEqual(config["host"], "192.168.1.100")
         self.assertEqual(config["port"], custom_port)
 
     def test_load_meshtastic_serial_config(self):
         """Test loading serial Meshtastic configuration."""
-        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = "serial"
+        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = CONNECTION_TYPE_SERIAL
         os.environ["MMRELAY_MESHTASTIC_SERIAL_PORT"] = TEST_SERIAL_PORT
 
         config = load_meshtastic_config_from_env()
 
         self.assertIsNotNone(config)
-        self.assertEqual(config["connection_type"], "serial")
+        self.assertEqual(config["connection_type"], CONNECTION_TYPE_SERIAL)
         self.assertEqual(config["serial_port"], TEST_SERIAL_PORT)
 
     def test_load_meshtastic_ble_config(self):
         """Test loading BLE Meshtastic configuration."""
-        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = "ble"
+        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = CONNECTION_TYPE_BLE
         os.environ["MMRELAY_MESHTASTIC_BLE_ADDRESS"] = "AA:BB:CC:DD:EE:FF"
 
         config = load_meshtastic_config_from_env()
 
         self.assertIsNotNone(config)
-        self.assertEqual(config["connection_type"], "ble")
+        self.assertEqual(config["connection_type"], CONNECTION_TYPE_BLE)
         self.assertEqual(config["ble_address"], "AA:BB:CC:DD:EE:FF")
 
     def test_load_meshtastic_operational_settings(self):
@@ -797,7 +799,7 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
 
     def test_apply_env_config_overrides_empty_config(self):
         """Test applying environment variable overrides to empty configuration."""
-        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = "tcp"
+        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = CONNECTION_TYPE_TCP
         os.environ["MMRELAY_MESHTASTIC_HOST"] = "192.168.1.100"
         os.environ["MMRELAY_LOGGING_LEVEL"] = "INFO"
         os.environ["MMRELAY_DATABASE_PATH"] = "/app/data/test.sqlite"
@@ -805,7 +807,7 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
         config = apply_env_config_overrides({})
 
         self.assertIn("meshtastic", config)
-        self.assertEqual(config["meshtastic"]["connection_type"], "tcp")
+        self.assertEqual(config["meshtastic"]["connection_type"], CONNECTION_TYPE_TCP)
         self.assertEqual(config["meshtastic"]["host"], "192.168.1.100")
 
         self.assertIn("logging", config)
@@ -825,14 +827,14 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
             "logging": {"level": "warning"},
         }
 
-        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = "tcp"
+        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = CONNECTION_TYPE_TCP
         os.environ["MMRELAY_MESHTASTIC_HOST"] = "192.168.1.100"
         os.environ["MMRELAY_LOGGING_LEVEL"] = "DEBUG"
 
         config = apply_env_config_overrides(base_config)
 
         # Environment variables should override existing values
-        self.assertEqual(config["meshtastic"]["connection_type"], "tcp")
+        self.assertEqual(config["meshtastic"]["connection_type"], CONNECTION_TYPE_TCP)
         self.assertEqual(config["meshtastic"]["host"], "192.168.1.100")
         # Existing values not overridden should remain
         self.assertEqual(config["meshtastic"]["serial_port"], TEST_SERIAL_PORT)
@@ -850,17 +852,22 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
         # Mock file existence and YAML loading
         mock_isfile.return_value = True
         mock_yaml_load.return_value = {
-            "meshtastic": {"connection_type": "serial", "serial_port": TEST_SERIAL_PORT}
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": TEST_SERIAL_PORT,
+            }
         }
 
         # Set environment variables
-        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = "tcp"
+        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = CONNECTION_TYPE_TCP
         os.environ["MMRELAY_MESHTASTIC_HOST"] = "192.168.1.100"
 
         config = load_config("/fake/config.yaml")
 
         # Should have both file config and env var overrides
-        self.assertEqual(config["meshtastic"]["connection_type"], "tcp")  # From env var
+        self.assertEqual(
+            config["meshtastic"]["connection_type"], CONNECTION_TYPE_TCP
+        )  # From env var
         self.assertEqual(config["meshtastic"]["host"], "192.168.1.100")  # From env var
         self.assertEqual(
             config["meshtastic"]["serial_port"], TEST_SERIAL_PORT
@@ -1279,12 +1286,16 @@ class TestLoadConfigUncoveredLines(unittest.TestCase):
     @patch("mmrelay.config.apply_env_config_overrides")
     def test_load_config_env_only_returns_config(self, mock_apply_env, _mock_isfile):
         """Test that when env vars provide config, it logs and returns that config."""
-        mock_apply_env.return_value = {"meshtastic": {"connection_type": "tcp"}}
+        mock_apply_env.return_value = {
+            "meshtastic": {"connection_type": CONNECTION_TYPE_TCP}
+        }
 
         with patch("mmrelay.config.get_config_paths", return_value=["/fake/path.yaml"]):
             config = load_config()
 
-        self.assertEqual(config, {"meshtastic": {"connection_type": "tcp"}})
+        self.assertEqual(
+            config, {"meshtastic": {"connection_type": CONNECTION_TYPE_TCP}}
+        )
 
     @patch("mmrelay.config.os.path.isfile", return_value=False)
     @patch("mmrelay.config.apply_env_config_overrides", return_value={})
@@ -1326,9 +1337,9 @@ class TestGetMeshtasticConfigValueUncoveredLines(unittest.TestCase):
             config = {"meshtastic": "not_a_dict"}
 
         result = get_meshtastic_config_value(
-            config, "connection_type", default="serial"
+            config, "connection_type", default=CONNECTION_TYPE_SERIAL
         )
-        self.assertEqual(result, "serial")
+        self.assertEqual(result, CONNECTION_TYPE_SERIAL)
 
     @patch("mmrelay.config.os.path.isfile", return_value=False)
     @patch("mmrelay.config.apply_env_config_overrides", return_value={})

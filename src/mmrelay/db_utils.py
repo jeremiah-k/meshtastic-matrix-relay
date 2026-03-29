@@ -9,6 +9,12 @@ from collections.abc import Collection
 from typing import Any, Callable, NamedTuple, cast
 
 from mmrelay.constants.app import DATABASE_FILENAME, LEGACY_DATA_SUBDIR
+from mmrelay.constants.config import (
+    CONFIG_SECTION_DATABASE,
+    CONFIG_SECTION_DATABASE_LEGACY,
+    ENV_BOOL_FALSE_VALUES,
+    ENV_BOOL_TRUE_VALUES,
+)
 from mmrelay.constants.database import (
     DEBUG_ID_SAMPLE_LIMIT,
     DEFAULT_BUSY_TIMEOUT_MS,
@@ -418,8 +424,12 @@ def _build_database_config_signature(raw_config: Any) -> str | None:
     if not isinstance(raw_config, dict):
         return None
     db_config = {
-        "database": _normalize_database_section(raw_config.get("database")),
-        "db": _normalize_database_section(raw_config.get("db")),
+        CONFIG_SECTION_DATABASE: _normalize_database_section(
+            raw_config.get(CONFIG_SECTION_DATABASE)
+        ),
+        CONFIG_SECTION_DATABASE_LEGACY: _normalize_database_section(
+            raw_config.get(CONFIG_SECTION_DATABASE_LEGACY)
+        ),
     }
     signature_payload = _canonicalize_signature_value(db_config)
     return json.dumps(
@@ -458,8 +468,12 @@ def get_db_path() -> str:
 
     # Check if config is available
     if isinstance(config, dict):
-        database_section = _normalize_database_section(config.get("database"))
-        legacy_db_section = _normalize_database_section(config.get("db"))
+        database_section = _normalize_database_section(
+            config.get(CONFIG_SECTION_DATABASE)
+        )
+        legacy_db_section = _normalize_database_section(
+            config.get(CONFIG_SECTION_DATABASE_LEGACY)
+        )
 
         # Check if database path is specified in config (preferred format)
         if "path" in database_section:
@@ -604,9 +618,9 @@ def _parse_bool(value: Any, default: bool) -> bool:
         return value
     if isinstance(value, str):
         lowered = value.strip().lower()
-        if lowered in {"1", "true", "yes", "on"}:
+        if lowered in ENV_BOOL_TRUE_VALUES:
             return True
-        if lowered in {"0", "false", "no", "off"}:
+        if lowered in ENV_BOOL_FALSE_VALUES:
             return False
     return default
 
@@ -640,12 +654,16 @@ def _resolve_database_options() -> tuple[bool, int, dict[str, PragmaValue]]:
         extra_pragmas (dict): Mapping of pragma names to values, starting from DEFAULT_EXTRA_PRAGMAS and overridden by config-provided pragmas.
     """
     raw_database_cfg: Any = (
-        config.get("database", {}) if isinstance(config, dict) else {}
+        config.get(CONFIG_SECTION_DATABASE, {}) if isinstance(config, dict) else {}
     )
     database_cfg: dict[str, Any] = (
         raw_database_cfg if isinstance(raw_database_cfg, dict) else {}
     )
-    raw_legacy_cfg: Any = config.get("db", {}) if isinstance(config, dict) else {}
+    raw_legacy_cfg: Any = (
+        config.get(CONFIG_SECTION_DATABASE_LEGACY, {})
+        if isinstance(config, dict)
+        else {}
+    )
     legacy_cfg: dict[str, Any] = (
         raw_legacy_cfg if isinstance(raw_legacy_cfg, dict) else {}
     )

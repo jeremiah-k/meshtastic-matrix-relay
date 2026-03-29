@@ -57,7 +57,10 @@ from aiohttp import ClientError
 
 from mmrelay.constants.app import DEFAULT_READY_HEARTBEAT_SECONDS
 from mmrelay.constants.config import DEFAULT_NODEDB_REFRESH_INTERVAL
-from mmrelay.constants.network import MESHTASTIC_CLOSE_TIMEOUT_SECS
+from mmrelay.constants.network import (
+    CONNECTION_TYPE_SERIAL,
+    MESHTASTIC_CLOSE_TIMEOUT_SECS,
+)
 from mmrelay.main import main, print_banner, run_main
 from tests.constants import (
     TEST_BOT_USER_ID,
@@ -484,7 +487,7 @@ class TestMain(unittest.TestCase):
                 {"id": TEST_ROOM_ID_2, "meshtastic_channel": 1},
             ],
             "meshtastic": {
-                "connection_type": "serial",
+                "connection_type": CONNECTION_TYPE_SERIAL,
                 "serial_port": "/dev/ttyUSB0",
                 "message_delay": 2.0,
             },
@@ -1423,7 +1426,7 @@ class TestRunMain(unittest.TestCase):
         # Mock configuration
         mock_config = {
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
             "matrix_rooms": [{"id": "!room:matrix.org"}],
         }
         mock_load_config.return_value = mock_config
@@ -1490,7 +1493,7 @@ class TestRunMain(unittest.TestCase):
         """
         mock_config = {
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
             "matrix_rooms": [{"id": "!room:matrix.org"}],
         }
         mock_load_config.return_value = mock_config
@@ -1524,7 +1527,7 @@ class TestRunMain(unittest.TestCase):
         """
         mock_config = {
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
             "matrix_rooms": [{"id": "!room:matrix.org"}],
         }
         mock_load_config.return_value = mock_config
@@ -1564,7 +1567,7 @@ class TestRunMain(unittest.TestCase):
 
         mock_config = {
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
             "matrix_rooms": [{"id": "!room:matrix.org"}],
         }
         mock_load_config.return_value = mock_config
@@ -1605,7 +1608,7 @@ class TestRunMain(unittest.TestCase):
         """
         mock_config = {
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
             "matrix_rooms": [{"id": "!room:matrix.org"}],
         }
         mock_load_config.return_value = mock_config
@@ -1636,7 +1639,7 @@ class TestRunMain(unittest.TestCase):
         key is not required in config.yaml.
         """
         mock_config = {
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
         }
         mock_load_config.return_value = mock_config
@@ -1675,7 +1678,7 @@ class TestRunMain(unittest.TestCase):
         """Test that warning messages are logged when legacy layout is enabled."""
         mock_config = {
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
         }
         mock_load_config.return_value = mock_config
@@ -1722,7 +1725,10 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
                 "bot_user_id": "@bot:matrix.org",
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            },
         }
 
     def test_main_with_database_wipe_new_format(self):
@@ -2049,7 +2055,7 @@ class TestMainAsyncFunction(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         # Mock the async components first
@@ -2106,7 +2112,7 @@ class TestMainAsyncFunction(unittest.TestCase):
                 {"id": "!room2:matrix.org", "meshtastic_channel": 1},
             ],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         # Mock the async components first
@@ -2150,7 +2156,7 @@ class TestMainAsyncFunction(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         mock_matrix_client = AsyncMock()
@@ -2230,7 +2236,7 @@ class TestMainAsyncFunction(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         mock_matrix_client = AsyncMock()
@@ -2296,7 +2302,7 @@ class TestMainAsyncFunction(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         mock_matrix_client = AsyncMock()
@@ -2381,7 +2387,7 @@ class TestMainAsyncFunction(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         mock_matrix_client = AsyncMock()
@@ -2438,7 +2444,7 @@ class TestMainAsyncFunction(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         with (
@@ -2987,7 +2993,7 @@ class TestNodeNameRefreshSupervisor(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         shutdown_event = _OnePassEvent()
@@ -3079,7 +3085,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         with (
@@ -3118,7 +3124,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         async def _check_connection_wait() -> None:
@@ -3204,7 +3210,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             "matrix_rooms": [{"id": TEST_ROOM_ID_1}],
             "matrix": {"homeserver": TEST_MATRIX_HOMESERVER},
             "meshtastic": {
-                "connection_type": "serial",
+                "connection_type": CONNECTION_TYPE_SERIAL,
                 "health_check": {"enabled": True},
             },
         }
@@ -3256,7 +3262,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             "matrix_rooms": [{"id": TEST_ROOM_ID_1}],
             "matrix": {"homeserver": TEST_MATRIX_HOMESERVER},
             "meshtastic": {
-                "connection_type": "serial",
+                "connection_type": CONNECTION_TYPE_SERIAL,
                 "health_check": {"enabled": True},
             },
         }
@@ -3318,7 +3324,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         async def _pending_check_connection() -> None:
@@ -3377,7 +3383,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         async def _check_connection_wait() -> None:
@@ -3472,7 +3478,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         with (
@@ -3531,7 +3537,7 @@ class TestRunBlockingShutdownStep(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         with (
@@ -3588,7 +3594,7 @@ class TestRunBlockingShutdownStep(unittest.TestCase):
                     config = {
                         "matrix_rooms": [{"id": TEST_ROOM_ID_1}],
                         "matrix": {"homeserver": TEST_MATRIX_HOMESERVER},
-                        "meshtastic": {"connection_type": "serial"},
+                        "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
                     }
 
                     with (
@@ -3659,7 +3665,7 @@ class TestMessageQueueProcessorStartFailure(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         with (
@@ -3718,7 +3724,7 @@ class TestMatrixSyncLoopErrorHandling(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         call_count = [0]
@@ -3806,7 +3812,7 @@ class TestMatrixSyncLoopErrorHandling(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         call_count = [0]
@@ -3892,7 +3898,7 @@ class TestMatrixSyncLoopErrorHandling(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
 
         call_count = [0]

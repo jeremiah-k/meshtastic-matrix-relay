@@ -1011,6 +1011,82 @@ def get_meshtastic_prefix(
     """
     meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC, {})
 
+    # Check if prefixes are enabled
+    if not meshtastic_config.get("prefix_enabled", True):
+        return ""
+
+    # Get custom format or use default
+    prefix_format_value = meshtastic_config.get(
+        "prefix_format", DEFAULT_MESHTASTIC_PREFIX
+    )
+    prefix_format = (
+        str(prefix_format_value)
+        if prefix_format_value is not None
+        else DEFAULT_MESHTASTIC_PREFIX
+    )
+
+    # Parse username and server from user_id if available
+    username = ""
+    server = ""
+    if user_id:
+        # Extract username and server from @username:server.com format
+        if user_id.startswith("@") and ":" in user_id:
+            parts = user_id[1:].split(":", 1)  # Remove @ and split on first :
+            username = parts[0]
+            server = parts[1] if len(parts) > 1 else ""
+
+    # Available variables for formatting with variable length support
+    format_vars = {
+        "display": display_name or "",
+        "user": user_id or "",
+        "username": username,
+        "server": server,
+    }
+
+    # Add variable length display name truncation (display1, display2, display3, etc.)
+    _add_truncated_vars(format_vars, "display", display_name)
+
+    try:
+        result = prefix_format.format(**format_vars)
+        logger.debug(
+            "Meshtastic prefix generated (%s): %s",
+            (
+                "custom format"
+                if prefix_format != DEFAULT_MESHTASTIC_PREFIX
+                else "default format"
+            ),
+            result,
+        )
+        return result
+    except (KeyError, ValueError) as e:
+        # Fallback to default format if custom format is invalid
+        logger.warning(
+            f"Invalid prefix_format '{prefix_format}': {e}. Using default format."
+        )
+        # The default format only uses 'display5', which is safe to format
+        return DEFAULT_MESHTASTIC_PREFIX.format(
+            display5=display_name[:DISPLAY_NAME_DEFAULT_LENGTH] if display_name else ""
+        )
+
+
+def get_matrix_prefix(
+    config: dict[str, Any], longname: str, shortname: str, meshnet_name: str
+) -> str:
+    """
+    Generates a formatted prefix string for Meshtastic messages relayed to Matrix, based on configuration settings and sender/mesh network names.
+
+    The prefix format supports variable-length truncation for the sender and mesh network names using template variables (e.g., `{long4}` for the first 4 characters of the sender name). Returns an empty string if prefixing is disabled in the configuration.
+
+    Parameters:
+        longname (str): Full Meshtastic sender name.
+        shortname (str): Short Meshtastic sender name.
+        meshnet_name (str): Name of the mesh network.
+
+    Returns:
+        str: The formatted prefix string, or an empty string if prefixing is disabled.
+    """
+    matrix_config = config.get(CONFIG_SECTION_MATRIX, {})
+
     # Check if prefixes are enabled for Matrix direction
     if not matrix_config.get("prefix_enabled", True):
         return ""

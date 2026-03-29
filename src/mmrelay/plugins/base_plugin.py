@@ -118,6 +118,22 @@ class BasePlugin(ABC):
     - Set plugin_name as a class attribute
     - Implement handle_meshtastic_message() and handle_room_message()
     - Optionally override other methods for custom behavior
+
+    Failure Semantics:
+    When a plugin claims a Matrix command (its ``matches()`` or ``get_matrix_commands()``
+    matches the event), the relay treats that event as handled and will *not* relay it
+    to Meshtastic.  This is true even when the plugin's handler encounters an error.
+
+    The recommended pattern for plugin authors is:
+
+    1. Return ``True`` from the handler to confirm the command was claimed.
+    2. On failure, emit a user-facing error via ``send_notice()`` before returning.
+    3. Do **not** raise exceptions to signal failure to the relay — raising will be
+       caught and logged, but the user will not see a helpful message.
+
+    This keeps the contract simple: a matching plugin owns the event end-to-end,
+    including error reporting.  The relay will never double-relay a plugin-handled
+    message, regardless of the handler's success or failure.
     """
 
     # Class-level default attributes

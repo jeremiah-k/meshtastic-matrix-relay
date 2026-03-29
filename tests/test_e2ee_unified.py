@@ -22,6 +22,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from mmrelay.constants.app import CONFIG_FILENAME
 from mmrelay.constants.messages import (
+    MSG_E2EE_DISABLED,
+    MSG_E2EE_NO_AUTH,
     MSG_E2EE_WINDOWS_UNSUPPORTED,
     MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL,
 )
@@ -126,7 +128,7 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
         self.assertEqual(status["overall_status"], "unavailable")
         self.assertFalse(status["platform_supported"])
-        self.assertIn("E2EE is not supported on Windows", status["issues"])
+        self.assertIn(MSG_E2EE_WINDOWS_UNSUPPORTED, status["issues"])
 
     @patch("sys.platform", "linux")
     def test_e2ee_disabled_status(self):
@@ -138,7 +140,7 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
         self.assertEqual(status["overall_status"], "disabled")
         self.assertFalse(status["enabled"])
-        self.assertIn("E2EE is disabled in configuration", status["issues"])
+        self.assertIn(MSG_E2EE_DISABLED, status["issues"])
 
     @patch("sys.platform", "linux")
     @patch("mmrelay.e2ee_utils.os.path.exists")
@@ -194,7 +196,7 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
             self.assertEqual(status["overall_status"], "incomplete")
             self.assertFalse(status["credentials_available"])
-            self.assertIn("Matrix authentication not configured", status["issues"])
+            self.assertIn(MSG_E2EE_NO_AUTH, status["issues"])
             imported_modules = {call.args[0] for call in mock_import.call_args_list}
             assert {
                 "olm",
@@ -543,7 +545,7 @@ class TestE2EEErrorMessages(unittest.TestCase):
 
         message = get_e2ee_error_message(e2ee_status)
 
-        self.assertIn("E2EE is not supported on Windows", message)
+        self.assertIn(MSG_E2EE_WINDOWS_UNSUPPORTED, message)
 
     def test_error_message_disabled(self):
         """Test error message for disabled E2EE"""
@@ -555,7 +557,7 @@ class TestE2EEErrorMessages(unittest.TestCase):
 
         message = get_e2ee_error_message(e2ee_status)
 
-        self.assertIn("E2EE is disabled in configuration", message)
+        self.assertIn(MSG_E2EE_DISABLED, message)
 
     def test_fix_instructions_complete_flow(self):
         """Test fix instructions for incomplete E2EE setup"""

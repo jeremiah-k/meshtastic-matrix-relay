@@ -46,6 +46,7 @@ from mmrelay.cli import (
     print_version,
 )
 from mmrelay.constants.app import CREDENTIALS_FILENAME
+from mmrelay.constants.cli import EXIT_CODE_ERROR, EXIT_CODE_SUCCESS
 from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 from tests.constants import TEST_CONFIG_PATH, TEST_HOME_CONFIG_PATH, TEST_SERIAL_PORT
 
@@ -444,7 +445,7 @@ class TestMainFunction(unittest.TestCase):
 
         result = main()
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_check.assert_called_once_with(args)
 
     @patch("mmrelay.cli.parse_arguments")
@@ -464,7 +465,7 @@ class TestMainFunction(unittest.TestCase):
 
         result = main()
 
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.setup_utils.install_service")
@@ -483,7 +484,7 @@ class TestMainFunction(unittest.TestCase):
 
         result = main()
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_install.assert_called_once()
 
     @patch("mmrelay.cli.parse_arguments")
@@ -503,7 +504,7 @@ class TestMainFunction(unittest.TestCase):
 
         result = main()
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_generate.assert_called_once()
 
     @patch("mmrelay.cli.parse_arguments")
@@ -522,7 +523,7 @@ class TestMainFunction(unittest.TestCase):
 
         result = main()
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_print_version.assert_called_once()
 
     @patch("mmrelay.cli.parse_arguments")
@@ -543,7 +544,7 @@ class TestMainFunction(unittest.TestCase):
 
         result = main()
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_run_main.assert_called_once_with(args)
 
     @patch("mmrelay.cli.os.makedirs")
@@ -575,7 +576,7 @@ class TestMainFunction(unittest.TestCase):
         try:
             result = main()
 
-            self.assertEqual(result, 0)
+            self.assertEqual(result, EXIT_CODE_SUCCESS)
             mock_expanduser.assert_called_once_with("~/mmrelay")
             mock_makedirs.assert_called_once_with("/home/test/mmrelay", exist_ok=True)
             expected_home = os.path.abspath(mock_expanduser.return_value)
@@ -908,7 +909,7 @@ class TestCLISubcommandHandlers(unittest.TestCase):
 
         with patch("mmrelay.cli.handle_config_command", return_value=0) as mock_handle:
             result = handle_subcommand(args)
-            self.assertEqual(result, 0)
+            self.assertEqual(result, EXIT_CODE_SUCCESS)
             mock_handle.assert_called_once_with(args)
 
     def test_handle_subcommand_auth(self):
@@ -920,7 +921,7 @@ class TestCLISubcommandHandlers(unittest.TestCase):
 
         with patch("mmrelay.cli.handle_auth_command", return_value=0) as mock_handle:
             result = handle_subcommand(args)
-            self.assertEqual(result, 0)
+            self.assertEqual(result, EXIT_CODE_SUCCESS)
             mock_handle.assert_called_once_with(args)
 
     def test_handle_subcommand_service(self):
@@ -932,7 +933,7 @@ class TestCLISubcommandHandlers(unittest.TestCase):
 
         with patch("mmrelay.cli.handle_service_command", return_value=0) as mock_handle:
             result = handle_subcommand(args)
-            self.assertEqual(result, 0)
+            self.assertEqual(result, EXIT_CODE_SUCCESS)
             mock_handle.assert_called_once_with(args)
 
     def test_handle_config_command_generate(self):
@@ -946,7 +947,7 @@ class TestCLISubcommandHandlers(unittest.TestCase):
             "mmrelay.cli.generate_sample_config", return_value=True
         ) as mock_generate:
             result = handle_config_command(args)
-            self.assertEqual(result, 0)
+            self.assertEqual(result, EXIT_CODE_SUCCESS)
             mock_generate.assert_called_once()
 
     def test_handle_config_command_check(self):
@@ -958,7 +959,7 @@ class TestCLISubcommandHandlers(unittest.TestCase):
 
         with patch("mmrelay.cli.check_config", return_value=True) as mock_check:
             result = handle_config_command(args)
-            self.assertEqual(result, 0)
+            self.assertEqual(result, EXIT_CODE_SUCCESS)
             mock_check.assert_called_once_with(args)
 
     def test_handle_auth_command_login(self):
@@ -970,7 +971,7 @@ class TestCLISubcommandHandlers(unittest.TestCase):
 
         with patch("mmrelay.cli.handle_auth_login", return_value=0) as mock_login:
             result = handle_auth_command(args)
-            self.assertEqual(result, 0)
+            self.assertEqual(result, EXIT_CODE_SUCCESS)
             mock_login.assert_called_once_with(args)
 
     def test_handle_auth_command_status(self):
@@ -982,7 +983,7 @@ class TestCLISubcommandHandlers(unittest.TestCase):
 
         with patch("mmrelay.cli.handle_auth_status", return_value=0) as mock_status:
             result = handle_auth_command(args)
-            self.assertEqual(result, 0)
+            self.assertEqual(result, EXIT_CODE_SUCCESS)
             mock_status.assert_called_once_with(args)
 
 
@@ -1207,7 +1208,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_input.assert_called_once_with("Are you sure you want to logout? (y/N): ")
         mock_asyncio_run.assert_called_once()
 
@@ -1228,7 +1229,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_input.assert_called_once_with("Are you sure you want to logout? (y/N): ")
         mock_asyncio_run.assert_not_called()  # Should not attempt logout due to cancellation
         # Check that cancellation message was printed
@@ -1248,7 +1249,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_asyncio_run.assert_called_once()
 
     @patch("asyncio.run")
@@ -1269,7 +1270,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_getpass.assert_called_once_with("Enter Matrix password for verification: ")
         mock_asyncio_run.assert_called_once()
 
@@ -1289,7 +1290,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results - empty string is accepted, no prompt triggered
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_getpass.assert_not_called()
         mock_asyncio_run.assert_called_once()
 
@@ -1309,7 +1310,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         # Check that security warning was printed
         mock_print.assert_any_call(
             "⚠️  Warning: Supplying password as argument exposes it in shell history and process list."
@@ -1333,7 +1334,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_asyncio_run.assert_called_once()
 
     @patch("asyncio.run")
@@ -1350,7 +1351,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_print.assert_any_call("\nLogout cancelled by user.")
 
     @patch(
@@ -1368,7 +1369,7 @@ class TestAuthLogout(unittest.TestCase):
         result = handle_auth_logout(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_print.assert_any_call("\nError during logout: Test error")
 
     @patch("builtins.print")
@@ -1392,7 +1393,7 @@ class TestAuthLogout(unittest.TestCase):
             mock_print.assert_any_call(
                 "This will log out from Matrix and clear all local session data:"
             )
-            mock_print.assert_any_call("• Remove credentials.json")
+            mock_print.assert_any_call(f"• Remove {CREDENTIALS_FILENAME}")
             mock_print.assert_any_call("• Clear E2EE encryption store")
             mock_print.assert_any_call("• Invalidate Matrix access token")
 
@@ -1425,7 +1426,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_login.assert_called_once_with(
             homeserver=None, username=None, password=None, logout_others=False
@@ -1448,7 +1449,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_login.assert_called_once_with(
             homeserver=None, username=None, password=None, logout_others=False
@@ -1473,7 +1474,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_login.assert_called_once_with(
             homeserver="https://matrix.org",
@@ -1503,7 +1504,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_login.assert_called_once()
 
@@ -1517,7 +1518,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         # Check error message content
         expected_message = """❌ Error: All authentication parameters are required when using command-line options.
    Missing: --username, --password
@@ -1540,7 +1541,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         # Check error message content
         expected_message = """❌ Error: All authentication parameters are required when using command-line options.
    Missing: --homeserver, --password
@@ -1563,7 +1564,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         # Check error message content
         expected_message = """❌ Error: All authentication parameters are required when using command-line options.
    Missing: --homeserver, --username
@@ -1587,7 +1588,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         # Check error message content
         expected_message = """❌ Error: All authentication parameters are required when using command-line options.
    Missing: --password
@@ -1611,7 +1612,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         # Check error message content
         expected_message = """❌ Error: All authentication parameters are required when using command-line options.
    Missing: --username
@@ -1635,7 +1636,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         # Check error message content
         expected_message = """❌ Error: All authentication parameters are required when using command-line options.
    Missing: --homeserver
@@ -1658,7 +1659,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         # Check that guidance messages are included in the combined message
         expected_message = """❌ Error: All authentication parameters are required when using command-line options.
    Missing: --username, --password
@@ -1685,7 +1686,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_print.assert_any_call("\nAuthentication cancelled by user.")
 
@@ -1703,7 +1704,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_print.assert_any_call("\nError during authentication: Test error")
 
@@ -1723,7 +1724,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)  # Should return error code
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return error code
         mock_print.assert_any_call(
             "❌ Error: --homeserver and --username must be non-empty for non-interactive login."
         )
@@ -1746,7 +1747,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify interactive mode
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_login.assert_called_with(
             homeserver=None, username=None, password=None, logout_others=False
         )
@@ -1765,7 +1766,7 @@ class TestAuthLogin(unittest.TestCase):
         result = handle_auth_login(self.mock_args)
 
         # Verify validation error
-        self.assertEqual(result, 1)  # Should return error code
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return error code
         mock_print.assert_any_call(
             "❌ Error: --homeserver and --username must be non-empty for non-interactive login."
         )
@@ -1808,7 +1809,7 @@ class TestAuthStatus(unittest.TestCase):
         result = handle_auth_status(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_get_paths.assert_called_once_with(self.mock_args)
         # Ensure at least one credentials candidate path was checked and opened.
         self.assertGreaterEqual(mock_exists.call_count, 1)
@@ -1855,7 +1856,7 @@ class TestAuthStatus(unittest.TestCase):
 
         result = handle_auth_status(self.mock_args)
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_print.assert_any_call("   User ID: <missing>")
         mock_print.assert_any_call(
             "   Note: user_id is optional and can be recovered at runtime via whoami."
@@ -1880,7 +1881,7 @@ class TestAuthStatus(unittest.TestCase):
         result = handle_auth_status(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_get_paths.assert_called_once_with(self.mock_args)
         home_dir = os.path.dirname(TEST_HOME_CONFIG_PATH)
         mock_exists.assert_any_call(os.path.join(home_dir, CREDENTIALS_FILENAME))
@@ -1918,7 +1919,7 @@ class TestAuthStatus(unittest.TestCase):
         result = handle_auth_status(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_get_paths.assert_called_once_with(self.mock_args)
         home_dir = os.path.dirname(TEST_HOME_CONFIG_PATH)
         mock_exists.assert_any_call(os.path.join(home_dir, CREDENTIALS_FILENAME))
@@ -1958,7 +1959,7 @@ class TestAuthStatus(unittest.TestCase):
         result = handle_auth_status(self.mock_args)
 
         # Verify results - invalid credentials should be skipped and auth is reported missing
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
 
         # Check printed output shows invalid credentials were skipped (path may vary)
         found_skip_warning = False
@@ -2009,7 +2010,7 @@ class TestAuthStatus(unittest.TestCase):
             result = handle_auth_status(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_get_paths.assert_called_once_with(self.mock_args)
 
         # Should check configured candidates, including second config path.
@@ -2052,7 +2053,7 @@ class TestServiceCommand(unittest.TestCase):
         result = handle_service_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_install.assert_called_once()
         mock_print.assert_not_called()  # No error messages on success
 
@@ -2070,7 +2071,7 @@ class TestServiceCommand(unittest.TestCase):
         result = handle_service_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_install.assert_called_once()
         mock_print.assert_not_called()  # No error messages, just return code
 
@@ -2092,7 +2093,7 @@ class TestServiceCommand(unittest.TestCase):
         result = handle_service_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_print.assert_called_once_with(
             "Error importing setup utilities: Module not found"
         )
@@ -2109,7 +2110,7 @@ class TestServiceCommand(unittest.TestCase):
         result = handle_service_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_print.assert_called_once_with("Unknown service command: unknown_command")
 
     @patch("builtins.print")
@@ -2124,7 +2125,7 @@ class TestServiceCommand(unittest.TestCase):
         result = handle_service_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)
+        self.assertEqual(result, EXIT_CODE_ERROR)
         mock_print.assert_called_once_with("Unknown service command: None")
 
 
@@ -2546,7 +2547,7 @@ class TestHandleCliCommands(unittest.TestCase):
         result = handle_cli_commands(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)  # Should return 0 for success
+        self.assertEqual(result, EXIT_CODE_SUCCESS)  # Should return 0 for success
         mock_print_version.assert_called_once()
 
     @patch("mmrelay.setup_utils.install_service")
@@ -2562,7 +2563,7 @@ class TestHandleCliCommands(unittest.TestCase):
 
         # Verify results
         mock_install_service.assert_called_once()
-        self.assertEqual(result, 0)  # Should return 0 for success
+        self.assertEqual(result, EXIT_CODE_SUCCESS)  # Should return 0 for success
 
     @patch("mmrelay.setup_utils.install_service")
     def test_handle_cli_commands_install_service_failure(self, mock_install_service):
@@ -2577,7 +2578,7 @@ class TestHandleCliCommands(unittest.TestCase):
 
         # Verify results
         mock_install_service.assert_called_once()
-        self.assertEqual(result, 1)  # Should return 1 for error
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return 1 for error
 
     @patch("mmrelay.cli.generate_sample_config")
     def test_handle_cli_commands_generate_config_success(self, mock_generate_config):
@@ -2591,7 +2592,7 @@ class TestHandleCliCommands(unittest.TestCase):
         result = handle_cli_commands(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)  # Should return 0 for success
+        self.assertEqual(result, EXIT_CODE_SUCCESS)  # Should return 0 for success
         mock_generate_config.assert_called_once()
 
     @patch("mmrelay.cli.generate_sample_config")
@@ -2607,7 +2608,7 @@ class TestHandleCliCommands(unittest.TestCase):
 
         # Verify results
         mock_generate_config.assert_called_once()
-        self.assertEqual(result, 1)  # Should return 1 for error
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return 1 for error
 
     @patch("mmrelay.cli.check_config")
     def test_handle_cli_commands_check_config_success(self, mock_check_config):
@@ -2622,7 +2623,7 @@ class TestHandleCliCommands(unittest.TestCase):
 
         # Verify results
         mock_check_config.assert_called_once()
-        self.assertEqual(result, 0)  # Should return 0 for success
+        self.assertEqual(result, EXIT_CODE_SUCCESS)  # Should return 0 for success
 
     @patch("mmrelay.cli.check_config")
     def test_handle_cli_commands_check_config_failure(self, mock_check_config):
@@ -2637,7 +2638,7 @@ class TestHandleCliCommands(unittest.TestCase):
 
         # Verify results
         mock_check_config.assert_called_once()
-        self.assertEqual(result, 1)  # Should return 1 for error
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return 1 for error
 
     def test_handle_cli_commands_no_flags(self):
         """Test handling when no CLI flags are set."""
@@ -2674,7 +2675,7 @@ class TestHandleSubcommand(unittest.TestCase):
         result = handle_subcommand(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_config.assert_called_once_with(self.mock_args)
         mock_print.assert_not_called()
 
@@ -2692,7 +2693,7 @@ class TestHandleSubcommand(unittest.TestCase):
         result = handle_subcommand(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_auth.assert_called_once_with(self.mock_args)
         mock_print.assert_not_called()
 
@@ -2710,7 +2711,7 @@ class TestHandleSubcommand(unittest.TestCase):
         result = handle_subcommand(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_service.assert_called_once_with(self.mock_args)
         mock_print.assert_not_called()
 
@@ -2726,7 +2727,7 @@ class TestHandleSubcommand(unittest.TestCase):
         result = handle_subcommand(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)  # Should return error code
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return error code
         mock_print.assert_called_once_with("Unknown command: unknown")
 
 
@@ -2751,7 +2752,7 @@ class TestHandleConfigCommand(unittest.TestCase):
         result = handle_config_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_generate.assert_called_once()
         mock_print.assert_not_called()
 
@@ -2769,7 +2770,7 @@ class TestHandleConfigCommand(unittest.TestCase):
         result = handle_config_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)  # Should return error code
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return error code
         mock_generate.assert_called_once()
         mock_print.assert_not_called()
 
@@ -2787,7 +2788,7 @@ class TestHandleConfigCommand(unittest.TestCase):
         result = handle_config_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_check.assert_called_once_with(self.mock_args)
         mock_print.assert_not_called()
 
@@ -2805,7 +2806,7 @@ class TestHandleConfigCommand(unittest.TestCase):
         result = handle_config_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)  # Should return error code
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return error code
         mock_check.assert_called_once_with(self.mock_args)
         mock_print.assert_not_called()
 
@@ -2821,7 +2822,7 @@ class TestHandleConfigCommand(unittest.TestCase):
         result = handle_config_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 1)  # Should return error code
+        self.assertEqual(result, EXIT_CODE_ERROR)  # Should return error code
         mock_print.assert_called_once_with("Unknown config command: unknown")
 
 
@@ -2845,7 +2846,7 @@ class TestHandleAuthCommand(unittest.TestCase):
         result = handle_auth_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_status.assert_called_once_with(self.mock_args)
 
     @patch("mmrelay.cli.handle_auth_logout")
@@ -2861,7 +2862,7 @@ class TestHandleAuthCommand(unittest.TestCase):
         result = handle_auth_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_logout.assert_called_once_with(self.mock_args)
 
     @patch("mmrelay.cli.handle_auth_login")
@@ -2877,7 +2878,7 @@ class TestHandleAuthCommand(unittest.TestCase):
         result = handle_auth_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_login.assert_called_once_with(self.mock_args)
 
     @patch("mmrelay.cli.handle_auth_login")
@@ -2893,7 +2894,7 @@ class TestHandleAuthCommand(unittest.TestCase):
         result = handle_auth_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_login.assert_called_once_with(self.mock_args)
 
     @patch("mmrelay.cli.handle_auth_login")
@@ -2910,7 +2911,7 @@ class TestHandleAuthCommand(unittest.TestCase):
         result = handle_auth_command(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_handle_login.assert_called_once_with(self.mock_args)
 
 

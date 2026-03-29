@@ -12,7 +12,7 @@ from nio import (
     RoomMessageText,
 )
 
-from mmrelay.constants.formats import TEXT_MESSAGE_APP
+from mmrelay.constants.formats import DEFAULT_CHANNEL, TEXT_MESSAGE_APP
 from mmrelay.constants.messages import (
     PING_FALLBACK_RESPONSE,
     PING_MATRIX_RESPONSE,
@@ -102,7 +102,9 @@ class Plugin(BasePlugin):
             return False
 
         message = packet["decoded"]["text"].strip()
-        channel = packet.get("channel", 0)  # Default to channel 0 if not provided
+        channel = packet.get(
+            "channel", DEFAULT_CHANNEL
+        )  # Default to channel 0 if not provided
 
         # Updated regex to match optional punctuation before and after "ping"
         match = PING_COMMAND_REGEX.search(message)

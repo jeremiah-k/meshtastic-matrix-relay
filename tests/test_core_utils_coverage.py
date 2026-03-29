@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay import matrix_utils, meshtastic_utils
+from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
 
 
 class TestMeshtasticUtilsCoverage(unittest.TestCase):
@@ -20,7 +21,10 @@ class TestMeshtasticUtilsCoverage(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.mock_config = {
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            },
             "matrix_rooms": [{"id": "!room1:example.com", "meshtastic_channel": 0}],
         }
 

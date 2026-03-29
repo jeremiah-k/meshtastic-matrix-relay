@@ -26,6 +26,7 @@ from mmrelay.constants.queue import (
     QUEUE_EXECUTOR_MAX_WORKERS,
     QUEUE_FULL_LOG_INTERVAL_SEC,
     QUEUE_HIGH_WATER_MARK,
+    QUEUE_LOG_THRESHOLD,
     QUEUE_MEDIUM_WATER_MARK,
     QUEUE_POLL_INTERVAL_SEC,
     QUEUE_WAIT_RETRY_SLEEP_SEC,
@@ -473,7 +474,7 @@ class MessageQueue:
 
             # Only log queue status when there are multiple messages
             queue_size = len(self._queue)
-            if queue_size >= 2:
+            if queue_size >= QUEUE_LOG_THRESHOLD:
                 logger.debug(
                     f"Queued message ({queue_size}/{MAX_QUEUE_SIZE}): {description}"
                 )

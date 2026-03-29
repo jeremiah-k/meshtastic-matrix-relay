@@ -8,6 +8,7 @@ import pytest
 
 import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.network import (
+    CONFIG_KEY_CONNECTION_TYPE,
     CONNECTION_TYPE_BLE,
     CONNECTION_TYPE_TCP,
     DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
@@ -17,7 +18,7 @@ from mmrelay.meshtastic_utils import check_connection
 
 
 def _make_health_config(
-    connection_type: str = "tcp",
+    connection_type: str = CONNECTION_TYPE_TCP,
     enabled: bool = True,
     heartbeat: int = 60,
     initial_delay: float | None = None,
@@ -43,7 +44,10 @@ def _make_health_config(
         health_check["probe_timeout"] = probe_timeout
 
     return {
-        "meshtastic": {"connection_type": connection_type, "health_check": health_check}
+        "meshtastic": {
+            CONFIG_KEY_CONNECTION_TYPE: connection_type,
+            "health_check": health_check,
+        }
     }
 
 
@@ -158,7 +162,7 @@ async def test_check_connection_metadata_probe_succeeds():
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 async def test_check_connection_uses_configured_initial_delay():
     mu.config = _make_health_config(
-        connection_type="tcp",
+        connection_type=CONNECTION_TYPE_TCP,
         heartbeat=5,
         initial_delay=2.5,
     )

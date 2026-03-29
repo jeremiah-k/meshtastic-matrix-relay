@@ -25,6 +25,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.config import load_config
+from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
+from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
 from mmrelay.db_utils import initialize_database
 from mmrelay.matrix_utils import connect_matrix
 from mmrelay.meshtastic_utils import connect_meshtastic, on_meshtastic_message
@@ -146,7 +148,7 @@ class TestIntegrationScenarios(unittest.TestCase):
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
             "meshtastic": {
-                "connection_type": "serial",
+                "connection_type": CONNECTION_TYPE_SERIAL,
                 "serial_port": "/dev/ttyUSB0",
                 "meshnet_name": "TestMesh",
             },
@@ -155,7 +157,10 @@ class TestIntegrationScenarios(unittest.TestCase):
 
         # Mock Meshtastic packet
         packet = {
-            "decoded": {"text": "Hello from Meshtastic!", "portnum": 1},
+            "decoded": {
+                "text": "Hello from Meshtastic!",
+                "portnum": PORTNUM_TEXT_MESSAGE_APP,
+            },
             "fromId": "!12345678",
             "channel": 0,
             "to": 4294967295,  # BROADCAST_NUM
@@ -216,7 +221,7 @@ class TestIntegrationScenarios(unittest.TestCase):
                 },
                 "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
                 "meshtastic": {
-                    "connection_type": "serial",
+                    "connection_type": CONNECTION_TYPE_SERIAL,
                     "serial_port": "/dev/ttyUSB0",
                     "meshnet_name": "TestMesh",
                 },
@@ -276,7 +281,7 @@ class TestIntegrationScenarios(unittest.TestCase):
         This test ensures that when multiple plugins are loaded, each plugin's message handler is invoked according to its priority, and that processing stops as soon as a plugin signals interception by returning True.
         """
         packet = {
-            "decoded": {"text": "test message", "portnum": 1},
+            "decoded": {"text": "test message", "portnum": PORTNUM_TEXT_MESSAGE_APP},
             "fromId": "!12345678",
             "channel": 0,
         }
@@ -459,7 +464,10 @@ plugins:
                 "bot_user_id": "@test:matrix.org",
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            },
         }
 
         # Test Matrix connection failure recovery
@@ -625,7 +633,7 @@ plugins:
         }
 
         packet = {
-            "decoded": {"text": "Multi-room test", "portnum": 1},
+            "decoded": {"text": "Multi-room test", "portnum": PORTNUM_TEXT_MESSAGE_APP},
             "fromId": "!12345678",
             "channel": 0,  # Should route to room1 and room2, not room3
             "to": 4294967295,
@@ -719,7 +727,10 @@ plugins:
         for i in range(10):
             packets.append(
                 {
-                    "decoded": {"text": f"Message {i}", "portnum": 1},
+                    "decoded": {
+                        "text": f"Message {i}",
+                        "portnum": PORTNUM_TEXT_MESSAGE_APP,
+                    },
                     "fromId": f"!{i:08x}",
                     "channel": 0,
                     "id": i,
@@ -833,7 +844,10 @@ plugins:
                 "bot_user_id": "@test:matrix.org",
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            },
             "plugins": {"debug": {"active": True}},
         }
 
@@ -848,7 +862,10 @@ plugins:
                 {"id": "!room1:matrix.org", "meshtastic_channel": 0},
                 {"id": "!room2:matrix.org", "meshtastic_channel": 1},  # New room
             ],
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            },
             "plugins": {
                 "debug": {"active": True},
                 "help": {"active": True},

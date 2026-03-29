@@ -24,6 +24,7 @@ from meshtastic.mesh_interface import BROADCAST_NUM
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
 from mmrelay.constants.network import (
     CONNECTION_TYPE_BLE,
     CONNECTION_TYPE_SERIAL,
@@ -275,7 +276,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         Test that on_meshtastic_message logs an error when a plugin raises an exception during message processing.
         """
         packet = {
-            "decoded": {"text": "test message", "portnum": 1},
+            "decoded": {"text": "test message", "portnum": PORTNUM_TEXT_MESSAGE_APP},
             "fromId": "!12345678",
             "channel": 0,
         }
@@ -344,7 +345,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         """Verify plugin timeout honors meshtastic.plugin_timeout configuration."""
 
         packet = {
-            "decoded": {"text": "test message", "portnum": 1},
+            "decoded": {"text": "test message", "portnum": PORTNUM_TEXT_MESSAGE_APP},
             "fromId": "!12345678",
             "channel": 0,
         }
@@ -397,7 +398,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         """Ensure invalid plugin_timeout values log a warning and fall back to default."""
 
         packet = {
-            "decoded": {"text": "test message", "portnum": 1},
+            "decoded": {"text": "test message", "portnum": PORTNUM_TEXT_MESSAGE_APP},
             "fromId": "!12345678",
             "channel": 0,
         }
@@ -456,7 +457,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         Tests that on_meshtastic_message logs an error when the Matrix relay integration raises an exception during message processing.
         """
         packet = {
-            "decoded": {"text": "test message", "portnum": 1},
+            "decoded": {"text": "test message", "portnum": PORTNUM_TEXT_MESSAGE_APP},
             "fromId": "!12345678",
             "channel": 0,
             "to": BROADCAST_NUM,
@@ -499,7 +500,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         Simulates a database error during message processing and ensures the function completes gracefully.
         """
         packet = {
-            "decoded": {"text": "test message", "portnum": 1},
+            "decoded": {"text": "test message", "portnum": PORTNUM_TEXT_MESSAGE_APP},
             "fromId": "!12345678",
             "channel": 0,
         }
@@ -658,7 +659,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         Sets up a mock interface containing 10,000 nodes and uses a completed future for submitted coroutines to simulate fast asynchronous processing; the test passes if the call completes without error.
         """
         packet = {
-            "decoded": {"text": "test message", "portnum": 1},
+            "decoded": {"text": "test message", "portnum": PORTNUM_TEXT_MESSAGE_APP},
             "fromId": "!12345678",
             "channel": 0,
         }
@@ -733,7 +734,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         - the code treats the message as handled by the plugin (i.e., a debug log shows the plugin processed it).
         """
         packet = {
-            "decoded": {"text": "!test", "portnum": 1},
+            "decoded": {"text": "!test", "portnum": PORTNUM_TEXT_MESSAGE_APP},
             "fromId": "!12345678",
             "channel": 0,
             "to": BROADCAST_NUM,
@@ -790,7 +791,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         to Matrix because found_matching_plugin is set to True.
         """
         packet = {
-            "decoded": {"text": "!test", "portnum": 1},
+            "decoded": {"text": "!test", "portnum": PORTNUM_TEXT_MESSAGE_APP},
             "fromId": "!67890",
             "channel": 0,
             "to": 12345,  # Direct message to relay node

@@ -27,6 +27,10 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from meshtastic.mesh_interface import BROADCAST_NUM
+
+from mmrelay.constants.formats import TEXT_MESSAGE_APP
+from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
 from mmrelay.meshtastic_utils import on_meshtastic_message
 from mmrelay.message_queue import MessageQueue
 
@@ -172,11 +176,11 @@ class TestPerformanceStress:
                             packet = {
                                 "decoded": {
                                     "text": f"Message {i}",
-                                    "portnum": "TEXT_MESSAGE_APP",
+                                    "portnum": TEXT_MESSAGE_APP,
                                 },
                                 "fromId": "!12345678",
                                 "channel": 0,
-                                "to": 4294967295,
+                                "to": BROADCAST_NUM,
                                 "id": i,
                             }
                             on_meshtastic_message(packet, mock_interface)
@@ -381,7 +385,10 @@ class TestPerformanceStress:
                     plugins.append(plugin)
 
                 packet = {
-                    "decoded": {"text": "Performance test message", "portnum": 1},
+                    "decoded": {
+                        "text": "Performance test message",
+                        "portnum": PORTNUM_TEXT_MESSAGE_APP,
+                    },
                     "fromId": "!12345678",
                     "channel": 0,
                 }
@@ -594,7 +601,7 @@ class TestPerformanceStress:
                         packet = {
                             "decoded": {
                                 "text": f"Memory test {iteration}-{j}",
-                                "portnum": 1,
+                                "portnum": PORTNUM_TEXT_MESSAGE_APP,
                             },
                             "fromId": f"!{j:08x}",
                             "channel": 0,
@@ -721,7 +728,10 @@ class TestPerformanceStress:
         with patch("mmrelay.plugin_loader.load_plugins", return_value=[mock_plugin]):
             # Process a message
             packet = {
-                "decoded": {"text": "cleanup test", "portnum": 1},
+                "decoded": {
+                    "text": "cleanup test",
+                    "portnum": PORTNUM_TEXT_MESSAGE_APP,
+                },
                 "fromId": "!12345678",
                 "channel": 0,
             }
@@ -779,7 +789,7 @@ class TestPerformanceStress:
                     # Realistic but bounded test parameters
                     test_duration = 2.0
                     message_types = [
-                        "TEXT_MESSAGE_APP",
+                        TEXT_MESSAGE_APP,
                         "TELEMETRY_APP",
                         "POSITION_APP",
                     ]

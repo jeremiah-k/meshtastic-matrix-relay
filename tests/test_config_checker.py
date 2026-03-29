@@ -22,6 +22,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay.cli import check_config
 from mmrelay.config import get_config_paths
 from mmrelay.constants.app import CONFIG_FILENAME
+from mmrelay.constants.network import (
+    CONNECTION_TYPE_BLE,
+    CONNECTION_TYPE_SERIAL,
+    CONNECTION_TYPE_TCP,
+)
 from mmrelay.paths import get_home_dir
 
 
@@ -47,7 +52,7 @@ class TestConfigChecker(unittest.TestCase):
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
             "meshtastic": {
-                "connection_type": "tcp",
+                "connection_type": CONNECTION_TYPE_TCP,
                 "host": "192.168.1.100",
                 "broadcast_enabled": True,
             },
@@ -97,7 +102,7 @@ class TestConfigChecker(unittest.TestCase):
         config_without_matrix = {
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
             "meshtastic": {
-                "connection_type": "tcp",
+                "connection_type": CONNECTION_TYPE_TCP,
                 "host": "localhost",
                 "broadcast_enabled": True,
             },
@@ -210,7 +215,7 @@ class TestConfigChecker(unittest.TestCase):
         mock_parse_args.return_value = self.mock_args
         serial_config = self.valid_config.copy()
         serial_config["meshtastic"] = {
-            "connection_type": "serial",
+            "connection_type": CONNECTION_TYPE_SERIAL,
             "serial_port": "/dev/ttyUSB0",
             "broadcast_enabled": True,
         }
@@ -253,7 +258,7 @@ class TestConfigChecker(unittest.TestCase):
         mock_parse_args.return_value = self.mock_args
         ble_config = self.valid_config.copy()
         ble_config["meshtastic"] = {
-            "connection_type": "ble",
+            "connection_type": CONNECTION_TYPE_BLE,
             "ble_address": "AA:BB:CC:DD:EE:FF",
             "broadcast_enabled": True,
         }
@@ -350,7 +355,7 @@ class TestConfigChecker(unittest.TestCase):
         Test that check_config returns False and reports an error when the configuration is missing the required 'matrix' section.
         """
         mock_parse_args.return_value = self.mock_args
-        invalid_config = {"meshtastic": {"connection_type": "tcp"}}
+        invalid_config = {"meshtastic": {"connection_type": CONNECTION_TYPE_TCP}}
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
         mock_validate_yaml.return_value = (True, None, invalid_config)
@@ -382,7 +387,10 @@ class TestConfigChecker(unittest.TestCase):
         invalid_config = {
             "matrix": {"homeserver": "https://matrix.org"},
             "matrix_rooms": [{"id": "!room1:matrix.org"}],
-            "meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.100",
+            },
         }
 
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -426,7 +434,7 @@ class TestConfigChecker(unittest.TestCase):
                 "password": "secret123",
             },
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "tcp", "host": "localhost"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "localhost"},
         }
 
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -471,7 +479,7 @@ class TestConfigChecker(unittest.TestCase):
                 # missing homeserver
             },
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "tcp", "host": "localhost"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "localhost"},
         }
 
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -506,7 +514,7 @@ class TestConfigChecker(unittest.TestCase):
         invalid_config = {
             "matrix": {"homeserver": "https://matrix.org", "password": "secret123"},
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "tcp", "host": "localhost"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "localhost"},
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
@@ -543,7 +551,7 @@ class TestConfigChecker(unittest.TestCase):
                 # no access_token or password
             },
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "tcp", "host": "localhost"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "localhost"},
         }
 
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -587,7 +595,7 @@ class TestConfigChecker(unittest.TestCase):
                 "password": "",  # empty password
             },
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "tcp", "host": "localhost"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "localhost"},
         }
 
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -632,7 +640,10 @@ class TestConfigChecker(unittest.TestCase):
                 "access_token": "test_token",
                 "bot_user_id": "@bot:matrix.org",
             },
-            "meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.100",
+            },
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
@@ -673,7 +684,10 @@ class TestConfigChecker(unittest.TestCase):
                 "bot_user_id": "@bot:matrix.org",
             },
             "matrix_rooms": "not_a_list",
-            "meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.100",
+            },
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
@@ -712,7 +726,10 @@ class TestConfigChecker(unittest.TestCase):
                 "bot_user_id": "@bot:matrix.org",
             },
             "matrix_rooms": ["not_a_dict"],
-            "meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.100",
+            },
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
@@ -753,7 +770,10 @@ class TestConfigChecker(unittest.TestCase):
                 "bot_user_id": "@bot:matrix.org",
             },
             "matrix_rooms": [{"meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.100",
+            },
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
@@ -920,7 +940,7 @@ class TestConfigChecker(unittest.TestCase):
                 "bot_user_id": "@bot:matrix.org",
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
@@ -965,7 +985,10 @@ class TestConfigChecker(unittest.TestCase):
                 "bot_user_id": "@bot:matrix.org",
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            },
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
@@ -1014,7 +1037,10 @@ class TestConfigChecker(unittest.TestCase):
                 "bot_user_id": "@bot:matrix.org",
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "serial", "serial_port": "COM3"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "COM3",
+            },
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
@@ -1067,7 +1093,10 @@ class TestConfigChecker(unittest.TestCase):
                 "bot_user_id": "@bot:matrix.org",
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "tcp", "host": "192.168.1.1"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.1",
+            },
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
@@ -1116,7 +1145,10 @@ class TestConfigChecker(unittest.TestCase):
                 "bot_user_id": "@bot:matrix.org",
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "tcp", "host": "2001:db8::1"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "2001:db8::1",
+            },
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
@@ -1165,7 +1197,10 @@ class TestConfigChecker(unittest.TestCase):
                 "bot_user_id": "@bot:matrix.org",
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "tcp", "host": "meshtastic.local"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "meshtastic.local",
+            },
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
@@ -1215,7 +1250,7 @@ class TestConfigChecker(unittest.TestCase):
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
             "meshtastic": {
-                "connection_type": "ble",
+                "connection_type": CONNECTION_TYPE_BLE,
                 "ble_address": "AA:BB:CC:DD:EE:FF",
             },
         }
@@ -1267,7 +1302,7 @@ class TestConfigChecker(unittest.TestCase):
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
             "meshtastic": {
-                "connection_type": "ble",
+                "connection_type": CONNECTION_TYPE_BLE,
                 "ble_address": "MyMeshtasticDevice",
             },
         }

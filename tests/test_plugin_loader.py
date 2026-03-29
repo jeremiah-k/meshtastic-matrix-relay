@@ -25,6 +25,7 @@ from unittest.mock import ANY, MagicMock, call, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import mmrelay.plugin_loader as pl
+from mmrelay.constants.plugins import DEFAULT_ALLOWED_COMMUNITY_HOSTS, DEFAULT_BRANCHES
 from mmrelay.plugin_loader import (
     _clean_python_cache,
     _clone_new_repo_to_branch_or_tag,
@@ -1629,7 +1630,7 @@ class TestPluginSecurityGuards(BaseGitTest):
         from mmrelay.plugin_loader import _get_allowed_repo_hosts
 
         result = _get_allowed_repo_hosts()
-        expected = ["github.com", "gitlab.com", "codeberg.org", "bitbucket.org"]
+        expected = list(DEFAULT_ALLOWED_COMMUNITY_HOSTS)
         self.assertEqual(result, expected)
 
     def test_get_allowed_repo_hosts_string_is_accepted(self):
@@ -1661,7 +1662,7 @@ class TestPluginSecurityGuards(BaseGitTest):
         from mmrelay.plugin_loader import _get_allowed_repo_hosts
 
         result = _get_allowed_repo_hosts()
-        expected = ["github.com", "gitlab.com", "codeberg.org", "bitbucket.org"]
+        expected = list(DEFAULT_ALLOWED_COMMUNITY_HOSTS)
         self.assertEqual(result, expected)
 
 
@@ -2416,7 +2417,7 @@ class TestGitOperations(BaseGitTest):
         """Default branch fallback should warn when no branch can be checked out."""
         result = pl._fallback_to_default_branches(
             self.temp_repo_path,
-            ["main", "master"],
+            list(DEFAULT_BRANCHES),
             "v1.0.0",
             "repo",
         )
@@ -2438,7 +2439,7 @@ class TestGitOperations(BaseGitTest):
             "main",
             "repo",
             False,
-            ["main", "master"],
+            list(DEFAULT_BRANCHES),
         )
         self.assertFalse(result)
         mock_logger.exception.assert_called_with(
@@ -2469,7 +2470,7 @@ class TestGitOperations(BaseGitTest):
             "v1.0.0",
             "repo",
             False,
-            ["main", "master"],
+            list(DEFAULT_BRANCHES),
         )
 
         self.assertTrue(result)
@@ -2522,7 +2523,7 @@ class TestGitOperations(BaseGitTest):
             "v1.0.1",
             "repo",
             False,
-            ["main", "master"],
+            list(DEFAULT_BRANCHES),
         )
 
         self.assertTrue(result)
@@ -4347,7 +4348,7 @@ class TestDependencyInstallation(BaseGitTest):
             "main",
             "repo",
             True,  # is_default_branch
-            ["main", "master"],
+            list(DEFAULT_BRANCHES),
         )
 
         self.assertTrue(result)
@@ -4374,7 +4375,7 @@ class TestDependencyInstallation(BaseGitTest):
             "main",
             "repo",
             True,  # is_default_branch
-            ["main", "master"],
+            list(DEFAULT_BRANCHES),
         )
 
         self.assertTrue(result)
@@ -4400,7 +4401,7 @@ class TestDependencyInstallation(BaseGitTest):
             "feature-branch",
             "repo",
             False,  # is_default_branch
-            ["main", "master"],
+            list(DEFAULT_BRANCHES),
         )
 
         self.assertTrue(result)
@@ -4430,7 +4431,7 @@ class TestDependencyInstallation(BaseGitTest):
             "v1.0.0",
             "repo",
             False,  # is_default_branch (tags are not default branches)
-            ["main", "master"],
+            list(DEFAULT_BRANCHES),
         )
 
         self.assertTrue(result)
@@ -4454,7 +4455,7 @@ class TestDependencyInstallation(BaseGitTest):
             "main",
             "repo",
             True,  # is_default_branch
-            ["main", "master"],
+            list(DEFAULT_BRANCHES),
         )
 
         # Should return False when all operations fail

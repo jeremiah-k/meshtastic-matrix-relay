@@ -16,6 +16,11 @@ import mmrelay.matrix_utils as matrix_utils_module
 from mmrelay.constants.app import CREDENTIALS_FILENAME
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
+from mmrelay.constants.formats import (
+    DETECTION_SENSOR_APP,
+    MATRIX_SUPPRESS_KEY,
+    TEXT_MESSAGE_APP,
+)
 from mmrelay.matrix_utils import (
     ImageUploadError,
     NioLocalTransportError,
@@ -183,7 +188,7 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
             "meshtastic_shortname": "Trak",
             "meshtastic_meshnet": "remote",
             "meshtastic_text": "Hello from remote mesh",
-            "meshtastic_portnum": "TEXT_MESSAGE_APP",
+            "meshtastic_portnum": TEXT_MESSAGE_APP,
         }
     }
 
@@ -604,7 +609,7 @@ async def test_on_room_message_detection_sensor_enabled(
     mock_event.source = {
         "content": {
             "body": "Detection data",
-            "meshtastic_portnum": "DETECTION_SENSOR_APP",
+            "meshtastic_portnum": DETECTION_SENSOR_APP,
         }
     }
 
@@ -698,7 +703,7 @@ async def test_on_room_message_detection_sensor_disabled(
     mock_event.source = {
         "content": {
             "body": "Detection data",
-            "meshtastic_portnum": "DETECTION_SENSOR_APP",
+            "meshtastic_portnum": DETECTION_SENSOR_APP,
         }
     }
 
@@ -732,7 +737,7 @@ async def test_on_room_message_detection_sensor_broadcast_disabled(
     mock_event.source = {
         "content": {
             "body": "Detection data",
-            "meshtastic_portnum": "DETECTION_SENSOR_APP",
+            "meshtastic_portnum": DETECTION_SENSOR_APP,
         }
     }
     test_config["meshtastic"]["detection_sensor"] = True
@@ -763,7 +768,7 @@ async def test_on_room_message_detection_sensor_connect_failure(
     mock_event.source = {
         "content": {
             "body": "Detection data",
-            "meshtastic_portnum": "DETECTION_SENSOR_APP",
+            "meshtastic_portnum": DETECTION_SENSOR_APP,
         }
     }
     test_config["meshtastic"]["detection_sensor"] = True
@@ -832,7 +837,7 @@ async def test_on_room_message_suppressed_message_returns(
 ):
     """Suppressed messages should exit early without relaying."""
     mock_event.source = {
-        "content": {"body": "Suppressed message", "mmrelay_suppress": True}
+        "content": {"body": "Suppressed message", MATRIX_SUPPRESS_KEY: True}
     }
 
     with (

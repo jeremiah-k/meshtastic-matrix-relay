@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from meshtastic.mesh_interface import BROADCAST_NUM
 
+from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.plugins.ping_plugin import Plugin, match_case
 
 
@@ -168,7 +169,7 @@ class TestPingPlugin(unittest.TestCase):
             "decoded": {"text": "ping"},
             "channel": 0,
             "fromId": "!12345678",
-            "to": 4294967295,  # BROADCAST_NUM
+            "to": BROADCAST_NUM,  # BROADCAST_NUM
         }
 
         async def run_test():
@@ -264,7 +265,7 @@ class TestPingPlugin(unittest.TestCase):
             "decoded": {"text": "!ping!"},
             "channel": 0,
             "fromId": "!12345678",
-            "to": 4294967295,  # BROADCAST_NUM
+            "to": BROADCAST_NUM,  # BROADCAST_NUM
         }
 
         async def run_test():
@@ -304,7 +305,7 @@ class TestPingPlugin(unittest.TestCase):
             "decoded": {"text": "!!!ping!!!"},
             "channel": 0,
             "fromId": "!12345678",
-            "to": 4294967295,  # BROADCAST_NUM
+            "to": BROADCAST_NUM,  # BROADCAST_NUM
         }
 
         async def run_test():
@@ -342,7 +343,7 @@ class TestPingPlugin(unittest.TestCase):
             "decoded": {"text": "PING"},
             "channel": 0,
             "fromId": "!12345678",
-            "to": 4294967295,  # BROADCAST_NUM
+            "to": BROADCAST_NUM,  # BROADCAST_NUM
         }
 
         async def run_test():
@@ -379,7 +380,7 @@ class TestPingPlugin(unittest.TestCase):
             "decoded": {"text": "Hello world"},
             "channel": 0,
             "fromId": "!12345678",
-            "to": 4294967295,
+            "to": BROADCAST_NUM,
         }
 
         async def run_test():
@@ -419,7 +420,7 @@ class TestPingPlugin(unittest.TestCase):
             "decoded": {"text": "ping"},
             "channel": 0,
             "fromId": "!12345678",
-            "to": 4294967295,
+            "to": BROADCAST_NUM,
         }
 
         async def run_test():
@@ -495,7 +496,7 @@ class TestPingPlugin(unittest.TestCase):
 
         Verifies that when the "decoded" field is absent from the packet, the handler returns False, indicating the message was not processed.
         """
-        packet = {"channel": 0, "fromId": "!12345678", "to": 4294967295}
+        packet = {"channel": 0, "fromId": "!12345678", "to": BROADCAST_NUM}
 
         async def run_test():
             """
@@ -519,10 +520,10 @@ class TestPingPlugin(unittest.TestCase):
         Verifies that no response is sent and the handler returns False.
         """
         packet = {
-            "decoded": {"portnum": "TEXT_MESSAGE_APP"},
+            "decoded": {"portnum": TEXT_MESSAGE_APP},
             "channel": 0,
             "fromId": "!12345678",
-            "to": 4294967295,
+            "to": BROADCAST_NUM,
         }
 
         async def run_test():
@@ -550,7 +551,7 @@ class TestPingPlugin(unittest.TestCase):
         mock_connect.return_value = mock_client
 
         packet = {
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "ping"},
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "ping"},
             "channel": 0,
             "fromId": "!12345678",
             "to": BROADCAST_NUM,

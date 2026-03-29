@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.plugins.telemetry_plugin import Plugin
 
 
@@ -237,7 +238,7 @@ class TestTelemetryPlugin(unittest.TestCase):
         """
         packet = {
             "fromId": "!12345678",
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "Hello world"},
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "Hello world"},
         }
 
         async def run_test():

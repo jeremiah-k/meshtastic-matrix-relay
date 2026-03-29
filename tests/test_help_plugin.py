@@ -19,6 +19,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.messages import (
+    MSG_AVAILABLE_COMMANDS_PREFIX,
+    MSG_COMMAND_HELP,
+    MSG_NO_SUCH_COMMAND,
+)
 from mmrelay.plugins.help_plugin import Plugin
 
 
@@ -170,7 +175,7 @@ class TestHelpPlugin(unittest.TestCase):
 
             # Should contain all available commands
             message = call_args[0][1]
-            self.assertIn("Available commands:", message)
+            self.assertIn(MSG_AVAILABLE_COMMANDS_PREFIX, message)
             self.assertIn("nodes", message)
             self.assertIn("health", message)
             self.assertIn("weather", message)
@@ -215,8 +220,12 @@ class TestHelpPlugin(unittest.TestCase):
             message = call_args[0][1]
 
             # Should contain specific help for weather command
-            self.assertIn("`!weather`:", message)
-            self.assertIn("Show weather forecast", message)
+            self.assertIn(
+                MSG_COMMAND_HELP.format(
+                    command="weather", description="Show weather forecast"
+                ),
+                message,
+            )
 
         asyncio.run(run_test())
 
@@ -257,7 +266,7 @@ class TestHelpPlugin(unittest.TestCase):
             message = call_args[0][1]
 
             # Should contain error message
-            self.assertEqual(message, "No such command: nonexistent")
+            self.assertEqual(message, MSG_NO_SUCH_COMMAND.format(command="nonexistent"))
 
         asyncio.run(run_test())
 
@@ -336,8 +345,12 @@ class TestHelpPlugin(unittest.TestCase):
             message = call_args[0][1]
 
             # Should show help for cmd2
-            self.assertIn("`!cmd2`:", message)
-            self.assertIn("Multi-command plugin", message)
+            self.assertIn(
+                MSG_COMMAND_HELP.format(
+                    command="cmd2", description="Multi-command plugin"
+                ),
+                message,
+            )
 
         asyncio.run(run_test())
 
@@ -371,7 +384,7 @@ class TestHelpPlugin(unittest.TestCase):
             message = call_args[0][1]
 
             # Should show empty command list
-            self.assertEqual(message, "Available commands: ")
+            self.assertEqual(message, MSG_AVAILABLE_COMMANDS_PREFIX)
 
         asyncio.run(run_test())
 

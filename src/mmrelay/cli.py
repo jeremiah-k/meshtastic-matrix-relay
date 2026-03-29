@@ -50,6 +50,7 @@ from mmrelay.constants.config import (
     CONFIG_KEY_DEVICE_ID,
     CONFIG_KEY_HOMESERVER,
     CONFIG_KEY_PASSWORD,
+    CONFIG_SECTION_DATABASE_LEGACY,
     CONFIG_SECTION_MATRIX,
     CONFIG_SECTION_MESHTASTIC,
     REQUIRED_CREDENTIALS_KEYS,
@@ -73,6 +74,7 @@ from mmrelay.constants.network import (
     MAX_HOSTNAME_LENGTH,
     MESHTASTIC_CHANNEL_MAX,
     MESHTASTIC_CHANNEL_MIN,
+    MINIMUM_MESSAGE_DELAY,
 )
 from mmrelay.e2ee_utils import E2EEStatus
 from mmrelay.log_utils import get_logger
@@ -1573,9 +1575,9 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             return False
 
                         # Special validation for message_delay
-                        if option == "message_delay" and value < 2.0:
+                        if option == "message_delay" and value < MINIMUM_MESSAGE_DELAY:
                             print(
-                                f"Error: 'message_delay' must be at least 2.0 seconds (firmware limitation), got: {value}",
+                                f"Error: 'message_delay' must be at least {MINIMUM_MESSAGE_DELAY} seconds (firmware limitation), got: {value}",
                                 file=sys.stderr,
                             )
                             return False
@@ -1595,7 +1597,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                         print(warning)
 
                 # Check for deprecated db section
-                if "db" in config:
+                if CONFIG_SECTION_DATABASE_LEGACY in config:
                     print(
                         "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
                         file=sys.stderr,

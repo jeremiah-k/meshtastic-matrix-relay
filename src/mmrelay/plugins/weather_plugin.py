@@ -16,6 +16,7 @@ from nio import (
 
 from mmrelay.constants.formats import (
     CELSIUS_TO_FAHRENHEIT_MULTIPLIER,
+    DEFAULT_CHANNEL,
     DEFAULT_TEXT_ENCODING,
     DEGREE_SYMBOL,
     ENCODING_ERROR_IGNORE,
@@ -522,7 +523,9 @@ class Plugin(BasePlugin):
         if not parsed_command:
             return False
 
-        channel = packet.get("channel", 0)  # Default to channel 0 if not provided
+        channel = packet.get(
+            "channel", DEFAULT_CHANNEL
+        )  # Default to channel 0 if not provided
 
         from mmrelay.meshtastic_utils import connect_meshtastic
 

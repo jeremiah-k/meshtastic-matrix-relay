@@ -26,6 +26,7 @@ from meshtastic.mesh_interface import BROADCAST_NUM
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.network import (
     BLE_CONNECT_TIMEOUT_SECS,
     BLE_DISCONNECT_SETTLE_SECS,
@@ -157,7 +158,7 @@ class TestMeshtasticUtils(unittest.TestCase):
             "to": 987654321,
             "decoded": {
                 "text": "Hello from mesh",
-                "portnum": "TEXT_MESSAGE_APP",  # Use string constant
+                "portnum": TEXT_MESSAGE_APP,
             },
             "channel": 0,
             "id": TEST_PACKET_ID,
@@ -424,7 +425,7 @@ class TestMeshtasticUtils(unittest.TestCase):
             "to": 999,
             "decoded": {
                 "text": ":)",
-                "portnum": "TEXT_MESSAGE_APP",
+                "portnum": TEXT_MESSAGE_APP,
                 "replyId": 42,
                 "emoji": 1,
             },
@@ -494,7 +495,7 @@ class TestMeshtasticUtils(unittest.TestCase):
             "to": 999,
             "decoded": {
                 "text": "Reply message",
-                "portnum": "TEXT_MESSAGE_APP",
+                "portnum": TEXT_MESSAGE_APP,
                 "replyId": 77,
             },
             "channel": 0,
@@ -873,15 +874,15 @@ class TestGetPortnumName(unittest.TestCase):
 
     def test_get_portnum_name_with_string(self):
         """Test with a valid string portnum name."""
-        result = _get_portnum_name("TEXT_MESSAGE_APP")
-        self.assertEqual(result, "TEXT_MESSAGE_APP")
+        result = _get_portnum_name(TEXT_MESSAGE_APP)
+        self.assertEqual(result, TEXT_MESSAGE_APP)
 
     def test_get_portnum_name_with_valid_int(self):
         """Test with a valid integer portnum."""
         with patch("mmrelay.meshtastic_utils.portnums_pb2") as mock_portnums_pb2:
-            mock_portnums_pb2.PortNum.Name.return_value = "TEXT_MESSAGE_APP"
+            mock_portnums_pb2.PortNum.Name.return_value = TEXT_MESSAGE_APP
             result = _get_portnum_name(1)
-            self.assertEqual(result, "TEXT_MESSAGE_APP")
+            self.assertEqual(result, TEXT_MESSAGE_APP)
             mock_portnums_pb2.PortNum.Name.assert_called_once_with(1)
 
     def test_get_portnum_name_with_invalid_int(self):
@@ -991,9 +992,9 @@ class TestGetPacketDetails(unittest.TestCase):
 
     def test_get_packet_details_non_telemetry(self):
         """Test with non-TELEMETRY_APP portnum."""
-        decoded = {"portnum": "TEXT_MESSAGE_APP"}
+        decoded = {"portnum": TEXT_MESSAGE_APP}
         packet = {"from": 123, "rxRssi": -70}
-        result = _get_packet_details(decoded, packet, "TEXT_MESSAGE_APP")
+        result = _get_packet_details(decoded, packet, TEXT_MESSAGE_APP)
         self.assertEqual(result["signal"], "RSSI:-70")
         self.assertNotIn("batt", result)
         self.assertNotIn("voltage", result)
@@ -1858,7 +1859,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         packet = {
             "from": TEST_PACKET_FROM_ID,
             "to": 987654321,
-            "decoded": {"text": "", "portnum": "TEXT_MESSAGE_APP"},  # Empty text
+            "decoded": {"text": "", "portnum": TEXT_MESSAGE_APP},  # Empty text
             "channel": 0,
             "id": TEST_PACKET_ID,
             "rxTime": TEST_PACKET_RX_TIME,
@@ -1904,7 +1905,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
             # Verify debug log was called with packet type information
             log_output = "\n".join(cm.output)
-            self.assertIn("TEXT_MESSAGE_APP", log_output)
+            self.assertIn(TEXT_MESSAGE_APP, log_output)
             self.assertIn(f"from={TEST_PACKET_FROM_ID}", log_output)
             self.assertIn("channel=0", log_output)
             self.assertIn(f"id={TEST_PACKET_ID}", log_output)

@@ -17,6 +17,7 @@ import pytest
 from nio import RoomSendResponse
 
 from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
+from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
 from mmrelay.matrix_utils import matrix_relay
 
 
@@ -155,7 +156,7 @@ class TestE2EEEncryption:
             longname="Test User",
             shortname="TU",
             meshnet_name="TestNet",
-            portnum=1,
+            portnum=PORTNUM_TEXT_MESSAGE_APP,
         )
 
         # Verify encryption parameters
@@ -204,7 +205,7 @@ class TestE2EEEncryption:
             longname="Test User",
             shortname="TU",
             meshnet_name="TestNet",
-            portnum=1,
+            portnum=PORTNUM_TEXT_MESSAGE_APP,
         )
 
         # Verify encryption parameters (should still use ignore_unverified=True based on current implementation)
@@ -327,7 +328,7 @@ class TestE2EEIntegration:
                 longname="E2EE Test User",
                 shortname="ETU",
                 meshnet_name="E2EENet",
-                portnum=1,
+                portnum=PORTNUM_TEXT_MESSAGE_APP,
             )
 
         # Verify E2EE setup was called

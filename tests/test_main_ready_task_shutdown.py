@@ -10,6 +10,11 @@ import pytest
 
 import mmrelay.main as main_module
 from mmrelay.constants.config import DEFAULT_HEALTH_CHECK_ENABLED
+from mmrelay.constants.network import (
+    CONNECTION_TYPE_BLE,
+    CONNECTION_TYPE_SERIAL,
+    CONNECTION_TYPE_TCP,
+)
 from tests.helpers import (
     make_patched_get_running_loop as _make_patched_get_running_loop,
 )
@@ -126,7 +131,7 @@ def test_requires_continuous_health_monitor_respects_enabled_and_ble() -> None:
         main_module._requires_continuous_health_monitor(
             {
                 "meshtastic": {
-                    "connection_type": "tcp",
+                    "connection_type": CONNECTION_TYPE_TCP,
                     "health_check": {"enabled": True},
                 }
             }
@@ -137,7 +142,7 @@ def test_requires_continuous_health_monitor_respects_enabled_and_ble() -> None:
         main_module._requires_continuous_health_monitor(
             {
                 "meshtastic": {
-                    "connection_type": "serial",
+                    "connection_type": CONNECTION_TYPE_SERIAL,
                     "health_check": {"enabled": False},
                 }
             }
@@ -148,7 +153,7 @@ def test_requires_continuous_health_monitor_respects_enabled_and_ble() -> None:
         main_module._requires_continuous_health_monitor(
             {
                 "meshtastic": {
-                    "connection_type": "ble",
+                    "connection_type": CONNECTION_TYPE_BLE,
                     "health_check": {"enabled": True},
                 }
             }
@@ -163,7 +168,7 @@ async def test_main_cleans_up_ready_task_on_shutdown(tmp_path, monkeypatch) -> N
     config = {
         "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
         "matrix": {"homeserver": "https://matrix.org"},
-        "meshtastic": {"connection_type": "serial"},
+        "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
     }
 
     ready_path = tmp_path / "ready"
