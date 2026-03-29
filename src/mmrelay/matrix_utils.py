@@ -207,6 +207,14 @@ SYNC_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
     *NIO_COMM_EXCEPTIONS,
     JSONSCHEMA_VALIDATION_ERROR,
 )
+# Exception tuple for login whoami fallback when resolving user_id post-login.
+WHOAMI_USER_ID_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *NIO_COMM_EXCEPTIONS,
+    AttributeError,
+    TypeError,
+    ValueError,
+    RuntimeError,
+)
 # Exception handling strategy:
 # Catch only expected nio/network/timeouts so programming errors surface during testing.
 
@@ -2910,13 +2918,7 @@ async def login_matrix_bot(
                         "whoami response did not include user_id and login response had no user_id; "
                         "saving credentials without user_id"
                     )
-            except (
-                *NIO_COMM_EXCEPTIONS,
-                AttributeError,
-                TypeError,
-                ValueError,
-                RuntimeError,
-            ) as e:
+            except WHOAMI_USER_ID_FALLBACK_EXCEPTIONS as e:
                 if response_user_id:
                     actual_user_id = response_user_id
                     logger.warning(

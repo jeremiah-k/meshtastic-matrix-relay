@@ -3251,7 +3251,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 finally:
                     _reset_all_mmrelay_globals()
 
-                mock_queue.ensure_processor_started.assert_called_once()
+                mock_queue.ensure_processor_started.assert_not_called()
                 mock_shutdown_plugins.assert_called_once()
                 mock_stop_message_queue.assert_called_once()
                 mock_matrix_client.close.assert_awaited_once()
@@ -3310,7 +3310,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 finally:
                     _reset_all_mmrelay_globals()
 
-                mock_queue.ensure_processor_started.assert_called_once()
+                mock_queue.ensure_processor_started.assert_not_called()
                 mock_shutdown_plugins.assert_called_once()
                 mock_stop_message_queue.assert_called_once()
                 mock_matrix_client.close.assert_awaited_once()

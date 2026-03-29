@@ -12,7 +12,6 @@ from typing import Any
 from mmrelay.constants.app import (
     CONFIG_FILENAME,
     CREDENTIALS_FILENAME,
-    DATABASE_FILENAME,
 )
 from mmrelay.constants.migration import MIGRATION_BACKUP_DIRNAME
 from mmrelay.migrate import rollback_migration

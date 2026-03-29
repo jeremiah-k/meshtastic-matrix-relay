@@ -262,11 +262,10 @@ run_or_fail() {
 	local failure_note=$1
 	shift
 	local status=0
-	if run_with_status "$@"; then
-		status=0
-	else
-		status=$?
-	fi
+	set +e
+	run_with_status "$@"
+	status=$?
+	set -e
 	if ((status != 0)); then
 		fail_test "${failure_note}"
 	fi
@@ -278,11 +277,10 @@ run_capture_or_fail() {
 	local failure_note=$2
 	shift 2
 	local status=0
-	if run_capture_with_status "${output_var}" "$@"; then
-		status=0
-	else
-		status=$?
-	fi
+	set +e
+	run_capture_with_status "${output_var}" "$@"
+	status=$?
+	set -e
 	if ((status != 0)); then
 		fail_test "${failure_note}"
 	fi

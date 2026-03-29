@@ -604,47 +604,72 @@ def service_needs_update() -> tuple[bool, str]:
         token == "--home" or token.startswith("--home=") for token in exec_tokens
     )
 
-    def _has_matching_env_assignment(line: str) -> bool:
-        line = line.strip()
+    def _iter_env_assignment_keys(raw_line: str) -> list[str]:
+        line = raw_line.strip()
         if line.startswith("Environment="):
-            rest = line[len("Environment=") :]
-            key = rest.split("=", 1)[0].strip()
-            return key == "MMRELAY_HOME"
-        if "MMRELAY_HOME=" in line:
+            line = line[len("Environment=") :].strip()
+        if not line:
+            return []
+        try:
+            tokens = shlex.split(line)
+        except ValueError:
             tokens = line.split()
-            for token in tokens:
-                if "=" in token:
-                    key = token.split("=", 1)[0]
-                    if key == "MMRELAY_HOME":
-                        return True
-        return False
 
-    has_home_env = any(_has_matching_env_assignment(line) for line in environment_lines)
-    if not has_home_env:
-        has_home_env = _has_matching_env_assignment(exec_start_line)
-    if not (has_home_flag or has_home_env):
-        return (
-            True,
-            "Service file is missing home configuration (--home or MMRELAY_HOME)",
-        )
+        keys: list[str] = []
+        for token in tokens:
+            if "=" not in token:
+                continue
+            key, _ = token.split("=", 1)
+            normalized_key = key.strip().strip('"').strip("'")
+            if normalized_key:
+                keys.append(normalized_key)
+        return keys
+
+    has_home_env = any(
+        "MMRELAY_HOME" in _iter_env_assignment_keys(line) for line in environment_lines
+    )
 
     cmd_token = exec_tokens[0]
     cmd_basename = os.path.basename(cmd_token)
 
     env_target_token: str | None = None
     env_path_assignment: str | None = None
+    has_home_env_in_exec = False
     if cmd_basename == "env":
         for token in exec_tokens[1:]:
             # Skip env assignments/options and capture the first command token.
+            if token == "--":
+                continue
             if token.startswith("-"):
                 continue
-            if token.startswith("PATH="):
-                env_path_assignment = token[len("PATH=") :]
-                continue
             if "=" in token:
+                key, value = token.split("=", 1)
+                normalized_key = key.strip().strip('"').strip("'")
+                if normalized_key == "PATH":
+                    env_path_assignment = value
+                if normalized_key == "MMRELAY_HOME":
+                    has_home_env_in_exec = True
                 continue
             env_target_token = token
             break
+
+    if cmd_basename == "env" and env_target_token is None:
+        return True, "Service file has invalid ExecStart env launcher (missing command)"
+
+    has_home_env = has_home_env or has_home_env_in_exec
+    if not (has_home_flag or has_home_env):
+        return (
+            True,
+            "Service file is missing home configuration (--home or MMRELAY_HOME)",
+        )
+
+    if cmd_basename == "env":
+        # Safe due to explicit guard above; keep type checkers aware launcher is str.
+        assert env_target_token is not None
+        launcher_token = env_target_token
+    else:
+        launcher_token = cmd_token
+    launcher_basename = os.path.basename(launcher_token)
 
     uses_python_module = any(
         token == "-m"
@@ -652,16 +677,16 @@ def service_needs_update() -> tuple[bool, str]:
         and exec_tokens[index + 1] == "mmrelay"
         for index, token in enumerate(exec_tokens)
     )
-    uses_env_mmrelay = (
-        env_target_token is not None and os.path.basename(env_target_token) == "mmrelay"
-    )
-    launches_mmrelay_binary = cmd_basename == "mmrelay"
+    uses_env_mmrelay = cmd_basename == "env" and launcher_basename == "mmrelay"
+    launches_mmrelay_binary = cmd_basename != "env" and cmd_basename == "mmrelay"
     launches_mmrelay = uses_python_module or uses_env_mmrelay or launches_mmrelay_binary
 
     # Allow explicit custom launchers (absolute paths or systemd specifier paths).
     # This is an intentional trust-the-operator path: we validate home semantics
     # above, but we do not attempt deep wrapper introspection here.
-    is_explicit_custom_launcher = os.path.isabs(cmd_token) or cmd_token.startswith("%")
+    is_explicit_custom_launcher = os.path.isabs(
+        launcher_token
+    ) or launcher_token.startswith("%")
     if not launches_mmrelay and not is_explicit_custom_launcher:
         return True, "Service file does not use a recognizable mmrelay launcher"
 
