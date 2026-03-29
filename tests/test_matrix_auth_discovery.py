@@ -156,6 +156,36 @@ async def test_whoami_failure_handles_gracefully(mock_client, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_whoami_oserror_handles_gracefully(mock_client, tmp_path):
+    """OSError during whoami should be treated as best-effort discovery failure."""
+    access_token = secrets.token_hex(16)
+    credentials_path = str(tmp_path / CREDENTIALS_FILENAME)
+    auth_info = MatrixAuthInfo(
+        homeserver="https://matrix.org",
+        access_token=access_token,
+        user_id="@test:matrix.org",
+        device_id=None,
+        credentials={
+            "homeserver": "https://matrix.org",
+            "user_id": "@test:matrix.org",
+            "access_token": access_token,
+        },
+        credentials_path=credentials_path,
+    )
+
+    mock_client.whoami.side_effect = OSError("TLS handshake failed")
+
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        await _perform_matrix_login(mock_client, auth_info)
+
+        assert any(
+            "Failed to discover device_id via whoami" in call.args[0]
+            for call in mock_logger.warning.call_args_list
+        )
+        mock_client.restore_login.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_no_credentials_whoami_discovers_user_id(mock_client):
     """Test that when no credentials exist, whoami is used to discover user_id from config access_token."""
     access_token = secrets.token_hex(16)

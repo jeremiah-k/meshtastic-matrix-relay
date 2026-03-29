@@ -480,7 +480,7 @@ class DatabaseManager:
                 resolved_future.result()
             except (asyncio.CancelledError, ConcurrentCancelledError):
                 pass
-            except BaseException:
+            except Exception:
                 logger.warning(
                     "Write future finished with an error after caller cancellation",
                     exc_info=True,

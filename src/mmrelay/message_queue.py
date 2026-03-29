@@ -273,28 +273,17 @@ class MessageQueue:
                 # inline and let the task done-callback perform cleanup.
                 task_done = threading.Event()
                 cancel_handler = _make_cancel_handler(task_done, task)
-                with contextlib.suppress(RuntimeError):
+                cancel_scheduled = True
+                try:
                     task_loop.call_soon(cancel_handler)
+                except RuntimeError:
+                    # Loop closed between the state check and scheduling.
+                    cancel_scheduled = False
+                    task_done.set()
+                    task_cleanup_complete.set()
+                    _finalize_stop_state()
 
-                def _watchdog_cleanup() -> None:
-                    if not task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC):
-                        _mark_stop_failed("task cleanup")
-
-                threading.Thread(
-                    target=_watchdog_cleanup,
-                    name="MessageQueueWatchdog",
-                    daemon=True,
-                ).start()
-            elif task_loop.is_running():
-                task_done = threading.Event()
-                cancel_handler = _make_cancel_handler(task_done, task)
-                with contextlib.suppress(RuntimeError):
-                    task_loop.call_soon_threadsafe(cancel_handler)
-                if current_loop is None:
-                    task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
-                    if not task_done.is_set():
-                        _mark_stop_failed("task cleanup")
-                else:
+                if cancel_scheduled:
 
                     def _watchdog_cleanup() -> None:
                         if not task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC):
@@ -305,6 +294,34 @@ class MessageQueue:
                         name="MessageQueueWatchdog",
                         daemon=True,
                     ).start()
+            elif task_loop.is_running():
+                task_done = threading.Event()
+                cancel_handler = _make_cancel_handler(task_done, task)
+                cancel_scheduled = True
+                try:
+                    task_loop.call_soon_threadsafe(cancel_handler)
+                except RuntimeError:
+                    # Loop closed between the state check and scheduling.
+                    cancel_scheduled = False
+                    task_done.set()
+                    task_cleanup_complete.set()
+                    _finalize_stop_state()
+                if cancel_scheduled:
+                    if current_loop is None:
+                        task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
+                        if not task_done.is_set():
+                            _mark_stop_failed("task cleanup")
+                    else:
+
+                        def _watchdog_cleanup() -> None:
+                            if not task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC):
+                                _mark_stop_failed("task cleanup")
+
+                        threading.Thread(
+                            target=_watchdog_cleanup,
+                            name="MessageQueueWatchdog",
+                            daemon=True,
+                        ).start()
             else:
                 task.cancel()
                 try:

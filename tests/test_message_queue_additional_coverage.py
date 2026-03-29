@@ -132,6 +132,58 @@ def test_stop_raises_unexpected_task_cleanup_exception() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stop_handles_call_soon_runtime_error_without_stuck_state() -> None:
+    queue = MessageQueue()
+    queue._running = True
+    queue._executor = None
+
+    task_loop = MagicMock()
+    task_loop.is_closed.return_value = False
+    task_loop.call_soon.side_effect = RuntimeError("loop closed during scheduling")
+
+    task = MagicMock()
+    task.get_loop.return_value = task_loop
+    queue._processor_task = task
+
+    with patch(
+        "mmrelay.message_queue.asyncio.get_running_loop", return_value=task_loop
+    ):
+        queue.stop()
+
+    assert queue._running is False
+    assert queue._stopping is False
+    assert queue._processor_task is None
+    assert queue._stop_failed is False
+
+
+def test_stop_handles_call_soon_threadsafe_runtime_error_without_stuck_state() -> None:
+    queue = MessageQueue()
+    queue._running = True
+    queue._executor = None
+
+    task_loop = MagicMock()
+    task_loop.is_closed.return_value = False
+    task_loop.is_running.return_value = True
+    task_loop.call_soon_threadsafe.side_effect = RuntimeError(
+        "loop closed during scheduling"
+    )
+
+    task = MagicMock()
+    task.get_loop.return_value = task_loop
+    queue._processor_task = task
+
+    with patch(
+        "mmrelay.message_queue.asyncio.get_running_loop", side_effect=RuntimeError
+    ):
+        queue.stop()
+
+    assert queue._running is False
+    assert queue._stopping is False
+    assert queue._processor_task is None
+    assert queue._stop_failed is False
+
+
+@pytest.mark.asyncio
 async def test_process_queue_connection_error_requeues_message() -> None:
     queue = MessageQueue()
     queue._running = True

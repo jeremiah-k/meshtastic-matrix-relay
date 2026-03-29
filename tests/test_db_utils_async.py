@@ -16,7 +16,7 @@ import shutil
 import sqlite3
 import tempfile
 import unittest
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import mmrelay.db_utils
 from mmrelay.constants.database import (
@@ -261,10 +261,10 @@ class TestAsyncHelpers(unittest.TestCase):
     def test_async_store_message_map_success(self, mock_get_manager):
         """Test async_store_message_map successful execution."""
 
-        # Mock manager and its run_sync method
+        # Mock manager and its run_async method
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
-        mock_manager.run_sync = Mock(return_value=None)
+        mock_manager.run_async = AsyncMock(return_value=None)
 
         # Call the async function
         asyncio.run(
@@ -277,12 +277,12 @@ class TestAsyncHelpers(unittest.TestCase):
             )
         )
 
-        # Verify run_sync was called correctly
-        mock_manager.run_sync.assert_called_once()
-        call_args = mock_manager.run_sync.call_args
+        # Verify run_async was called correctly
+        mock_manager.run_async.assert_called_once()
+        call_args = mock_manager.run_async.call_args
         self.assertEqual(call_args[1]["write"], True)
 
-        # Verify the function passed to run_sync
+        # Verify the function passed to run_async
         func = call_args[0][0]
         mock_cursor = MagicMock()
         func(mock_cursor)
@@ -302,7 +302,7 @@ class TestAsyncHelpers(unittest.TestCase):
         # Mock manager that raises an exception
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
-        mock_manager.run_sync = Mock(side_effect=sqlite3.Error("Database error"))
+        mock_manager.run_async = AsyncMock(side_effect=sqlite3.Error("Database error"))
 
         with patch("mmrelay.db_utils.logger") as mock_logger:
             # Call the async function - should not raise
@@ -326,20 +326,20 @@ class TestAsyncHelpers(unittest.TestCase):
     def test_async_prune_message_map_success(self, mock_get_manager):
         """Test async_prune_message_map successful execution."""
 
-        # Mock manager and its run_sync method
+        # Mock manager and its run_async method
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
-        mock_manager.run_sync = Mock(return_value=5)  # 5 messages pruned
+        mock_manager.run_async = AsyncMock(return_value=5)  # 5 messages pruned
 
         # Call the async function
         asyncio.run(async_prune_message_map(msgs_to_keep=100))
 
-        # Verify run_sync was called correctly
-        mock_manager.run_sync.assert_called_once()
-        call_args = mock_manager.run_sync.call_args
+        # Verify run_async was called correctly
+        mock_manager.run_async.assert_called_once()
+        call_args = mock_manager.run_async.call_args
         self.assertEqual(call_args[1]["write"], True)
 
-        # Verify the function passed to run_sync
+        # Verify the function passed to run_async
         func = call_args[0][0]
         mock_cursor = MagicMock()
         mock_cursor.fetchone.return_value = [150]  # Total count before pruning
@@ -363,19 +363,19 @@ class TestAsyncHelpers(unittest.TestCase):
     def test_async_prune_message_map_no_pruning_needed(self, mock_get_manager):
         """Test async_prune_message_map when no pruning is needed."""
 
-        # Mock manager and its run_sync method
+        # Mock manager and its run_async method
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
-        mock_manager.run_sync = Mock(return_value=0)  # No messages pruned
+        mock_manager.run_async = AsyncMock(return_value=0)  # No messages pruned
 
         # Call the async function
         asyncio.run(async_prune_message_map(msgs_to_keep=100))
 
-        # Verify run_sync was called
-        mock_manager.run_sync.assert_called_once()
+        # Verify run_async was called
+        mock_manager.run_async.assert_called_once()
 
-        # Verify the function passed to run_sync
-        func = mock_manager.run_sync.call_args[0][0]
+        # Verify the function passed to run_async
+        func = mock_manager.run_async.call_args[0][0]
         mock_cursor = MagicMock()
         mock_cursor.fetchone.return_value = [50]  # Total count less than limit
         result = func(mock_cursor)
@@ -393,7 +393,7 @@ class TestAsyncHelpers(unittest.TestCase):
         # Mock manager that raises an exception
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
-        mock_manager.run_sync = Mock(side_effect=sqlite3.Error("Database error"))
+        mock_manager.run_async = AsyncMock(side_effect=sqlite3.Error("Database error"))
 
         with patch("mmrelay.db_utils.logger") as mock_logger:
             # Call the async function - should not raise

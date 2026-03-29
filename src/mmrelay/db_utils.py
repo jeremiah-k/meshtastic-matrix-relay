@@ -1,4 +1,3 @@
-import asyncio
 import contextlib
 import json
 import logging
@@ -2516,18 +2515,16 @@ async def async_store_message_map(
             meshtastic_text,
             meshtastic_meshnet,
         )
-        await asyncio.to_thread(
-            lambda: _get_db_manager().run_sync(
-                lambda cursor: _store_message_map_core(
-                    cursor,
-                    id_key,
-                    matrix_event_id,
-                    matrix_room_id,
-                    meshtastic_text,
-                    meshtastic_meshnet,
-                ),
-                write=True,
-            )
+        await _get_db_manager().run_async(
+            lambda cursor: _store_message_map_core(
+                cursor,
+                id_key,
+                matrix_event_id,
+                matrix_room_id,
+                meshtastic_text,
+                meshtastic_meshnet,
+            ),
+            write=True,
         )
     except sqlite3.Error:
         logger.exception("Database error storing message map for %s", matrix_event_id)
@@ -2541,11 +2538,9 @@ async def async_prune_message_map(msgs_to_keep: int) -> None:
         msgs_to_keep (int): Number of most recent rows to retain; older rows will be deleted.
     """
     try:
-        pruned = await asyncio.to_thread(
-            lambda: _get_db_manager().run_sync(
-                lambda cursor: _prune_message_map_core(cursor, msgs_to_keep),
-                write=True,
-            )
+        pruned = await _get_db_manager().run_async(
+            lambda cursor: _prune_message_map_core(cursor, msgs_to_keep),
+            write=True,
         )
         if pruned > 0:
             logger.info(

@@ -740,8 +740,6 @@ def service_needs_update() -> tuple[bool, str]:
         expected_path_entries = {
             _normalize_path_entry("%h/.local/pipx/venvs/mmrelay/bin"),
             _normalize_path_entry("%h/.local/bin"),
-            _normalize_path_entry("/.local/pipx/venvs/mmrelay/bin"),
-            _normalize_path_entry("/.local/bin"),
             _normalize_path_entry("~/.local/pipx/venvs/mmrelay/bin"),
             _normalize_path_entry("~/.local/bin"),
         }

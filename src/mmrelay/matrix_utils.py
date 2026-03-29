@@ -929,6 +929,18 @@ def get_interaction_settings(config: dict[str, Any] | None) -> dict[str, bool]:
 
         reactions = interactions.get("reactions", False)
         replies = interactions.get("replies", False)
+        if "reactions" in interactions and not isinstance(reactions, bool):
+            logger.warning(
+                "Invalid '%s.message_interactions.reactions' value (%s); treating as False.",
+                CONFIG_SECTION_MESHTASTIC,
+                type(reactions).__name__,
+            )
+        if "replies" in interactions and not isinstance(replies, bool):
+            logger.warning(
+                "Invalid '%s.message_interactions.replies' value (%s); treating as False.",
+                CONFIG_SECTION_MESHTASTIC,
+                type(replies).__name__,
+            )
         return {
             "reactions": reactions if isinstance(reactions, bool) else False,
             "replies": replies if isinstance(replies, bool) else False,
@@ -1954,7 +1966,7 @@ async def _perform_matrix_login(
                         logger.debug(
                             "whoami confirmed existing device_id and user_id; no credential updates needed"
                         )
-            except NIO_COMM_EXCEPTIONS as e:
+            except WHOAMI_USER_ID_FALLBACK_EXCEPTIONS as e:
                 logger.warning(f"Failed to discover device_id via whoami: {e}")
                 logger.warning("E2EE may not work properly without a device_id")
     else:

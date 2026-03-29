@@ -151,8 +151,13 @@ def test_get_interaction_settings_non_bool_interaction_values() -> None:
         "meshtastic": {"message_interactions": {"reactions": "yes", "replies": 1}}
     }
 
-    result = get_interaction_settings(config)
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        result = get_interaction_settings(config)
+
     assert result == {"reactions": False, "replies": False}
+    warning_messages = [call.args[0] for call in mock_logger.warning.call_args_list]
+    assert any("message_interactions.reactions" in msg for msg in warning_messages)
+    assert any("message_interactions.replies" in msg for msg in warning_messages)
 
 
 def test_get_interaction_settings_legacy_non_bool_value_disables_reactions() -> None:
