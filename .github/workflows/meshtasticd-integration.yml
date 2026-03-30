@@ -76,14 +76,14 @@ jobs:
 
       - name: Restore cached meshtasticd image
         id: meshtasticd-image-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ${{ steps.meshtasticd-cache.outputs.cache_path }}
           key: ${{ steps.meshtasticd-cache.outputs.cache_key }}
 
       - name: Restore cached Synapse image
         id: synapse-image-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ${{ steps.synapse-cache.outputs.cache_path }}
           key: ${{ steps.synapse-cache.outputs.cache_key }}
@@ -193,14 +193,14 @@ jobs:
 
       - name: Persist cached meshtasticd image
         if: ${{ always() && steps.meshtasticd-image-cache.outputs.cache-hit != 'true' && steps.meshtasticd-image-tar.outputs.saved == 'true' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ${{ steps.meshtasticd-cache.outputs.cache_path }}
           key: ${{ steps.meshtasticd-cache.outputs.cache_key }}
 
       - name: Persist cached Synapse image
         if: ${{ always() && steps.synapse-image-cache.outputs.cache-hit != 'true' && steps.synapse-image-tar.outputs.saved == 'true' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ${{ steps.synapse-cache.outputs.cache_path }}
           key: ${{ steps.synapse-cache.outputs.cache_key }}

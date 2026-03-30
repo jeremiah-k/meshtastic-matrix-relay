@@ -59,7 +59,7 @@ jobs:
 
       - name: Restore cached Helm image
         id: helm-image-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ${{ steps.helm-image-cache-meta.outputs.cache_path }}
           key: ${{ steps.helm-image-cache-meta.outputs.cache_key }}
@@ -172,7 +172,7 @@ jobs:
 
       - name: Persist cached Helm image
         if: ${{ always() && steps.helm-image-cache.outputs.cache-hit != 'true' && steps.helm-image-tar.outputs.saved == 'true' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ${{ steps.helm-image-cache-meta.outputs.cache_path }}
           key: ${{ steps.helm-image-cache-meta.outputs.cache_key }}
