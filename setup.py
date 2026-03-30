@@ -52,7 +52,7 @@ setup(
         "aiohttp==3.13.3",
         "matrix-nio==0.25.2",
         "matplotlib==3.10.8",
-        "requests==2.33.0",
+        "requests==2.33.1",
         "markdown==3.10.2",
         "bleach==6.3.0",
         "haversine==2.9.0",
