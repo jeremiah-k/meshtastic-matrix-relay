@@ -185,6 +185,10 @@ def test_connect_meshtastic_ble_recovers_from_stale_worker(
             "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
             new=_FakeBLEInterface,
         ),
+        patch(
+            "mmrelay.meshtastic_utils._reset_ble_connection_gate_state",
+            return_value=True,
+        ) as mock_clear_gates,
         patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
         patch(
             "mmrelay.meshtastic_utils._validate_ble_connection_address",
@@ -212,6 +216,52 @@ def test_connect_meshtastic_ble_recovers_from_stale_worker(
     ]
     assert stale_warning_calls, "Expected stale BLE worker recovery warning"
     assert stale_warning_calls[0].args[1] in {"interface creation", "connect"}
+    assert any(
+        call.args and call.args[0] == ble_address
+        for call in mock_clear_gates.call_args_list
+    )
+
+
+def test_connect_meshtastic_duplicate_suppression_clears_fork_gates(
+    reset_meshtastic_globals,
+):
+    ble_address = "AA:BB:CC:DD:EE:FF"
+    config = {
+        "meshtastic": {
+            "connection_type": CONNECTION_TYPE_BLE,
+            "ble_address": ble_address,
+            "retries": 1,
+        }
+    }
+
+    class _SuppressedBLEInterface:
+        def __init__(self, **_kwargs: object) -> None:
+            raise RuntimeError("Connection suppressed: recently connected elsewhere")
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+            new=_SuppressedBLEInterface,
+        ),
+        patch(
+            "mmrelay.meshtastic_utils._reset_ble_connection_gate_state",
+            return_value=True,
+        ) as mock_clear_gates,
+        patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
+        patch("mmrelay.meshtastic_utils.time.sleep"),
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    ):
+        result = connect_meshtastic(passed_config=config)
+
+    assert result is None
+    assert any(
+        call.args and call.args[0] == ble_address
+        for call in mock_clear_gates.call_args_list
+    )
+    assert any(
+        call.args and "Detected duplicate BLE connect suppression" in str(call.args[0])
+        for call in mock_logger.warning.call_args_list
+    )
 
 
 def test_connect_meshtastic_tcp_missing_host_returns_none(

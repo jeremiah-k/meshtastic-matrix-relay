@@ -2,6 +2,7 @@ import asyncio
 import atexit
 import contextlib
 import functools
+import importlib
 import importlib.util
 import inspect
 import io
@@ -132,6 +133,21 @@ matrix_rooms: list[dict[str, Any]] = []
 # Initialize logger for Meshtastic
 logger = get_logger(name="Meshtastic")
 
+# Detect optional BLE connection-gate reset support once at startup.
+# The legacy/official Meshtastic BLE implementation does not provide this.
+_ble_gate_reset_callable: Callable[[], None] | None = None
+_ble_gating_module: Any | None = None
+try:
+    _ble_gating_module = importlib.import_module("meshtastic.interfaces.ble.gating")
+except ModuleNotFoundError:
+    _ble_gating_module = None
+except Exception:
+    _ble_gating_module = None
+else:
+    clear_all_registries = getattr(_ble_gating_module, "_clear_all_registries", None)
+    if callable(clear_all_registries):
+        _ble_gate_reset_callable = cast(Callable[[], None], clear_all_registries)
+
 # Meshtastic text payloads are UTF-8 on the wire.
 MESHTASTIC_TEXT_ENCODING = "utf-8"
 
@@ -229,6 +245,50 @@ def _coerce_positive_int(value: Any, default: int) -> int:
         return parsed
     except (TypeError, ValueError, OverflowError):
         return default
+
+
+def _is_ble_duplicate_connect_suppressed_error(exc: BaseException) -> bool:
+    """
+    Return whether an exception message matches Meshtastic duplicate-connect suppression.
+
+    This targets forked meshtastic BLE gate errors such as:
+    "Connection suppressed: recently connected elsewhere".
+    """
+    message = str(exc).strip().lower()
+    if not message:
+        return False
+    return "recently connected elsewhere" in message or (
+        "connection suppressed" in message and "connected elsewhere" in message
+    )
+
+
+def _reset_ble_connection_gate_state(ble_address: str, *, reason: str) -> bool:
+    """
+    Best-effort reset of process-local BLE connection gate state.
+
+    This recovery hook is only active when the installed Meshtastic library
+    exposes a connection-gate reset API. Otherwise this function is a no-op.
+    """
+    if _ble_gate_reset_callable is None:
+        return False
+
+    try:
+        _ble_gate_reset_callable()
+    except Exception:
+        logger.debug(
+            "BLE connection-state reset failed for %s (%s)",
+            ble_address,
+            reason,
+            exc_info=True,
+        )
+        return False
+
+    logger.warning(
+        "Reset BLE connection state for %s (%s)",
+        ble_address,
+        reason,
+    )
+    return True
 
 
 def _normalize_room_channel(room: dict[str, Any]) -> int | None:
@@ -1532,6 +1592,10 @@ def _ensure_ble_worker_available(ble_address: str, *, operation: str) -> None:
             stale_address,
             stale_elapsed_secs,
             stale_timeout_secs,
+        )
+        _reset_ble_connection_gate_state(
+            stale_address,
+            reason=f"stale worker during {operation}",
         )
         timeout_count = _record_ble_timeout(stale_address)
         _maybe_reset_ble_executor(
@@ -3819,6 +3883,20 @@ def connect_meshtastic(
             if shutting_down:
                 logger.debug("Shutdown in progress. Aborting connection attempts.")
                 break
+            if (
+                connection_type == CONNECTION_TYPE_BLE
+                and ble_address
+                and _is_ble_duplicate_connect_suppressed_error(e)
+            ):
+                logger.warning(
+                    "Detected duplicate BLE connect suppression for %s; "
+                    "resetting local BLE connection state before retry.",
+                    ble_address,
+                )
+                _reset_ble_connection_gate_state(
+                    ble_address,
+                    reason="duplicate connect suppression",
+                )
             attempts += 1
             if (
                 connection_type == CONNECTION_TYPE_BLE
