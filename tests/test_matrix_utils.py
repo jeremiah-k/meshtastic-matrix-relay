@@ -34,6 +34,7 @@ from mmrelay.matrix_utils import (
     _is_room_alias,
     _iter_room_alias_entries,
     _normalize_bot_user_id,
+    _send_matrix_message_with_retry,
     _update_room_id_in_mapping,
     bot_command,
     connect_matrix,
@@ -2155,6 +2156,36 @@ async def test_matrix_relay_send_timeout_logs_and_returns(
     mock_logger.exception.assert_any_call(
         "Timeout sending message to Matrix room !room:matrix.org after 4 attempts"
     )
+
+
+@patch("mmrelay.matrix_utils.logger")
+async def test_send_matrix_message_with_retry_reuses_tx_id_across_retries(_mock_logger):
+    """Retry attempts must reuse one Matrix transaction ID to avoid duplicate sends."""
+    mock_client = MagicMock()
+    mock_client.rooms = {"!room:matrix.org": MagicMock(encrypted=False)}
+    success_response = MagicMock(event_id="$event123")
+    mock_client.room_send = AsyncMock(
+        side_effect=[asyncio.TimeoutError(), asyncio.TimeoutError(), success_response]
+    )
+
+    with patch("mmrelay.matrix_utils.asyncio.sleep", new_callable=AsyncMock):
+        response = await _send_matrix_message_with_retry(
+            matrix_client=mock_client,
+            room_id="!room:matrix.org",
+            content={"msgtype": "m.text", "body": "Hello Matrix"},
+            max_retries=3,
+            base_delay=0.01,
+            max_delay=0.1,
+        )
+
+    assert response is success_response
+    assert mock_client.room_send.await_count == 3
+    tx_ids = [
+        call.kwargs.get("tx_id") for call in mock_client.room_send.await_args_list
+    ]
+    assert len(set(tx_ids)) == 1
+    assert isinstance(tx_ids[0], str)
+    assert tx_ids[0].startswith("mmrelay-")
 
 
 @patch("mmrelay.matrix_utils.connect_matrix")

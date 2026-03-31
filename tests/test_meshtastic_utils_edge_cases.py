@@ -32,6 +32,8 @@ from mmrelay.constants.network import (
     DEFAULT_PLUGIN_TIMEOUT_SECS,
 )
 from mmrelay.meshtastic_utils import (
+    _is_ble_duplicate_connect_suppressed_error,
+    _reset_ble_connection_gate_state,
     connect_meshtastic,
     is_running_as_service,
     on_lost_meshtastic_connection,
@@ -1011,6 +1013,302 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             )
             # Matrix relay should NOT have been called
             mock_matrix_relay.assert_not_called()
+
+
+class TestBLEDuplicateConnectSuppressionDetector(unittest.TestCase):
+    """Test cases for BLE duplicate connect suppression error detection."""
+
+    def test_detects_full_suppression_message(self):
+        """Should detect the complete fork error message."""
+        exc = RuntimeError("Connection suppressed: recently connected elsewhere")
+        assert _is_ble_duplicate_connect_suppressed_error(exc) is True
+
+    def test_detects_partial_suppression_message(self):
+        """Should detect partial message with just 'recently connected elsewhere'."""
+        exc = RuntimeError("recently connected elsewhere")
+        assert _is_ble_duplicate_connect_suppressed_error(exc) is True
+
+    def test_detects_both_keywords_together(self):
+        """Should detect when both keywords appear separately."""
+        exc = RuntimeError("connection suppressed due to connected elsewhere issue")
+        assert _is_ble_duplicate_connect_suppressed_error(exc) is True
+
+    def test_rejects_other_ble_errors(self):
+        """Should not match unrelated BLE errors."""
+        exc = RuntimeError("BLE connection timeout")
+        assert _is_ble_duplicate_connect_suppressed_error(exc) is False
+
+    def test_rejects_empty_exception(self):
+        """Should handle empty exception messages."""
+        exc = RuntimeError("")
+        assert _is_ble_duplicate_connect_suppressed_error(exc) is False
+
+    def test_rejects_only_connection_suppressed(self):
+        """Should not match when only 'connection suppressed' appears without 'connected elsewhere'."""
+        exc = RuntimeError("Connection suppressed by gate")
+        assert _is_ble_duplicate_connect_suppressed_error(exc) is False
+
+    def test_handles_case_insensitivity(self):
+        """Should be case insensitive."""
+        exc = RuntimeError("CONNECTION SUPPRESSED: RECENTLY CONNECTED ELSEWHERE")
+        assert _is_ble_duplicate_connect_suppressed_error(exc) is True
+
+    def test_handles_whitespace(self):
+        """Should handle messages with extra whitespace."""
+        exc = RuntimeError("  Connection suppressed: recently connected elsewhere  ")
+        assert _is_ble_duplicate_connect_suppressed_error(exc) is True
+
+
+class TestBLEGateResetCallable(unittest.TestCase):
+    """Test cases for BLE gate reset callable behavior."""
+
+    def test_reset_returns_false_when_no_callable(self):
+        """Should return False when _ble_gate_reset_callable is None."""
+        import mmrelay.meshtastic_utils as mu
+
+        # Save original state
+        original_callable = mu._ble_gate_reset_callable
+
+        try:
+            mu._ble_gate_reset_callable = None
+            result = _reset_ble_connection_gate_state(
+                "AA:BB:CC:DD:EE:FF", reason="test"
+            )
+            assert result is False
+        finally:
+            mu._ble_gate_reset_callable = original_callable
+
+    def test_reset_handles_callable_exception(self):
+        """Should handle exceptions from _ble_gate_reset_callable gracefully."""
+        import mmrelay.meshtastic_utils as mu
+
+        original_callable = mu._ble_gate_reset_callable
+
+        def _raising_callable():
+            raise RuntimeError("Gate reset failed")
+
+        try:
+            mu._ble_gate_reset_callable = _raising_callable
+            result = _reset_ble_connection_gate_state(
+                "AA:BB:CC:DD:EE:FF", reason="test exception handling"
+            )
+            assert result is False
+        finally:
+            mu._ble_gate_reset_callable = original_callable
+
+    def test_reset_returns_true_on_success(self):
+        """Should return True when callable succeeds."""
+        import mmrelay.meshtastic_utils as mu
+
+        original_callable = mu._ble_gate_reset_callable
+        call_count = [0]
+
+        def _successful_callable():
+            call_count[0] += 1
+
+        try:
+            mu._ble_gate_reset_callable = _successful_callable
+            result = _reset_ble_connection_gate_state(
+                "AA:BB:CC:DD:EE:FF", reason="test success"
+            )
+            assert result is True
+            assert call_count[0] == 1
+        finally:
+            mu._ble_gate_reset_callable = original_callable
+
+
+class TestBLEGateImportDetection(unittest.TestCase):
+    """Test cases for module-level BLE gate import detection."""
+
+    def test_module_imports_gracefully_when_gating_unavailable(self):
+        """Should have _ble_gate_reset_callable as None when gating module missing."""
+        import mmrelay.meshtastic_utils as mu
+
+        # In environments without the fork, this should be None
+        # We can't easily test the import side effects, but we can verify
+        # the module is importable and has the expected attributes
+        assert hasattr(mu, "_ble_gate_reset_callable")
+        assert hasattr(mu, "_ble_gating_module")
+        # The callable should be None or a callable
+        assert mu._ble_gate_reset_callable is None or callable(
+            mu._ble_gate_reset_callable
+        )
+
+    def test_helper_safe_when_no_gating_module(self):
+        """Should be safe to call _reset_ble_connection_gate_state even without gating."""
+        import mmrelay.meshtastic_utils as mu
+
+        original_callable = mu._ble_gate_reset_callable
+
+        try:
+            mu._ble_gate_reset_callable = None
+            # Should not raise even with no callable
+            result = _reset_ble_connection_gate_state(
+                "AA:BB:CC:DD:EE:FF", reason="no gating module"
+            )
+            assert result is False
+        finally:
+            mu._ble_gate_reset_callable = original_callable
+
+
+class TestDuplicateSuppressionRetryLogic(unittest.TestCase):
+    """Test cases for duplicate suppression retry logic in connect_meshtastic."""
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("mmrelay.meshtastic_utils.time.sleep")
+    @patch("mmrelay.meshtastic_utils._ble_gate_reset_callable")
+    def test_logs_warning_on_duplicate_suppression(
+        self, mock_gate_callable, mock_sleep, mock_logger
+    ):
+        """Should log warning when duplicate suppression detected."""
+        from mmrelay.meshtastic_utils import CONNECTION_TYPE_BLE
+
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_BLE,
+                "ble_address": ble_address,
+                "retries": 1,
+            }
+        }
+
+        class _SuppressedBLEInterface:
+            def __init__(self, **_kwargs):
+                raise RuntimeError(
+                    "Connection suppressed: recently connected elsewhere"
+                )
+
+        with patch(
+            "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+            new=_SuppressedBLEInterface,
+        ):
+            result = connect_meshtastic(passed_config=config)
+
+        # Should return None after retries exhausted
+        assert result is None
+
+        # Should have logged the suppression detection warning
+        suppression_calls = [
+            call
+            for call in mock_logger.warning.call_args_list
+            if call.args
+            and "Detected duplicate BLE connect suppression" in str(call.args[0])
+        ]
+        assert len(suppression_calls) > 0, "Expected suppression detection warning"
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("mmrelay.meshtastic_utils.time.sleep")
+    def test_logs_debug_when_gate_reset_unavailable(self, mock_sleep, mock_logger):
+        """Should log debug when gate reset hook is unavailable."""
+        import mmrelay.meshtastic_utils as mu
+        from mmrelay.meshtastic_utils import CONNECTION_TYPE_BLE
+
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_BLE,
+                "ble_address": ble_address,
+                "retries": 1,
+            }
+        }
+
+        class _SuppressedBLEInterface:
+            def __init__(self, **_kwargs):
+                raise RuntimeError(
+                    "Connection suppressed: recently connected elsewhere"
+                )
+
+        original_callable = mu._ble_gate_reset_callable
+        try:
+            # Simulate no gate reset available
+            mu._ble_gate_reset_callable = None
+
+            with patch(
+                "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+                new=_SuppressedBLEInterface,
+            ):
+                result = connect_meshtastic(passed_config=config)
+
+            # Should return None after retries exhausted
+            assert result is None
+
+            # Should have logged the suppression detection warning
+            suppression_calls = [
+                call
+                for call in mock_logger.warning.call_args_list
+                if call.args
+                and "Detected duplicate BLE connect suppression" in str(call.args[0])
+            ]
+            assert len(suppression_calls) > 0, "Expected suppression detection warning"
+
+            # Should have logged debug about unavailable hook
+            debug_calls = [
+                call
+                for call in mock_logger.debug.call_args_list
+                if call.args and "BLE gate reset hook unavailable" in str(call.args[0])
+            ]
+            assert len(debug_calls) > 0, "Expected debug about unavailable hook"
+        finally:
+            mu._ble_gate_reset_callable = original_callable
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("mmrelay.meshtastic_utils.time.sleep")
+    def test_no_debug_log_when_gate_reset_succeeds(self, mock_sleep, mock_logger):
+        """Should not log debug when gate reset succeeds."""
+        import mmrelay.meshtastic_utils as mu
+        from mmrelay.meshtastic_utils import CONNECTION_TYPE_BLE
+
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_BLE,
+                "ble_address": ble_address,
+                "retries": 1,
+            }
+        }
+
+        class _SuppressedBLEInterface:
+            def __init__(self, **_kwargs):
+                raise RuntimeError(
+                    "Connection suppressed: recently connected elsewhere"
+                )
+
+        original_callable = mu._ble_gate_reset_callable
+
+        def _successful_reset():
+            pass
+
+        try:
+            # Set up a working gate reset callable
+            mu._ble_gate_reset_callable = _successful_reset
+
+            with patch(
+                "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+                new=_SuppressedBLEInterface,
+            ):
+                result = connect_meshtastic(passed_config=config)
+
+            # Should return None after retries exhausted
+            assert result is None
+
+            # Should have logged the suppression detection warning
+            suppression_calls = [
+                call
+                for call in mock_logger.warning.call_args_list
+                if call.args
+                and "Detected duplicate BLE connect suppression" in str(call.args[0])
+            ]
+            assert len(suppression_calls) > 0, "Expected suppression detection warning"
+
+            # Should NOT have logged debug about unavailable hook when reset succeeds
+            debug_calls = [
+                call
+                for call in mock_logger.debug.call_args_list
+                if call.args and "BLE gate reset hook unavailable" in str(call.args[0])
+            ]
+            assert len(debug_calls) == 0, "Should not log debug when reset succeeds"
+        finally:
+            mu._ble_gate_reset_callable = original_callable
 
 
 if __name__ == "__main__":
