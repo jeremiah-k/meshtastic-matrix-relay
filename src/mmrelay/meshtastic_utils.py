@@ -3889,14 +3889,17 @@ def connect_meshtastic(
                 and _is_ble_duplicate_connect_suppressed_error(e)
             ):
                 logger.warning(
-                    "Detected duplicate BLE connect suppression for %s; "
-                    "resetting local BLE connection state before retry.",
+                    "Detected duplicate BLE connect suppression for %s",
                     ble_address,
                 )
-                _reset_ble_connection_gate_state(
+                if not _reset_ble_connection_gate_state(
                     ble_address,
                     reason="duplicate connect suppression",
-                )
+                ):
+                    logger.debug(
+                        "BLE gate reset hook unavailable for %s; retrying without local reset",
+                        ble_address,
+                    )
             attempts += 1
             if (
                 connection_type == CONNECTION_TYPE_BLE
