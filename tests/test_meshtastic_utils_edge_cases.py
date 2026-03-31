@@ -32,6 +32,7 @@ from mmrelay.constants.network import (
     DEFAULT_PLUGIN_TIMEOUT_SECS,
 )
 from mmrelay.meshtastic_utils import (
+    _is_ble_duplicate_connect_suppressed_error,
     connect_meshtastic,
     is_running_as_service,
     on_lost_meshtastic_connection,
@@ -1011,6 +1012,50 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             )
             # Matrix relay should NOT have been called
             mock_matrix_relay.assert_not_called()
+
+
+class TestBLEDuplicateConnectSuppressionDetector(unittest.TestCase):
+    """Test cases for BLE duplicate connect suppression error detection."""
+
+    def test_detects_full_suppression_message(self):
+        """Should detect the complete fork error message."""
+        exc = RuntimeError("Connection suppressed: recently connected elsewhere")
+        assert _is_ble_duplicate_connect_suppressed_error(exc) is True
+
+    def test_detects_partial_suppression_message(self):
+        """Should detect partial message with just 'recently connected elsewhere'."""
+        exc = RuntimeError("recently connected elsewhere")
+        assert _is_ble_duplicate_connect_suppressed_error(exc) is True
+
+    def test_detects_both_keywords_together(self):
+        """Should detect when both keywords appear separately."""
+        exc = RuntimeError("connection suppressed due to connected elsewhere issue")
+        assert _is_ble_duplicate_connect_suppressed_error(exc) is True
+
+    def test_rejects_other_ble_errors(self):
+        """Should not match unrelated BLE errors."""
+        exc = RuntimeError("BLE connection timeout")
+        assert _is_ble_duplicate_connect_suppressed_error(exc) is False
+
+    def test_rejects_empty_exception(self):
+        """Should handle empty exception messages."""
+        exc = RuntimeError("")
+        assert _is_ble_duplicate_connect_suppressed_error(exc) is False
+
+    def test_rejects_only_connection_suppressed(self):
+        """Should not match when only 'connection suppressed' appears without 'connected elsewhere'."""
+        exc = RuntimeError("Connection suppressed by gate")
+        assert _is_ble_duplicate_connect_suppressed_error(exc) is False
+
+    def test_handles_case_insensitivity(self):
+        """Should be case insensitive."""
+        exc = RuntimeError("CONNECTION SUPPRESSED: RECENTLY CONNECTED ELSEWHERE")
+        assert _is_ble_duplicate_connect_suppressed_error(exc) is True
+
+    def test_handles_whitespace(self):
+        """Should handle messages with extra whitespace."""
+        exc = RuntimeError("  Connection suppressed: recently connected elsewhere  ")
+        assert _is_ble_duplicate_connect_suppressed_error(exc) is True
 
 
 if __name__ == "__main__":

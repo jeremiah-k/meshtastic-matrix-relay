@@ -141,7 +141,7 @@ try:
     _ble_gating_module = importlib.import_module("meshtastic.interfaces.ble.gating")
 except ModuleNotFoundError:
     _ble_gating_module = None
-except Exception:
+except Exception:  # noqa: BLE001 - defensive import of optional fork-specific feature
     _ble_gating_module = None
 else:
     clear_all_registries = getattr(_ble_gating_module, "_clear_all_registries", None)
