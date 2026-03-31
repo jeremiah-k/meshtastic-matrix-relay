@@ -186,9 +186,8 @@ def test_connect_meshtastic_ble_recovers_from_stale_worker(
             new=_FakeBLEInterface,
         ),
         patch(
-            "mmrelay.meshtastic_utils._reset_ble_connection_gate_state",
-            return_value=True,
-        ) as mock_clear_gates,
+            "mmrelay.meshtastic_utils._ble_gate_reset_callable",
+        ) as mock_gate_callable,
         patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
         patch(
             "mmrelay.meshtastic_utils._validate_ble_connection_address",
@@ -216,10 +215,16 @@ def test_connect_meshtastic_ble_recovers_from_stale_worker(
     ]
     assert stale_warning_calls, "Expected stale BLE worker recovery warning"
     assert stale_warning_calls[0].args[1] in {"interface creation", "connect"}
-    assert any(
-        call.args and call.args[0] == ble_address
-        for call in mock_clear_gates.call_args_list
-    )
+    # Verify gate seam was invoked through the real helper (observable via warning)
+    gate_reset_calls = [
+        call
+        for call in mock_logger.warning.call_args_list
+        if call.args
+        and "Reset BLE connection state for %s" in str(call.args[0])
+        and len(call.args) >= 2
+        and call.args[1] == ble_address
+    ]
+    assert gate_reset_calls, "Expected BLE connection state reset warning"
 
 
 def test_connect_meshtastic_duplicate_suppression_clears_fork_gates(
@@ -244,9 +249,8 @@ def test_connect_meshtastic_duplicate_suppression_clears_fork_gates(
             new=_SuppressedBLEInterface,
         ),
         patch(
-            "mmrelay.meshtastic_utils._reset_ble_connection_gate_state",
-            return_value=True,
-        ) as mock_clear_gates,
+            "mmrelay.meshtastic_utils._ble_gate_reset_callable",
+        ) as mock_gate_callable,
         patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
         patch("mmrelay.meshtastic_utils.time.sleep"),
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,
@@ -254,10 +258,16 @@ def test_connect_meshtastic_duplicate_suppression_clears_fork_gates(
         result = connect_meshtastic(passed_config=config)
 
     assert result is None
-    assert any(
-        call.args and call.args[0] == ble_address
-        for call in mock_clear_gates.call_args_list
-    )
+    # Verify gate seam was invoked through the real helper (observable via warning)
+    gate_reset_calls = [
+        call
+        for call in mock_logger.warning.call_args_list
+        if call.args
+        and "Reset BLE connection state for %s" in str(call.args[0])
+        and len(call.args) >= 2
+        and call.args[1] == ble_address
+    ]
+    assert gate_reset_calls, "Expected BLE connection state reset warning"
     assert any(
         call.args and "Detected duplicate BLE connect suppression" in str(call.args[0])
         for call in mock_logger.warning.call_args_list
