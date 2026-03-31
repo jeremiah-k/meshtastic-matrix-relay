@@ -3283,6 +3283,7 @@ async def _send_matrix_message_with_retry(
     max_retries: int = 3,
     base_delay: float = 1.0,
     max_delay: float = 30.0,
+    transaction_id: str | None = None,
 ) -> Any:
     """
     Send a message to a Matrix room, retrying on transient failures with exponential backoff.
@@ -3296,12 +3297,15 @@ async def _send_matrix_message_with_retry(
         max_retries: Maximum number of retry attempts (default 3).
         base_delay: Initial backoff delay in seconds (used to compute exponential backoff).
         max_delay: Maximum backoff delay in seconds.
+        transaction_id: Optional Matrix transaction ID to reuse across retries for idempotent send semantics.
 
     Returns:
         The response object returned by the client's send call on success, `None` if sending was blocked due to E2EE being disabled for an encrypted room or if all retries are exhausted.
     """
     # Use cryptographically secure random for jitter
     rng = secrets.SystemRandom()
+    # Reuse one transaction ID across retries so timed-out attempts are idempotent.
+    stable_transaction_id = transaction_id or f"mmrelay-{secrets.token_hex(16)}"
 
     for attempt in range(max_retries + 1):
         try:
@@ -3334,6 +3338,7 @@ async def _send_matrix_message_with_retry(
                     room_id=room_id,
                     message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
                     content=content,
+                    tx_id=stable_transaction_id,
                     ignore_unverified_devices=True,
                 ),
                 timeout=MATRIX_ROOM_SEND_TIMEOUT,
