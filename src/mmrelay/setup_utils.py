@@ -891,17 +891,7 @@ def install_service() -> bool:
 
         if update_needed:
             logger.info("The service file needs to be updated: %s", reason)
-            try:
-                user_input = input("Do you want to update the service file? (y/n): ")
-                if not user_input.lower().startswith("y"):
-                    logger.info("Service update cancelled.")
-                    log_service_commands()
-                    return True
-            except (EOFError, KeyboardInterrupt):
-                logger.info("\nInput cancelled. Proceeding with default behavior.")
-                logger.info("Service update cancelled.")
-                log_service_commands()
-                return True
+            logger.info("Updating existing service file automatically.")
         else:
             logger.info("No update needed for the service file: %s", reason)
     else:
