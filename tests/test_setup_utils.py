@@ -1901,6 +1901,66 @@ WantedBy=multi-user.target
             # Verify is_service_active was called
             self.assertGreater(mock_is_service_active.call_count, 0)
 
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("os.path.getmtime")
+    def test_service_needs_update_missing_time_sync_after(
+        self, mock_getmtime, mock_read_service, mock_exists
+    ):
+        """Test service_needs_update flags update when After=time-sync.target is missing."""
+        mock_exists.return_value = True
+        mock_getmtime.side_effect = [1, 1]  # template_mtime, service_mtime
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+After=network-online.target
+Wants=network-online.target time-sync.target
+
+[Service]
+ExecStart=mmrelay --home %h/.mmrelay
+Environment=PATH=%h/.local/bin
+
+[Install]
+WantedBy=default.target
+"""
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/template/path",
+        ):
+            needs_update, reason = service_needs_update()
+
+        self.assertTrue(needs_update)
+        self.assertEqual(reason, "Service file is missing time-sync.target dependency")
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("os.path.getmtime")
+    def test_service_needs_update_missing_time_sync_wants(
+        self, mock_getmtime, mock_read_service, mock_exists
+    ):
+        """Test service_needs_update flags update when Wants=time-sync.target is missing."""
+        mock_exists.return_value = True
+        mock_getmtime.side_effect = [1, 1]  # template_mtime, service_mtime
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target
+
+[Service]
+ExecStart=mmrelay --home %h/.mmrelay
+Environment=PATH=%h/.local/bin
+
+[Install]
+WantedBy=default.target
+"""
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/template/path",
+        ):
+            needs_update, reason = service_needs_update()
+
+        self.assertTrue(needs_update)
+        self.assertEqual(reason, "Service file is missing time-sync.target dependency")
+
 
 if __name__ == "__main__":
     unittest.main()
