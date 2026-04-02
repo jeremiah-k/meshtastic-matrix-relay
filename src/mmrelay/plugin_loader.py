@@ -1447,6 +1447,9 @@ def _try_checkout_and_pull_ref(
         return False
 
 
+_SYS_MODULES_LOCK: threading.Lock = threading.Lock()
+
+
 def _exec_plugin_module(
     *,
     spec: importlib.machinery.ModuleSpec,
@@ -1460,19 +1463,25 @@ def _exec_plugin_module(
     Registering the module before execution ensures ``inspect.getfile()`` works
     for plugin classes during ``BasePlugin`` initialization (tier inference uses
     class file paths).
+
+    A module-level lock serialises the ``sys.modules`` manipulation so
+    concurrent plugin loading threads cannot leave the global namespace in an
+    inconsistent state.
     """
     if spec.loader is None:
         raise ImportError(f"No loader available for plugin module '{module_name}'")
-    previous_module = sys.modules.get(module_name)
-    sys.modules[module_name] = plugin_module
+    with _SYS_MODULES_LOCK:
+        previous_module = sys.modules.get(module_name)
+        sys.modules[module_name] = plugin_module
     try:
         with _temp_sys_path(plugin_dir):
             spec.loader.exec_module(plugin_module)
     except Exception:
-        if previous_module is None:
-            sys.modules.pop(module_name, None)
-        else:
-            sys.modules[module_name] = previous_module
+        with _SYS_MODULES_LOCK:
+            if previous_module is None:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = previous_module
         raise
 
 
