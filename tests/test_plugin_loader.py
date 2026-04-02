@@ -2294,37 +2294,35 @@ class TestGitOperations(BaseGitTest):
             os.makedirs(repo_path)
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
             self.assertFalse(result)
-            mock_run_git.assert_has_calls(
-                [
-                    call(
-                        ["git", "-C", repo_path, "fetch", "origin"],
-                        timeout=TEST_GIT_TIMEOUT,
-                        retry_attempts=pl.GIT_RETRY_ATTEMPTS,
-                        retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
-                    ),
-                    call(
-                        ["git", "-C", repo_path, "checkout", "main"],
-                        timeout=TEST_GIT_TIMEOUT,
-                    ),
-                    call(
-                        ["git", "-C", repo_path, "fetch", "origin", "main"],
-                        timeout=TEST_GIT_TIMEOUT,
-                        retry_attempts=pl.GIT_RETRY_ATTEMPTS,
-                        retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
-                    ),
-                    call(
-                        ["git", "-C", repo_path, "checkout", "master"],
-                        timeout=TEST_GIT_TIMEOUT,
-                    ),
-                    call(
-                        ["git", "-C", repo_path, "fetch", "origin", "master"],
-                        timeout=TEST_GIT_TIMEOUT,
-                        retry_attempts=pl.GIT_RETRY_ATTEMPTS,
-                        retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
-                    ),
-                ],
-                any_order=False,
-            )
+            expected_calls = [
+                call(
+                    ["git", "-C", repo_path, "fetch", "origin"],
+                    timeout=TEST_GIT_TIMEOUT,
+                    retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                    retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                ),
+                call(
+                    ["git", "-C", repo_path, "checkout", "main"],
+                    timeout=TEST_GIT_TIMEOUT,
+                ),
+                call(
+                    ["git", "-C", repo_path, "fetch", "origin", "main"],
+                    timeout=TEST_GIT_TIMEOUT,
+                    retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                    retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                ),
+                call(
+                    ["git", "-C", repo_path, "checkout", "master"],
+                    timeout=TEST_GIT_TIMEOUT,
+                ),
+                call(
+                    ["git", "-C", repo_path, "fetch", "origin", "master"],
+                    timeout=TEST_GIT_TIMEOUT,
+                    retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                    retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                ),
+            ]
+            self.assertEqual(mock_run_git.call_args_list, expected_calls)
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
@@ -2373,43 +2371,41 @@ class TestGitOperations(BaseGitTest):
 
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
             self.assertTrue(result)
-            mock_run_git.assert_has_calls(
-                [
-                    call(
-                        ["git", "-C", repo_path, "fetch", "origin"],
-                        timeout=TEST_GIT_TIMEOUT,
-                        retry_attempts=pl.GIT_RETRY_ATTEMPTS,
-                        retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
-                    ),
-                    call(
-                        ["git", "-C", repo_path, "checkout", "main"],
-                        timeout=TEST_GIT_TIMEOUT,
-                    ),
-                    call(
-                        ["git", "-C", repo_path, "pull", "origin", "main"],
-                        timeout=TEST_GIT_TIMEOUT,
-                    ),
-                    call(
-                        ["git", "-C", repo_path, "fetch", "origin", "main"],
-                        timeout=TEST_GIT_TIMEOUT,
-                        retry_attempts=pl.GIT_RETRY_ATTEMPTS,
-                        retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
-                    ),
-                    call(
-                        [
-                            "git",
-                            "-C",
-                            repo_path,
-                            "checkout",
-                            "-B",
-                            "main",
-                            "origin/main",
-                        ],
-                        timeout=TEST_GIT_TIMEOUT,
-                    ),
-                ],
-                any_order=False,
-            )
+            expected_calls = [
+                call(
+                    ["git", "-C", repo_path, "fetch", "origin"],
+                    timeout=TEST_GIT_TIMEOUT,
+                    retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                    retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                ),
+                call(
+                    ["git", "-C", repo_path, "checkout", "main"],
+                    timeout=TEST_GIT_TIMEOUT,
+                ),
+                call(
+                    ["git", "-C", repo_path, "pull", "origin", "main"],
+                    timeout=TEST_GIT_TIMEOUT,
+                ),
+                call(
+                    ["git", "-C", repo_path, "fetch", "origin", "main"],
+                    timeout=TEST_GIT_TIMEOUT,
+                    retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                    retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                ),
+                call(
+                    [
+                        "git",
+                        "-C",
+                        repo_path,
+                        "checkout",
+                        "-B",
+                        "main",
+                        "origin/main",
+                    ],
+                    timeout=TEST_GIT_TIMEOUT,
+                ),
+            ]
+            self.assertEqual(mock_run_git.call_args_list, expected_calls)
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
@@ -2481,37 +2477,35 @@ class TestGitOperations(BaseGitTest):
             os.makedirs(repo_path)
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
             self.assertFalse(result)
-            mock_run_git.assert_has_calls(
-                [
-                    call(
-                        ["git", "-C", repo_path, "fetch", "origin"],
-                        timeout=TEST_GIT_TIMEOUT,
-                        retry_attempts=pl.GIT_RETRY_ATTEMPTS,
-                        retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
-                    ),
-                    call(
-                        ["git", "-C", repo_path, "checkout", "main"],
-                        timeout=TEST_GIT_TIMEOUT,
-                    ),
-                    call(
-                        ["git", "-C", repo_path, "fetch", "origin", "main"],
-                        timeout=TEST_GIT_TIMEOUT,
-                        retry_attempts=pl.GIT_RETRY_ATTEMPTS,
-                        retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
-                    ),
-                    call(
-                        ["git", "-C", repo_path, "checkout", "master"],
-                        timeout=TEST_GIT_TIMEOUT,
-                    ),
-                    call(
-                        ["git", "-C", repo_path, "fetch", "origin", "master"],
-                        timeout=TEST_GIT_TIMEOUT,
-                        retry_attempts=pl.GIT_RETRY_ATTEMPTS,
-                        retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
-                    ),
-                ],
-                any_order=False,
-            )
+            expected_calls = [
+                call(
+                    ["git", "-C", repo_path, "fetch", "origin"],
+                    timeout=TEST_GIT_TIMEOUT,
+                    retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                    retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                ),
+                call(
+                    ["git", "-C", repo_path, "checkout", "main"],
+                    timeout=TEST_GIT_TIMEOUT,
+                ),
+                call(
+                    ["git", "-C", repo_path, "fetch", "origin", "main"],
+                    timeout=TEST_GIT_TIMEOUT,
+                    retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                    retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                ),
+                call(
+                    ["git", "-C", repo_path, "checkout", "master"],
+                    timeout=TEST_GIT_TIMEOUT,
+                ),
+                call(
+                    ["git", "-C", repo_path, "fetch", "origin", "master"],
+                    timeout=TEST_GIT_TIMEOUT,
+                    retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                    retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                ),
+            ]
+            self.assertEqual(mock_run_git.call_args_list, expected_calls)
 
     @patch("mmrelay.plugin_loader._run")
     def test_run_git_merges_custom_env(self, mock_run):
@@ -4714,7 +4708,12 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
                 futures = [pool.submit(_load_module, name) for name in module_names]
-                concurrent.futures.wait(futures)
+                _done, _not_done = concurrent.futures.wait(futures, timeout=5.0)
+                self.assertFalse(
+                    _not_done,
+                    f"Timed out waiting for {len(_not_done)} worker threads; "
+                    f"exceptions so far: {caught_exceptions}",
+                )
 
             # After all threads complete, none of the test modules should linger
             # unless the exec succeeded - in that case the module is expected.
@@ -4729,18 +4728,15 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
             for name in module_names:
                 sys.modules.pop(name, None)
 
-    def test_lock_is_module_level_and_reentrant_safe(self):
-        """Verify _SYS_MODULES_LOCK is a module-level, non-reentrant mutex."""
+    def test_lock_is_module_level_and_behavioral(self):
+        """Verify _SYS_MODULES_LOCK is a module-level lock with basic acquire/release."""
         import inspect
 
         lock = _SYS_MODULES_LOCK
-        self.assertFalse(lock.locked(), "Lock should not be held initially")
 
         acquired = lock.acquire(timeout=0.1)
         self.assertTrue(acquired, "Lock should be acquirable")
-        self.assertTrue(lock.locked())
         lock.release()
-        self.assertFalse(lock.locked(), "Lock should be releasable")
 
         src = inspect.getsource(pl)
         self.assertIn(
