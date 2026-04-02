@@ -2336,6 +2336,43 @@ class TestGitOperations(BaseGitTest):
 
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
             self.assertTrue(result)
+            mock_run_git.assert_has_calls(
+                [
+                    call(
+                        ["git", "-C", repo_path, "fetch", "origin"],
+                        timeout=TEST_GIT_TIMEOUT,
+                        retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                        retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                    ),
+                    call(
+                        ["git", "-C", repo_path, "checkout", "main"],
+                        timeout=TEST_GIT_TIMEOUT,
+                    ),
+                    call(
+                        ["git", "-C", repo_path, "pull", "origin", "main"],
+                        timeout=TEST_GIT_TIMEOUT,
+                    ),
+                    call(
+                        ["git", "-C", repo_path, "fetch", "origin", "main"],
+                        timeout=TEST_GIT_TIMEOUT,
+                        retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                        retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                    ),
+                    call(
+                        [
+                            "git",
+                            "-C",
+                            repo_path,
+                            "checkout",
+                            "-B",
+                            "main",
+                            "origin/main",
+                        ],
+                        timeout=TEST_GIT_TIMEOUT,
+                    ),
+                ],
+                any_order=False,
+            )
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")

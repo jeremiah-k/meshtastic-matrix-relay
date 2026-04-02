@@ -1461,12 +1461,13 @@ def _exec_plugin_module(
     for plugin classes during ``BasePlugin`` initialization (tier inference uses
     class file paths).
     """
+    if spec.loader is None:
+        raise ImportError(f"No loader available for plugin module '{module_name}'")
     previous_module = sys.modules.get(module_name)
     sys.modules[module_name] = plugin_module
     try:
         with _temp_sys_path(plugin_dir):
-            if spec.loader:
-                spec.loader.exec_module(plugin_module)
+            spec.loader.exec_module(plugin_module)
     except Exception:
         if previous_module is None:
             sys.modules.pop(module_name, None)
