@@ -1650,7 +1650,7 @@ WantedBy=multi-user.target
         mock_loginctl_available,
         mock_service_enabled,
         mock_service_active,
-        _mock_run,
+        mock_run,
     ):
         """EOF at update prompt should proceed with service-file update."""
         mock_get_path.return_value = Path(
@@ -1671,8 +1671,9 @@ WantedBy=multi-user.target
             mock_create.return_value = True
             result = install_service()
 
-        self.assertTrue(result)
+        assert result
         mock_create.assert_called_once()
+        mock_run.assert_not_called()
         mock_logger.info.assert_any_call(
             "\nInput cancelled. Proceeding with service file update."
         )
@@ -1693,7 +1694,7 @@ WantedBy=multi-user.target
         mock_loginctl_available,
         mock_service_enabled,
         mock_service_active,
-        _mock_run,
+        mock_run,
     ):
         """Explicit 'n' at update prompt should skip rewriting service file."""
         mock_get_path.return_value = Path(
@@ -1713,8 +1714,9 @@ WantedBy=multi-user.target
         ):
             result = install_service()
 
-        self.assertTrue(result)
+        assert result
         mock_create.assert_not_called()
+        mock_run.assert_not_called()
         mock_logger.info.assert_any_call(
             "Skipping service file update at user request."
         )

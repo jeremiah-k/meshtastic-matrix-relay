@@ -4247,15 +4247,19 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     if is_health_probe_response:
         if rx_time > 0:
             observed_skew = time.time() - rx_time
+            clamped_observed_skew = max(
+                -_RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS,
+                min(_RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS, observed_skew),
+            )
             calibrated_now = False
             with _relay_rx_time_clock_skew_lock:
                 if _relay_rx_time_clock_skew_secs is None:
-                    _relay_rx_time_clock_skew_secs = observed_skew
+                    _relay_rx_time_clock_skew_secs = clamped_observed_skew
                     calibrated_now = True
             if calibrated_now:
                 logger.debug(
                     "[HEALTH_CHECK] Calibrated rxTime clock skew to %.3f seconds",
-                    observed_skew,
+                    clamped_observed_skew,
                 )
 
         decoded = packet.get("decoded")

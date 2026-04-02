@@ -1953,10 +1953,38 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         mock_plugins.assert_not_called()
         assert (mu._relay_rx_time_clock_skew_secs or 0.0) == pytest.approx(5_000.0)
         log_output = "\n".join(cm.output)
-        self.assertIn(
-            "[HEALTH_CHECK] Metadata probe response requestId=4242", log_output
+        assert "[HEALTH_CHECK] Metadata probe response requestId=4242" in log_output
+        assert "port=ADMIN_APP" in log_output
+
+    def test_on_meshtastic_message_health_probe_calibration_clamps_extreme_skew(self):
+        """Health-probe calibration should clamp implausibly large skew values."""
+        import mmrelay.meshtastic_utils as mu
+
+        packet = {
+            "from": TEST_PACKET_FROM_ID,
+            "to": TEST_PACKET_FROM_ID,
+            "decoded": {"portnum": "ADMIN_APP", "requestId": 4343},
+            "channel": 0,
+            "id": 33333,
+            "rxTime": 1.0,
+        }
+        mock_interface = MagicMock()
+        mock_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
+        mu._relay_rx_time_clock_skew_secs = None
+
+        with (
+            patch.dict(
+                "mmrelay.meshtastic_utils._health_probe_request_deadlines",
+                {4343: 9999999999.0},
+                clear=True,
+            ),
+            patch("mmrelay.meshtastic_utils.time.time", return_value=200_000.0),
+        ):
+            on_meshtastic_message(packet, mock_interface)
+
+        assert (mu._relay_rx_time_clock_skew_secs or 0.0) == pytest.approx(
+            mu._RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS
         )
-        self.assertIn("port=ADMIN_APP", log_output)
 
     def test_on_meshtastic_message_filters_old_packets_using_calibrated_skew(self):
         """Old packet filtering should use the calibrated rxTime skew."""
