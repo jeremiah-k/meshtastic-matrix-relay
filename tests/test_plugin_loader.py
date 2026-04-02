@@ -25,6 +25,9 @@ from unittest.mock import ANY, MagicMock, call, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+# Capture test file path at module level for use in tests
+TEST_FILE_PATH = os.path.abspath(__file__)
+
 import mmrelay.plugin_loader as pl
 from mmrelay.constants.plugins import DEFAULT_ALLOWED_COMMUNITY_HOSTS, DEFAULT_BRANCHES
 from mmrelay.plugin_loader import (
@@ -4607,13 +4610,19 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
         import importlib.machinery
 
         module_names = [f"_mmrelay_test_mod_{i}" for i in range(8)]
+        caught_exceptions = []
+
+        # Create a minimal loader class that doesn't reference __file__
+        class MinimalLoader:
+            def exec_module(self, module):
+                # Minimal implementation that just sets basic module attributes
+                module.__dict__.setdefault("__builtins__", __builtins__)
 
         def _load_module(mod_name: str) -> str:
             """Simulate loading a plugin module under a unique name."""
             spec = importlib.machinery.ModuleSpec(mod_name, loader=None)
-            # Create a minimal real loader that does nothing
-            loader = importlib.machinery.SourceFileLoader(mod_name, __file__)
-            spec.loader = loader
+            # Use our minimal loader instead of SourceFileLoader
+            spec.loader = MinimalLoader()
             module = ModuleType(mod_name)
 
             try:
@@ -4621,13 +4630,13 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
                     spec=spec,
                     plugin_module=module,
                     module_name=mod_name,
-                    plugin_dir=os.path.dirname(__file__),
+                    plugin_dir=os.path.dirname(TEST_FILE_PATH),
                 )
-            except Exception:
+            except Exception as e:
                 # The loader may raise; that is fine, we test namespace cleanup.
                 # The important assertion is that no RuntimeError from
                 # sys.modules corruption is raised.
-                pass  # nosec B110
+                caught_exceptions.append(e)
             return mod_name
 
         # Clean up any leftover entries from previous runs
@@ -4640,10 +4649,14 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
                 concurrent.futures.wait(futures)
 
             # After all threads complete, none of the test modules should linger
-            # unless the exec succeeded – in that case the module is expected.
+            # unless the exec succeeded - in that case the module is expected.
             # Verify no stale partial state: the lock should have serialised
             # all sys.modules mutations.
-            self.assertTrue(True)  # No race-induced RuntimeError reached
+            self.assertEqual(
+                len(caught_exceptions),
+                0,
+                f"Exceptions during concurrent load: {caught_exceptions}",
+            )
         finally:
             for name in module_names:
                 sys.modules.pop(name, None)

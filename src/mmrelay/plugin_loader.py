@@ -1473,16 +1473,15 @@ def _exec_plugin_module(
     with _SYS_MODULES_LOCK:
         previous_module = sys.modules.get(module_name)
         sys.modules[module_name] = plugin_module
-    try:
-        with _temp_sys_path(plugin_dir):
-            spec.loader.exec_module(plugin_module)
-    except Exception:
-        with _SYS_MODULES_LOCK:
+        try:
+            with _temp_sys_path(plugin_dir):
+                spec.loader.exec_module(plugin_module)
+        except Exception:
             if previous_module is None:
                 sys.modules.pop(module_name, None)
             else:
                 sys.modules[module_name] = previous_module
-        raise
+            raise
 
 
 def _try_fetch_and_checkout_tag(repo_path: str, ref_value: str, repo_name: str) -> bool:
