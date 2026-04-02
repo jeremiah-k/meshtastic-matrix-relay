@@ -268,6 +268,38 @@ class TestMessageQueue(unittest.TestCase):
         self.assertTrue(result)
         self.assertIsNotNone(self.queue._executor)
 
+    @patch("mmrelay.message_queue.asyncio.get_running_loop", side_effect=RuntimeError())
+    def test_start_reuses_existing_executor(self, _mock_get_running_loop):
+        existing_executor = MagicMock()
+        self.queue._executor = existing_executor
+        self.queue._running = False
+        result = self.queue.start(message_delay=1.0)
+        self.assertTrue(result)
+        self.assertIs(self.queue._executor, existing_executor)
+
+    def test_stop_finalize_warns_when_stop_failed_and_recovery_impossible(self):
+        self.queue._running = True
+        self.queue._stop_failed = True
+        self.queue._processor_task = None
+        self.queue._executor = None
+
+        with (
+            patch.object(
+                MessageQueue,
+                "_clear_failed_stop_state_if_recovered_locked",
+                return_value=False,
+            ),
+            patch("mmrelay.message_queue.logger") as mock_logger,
+        ):
+            self.queue.stop()
+
+        self.assertTrue(
+            any(
+                "failed-stop state remains set" in str(c)
+                for c in mock_logger.warning.call_args_list
+            )
+        )
+
     def test_stop_timeout_blocks_restart_until_cleanup_completes(self):
         """Timed-out stop should auto-recover once queue resources are fully cleaned up."""
         self.queue._running = True

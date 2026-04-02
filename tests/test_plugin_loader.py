@@ -514,6 +514,83 @@ class Plugin:
         self.assertEqual(len(plugins), 1)
         self.assertEqual(plugins[0].plugin_name, "auto_plugin")
 
+    def test_load_plugins_from_directory_auto_install_retry_no_plugin_class(self):
+        for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
+            os.environ.pop(var, None)
+        plugin_content = "import missingdep_noclass\n"
+        plugin_file = os.path.join(self.custom_dir, "auto_noclass.py")
+        with open(plugin_file, "w", encoding="utf-8") as handle:
+            handle.write(plugin_content)
+
+        def fake_run(_cmd, *_args, **_kwargs):
+            sys.modules["missingdep_noclass"] = ModuleType("missingdep_noclass")
+            return subprocess.CompletedProcess(args=_cmd, returncode=0)
+
+        try:
+            with (
+                patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+                patch("mmrelay.plugin_loader.logger") as mock_logger,
+            ):
+                plugins = load_plugins_from_directory(self.custom_dir)
+            self.assertEqual(len(plugins), 0)
+            mock_logger.warning.assert_any_call(
+                f"{plugin_file} does not define a Plugin class."
+            )
+        finally:
+            sys.modules.pop("missingdep_noclass", None)
+
+    def test_load_plugins_from_directory_auto_install_retry_module_not_found(self):
+        for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
+            os.environ.pop(var, None)
+        plugin_content = "import missingdep_stillgone\n"
+        plugin_file = os.path.join(self.custom_dir, "auto_stillgone.py")
+        with open(plugin_file, "w", encoding="utf-8") as handle:
+            handle.write(plugin_content)
+
+        def fake_run(_cmd, *_args, **_kwargs):
+            return subprocess.CompletedProcess(args=_cmd, returncode=0)
+
+        with (
+            patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+            patch("mmrelay.plugin_loader.logger") as mock_logger,
+        ):
+            plugins = load_plugins_from_directory(self.custom_dir)
+        self.assertEqual(len(plugins), 0)
+        self.assertTrue(
+            any(
+                "still not available after installation" in str(c)
+                for c in mock_logger.exception.call_args_list
+            )
+        )
+
+    def test_load_plugins_from_directory_auto_install_retry_generic_exception(self):
+        for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
+            os.environ.pop(var, None)
+        plugin_content = "import missingdep_generic\nraise ValueError('test error')\n"
+        plugin_file = os.path.join(self.custom_dir, "auto_generic.py")
+        with open(plugin_file, "w", encoding="utf-8") as handle:
+            handle.write(plugin_content)
+
+        def fake_run(_cmd, *_args, **_kwargs):
+            sys.modules["missingdep_generic"] = ModuleType("missingdep_generic")
+            return subprocess.CompletedProcess(args=_cmd, returncode=0)
+
+        try:
+            with (
+                patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+                patch("mmrelay.plugin_loader.logger") as mock_logger,
+            ):
+                plugins = load_plugins_from_directory(self.custom_dir)
+            self.assertEqual(len(plugins), 0)
+            self.assertTrue(
+                any(
+                    "Error loading plugin" in str(c)
+                    for c in mock_logger.exception.call_args_list
+                )
+            )
+        finally:
+            sys.modules.pop("missingdep_generic", None)
+
     def test_load_plugins_from_directory_syntax_error(self):
         """
         Verify that loading plugins from a directory containing a Python file with a syntax error returns an empty list without raising exceptions.
@@ -2506,6 +2583,16 @@ class TestGitOperations(BaseGitTest):
                 ),
             ]
             self.assertEqual(mock_run_git.call_args_list, expected_calls)
+
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_try_checkout_and_pull_ref_tag_failure_returns_false_no_force_sync(
+        self, mock_run_git
+    ):
+        mock_run_git.side_effect = subprocess.CalledProcessError(1, "git checkout")
+        result = pl._try_checkout_and_pull_ref(
+            "/tmp/repo", "v1.0.0", "test-repo", ref_type="tag"
+        )
+        self.assertFalse(result)
 
     @patch("mmrelay.plugin_loader._run")
     def test_run_git_merges_custom_env(self, mock_run):
@@ -4742,6 +4829,71 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
         self.assertIn(
             "_SYS_MODULES_LOCK", src, "Lock name should appear in module source"
         )
+
+    def test_exec_plugin_module_raises_import_error_when_no_loader(self):
+        import importlib.machinery
+
+        spec = importlib.machinery.ModuleSpec("_test_no_loader", loader=None)
+        module = ModuleType("_test_no_loader")
+        with self.assertRaises(ImportError) as ctx:
+            _exec_plugin_module(
+                spec=spec,
+                plugin_module=module,
+                module_name="_test_no_loader",
+                plugin_dir="/tmp",
+            )
+        self.assertIn("No loader available", str(ctx.exception))
+
+    def test_exec_plugin_module_rollback_removes_sys_modules_on_exception(self):
+        import importlib.machinery
+
+        mod_name = "_test_rollback_remove_" + str(int(time.time() * 1000))
+        sys.modules.pop(mod_name, None)
+
+        class FailingLoader:
+            def exec_module(self, module):
+                raise RuntimeError("deliberate failure")
+
+        spec = importlib.machinery.ModuleSpec(mod_name, loader=None)
+        spec.loader = FailingLoader()
+        module = ModuleType(mod_name)
+
+        with self.assertRaises(RuntimeError):
+            _exec_plugin_module(
+                spec=spec,
+                plugin_module=module,
+                module_name=mod_name,
+                plugin_dir="/tmp",
+            )
+        self.assertNotIn(mod_name, sys.modules)
+
+    def test_exec_plugin_module_rollback_restores_previous_module(self):
+        import importlib.machinery
+
+        mod_name = "_test_rollback_restore_" + str(int(time.time() * 1000))
+        previous = ModuleType(mod_name)
+        previous._marker = "previous"
+        sys.modules[mod_name] = previous
+
+        class FailingLoader:
+            def exec_module(self, module):
+                raise RuntimeError("deliberate failure")
+
+        spec = importlib.machinery.ModuleSpec(mod_name, loader=None)
+        spec.loader = FailingLoader()
+        module = ModuleType(mod_name)
+
+        try:
+            with self.assertRaises(RuntimeError):
+                _exec_plugin_module(
+                    spec=spec,
+                    plugin_module=module,
+                    module_name=mod_name,
+                    plugin_dir="/tmp",
+                )
+            self.assertIs(sys.modules.get(mod_name), previous)
+        finally:
+            sys.modules.pop(mod_name, None)
 
 
 if __name__ == "__main__":
