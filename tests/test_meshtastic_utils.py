@@ -2024,8 +2024,8 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         assert "[HEALTH_CHECK] Metadata probe response requestId=4242" in log_output
         assert "port=ADMIN_APP" in log_output
 
-    def test_on_meshtastic_message_health_probe_calibration_clamps_extreme_skew(self):
-        """Health-probe calibration should clamp implausibly large skew values."""
+    def test_on_meshtastic_message_health_probe_calibration_ignores_extreme_skew(self):
+        """Health-probe calibration should ignore implausibly large skew values."""
         import mmrelay.meshtastic_utils as mu
 
         packet = {
@@ -2050,9 +2050,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         ):
             on_meshtastic_message(packet, mock_interface)
 
-        assert (mu._relay_rx_time_clock_skew_secs or 0.0) == pytest.approx(
-            mu._RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS
-        )
+        assert mu._relay_rx_time_clock_skew_secs is None
 
     def test_on_meshtastic_message_filters_old_packets_using_calibrated_skew(self):
         """Old packet filtering should use the calibrated rxTime skew."""
@@ -2187,7 +2185,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         mock_submit_coro.assert_not_called()
         log_calls = [str(call) for call in mock_logger.debug.call_args_list]
         assert any(
-            "Draining startup packet during initial connection window" in c
+            "Dropping inbound packet during startup drain window" in c
             for c in log_calls
         )
 

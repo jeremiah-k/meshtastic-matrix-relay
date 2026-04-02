@@ -4262,19 +4262,22 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     if is_health_probe_response:
         if rx_time > 0:
             observed_skew = time.time() - rx_time
-            clamped_observed_skew = max(
-                -_RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS,
-                min(_RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS, observed_skew),
-            )
             calibrated_now = False
-            with _relay_rx_time_clock_skew_lock:
-                if _relay_rx_time_clock_skew_secs is None:
-                    _relay_rx_time_clock_skew_secs = clamped_observed_skew
-                    calibrated_now = True
+            if abs(observed_skew) > _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS:
+                logger.debug(
+                    "[HEALTH_CHECK] Skipping rxTime clock skew calibration %.3f seconds outside startup limit %.3f",
+                    observed_skew,
+                    _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS,
+                )
+            else:
+                with _relay_rx_time_clock_skew_lock:
+                    if _relay_rx_time_clock_skew_secs is None:
+                        _relay_rx_time_clock_skew_secs = observed_skew
+                        calibrated_now = True
             if calibrated_now:
                 logger.debug(
                     "[HEALTH_CHECK] Calibrated rxTime clock skew to %.3f seconds",
-                    clamped_observed_skew,
+                    observed_skew,
                 )
 
         decoded = packet.get("decoded")
@@ -4296,7 +4299,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         remaining_drain_secs = startup_drain_deadline - now_monotonic
         if remaining_drain_secs > 0:
             logger.debug(
-                "Draining startup packet during initial connection window (remaining=%.3f seconds)",
+                "Dropping inbound packet during startup drain window (remaining=%.3f seconds)",
                 remaining_drain_secs,
             )
             return
