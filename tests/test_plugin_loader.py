@@ -11,6 +11,7 @@ Tests the plugin discovery, loading, and management functionality including:
 - Plugin priority sorting and startup
 """
 
+import hashlib
 import importlib
 import os
 import shutil
@@ -320,6 +321,52 @@ class Plugin:
         self.assertEqual(plugins[0].plugin_name, "test_plugin")
         self.assertEqual(plugins[0].priority, 10)
 
+        module_name = (
+            "plugin_"
+            + hashlib.sha256(plugin_file.encode(pl.DEFAULT_TEXT_ENCODING)).hexdigest()
+        )
+        self.assertIn(module_name, sys.modules)
+        sys.modules.pop(module_name, None)
+
+    def test_load_plugins_from_directory_base_plugin_infers_custom_tier(self):
+        """Dynamically loaded BasePlugin should infer custom tier from filesystem."""
+        plugin_content = """
+from mmrelay.plugins.base_plugin import BasePlugin
+
+class Plugin(BasePlugin):
+    plugin_name = "test_plugin"
+
+    async def handle_meshtastic_message(self, packet, formatted_message, longname, meshnet_name):
+        return False
+
+    async def handle_room_message(self, room, event, full_message):
+        return False
+"""
+        plugin_file = os.path.join(self.custom_dir, "tier_plugin.py")
+        with open(plugin_file, "w", encoding="utf-8") as handle:
+            handle.write(plugin_content)
+
+        module_name = (
+            "plugin_"
+            + hashlib.sha256(plugin_file.encode(pl.DEFAULT_TEXT_ENCODING)).hexdigest()
+        )
+        sys.modules.pop(module_name, None)
+
+        legacy_config = {"plugins": {"test_plugin": {"active": True}}}
+        with (
+            patch("mmrelay.plugins.base_plugin.config", legacy_config),
+            patch(
+                "mmrelay.plugin_loader.get_custom_plugin_dirs",
+                return_value=[self.custom_dir],
+            ),
+            patch("mmrelay.plugin_loader.get_community_plugin_dirs", return_value=[]),
+        ):
+            plugins = load_plugins_from_directory(self.custom_dir)
+
+        self.assertEqual(len(plugins), 1)
+        self.assertEqual(getattr(plugins[0], "plugin_type", None), "custom")
+        sys.modules.pop(module_name, None)
+
     def test_load_plugins_from_directory_no_plugin_class(self):
         """
         Verify that loading plugins from a directory containing a Python file without a Plugin class returns an empty list.
@@ -478,8 +525,14 @@ class Plugin:
         with open(plugin_file, "w") as f:
             f.write(plugin_content)
 
+        module_name = (
+            "plugin_"
+            + hashlib.sha256(plugin_file.encode(pl.DEFAULT_TEXT_ENCODING)).hexdigest()
+        )
+        sys.modules.pop(module_name, None)
         plugins = load_plugins_from_directory(self.custom_dir)
         self.assertEqual(plugins, [])
+        self.assertNotIn(module_name, sys.modules)
 
     def test_load_plugins_community_missing_repository_logs_errors(self):
         """Missing repository URL should log errors in community plugin processing."""
@@ -2220,7 +2273,13 @@ class TestGitOperations(BaseGitTest):
         mock_run_git.side_effect = [
             None,  # fetch
             subprocess.CalledProcessError(1, "git checkout"),  # checkout main fails
+            subprocess.CalledProcessError(
+                1, "git fetch"
+            ),  # force-sync fetch main fails
             subprocess.CalledProcessError(1, "git checkout"),  # checkout master fails
+            subprocess.CalledProcessError(
+                1, "git fetch"
+            ),  # force-sync fetch master fails
         ]
         repo_url = "https://github.com/test/plugin.git"
         ref = {"type": "branch", "value": "main"}
@@ -2250,6 +2309,30 @@ class TestGitOperations(BaseGitTest):
         with tempfile.TemporaryDirectory() as plugins_dir:
             repo_path = os.path.join(plugins_dir, "plugin")
             os.makedirs(repo_path)  # It's an existing repo
+
+            result = clone_or_update_repo(repo_url, ref, plugins_dir)
+            self.assertTrue(result)
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_clone_or_update_repo_branch_pull_failure_force_syncs(
+        self, mock_run_git, _mock_is_allowed
+    ):
+        """Branch pull failures should fallback to a force-sync against origin."""
+        mock_run_git.side_effect = [
+            None,  # initial fetch in update flow
+            None,  # checkout branch succeeds
+            subprocess.CalledProcessError(1, "git pull"),  # pull fails
+            None,  # fetch origin branch for force sync succeeds
+            None,  # checkout -B branch origin/branch succeeds
+        ]
+
+        repo_url = "https://github.com/test/plugin.git"
+        ref = {"type": "branch", "value": "main"}
+
+        with tempfile.TemporaryDirectory() as plugins_dir:
+            repo_path = os.path.join(plugins_dir, "plugin")
+            os.makedirs(repo_path)
 
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
             self.assertTrue(result)
@@ -2309,7 +2392,13 @@ class TestGitOperations(BaseGitTest):
         mock_run_git.side_effect = [
             None,  # fetch
             subprocess.CalledProcessError(1, "git checkout"),  # checkout main
+            subprocess.CalledProcessError(
+                1, "git fetch"
+            ),  # force-sync fetch main fails
             subprocess.CalledProcessError(1, "git checkout"),  # checkout master
+            subprocess.CalledProcessError(
+                1, "git fetch"
+            ),  # force-sync fetch master fails
         ]
         repo_url = "https://github.com/test/plugin.git"
         ref = {"type": "branch", "value": "main"}
