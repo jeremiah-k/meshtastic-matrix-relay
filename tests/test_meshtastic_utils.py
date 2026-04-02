@@ -14,6 +14,7 @@ import asyncio
 import contextlib
 import os
 import sys
+import time
 import unittest
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from types import SimpleNamespace
@@ -179,6 +180,9 @@ class TestMeshtasticUtils(unittest.TestCase):
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.shutting_down = False
         mmrelay.meshtastic_utils.reconnect_task = None
+        mmrelay.meshtastic_utils._relay_connection_started_monotonic_secs = (
+            time.monotonic()
+        )
         mmrelay.meshtastic_utils._relay_rx_time_clock_skew_secs = None
         iface = mmrelay.meshtastic_utils.meshtastic_iface
         if iface is not None:
@@ -1999,6 +2003,70 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
         log_calls = [str(call) for call in mock_logger.debug.call_args_list]
         assert any("Ignoring old packet" in call for call in log_calls)
+
+    def test_on_meshtastic_message_bootstraps_prestart_skew_during_startup_window(self):
+        """Startup packets before relay start can bootstrap skew once, then are dropped."""
+        import mmrelay.meshtastic_utils as mu
+
+        mu.RELAY_START_TIME = 100_000.0
+        mu._relay_connection_started_monotonic_secs = 1_000.0
+        mu._relay_rx_time_clock_skew_secs = None
+        packet = {
+            "from": TEST_PACKET_FROM_ID,
+            "to": TEST_PACKET_FROM_ID,
+            "decoded": {"text": "startup packet", "portnum": TEXT_MESSAGE_APP},
+            "channel": 0,
+            "id": TEST_PACKET_ID,
+            "rxTime": 94_900.0,
+        }
+        mock_interface = MagicMock()
+        mock_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
+
+        with (
+            patch("mmrelay.meshtastic_utils.time.time", return_value=100_000.0),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_005.0),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            on_meshtastic_message(packet, mock_interface)
+
+        assert (mu._relay_rx_time_clock_skew_secs or 0.0) == pytest.approx(5_100.0)
+        log_calls = [str(call) for call in mock_logger.debug.call_args_list]
+        assert any(
+            "Calibrated rxTime clock skew from pre-start packet" in c for c in log_calls
+        )
+        assert any("Ignoring old packet with rxTime" in c for c in log_calls)
+
+    def test_on_meshtastic_message_does_not_bootstrap_prestart_skew_after_window(self):
+        """Pre-start packets should not bootstrap skew once startup window has passed."""
+        import mmrelay.meshtastic_utils as mu
+
+        mu.RELAY_START_TIME = 100_000.0
+        mu._relay_connection_started_monotonic_secs = 1_000.0
+        mu._relay_rx_time_clock_skew_secs = None
+        packet = {
+            "from": TEST_PACKET_FROM_ID,
+            "to": TEST_PACKET_FROM_ID,
+            "decoded": {"text": "stale packet", "portnum": TEXT_MESSAGE_APP},
+            "channel": 0,
+            "id": TEST_PACKET_ID,
+            "rxTime": 94_900.0,
+        }
+        mock_interface = MagicMock()
+        mock_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
+
+        with (
+            patch("mmrelay.meshtastic_utils.time.time", return_value=100_000.0),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_900.0),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            on_meshtastic_message(packet, mock_interface)
+
+        assert mu._relay_rx_time_clock_skew_secs is None
+        log_calls = [str(call) for call in mock_logger.debug.call_args_list]
+        assert any("Ignoring old packet" in call for call in log_calls)
+        assert not any(
+            "Calibrated rxTime clock skew from pre-start packet" in c for c in log_calls
+        )
 
     def test_is_health_probe_response_packet_handles_zero_sender_id(self):
         """Sender 0 should not match a non-zero local node id."""
