@@ -3914,14 +3914,7 @@ def connect_meshtastic(
                         RELAY_START_TIME = time.time()
                         _relay_connection_started_monotonic_secs = time.monotonic()
                         _relay_rx_time_clock_skew_secs = None
-                        if not _startup_packet_drain_applied:
-                            _relay_startup_drain_deadline_monotonic_secs = (
-                                _relay_connection_started_monotonic_secs
-                                + _STARTUP_PACKET_DRAIN_SECS
-                            )
-                            _startup_packet_drain_applied = True
-                        else:
-                            _relay_startup_drain_deadline_monotonic_secs = None
+                        _relay_startup_drain_deadline_monotonic_secs = None
 
                 # CRITICAL VALIDATION: Verify we're connected to the correct BLE device.
                 # This prevents connection to wrong device due to substring matching
@@ -3998,6 +3991,19 @@ def connect_meshtastic(
                     )
                     subscribed_to_connection_lost = True
                     logger.debug("Subscribed to meshtastic.connection.lost")
+
+                # Arm startup-drain only after connection setup fully succeeds.
+                with _relay_rx_time_clock_skew_lock:
+                    RELAY_START_TIME = time.time()
+                    _relay_connection_started_monotonic_secs = time.monotonic()
+                    if not _startup_packet_drain_applied:
+                        _relay_startup_drain_deadline_monotonic_secs = (
+                            _relay_connection_started_monotonic_secs
+                            + _STARTUP_PACKET_DRAIN_SECS
+                        )
+                        _startup_packet_drain_applied = True
+                    else:
+                        _relay_startup_drain_deadline_monotonic_secs = None
 
         except (ConnectionRefusedError, MemoryError, BleExecutorDegradedError):
             # Handle critical errors that should not be retried

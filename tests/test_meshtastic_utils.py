@@ -837,6 +837,62 @@ class TestMeshtasticUtils(unittest.TestCase):
         assert mu._startup_packet_drain_applied is True
         assert mu._relay_startup_drain_deadline_monotonic_secs is None
 
+    @patch("mmrelay.meshtastic_utils.serial_port_exists")
+    @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
+    def test_connect_meshtastic_startup_drain_armed_after_successful_setup(
+        self, mock_serial, mock_port_exists
+    ):
+        """Setup failure before node-info should not consume one-shot startup drain."""
+        import mmrelay.meshtastic_utils as mu
+
+        mock_port_exists.return_value = True
+
+        first_client = MagicMock()
+        first_client.getMyNodeInfo.side_effect = RuntimeError("node info failed")
+
+        second_client = MagicMock()
+        second_client.getMyNodeInfo.return_value = {
+            "user": {"shortName": "second", "hwModel": "test"}
+        }
+
+        mock_serial.side_effect = [first_client, second_client]
+
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+                "retries": 1,
+            }
+        }
+
+        mu.meshtastic_client = None
+        mu.shutting_down = False
+        mu.reconnecting = False
+        mu.subscribed_to_messages = False
+        mu.subscribed_to_connection_lost = False
+        mu._startup_packet_drain_applied = False
+        mu._relay_startup_drain_deadline_monotonic_secs = None
+
+        with (
+            patch("mmrelay.meshtastic_utils.time.sleep"),
+            patch("mmrelay.meshtastic_utils.time.time", return_value=123.0),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=456.0),
+            patch(
+                "mmrelay.meshtastic_utils._get_device_metadata",
+                return_value={"success": False, "firmware_version": "unknown"},
+            ),
+        ):
+            _ = connect_meshtastic(passed_config=config, force_connect=True)
+            first_applied = mu._startup_packet_drain_applied
+            first_deadline = mu._relay_startup_drain_deadline_monotonic_secs
+            second_result = connect_meshtastic(passed_config=config, force_connect=True)
+
+        assert first_applied is False
+        assert first_deadline is None
+        assert second_result is second_client
+        assert mu._startup_packet_drain_applied is True
+        assert mu._relay_startup_drain_deadline_monotonic_secs is not None
+
     def test_send_text_reply_success(self):
         """
         Test that send_text_reply returns the expected result when sending a text reply succeeds.
