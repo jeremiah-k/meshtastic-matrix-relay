@@ -891,7 +891,7 @@ def install_service() -> bool:
 
         if update_needed:
             logger.info("The service file needs to be updated: %s", reason)
-            logger.info("Updating existing service file automatically.")
+            logger.info("Updating the service file automatically.")
         else:
             logger.info("No update needed for the service file: %s", reason)
     else:
@@ -911,6 +911,7 @@ def install_service() -> bool:
 
         if existing_service:
             logger.info("Service file updated successfully")
+            print("Service file updated successfully.")
         else:
             logger.info("Service file created successfully")
 

@@ -200,7 +200,7 @@ class TestSetupUtils(unittest.TestCase):
     @patch("mmrelay.setup_utils.is_service_enabled")
     @patch("mmrelay.setup_utils.is_service_active")
     @patch("builtins.input")
-    def test_install_service_update_runs_automatically_when_outdated(
+    def test_install_service_update_happens_automatically_when_needed(
         self,
         mock_input,
         mock_is_active,
@@ -211,7 +211,7 @@ class TestSetupUtils(unittest.TestCase):
         mock_needs_update,
         mock_read_service,
     ):
-        """Outdated service files should be updated automatically without update prompt."""
+        """Outdated service files should be updated automatically without prompting."""
         mock_read_service.return_value = "existing service content"
         mock_needs_update.return_value = (True, "Executable path changed")
         mock_create_service_file.return_value = True
@@ -219,50 +219,20 @@ class TestSetupUtils(unittest.TestCase):
         mock_loginctl_available.return_value = False
         mock_is_enabled.return_value = True
         mock_is_active.return_value = False
-        mock_input.return_value = "n"
+        # Only inputs are for the later prompts (not service update)
+        mock_input.side_effect = [EOFError()]
 
         result = install_service()
 
         self.assertTrue(result)
         mock_create_service_file.assert_called_once()
-        self.assertNotIn(
-            "Do you want to update the service file? (y/n): ",
-            [call.args[0] for call in mock_input.call_args_list],
-        )
-
-    @patch("mmrelay.setup_utils.read_service_file")
-    @patch("mmrelay.setup_utils.service_needs_update")
-    @patch("mmrelay.setup_utils.create_service_file")
-    @patch("mmrelay.setup_utils.reload_daemon")
-    @patch("mmrelay.setup_utils.check_loginctl_available")
-    @patch("mmrelay.setup_utils.is_service_enabled")
-    @patch("mmrelay.setup_utils.is_service_active")
-    @patch("builtins.input")
-    def test_install_service_update_still_applies_when_later_input_eof(
-        self,
-        mock_input,
-        mock_is_active,
-        mock_is_enabled,
-        mock_loginctl_available,
-        mock_reload_daemon,
-        mock_create_service_file,
-        mock_needs_update,
-        mock_read_service,
-    ):
-        """EOF on later prompts should not block automatic service-file updates."""
-        mock_read_service.return_value = "existing service content"
-        mock_needs_update.return_value = (True, "Executable path changed")
-        mock_create_service_file.return_value = True
-        mock_reload_daemon.return_value = True
-        mock_loginctl_available.return_value = False
-        mock_is_enabled.return_value = False
-        mock_is_active.return_value = False
-        mock_input.side_effect = EOFError()
-
-        result = install_service()
-
-        self.assertTrue(result)
-        mock_create_service_file.assert_called_once()
+        mock_reload_daemon.assert_called_once()
+        # Should not prompt for service file update (only the other questions)
+        for input_call in mock_input.call_args_list:
+            self.assertNotIn(
+                "update the service file",
+                input_call.args[0].lower() if input_call.args else "",
+            )
 
     @patch("mmrelay.setup_utils.get_template_service_path")
     @patch("os.path.exists")
