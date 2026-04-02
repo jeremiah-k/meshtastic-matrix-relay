@@ -1055,6 +1055,26 @@ def _track_health_probe_request_id(
     return request_id
 
 
+def _seed_connect_time_skew(rx_time: float) -> None:
+    """Seed rxTime clock skew from a connect-time packet if not yet calibrated.
+
+    Only calibrates when the packet's rxTime is at or after RELAY_START_TIME
+    so stale backlog packets do not produce a wildly wrong skew value.
+    """
+    global _relay_rx_time_clock_skew_secs
+    with _relay_rx_time_clock_skew_lock:
+        if _relay_rx_time_clock_skew_secs is not None:
+            return
+        if rx_time < RELAY_START_TIME:
+            return
+        _relay_rx_time_clock_skew_secs = time.time() - rx_time
+        calibrated_skew = _relay_rx_time_clock_skew_secs
+    logger.debug(
+        "Calibrated rxTime clock skew from connect-time packet to %.3f seconds",
+        calibrated_skew,
+    )
+
+
 def _is_health_probe_response_packet(packet: dict[str, Any], interface: Any) -> bool:
     """
     Determine if an inbound packet is a tracked health-probe response.
@@ -4206,18 +4226,10 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
 
     # Seed clock skew from the first non-health-probe packet with a valid
     # rxTime so that the cutoff works even when health checks are disabled.
+    # Only calibrate from packets that appear fresh (rxTime >= RELAY_START_TIME)
+    # to avoid seeding a large negative skew from stale backlog.
     if rx_time > 0:
-        observed_skew = time.time() - rx_time
-        calibrated_now = False
-        with _relay_rx_time_clock_skew_lock:
-            if _relay_rx_time_clock_skew_secs is None:
-                _relay_rx_time_clock_skew_secs = observed_skew
-                calibrated_now = True
-        if calibrated_now:
-            logger.debug(
-                "Calibrated rxTime clock skew from connect-time packet to %.3f seconds",
-                observed_skew,
-            )
+        _seed_connect_time_skew(rx_time)
 
     # Filter out old messages (from before relay start) to prevent flooding.
     # This handles cases where the node dumps stored history upon connection.
