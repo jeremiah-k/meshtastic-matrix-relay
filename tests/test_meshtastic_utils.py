@@ -92,7 +92,7 @@ def stable_relay_start_time(monkeypatch):
     )
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._relay_connection_started_monotonic_secs",
-        time.monotonic(),
+        0.0,
         raising=False,
     )
 
@@ -197,6 +197,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         mmrelay.meshtastic_utils.reconnect_task = None
         mmrelay.meshtastic_utils._relay_connection_started_monotonic_secs = (
             time.monotonic()
+            - (mmrelay.meshtastic_utils._RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS + 1.0)
         )
         mmrelay.meshtastic_utils._relay_rx_time_clock_skew_secs = None
         mmrelay.meshtastic_utils._relay_startup_drain_deadline_monotonic_secs = None
@@ -784,10 +785,8 @@ class TestMeshtasticUtils(unittest.TestCase):
 
     @patch("mmrelay.meshtastic_utils.serial_port_exists")
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
-    @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
-    @patch("mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface")
     def test_connect_meshtastic_startup_drain_applies_only_once(
-        self, _mock_tcp, _mock_ble, mock_serial, mock_port_exists
+        self, mock_serial, mock_port_exists
     ):
         """Startup packet drain window should apply on cold startup, not reconnect."""
         import mmrelay.meshtastic_utils as mu
@@ -2110,6 +2109,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         mu.RELAY_START_TIME = 100_000.0
         mu._relay_connection_started_monotonic_secs = 1_000.0
         mu._relay_rx_time_clock_skew_secs = None
+        mu._relay_startup_drain_deadline_monotonic_secs = 1_010.0
         packet = {
             "from": TEST_PACKET_FROM_ID,
             "to": TEST_PACKET_FROM_ID,
@@ -2142,6 +2142,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         mu.RELAY_START_TIME = 100_000.0
         mu._relay_connection_started_monotonic_secs = 1_000.0
         mu._relay_rx_time_clock_skew_secs = None
+        mu._relay_startup_drain_deadline_monotonic_secs = 1_010.0
         packet = {
             "from": TEST_PACKET_FROM_ID,
             "to": TEST_PACKET_FROM_ID,

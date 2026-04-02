@@ -1092,9 +1092,12 @@ def _seed_connect_time_skew(rx_time: float) -> bool:
         relay_start_time = RELAY_START_TIME
         startup_age = max(0.0, now_monotonic - _relay_connection_started_monotonic_secs)
         within_startup_window = startup_age <= _RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS
+        startup_drain_active = _relay_startup_drain_deadline_monotonic_secs is not None
         packet_is_post_start = rx_time >= relay_start_time
 
-        if not packet_is_post_start and not within_startup_window:
+        if not packet_is_post_start and (
+            not within_startup_window or not startup_drain_active
+        ):
             return False
 
         if abs(observed_skew) > _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS:
@@ -4337,6 +4340,14 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     if startup_drain_deadline is not None:
         remaining_drain_secs = startup_drain_deadline - now_monotonic
         if remaining_drain_secs > 0:
+            calibrated_during_drain = False
+            if rx_time > 0:
+                calibrated_during_drain = _seed_connect_time_skew(rx_time)
+            if calibrated_during_drain and rx_time < relay_start_time:
+                logger.debug(
+                    "Consumed startup bootstrap packet with rxTime %s to calibrate clock skew",
+                    rx_time,
+                )
             logger.debug(
                 "Dropping inbound packet during startup drain window (remaining=%.3f seconds)",
                 remaining_drain_secs,
