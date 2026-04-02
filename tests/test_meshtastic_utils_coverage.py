@@ -44,6 +44,14 @@ def reset_meshtastic_state(reset_meshtastic_globals):
     mu._ble_future_timeout_secs = None
     mu._ble_timeout_counts = {}
     mu._health_probe_request_deadlines = {}
+    mu._relay_rx_time_clock_skew_secs = None
+    mu._relay_startup_drain_deadline_monotonic_secs = None
+    mu._startup_packet_drain_applied = False
+    # Keep startup bootstrap window deterministically closed in this suite unless
+    # a test explicitly opts into startup-window behavior.
+    mu._relay_connection_started_monotonic_secs = time.monotonic() - (
+        mu._RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS + 1.0
+    )
     mu._ble_executor_orphaned_workers_by_address = {}
     mu._metadata_executor_orphaned_workers = 0
     yield
@@ -1173,6 +1181,7 @@ class TestOnMeshtasticMessageOldPacketFiltering:
 
         # Set RELAY_START_TIME to a recent time
         mu_module.RELAY_START_TIME = time.time()
+        mu_module._relay_rx_time_clock_skew_secs = None
 
         # Create a packet with rx_time in the past (before RELAY_START_TIME)
         old_packet = {
@@ -1194,9 +1203,13 @@ class TestOnMeshtasticMessageOldPacketFiltering:
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             mu_module.on_meshtastic_message(old_packet, mock_interface)
 
-            # Should log debug about ignoring old packet
-            log_calls = [str(call) for call in mock_logger.debug.call_args_list]
-            assert any("Ignoring old packet" in call for call in log_calls)
+            # Should log debug about stale packet filtering.
+            log_calls = [str(call).lower() for call in mock_logger.debug.call_args_list]
+            assert any(
+                ("ignore" in call or "ignoring" in call)
+                and ("old" in call or "stale" in call or "filtered" in call)
+                for call in log_calls
+            )
 
 
 class TestSnapshotNodeNameRowsNonDict:

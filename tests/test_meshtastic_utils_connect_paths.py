@@ -187,7 +187,7 @@ def test_connect_meshtastic_ble_recovers_from_stale_worker(
         ),
         patch(
             "mmrelay.meshtastic_utils._ble_gate_reset_callable",
-        ) as mock_gate_callable,
+        ),
         patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
         patch(
             "mmrelay.meshtastic_utils._validate_ble_connection_address",
@@ -250,7 +250,7 @@ def test_connect_meshtastic_duplicate_suppression_clears_fork_gates(
         ),
         patch(
             "mmrelay.meshtastic_utils._ble_gate_reset_callable",
-        ) as mock_gate_callable,
+        ),
         patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
         patch("mmrelay.meshtastic_utils.time.sleep"),
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,

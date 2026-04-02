@@ -682,6 +682,8 @@ class MessageQueue:
                     )
                     await asyncio.sleep(CONNECTION_RETRY_SLEEP_SEC)
                     continue
+                # Connection check passed - log once when we first determine we're ready
+                logger.debug("Connection check passed - ready to send")
 
                 # Check if we need to wait for message delay (only if we've sent before)
                 if self._last_send_mono > 0:
@@ -869,7 +871,6 @@ class MessageQueue:
                     logger.debug("Not sending - client not connected")
                     return False
 
-            logger.debug("Connection check passed - ready to send")
             return True
 
         except ImportError as e:

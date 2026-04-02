@@ -371,8 +371,8 @@ def get_template_service_content() -> str:
     resolved_exec_start = get_resolved_exec_start()
     return f"""[Unit]
 Description=MMRelay - Meshtastic <=> Matrix Relay
-After=network-online.target
-Wants=network-online.target
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 Type=simple
@@ -770,6 +770,21 @@ def service_needs_update() -> tuple[bool, str]:
         if template_mtime > service_mtime:
             return True, "Template service file is newer than installed service file"
 
+    # Check for required [Unit] dependencies (time-sync.target)
+    # The service should have both After=time-sync.target and Wants=time-sync.target
+    has_after_time_sync = any(
+        "time-sync.target" in line
+        for line in existing_service.splitlines()
+        if line.strip().startswith("After=")
+    )
+    has_wants_time_sync = any(
+        "time-sync.target" in line
+        for line in existing_service.splitlines()
+        if line.strip().startswith("Wants=")
+    )
+    if not has_after_time_sync or not has_wants_time_sync:
+        return True, "Service file is missing time-sync.target dependency"
+
     return False, "Service file is up to date"
 
 
@@ -892,16 +907,12 @@ def install_service() -> bool:
         if update_needed:
             logger.info("The service file needs to be updated: %s", reason)
             try:
-                user_input = input("Do you want to update the service file? (y/n): ")
-                if not user_input.lower().startswith("y"):
-                    logger.info("Service update cancelled.")
-                    log_service_commands()
-                    return True
+                user_input = input("Do you want to update the service file? (Y/n): ")
+                if user_input.strip().lower().startswith("n"):
+                    logger.info("Skipping service file update at user request.")
+                    update_needed = False
             except (EOFError, KeyboardInterrupt):
-                logger.info("\nInput cancelled. Proceeding with default behavior.")
-                logger.info("Service update cancelled.")
-                log_service_commands()
-                return True
+                logger.info("\nInput cancelled. Proceeding with service file update.")
         else:
             logger.info("No update needed for the service file: %s", reason)
     else:
@@ -921,6 +932,7 @@ def install_service() -> bool:
 
         if existing_service:
             logger.info("Service file updated successfully")
+            print("Service file updated successfully.")
         else:
             logger.info("Service file created successfully")
 

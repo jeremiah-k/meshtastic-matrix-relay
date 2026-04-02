@@ -194,40 +194,44 @@ class TestSetupUtils(unittest.TestCase):
 
     @patch("mmrelay.setup_utils.read_service_file")
     @patch("mmrelay.setup_utils.service_needs_update")
-    @patch("mmrelay.setup_utils.log_service_commands")
+    @patch("mmrelay.setup_utils.create_service_file")
+    @patch("mmrelay.setup_utils.reload_daemon")
+    @patch("mmrelay.setup_utils.check_loginctl_available")
+    @patch("mmrelay.setup_utils.is_service_enabled")
+    @patch("mmrelay.setup_utils.is_service_active")
     @patch("builtins.input")
-    def test_install_service_update_cancelled_by_user(
-        self, mock_input, mock_print_commands, mock_needs_update, mock_read_service
+    def test_install_service_update_prompts_when_needed(
+        self,
+        mock_input,
+        mock_is_active,
+        mock_is_enabled,
+        mock_loginctl_available,
+        mock_reload_daemon,
+        mock_create_service_file,
+        mock_needs_update,
+        mock_read_service,
     ):
-        """Test install_service when user cancels update."""
+        """Outdated service files should prompt and update when the user confirms."""
         mock_read_service.return_value = "existing service content"
         mock_needs_update.return_value = (True, "Executable path changed")
-        mock_input.return_value = "n"
+        mock_create_service_file.return_value = True
+        mock_reload_daemon.return_value = True
+        mock_loginctl_available.return_value = False
+        mock_is_enabled.return_value = True
+        mock_is_active.return_value = False
+        mock_input.side_effect = ["y", "n"]
 
         result = install_service()
 
-        self.assertTrue(result)
-        mock_print_commands.assert_called_once()
-        mock_input.assert_called_once_with(
-            "Do you want to update the service file? (y/n): "
-        )
-
-    @patch("mmrelay.setup_utils.read_service_file")
-    @patch("mmrelay.setup_utils.service_needs_update")
-    @patch("mmrelay.setup_utils.log_service_commands")
-    @patch("builtins.input")
-    def test_install_service_update_cancelled_by_eof(
-        self, mock_input, mock_print_commands, mock_needs_update, mock_read_service
-    ):
-        """Test install_service when user input is cancelled with EOF."""
-        mock_read_service.return_value = "existing service content"
-        mock_needs_update.return_value = (True, "Executable path changed")
-        mock_input.side_effect = EOFError()
-
-        result = install_service()
-
-        self.assertTrue(result)
-        mock_print_commands.assert_called_once()
+        assert result
+        mock_create_service_file.assert_called_once()
+        mock_reload_daemon.assert_called_once()
+        update_prompts = [
+            call.args[0]
+            for call in mock_input.call_args_list
+            if call.args and "update the service file" in call.args[0].lower()
+        ]
+        assert len(update_prompts) == 1
 
     @patch("mmrelay.setup_utils.get_template_service_path")
     @patch("os.path.exists")
@@ -294,7 +298,7 @@ class TestSetupUtils(unittest.TestCase):
 
         result = service_exists()
 
-        self.assertTrue(result)
+        assert result
 
     @patch("mmrelay.setup_utils.get_user_service_path")
     def test_service_exists_false(self, mock_get_path):
@@ -882,6 +886,8 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_exists.return_value = True
         mock_read_service.return_value = """[Unit]
     Description=MMRelay Service
+    After=network-online.target time-sync.target
+    Wants=network-online.target time-sync.target
     
     [Service]
     ExecStart=mmrelay --home %h/.mmrelay
@@ -918,6 +924,8 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_exists.return_value = True
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 ExecStart=mmrelay --home=
@@ -945,6 +953,8 @@ WantedBy=default.target
         mock_exists.return_value = True
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 ExecStart=mmrelay --home
@@ -972,6 +982,8 @@ WantedBy=default.target
         mock_exists.return_value = True
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 Environment=MMRELAY_HOME=
@@ -999,6 +1011,8 @@ WantedBy=default.target
         mock_exists.return_value = True
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 ExecStart=mmrelay --home %h/.mmrelay
@@ -1028,6 +1042,8 @@ WantedBy=default.target
         mock_getmtime.side_effect = [1, 1]
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 Environment=MMRELAY_HOME=%h/.mmrelay
@@ -1058,6 +1074,8 @@ WantedBy=default.target
         mock_getmtime.side_effect = [1, 1]
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 Environment=PATH=%h/.local/bin
@@ -1088,6 +1106,8 @@ WantedBy=default.target
         mock_getmtime.side_effect = [1, 1]
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 ExecStart=/usr/bin/env PATH=%h/.local/bin MMRELAY_HOME=%h/.mmrelay mmrelay
@@ -1117,6 +1137,8 @@ WantedBy=default.target
         mock_getmtime.side_effect = [1, 1]
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 Environment="MMRELAY_HOME=%h/.mmrelay"
@@ -1147,6 +1169,8 @@ WantedBy=default.target
         mock_getmtime.side_effect = [1, 1]
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 Environment=PYTHONUNBUFFERED=1 MMRELAY_HOME=%h/.mmrelay
@@ -1177,6 +1201,8 @@ WantedBy=default.target
         mock_getmtime.side_effect = [1, 1]
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 ExecStart=/usr/bin/env MMRELAY_HOME=%h/.mmrelay
@@ -1204,7 +1230,8 @@ WantedBy=default.target
         mock_exists.return_value = True
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
-After=network.target
+After=network.target time-sync.target
+Wants=time-sync.target
 
 [Service]
 Type=simple
@@ -1608,6 +1635,92 @@ WantedBy=multi-user.target
             self.assertTrue(result)
             mock_logger.info.assert_any_call("Service file updated successfully")
 
+    @patch("subprocess.run")
+    @patch("mmrelay.setup_utils.is_service_active")
+    @patch("mmrelay.setup_utils.is_service_enabled")
+    @patch("mmrelay.setup_utils.check_loginctl_available")
+    @patch("mmrelay.setup_utils.service_needs_update")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_user_service_path")
+    def test_install_service_update_prompt_eof_defaults_to_update(
+        self,
+        mock_get_path,
+        mock_read_service,
+        mock_needs_update,
+        mock_loginctl_available,
+        mock_service_enabled,
+        mock_service_active,
+        mock_run,
+    ):
+        """EOF at update prompt should proceed with service-file update."""
+        mock_get_path.return_value = Path(
+            "/home/user/.config/systemd/user/mmrelay.service"
+        )
+        mock_read_service.return_value = "[Unit]\nDescription=Test Service\n"
+        mock_needs_update.return_value = (True, "Update needed")
+        mock_loginctl_available.return_value = False
+        mock_service_enabled.return_value = True
+        mock_service_active.return_value = False
+
+        with (
+            patch("builtins.input", side_effect=[EOFError(), "n"]),
+            patch("mmrelay.setup_utils.logger") as mock_logger,
+            patch("mmrelay.setup_utils.create_service_file") as mock_create,
+            patch("mmrelay.setup_utils.reload_daemon", return_value=True),
+        ):
+            mock_create.return_value = True
+            result = install_service()
+
+        assert result
+        mock_create.assert_called_once()
+        mock_run.assert_not_called()
+        mock_logger.info.assert_any_call(
+            "\nInput cancelled. Proceeding with service file update."
+        )
+        mock_logger.info.assert_any_call("Service file updated successfully")
+
+    @patch("subprocess.run")
+    @patch("mmrelay.setup_utils.is_service_active")
+    @patch("mmrelay.setup_utils.is_service_enabled")
+    @patch("mmrelay.setup_utils.check_loginctl_available")
+    @patch("mmrelay.setup_utils.service_needs_update")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_user_service_path")
+    def test_install_service_update_prompt_can_skip_update(
+        self,
+        mock_get_path,
+        mock_read_service,
+        mock_needs_update,
+        mock_loginctl_available,
+        mock_service_enabled,
+        mock_service_active,
+        mock_run,
+    ):
+        """Explicit 'n' at update prompt should skip rewriting service file."""
+        mock_get_path.return_value = Path(
+            "/home/user/.config/systemd/user/mmrelay.service"
+        )
+        mock_read_service.return_value = "[Unit]\nDescription=Test Service\n"
+        mock_needs_update.return_value = (True, "Update needed")
+        mock_loginctl_available.return_value = False
+        mock_service_enabled.return_value = True
+        mock_service_active.return_value = False
+
+        with (
+            patch("builtins.input", side_effect=["n", "n"]),
+            patch("mmrelay.setup_utils.logger") as mock_logger,
+            patch("mmrelay.setup_utils.create_service_file") as mock_create,
+            patch("mmrelay.setup_utils.reload_daemon", return_value=True),
+        ):
+            result = install_service()
+
+        assert result
+        mock_create.assert_not_called()
+        mock_run.assert_not_called()
+        mock_logger.info.assert_any_call(
+            "Skipping service file update at user request."
+        )
+
     @patch("mmrelay.setup_utils.wait_for_service_start")
     @patch("mmrelay.setup_utils.show_service_status")
     @patch("subprocess.run")
@@ -1787,6 +1900,66 @@ WantedBy=multi-user.target
 
             # Verify is_service_active was called
             self.assertGreater(mock_is_service_active.call_count, 0)
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("os.path.getmtime")
+    def test_service_needs_update_missing_time_sync_after(
+        self, mock_getmtime, mock_read_service, mock_exists
+    ):
+        """Test service_needs_update flags update when After=time-sync.target is missing."""
+        mock_exists.return_value = True
+        mock_getmtime.side_effect = [1, 1]  # template_mtime, service_mtime
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+After=network-online.target
+Wants=network-online.target time-sync.target
+
+[Service]
+ExecStart=mmrelay --home %h/.mmrelay
+Environment=PATH=%h/.local/bin
+
+[Install]
+WantedBy=default.target
+"""
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/template/path",
+        ):
+            needs_update, reason = service_needs_update()
+
+        self.assertTrue(needs_update)
+        self.assertEqual(reason, "Service file is missing time-sync.target dependency")
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("os.path.getmtime")
+    def test_service_needs_update_missing_time_sync_wants(
+        self, mock_getmtime, mock_read_service, mock_exists
+    ):
+        """Test service_needs_update flags update when Wants=time-sync.target is missing."""
+        mock_exists.return_value = True
+        mock_getmtime.side_effect = [1, 1]  # template_mtime, service_mtime
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target
+
+[Service]
+ExecStart=mmrelay --home %h/.mmrelay
+Environment=PATH=%h/.local/bin
+
+[Install]
+WantedBy=default.target
+"""
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/template/path",
+        ):
+            needs_update, reason = service_needs_update()
+
+        self.assertTrue(needs_update)
+        self.assertEqual(reason, "Service file is missing time-sync.target dependency")
 
 
 if __name__ == "__main__":

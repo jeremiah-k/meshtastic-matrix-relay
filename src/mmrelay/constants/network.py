@@ -118,6 +118,10 @@ STALE_DISCONNECT_TIMEOUT_SECS: Final[float] = (
 )
 HEALTH_PROBE_TRACK_GRACE_SECS: Final[float] = 60.0
 
+# Maximum initial clock skew allowed when seeding from first packet (5 minutes)
+# Used to prevent wildly wrong values from stale backlog packets
+MAX_INITIAL_SKEW_SECS: Final[float] = 300.0
+
 # Future/cancel timing
 FUTURE_CANCEL_TIMEOUT_SECS: Final[float] = 0.2
 
