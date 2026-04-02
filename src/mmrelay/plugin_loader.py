@@ -1419,10 +1419,6 @@ def _try_checkout_and_pull_ref(
                     ],
                     timeout=GIT_COMMAND_TIMEOUT_SECONDS,
                 )
-                logger.info(
-                    "Force-synced repository %s to branch %s", repo_name, ref_value
-                )
-                return True
             except (
                 subprocess.CalledProcessError,
                 subprocess.TimeoutExpired,
@@ -1434,6 +1430,11 @@ def _try_checkout_and_pull_ref(
                     ref_value,
                 )
                 return False
+            else:
+                logger.info(
+                    "Force-synced repository %s to branch %s", repo_name, ref_value
+                )
+                return True
 
         logger.warning(
             "Failed to update %s %s for %s",

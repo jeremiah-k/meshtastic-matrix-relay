@@ -18,6 +18,7 @@ import shutil
 import subprocess  # nosec B404 - Used for controlled test environment operations
 import sys
 import tempfile
+import time
 import unittest
 from types import ModuleType
 from unittest.mock import ANY, MagicMock, call, patch
@@ -2293,6 +2294,37 @@ class TestGitOperations(BaseGitTest):
             os.makedirs(repo_path)
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
             self.assertFalse(result)
+            mock_run_git.assert_has_calls(
+                [
+                    call(
+                        ["git", "-C", repo_path, "fetch", "origin"],
+                        timeout=TEST_GIT_TIMEOUT,
+                        retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                        retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                    ),
+                    call(
+                        ["git", "-C", repo_path, "checkout", "main"],
+                        timeout=TEST_GIT_TIMEOUT,
+                    ),
+                    call(
+                        ["git", "-C", repo_path, "fetch", "origin", "main"],
+                        timeout=TEST_GIT_TIMEOUT,
+                        retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                        retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                    ),
+                    call(
+                        ["git", "-C", repo_path, "checkout", "master"],
+                        timeout=TEST_GIT_TIMEOUT,
+                    ),
+                    call(
+                        ["git", "-C", repo_path, "fetch", "origin", "master"],
+                        timeout=TEST_GIT_TIMEOUT,
+                        retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                        retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                    ),
+                ],
+                any_order=False,
+            )
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
@@ -2449,6 +2481,37 @@ class TestGitOperations(BaseGitTest):
             os.makedirs(repo_path)
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
             self.assertFalse(result)
+            mock_run_git.assert_has_calls(
+                [
+                    call(
+                        ["git", "-C", repo_path, "fetch", "origin"],
+                        timeout=TEST_GIT_TIMEOUT,
+                        retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                        retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                    ),
+                    call(
+                        ["git", "-C", repo_path, "checkout", "main"],
+                        timeout=TEST_GIT_TIMEOUT,
+                    ),
+                    call(
+                        ["git", "-C", repo_path, "fetch", "origin", "main"],
+                        timeout=TEST_GIT_TIMEOUT,
+                        retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                        retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                    ),
+                    call(
+                        ["git", "-C", repo_path, "checkout", "master"],
+                        timeout=TEST_GIT_TIMEOUT,
+                    ),
+                    call(
+                        ["git", "-C", repo_path, "fetch", "origin", "master"],
+                        timeout=TEST_GIT_TIMEOUT,
+                        retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                        retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                    ),
+                ],
+                any_order=False,
+            )
 
     @patch("mmrelay.plugin_loader._run")
     def test_run_git_merges_custom_env(self, mock_run):
@@ -4615,8 +4678,11 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
         # Create a minimal loader class that doesn't reference __file__
         class MinimalLoader:
             def exec_module(self, module):
-                # Minimal implementation that just sets basic module attributes
                 module.__dict__.setdefault("__builtins__", __builtins__)
+                assert (
+                    sys.modules.get(module.__name__) is module
+                ), f"Module {module.__name__} not bound in sys.modules before exec_module ran"
+                time.sleep(0.05)
 
         def _load_module(mod_name: str) -> str:
             """Simulate loading a plugin module under a unique name."""
@@ -4664,8 +4730,22 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
                 sys.modules.pop(name, None)
 
     def test_lock_is_module_level_and_reentrant_safe(self):
-        """Verify the sys.modules lock exists and is a threading.Lock."""
-        self.assertIsInstance(_SYS_MODULES_LOCK, type(__import__("threading").Lock()))
+        """Verify _SYS_MODULES_LOCK is a module-level, non-reentrant mutex."""
+        import inspect
+
+        lock = _SYS_MODULES_LOCK
+        self.assertFalse(lock.locked(), "Lock should not be held initially")
+
+        acquired = lock.acquire(timeout=0.1)
+        self.assertTrue(acquired, "Lock should be acquirable")
+        self.assertTrue(lock.locked())
+        lock.release()
+        self.assertFalse(lock.locked(), "Lock should be releasable")
+
+        src = inspect.getsource(pl)
+        self.assertIn(
+            "_SYS_MODULES_LOCK", src, "Lock name should appear in module source"
+        )
 
 
 if __name__ == "__main__":
