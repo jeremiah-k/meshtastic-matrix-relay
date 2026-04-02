@@ -987,6 +987,9 @@ def reset_meshtastic_globals():
         "_relay_startup_drain_deadline_monotonic_secs": getattr(
             mu, "_relay_startup_drain_deadline_monotonic_secs", None
         ),
+        "_startup_packet_drain_applied": getattr(
+            mu, "_startup_packet_drain_applied", False
+        ),
         "_ble_executor_degraded_addresses": set(
             getattr(mu, "_ble_executor_degraded_addresses", None) or set()
         ),
@@ -1041,6 +1044,7 @@ def reset_meshtastic_globals():
     )
     mu._relay_rx_time_clock_skew_secs = None
     mu._relay_startup_drain_deadline_monotonic_secs = None
+    mu._startup_packet_drain_applied = False
     mu._health_probe_request_deadlines = {}
 
     yield

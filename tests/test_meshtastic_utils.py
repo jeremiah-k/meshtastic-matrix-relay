@@ -85,6 +85,11 @@ def stable_relay_start_time(monkeypatch):
         None,
         raising=False,
     )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._startup_packet_drain_applied",
+        False,
+        raising=False,
+    )
 
 
 class _FakeEvent:
@@ -190,6 +195,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         )
         mmrelay.meshtastic_utils._relay_rx_time_clock_skew_secs = None
         mmrelay.meshtastic_utils._relay_startup_drain_deadline_monotonic_secs = None
+        mmrelay.meshtastic_utils._startup_packet_drain_applied = False
         iface = mmrelay.meshtastic_utils.meshtastic_iface
         if iface is not None:
             disconnect_iface = getattr(
@@ -770,6 +776,62 @@ class TestMeshtasticUtils(unittest.TestCase):
         mock_serial.assert_not_called()
         mock_tcp.assert_not_called()
         mock_ble.assert_not_called()
+
+    @patch("mmrelay.meshtastic_utils.serial_port_exists")
+    @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
+    @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
+    @patch("mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface")
+    def test_connect_meshtastic_startup_drain_applies_only_once(
+        self, _mock_tcp, _mock_ble, mock_serial, mock_port_exists
+    ):
+        """Startup packet drain window should apply on cold startup, not reconnect."""
+        import mmrelay.meshtastic_utils as mu
+
+        mock_port_exists.return_value = True
+        first_client = MagicMock()
+        first_client.getMyNodeInfo.return_value = {
+            "user": {"shortName": "first", "hwModel": "test"}
+        }
+        second_client = MagicMock()
+        second_client.getMyNodeInfo.return_value = {
+            "user": {"shortName": "second", "hwModel": "test"}
+        }
+        mock_serial.side_effect = [first_client, second_client]
+
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            }
+        }
+
+        mu.meshtastic_client = None
+        mu.shutting_down = False
+        mu.reconnecting = False
+        mu._startup_packet_drain_applied = False
+        mu._relay_startup_drain_deadline_monotonic_secs = None
+
+        with (
+            patch("mmrelay.meshtastic_utils.time.time", return_value=100.0),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_000.0),
+        ):
+            result_first = connect_meshtastic(passed_config=config)
+
+        assert result_first is first_client
+        assert mu._startup_packet_drain_applied is True
+        assert mu._relay_startup_drain_deadline_monotonic_secs == pytest.approx(
+            1_000.0 + mu._STARTUP_PACKET_DRAIN_SECS
+        )
+
+        with (
+            patch("mmrelay.meshtastic_utils.time.time", return_value=200.0),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=2_000.0),
+        ):
+            result_second = connect_meshtastic(passed_config=config, force_connect=True)
+
+        assert result_second is second_client
+        assert mu._startup_packet_drain_applied is True
+        assert mu._relay_startup_drain_deadline_monotonic_secs is None
 
     def test_send_text_reply_success(self):
         """
@@ -2133,6 +2195,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         """Expired startup drain deadline should be cleared on next packet."""
         import mmrelay.meshtastic_utils as mu
 
+        mu.RELAY_START_TIME = 200_000.0
         mu._relay_startup_drain_deadline_monotonic_secs = 1_000.0
         packet = {
             "from": TEST_PACKET_FROM_ID,

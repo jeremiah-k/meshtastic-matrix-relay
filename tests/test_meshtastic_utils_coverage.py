@@ -46,6 +46,7 @@ def reset_meshtastic_state(reset_meshtastic_globals):
     mu._health_probe_request_deadlines = {}
     mu._relay_rx_time_clock_skew_secs = None
     mu._relay_startup_drain_deadline_monotonic_secs = None
+    mu._startup_packet_drain_applied = False
     # Keep startup bootstrap window deterministically closed in this suite unless
     # a test explicitly opts into startup-window behavior.
     mu._relay_connection_started_monotonic_secs = time.monotonic() - (

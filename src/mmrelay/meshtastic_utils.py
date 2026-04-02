@@ -167,6 +167,8 @@ _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS = 24 * 60 * 60
 # while connection/session timing state settles.
 _STARTUP_PACKET_DRAIN_SECS = 15.0
 _relay_startup_drain_deadline_monotonic_secs: float | None = None
+# Only apply startup drain on the first successful process-lifetime connect.
+_startup_packet_drain_applied = False
 
 
 # Global variables for the Meshtastic connection and event loop management
@@ -3260,6 +3262,7 @@ def connect_meshtastic(
     global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config
     global RELAY_START_TIME, _relay_connection_started_monotonic_secs
     global _relay_rx_time_clock_skew_secs, _relay_startup_drain_deadline_monotonic_secs
+    global _startup_packet_drain_applied
     global matrix_rooms, _ble_future, _ble_future_address
     global _ble_future_started_at, _ble_future_timeout_secs
     if shutting_down:
@@ -3851,10 +3854,14 @@ def connect_meshtastic(
                         RELAY_START_TIME = time.time()
                         _relay_connection_started_monotonic_secs = time.monotonic()
                         _relay_rx_time_clock_skew_secs = None
-                        _relay_startup_drain_deadline_monotonic_secs = (
-                            _relay_connection_started_monotonic_secs
-                            + _STARTUP_PACKET_DRAIN_SECS
-                        )
+                        if not _startup_packet_drain_applied:
+                            _relay_startup_drain_deadline_monotonic_secs = (
+                                _relay_connection_started_monotonic_secs
+                                + _STARTUP_PACKET_DRAIN_SECS
+                            )
+                            _startup_packet_drain_applied = True
+                        else:
+                            _relay_startup_drain_deadline_monotonic_secs = None
 
                 # CRITICAL VALIDATION: Verify we're connected to the correct BLE device.
                 # This prevents connection to wrong device due to substring matching
