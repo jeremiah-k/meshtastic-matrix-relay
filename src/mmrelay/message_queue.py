@@ -90,6 +90,7 @@ class MessageQueue:
         self._dropped_messages = 0
         self._last_queue_full_log_time: float | None = None
         self._stop_failed = False
+        self._stop_logged = False
 
     def _clear_failed_stop_state_if_recovered_locked(self) -> bool:
         """
@@ -151,6 +152,7 @@ class MessageQueue:
                 )
 
             self._running = True
+            self._stop_logged = False
 
             # Create dedicated executor for this MessageQueue
             if self._executor is None:
@@ -236,7 +238,9 @@ class MessageQueue:
                         return
                 else:
                     self._stopping = False
-                logger.info("Message queue stopped")
+                if not self._stop_logged:
+                    self._stop_logged = True
+                    logger.info("Message queue stopped")
 
         if task is not None:
             task_loop = task.get_loop()
