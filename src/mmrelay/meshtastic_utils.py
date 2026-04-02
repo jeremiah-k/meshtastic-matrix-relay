@@ -153,6 +153,10 @@ MESHTASTIC_TEXT_ENCODING = "utf-8"
 
 # Session cutoff used to filter out backlog packets; reset on each new connection.
 RELAY_START_TIME = time.time()
+# Best observed (lowest) relay-to-rxTime clock skew for the active connection.
+_relay_rx_time_clock_skew_secs: float | None = None
+# Ignore implausibly large skew samples during startup calibration.
+_MAX_RX_TIME_CLOCK_SKEW_CALIBRATION_SECS = 24 * 60 * 60
 
 
 # Global variables for the Meshtastic connection and event loop management
@@ -3191,7 +3195,7 @@ def connect_meshtastic(
         The connected Meshtastic client instance on success, or `None` if a connection could not be established or shutdown is in progress.
     """
     global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config
-    global RELAY_START_TIME
+    global RELAY_START_TIME, _relay_rx_time_clock_skew_secs
     global matrix_rooms, _ble_future, _ble_future_address
     global _ble_future_started_at, _ble_future_timeout_secs
     if shutting_down:
@@ -3774,6 +3778,8 @@ def connect_meshtastic(
                 meshtastic_client = client
                 # Use connection start time (not module import time) for stale rxTime filtering.
                 RELAY_START_TIME = time.time()
+                # Reset skew calibration so each reconnect derives a fresh baseline.
+                _relay_rx_time_clock_skew_secs = None
 
                 # CRITICAL VALIDATION: Verify we're connected to the correct BLE device.
                 # This prevents connection to wrong device due to substring matching
@@ -4156,14 +4162,16 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             - optional 'channel' (mapped channel value)
         interface: Meshtastic interface used to resolve node information and the relay node id. Must provide .myInfo.my_node_num and a .nodes mapping for sender metadata.
     """
-    global config, matrix_rooms
+    global config, matrix_rooms, _relay_rx_time_clock_skew_secs
 
     # Validate packet structure
     if not packet or not isinstance(packet, dict):
         logger.error("Received malformed packet: packet is None or not a dict")
         return
 
-    # Filter out old messages (from before relay start) to prevent flooding
+    # Filter out old messages (from before relay start) to prevent flooding.
+    # Account for packet/local clock skew by calibrating against the minimum
+    # observed (now - rxTime) value for this connection.
     # This handles cases where the node dumps stored history upon connection
     rx_time_raw = packet.get("rxTime", 0)
     try:
@@ -4171,11 +4179,26 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     except (TypeError, ValueError):
         rx_time = 0
 
-    if rx_time > 0 and rx_time < RELAY_START_TIME:
+    effective_relay_start_time = RELAY_START_TIME
+    if rx_time > 0:
+        observed_skew = max(0.0, time.time() - rx_time)
+        if observed_skew <= _MAX_RX_TIME_CLOCK_SKEW_CALIBRATION_SECS and (
+            _relay_rx_time_clock_skew_secs is None
+            or observed_skew < _relay_rx_time_clock_skew_secs
+        ):
+            _relay_rx_time_clock_skew_secs = observed_skew
+        if _relay_rx_time_clock_skew_secs is not None:
+            effective_relay_start_time = max(
+                0.0,
+                RELAY_START_TIME - _relay_rx_time_clock_skew_secs,
+            )
+
+    if rx_time > 0 and rx_time < effective_relay_start_time:
         logger.debug(
-            "Ignoring old packet with rxTime %s (older than start time %s)",
+            "Ignoring old packet with rxTime %s (older than start time %s, adjusted=%s)",
             rx_time,
             RELAY_START_TIME,
+            effective_relay_start_time,
         )
         return
 

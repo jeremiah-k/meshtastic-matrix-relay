@@ -74,6 +74,11 @@ def stable_relay_start_time(monkeypatch):
     tests that are unrelated to startup history behavior.
     """
     monkeypatch.setattr("mmrelay.meshtastic_utils.RELAY_START_TIME", 0, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_rx_time_clock_skew_secs",
+        None,
+        raising=False,
+    )
 
 
 class _FakeEvent:
@@ -174,6 +179,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.shutting_down = False
         mmrelay.meshtastic_utils.reconnect_task = None
+        mmrelay.meshtastic_utils._relay_rx_time_clock_skew_secs = None
         iface = mmrelay.meshtastic_utils.meshtastic_iface
         if iface is not None:
             disconnect_iface = getattr(
@@ -247,6 +253,68 @@ class TestMeshtasticUtils(unittest.TestCase):
             on_meshtastic_message(self.mock_packet, mock_interface)
 
             # The global mock_submit_coro fixture will handle the AsyncMock properly
+
+    def test_on_meshtastic_message_adjusts_start_cutoff_for_clock_skew(self):
+        """
+        Packet filtering should tolerate relay/node clock skew after startup.
+        """
+        import mmrelay.meshtastic_utils as mu
+
+        mu.RELAY_START_TIME = 1_000_000.0
+        mu._relay_rx_time_clock_skew_secs = None
+        packet = {"decoded": {}, "rxTime": 995_010.0}
+
+        with (
+            patch("mmrelay.meshtastic_utils.time.time", return_value=1_000_010.0),
+            patch(
+                "mmrelay.meshtastic_utils._is_health_probe_response_packet",
+                return_value=True,
+            ) as mock_health_probe,
+        ):
+            on_meshtastic_message(packet, MagicMock())
+
+        mock_health_probe.assert_called_once()
+        self.assertAlmostEqual(mu._relay_rx_time_clock_skew_secs or 0.0, 5_000.0)
+
+    def test_on_meshtastic_message_drops_packet_older_than_adjusted_cutoff(self):
+        """
+        Packets older than the skew-adjusted startup cutoff should still be dropped.
+        """
+        import mmrelay.meshtastic_utils as mu
+
+        mu.RELAY_START_TIME = 1_000_000.0
+        mu._relay_rx_time_clock_skew_secs = 5_000.0
+        packet = {"decoded": {}, "rxTime": 994_900.0}
+
+        with patch(
+            "mmrelay.meshtastic_utils._is_health_probe_response_packet",
+            return_value=True,
+        ) as mock_health_probe:
+            on_meshtastic_message(packet, MagicMock())
+
+        mock_health_probe.assert_not_called()
+
+    def test_on_meshtastic_message_ignores_unrealistic_skew_sample(self):
+        """
+        Implausibly old rxTime values should not recalibrate clock skew.
+        """
+        import mmrelay.meshtastic_utils as mu
+
+        mu.RELAY_START_TIME = 1_000_000.0
+        mu._relay_rx_time_clock_skew_secs = None
+        packet = {"decoded": {}, "rxTime": 1.0}
+
+        with (
+            patch("mmrelay.meshtastic_utils.time.time", return_value=1_000_010.0),
+            patch(
+                "mmrelay.meshtastic_utils._is_health_probe_response_packet",
+                return_value=True,
+            ) as mock_health_probe,
+        ):
+            on_meshtastic_message(packet, MagicMock())
+
+        mock_health_probe.assert_not_called()
+        self.assertIsNone(mu._relay_rx_time_clock_skew_secs)
 
     def test_on_meshtastic_message_channel_fallback_for_string_portnum(self):
         """
