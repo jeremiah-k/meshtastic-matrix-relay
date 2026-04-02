@@ -86,7 +86,6 @@ from mmrelay.constants.network import (
     HEALTH_PROBE_TRACK_GRACE_SECS,
     INFINITE_RETRIES,
     INITIAL_HEALTH_CHECK_DELAY,
-    MAX_INITIAL_SKEW_SECS,
     MAX_TIMEOUT_RETRIES_INFINITE,
     METADATA_WATCHDOG_SECS,
     STALE_DISCONNECT_TIMEOUT_SECS,
@@ -162,7 +161,8 @@ _relay_rx_time_clock_skew_secs: float | None = None
 _relay_rx_time_clock_skew_lock = threading.Lock()
 # Allow controlled skew bootstrap shortly after connect so startup can recover
 # when host time and packet rxTime disagree before clock sync settles.
-_RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS = 10 * 60
+_RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS = 180.0
+_RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS = 24 * 60 * 60
 
 
 # Global variables for the Meshtastic connection and event loop management
@@ -1062,24 +1062,57 @@ def _track_health_probe_request_id(
     return request_id
 
 
-def _seed_connect_time_skew(rx_time: float) -> None:
-    """Seed rxTime clock skew from a connect-time packet if not yet calibrated.
+def _seed_connect_time_skew(rx_time: float) -> bool:
+    """Seed rxTime clock skew from an early packet if not yet calibrated.
 
-    Only calibrates when not already calibrated. Applies a bounded magnitude
-    clamp to avoid wildly wrong values from stale backlog packets.
+    Returns:
+        bool: True when a new skew value was calibrated for this packet.
     """
     global _relay_rx_time_clock_skew_secs
+
+    if rx_time <= 0:
+        return False
+
+    now_wall = time.time()
+    now_monotonic = time.monotonic()
+    observed_skew = now_wall - rx_time
+
     with _relay_rx_time_clock_skew_lock:
         if _relay_rx_time_clock_skew_secs is not None:
-            return
-        skew = time.time() - rx_time
-        _relay_rx_time_clock_skew_secs = max(
-            -MAX_INITIAL_SKEW_SECS, min(MAX_INITIAL_SKEW_SECS, skew)
-        )
+            return False
+
+        relay_start_time = RELAY_START_TIME
+        startup_age = max(0.0, now_monotonic - _relay_connection_started_monotonic_secs)
+        within_startup_window = startup_age <= _RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS
+        packet_is_post_start = rx_time >= relay_start_time
+
+        if not packet_is_post_start and not within_startup_window:
+            return False
+
+        if abs(observed_skew) > _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS:
+            logger.debug(
+                "Skipping rxTime skew bootstrap %.3f seconds outside startup limit %.3f",
+                observed_skew,
+                _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS,
+            )
+            return False
+
+        _relay_rx_time_clock_skew_secs = observed_skew
+        calibrated_skew = observed_skew
+
+    if packet_is_post_start:
         logger.debug(
-            "Calibrated rxTime clock skew to %.3f seconds",
-            _relay_rx_time_clock_skew_secs,
+            "Calibrated rxTime clock skew from connect-time packet to %.3f seconds",
+            calibrated_skew,
         )
+    else:
+        logger.debug(
+            "Bootstrapped rxTime clock skew from startup packet to %.3f seconds (startup_age=%.3f seconds)",
+            calibrated_skew,
+            startup_age,
+        )
+
+    return True
 
 
 def _is_health_probe_response_packet(packet: dict[str, Any], interface: Any) -> bool:
@@ -4235,10 +4268,23 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         )
         return
 
+    with _relay_rx_time_clock_skew_lock:
+        relay_start_time = RELAY_START_TIME
+
     # Seed clock skew from the first non-health-probe packet with a valid
     # rxTime so that the cutoff works even when health checks are disabled.
+    # During startup we allow one bounded bootstrap from a pre-start packet,
+    # then consume that packet so backlog is not relayed.
+    calibrated_from_packet = False
     if rx_time > 0:
-        _seed_connect_time_skew(rx_time)
+        calibrated_from_packet = _seed_connect_time_skew(rx_time)
+
+    if calibrated_from_packet and rx_time < relay_start_time:
+        logger.debug(
+            "Consumed startup bootstrap packet with rxTime %s to calibrate clock skew",
+            rx_time,
+        )
+        return
 
     # Filter out old messages (from before relay start) to prevent flooding.
     # This handles cases where the node dumps stored history upon connection.
