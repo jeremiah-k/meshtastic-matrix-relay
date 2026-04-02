@@ -1448,7 +1448,7 @@ def _try_checkout_and_pull_ref(
         return False
 
 
-_SYS_MODULES_LOCK: threading.Lock = threading.Lock()
+_SYS_MODULES_LOCK: threading.RLock = threading.RLock()
 
 
 def _exec_plugin_module(
@@ -2291,7 +2291,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                     f"Module {missing_module} still not available after installation. "
                                     f"The package name might be different from the import name."
                                 )
-                            except Exception:
+                            except (Exception, SystemExit):
                                 logger.exception(
                                     "Error loading plugin %s after dependency installation",
                                     plugin_path,
@@ -2309,7 +2309,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                 f"  pip install {missing_pkg}        # if using pip\n"
                                 f"  pip install --user {missing_pkg}  # if not in a venv"
                             )
-                    except Exception:
+                    except (Exception, SystemExit):
                         logger.exception(f"Error loading plugin {plugin_path}")
             if not recursive:
                 break
