@@ -371,8 +371,8 @@ def get_template_service_content() -> str:
     resolved_exec_start = get_resolved_exec_start()
     return f"""[Unit]
 Description=MMRelay - Meshtastic <=> Matrix Relay
-After=network-online.target
-Wants=network-online.target
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 Type=simple
@@ -769,6 +769,21 @@ def service_needs_update() -> tuple[bool, str]:
             return True, "Unable to stat template or service file"
         if template_mtime > service_mtime:
             return True, "Template service file is newer than installed service file"
+
+    # Check for required [Unit] dependencies (time-sync.target)
+    # The service should have both After=time-sync.target and Wants=time-sync.target
+    has_after_time_sync = any(
+        "time-sync.target" in line
+        for line in existing_service.splitlines()
+        if line.strip().startswith("After=")
+    )
+    has_wants_time_sync = any(
+        "time-sync.target" in line
+        for line in existing_service.splitlines()
+        if line.strip().startswith("Wants=")
+    )
+    if not has_after_time_sync or not has_wants_time_sync:
+        return True, "Service file is missing time-sync.target dependency"
 
     return False, "Service file is up to date"
 

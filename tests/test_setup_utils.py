@@ -223,7 +223,7 @@ class TestSetupUtils(unittest.TestCase):
 
         result = install_service()
 
-        self.assertTrue(result)
+        assert result
         mock_create_service_file.assert_called_once()
         mock_reload_daemon.assert_called_once()
         update_prompts = [
@@ -231,7 +231,7 @@ class TestSetupUtils(unittest.TestCase):
             for call in mock_input.call_args_list
             if call.args and "update the service file" in call.args[0].lower()
         ]
-        self.assertEqual(len(update_prompts), 1)
+        assert len(update_prompts) == 1
 
     @patch("mmrelay.setup_utils.get_template_service_path")
     @patch("os.path.exists")
@@ -298,7 +298,7 @@ class TestSetupUtils(unittest.TestCase):
 
         result = service_exists()
 
-        self.assertTrue(result)
+        assert result
 
     @patch("mmrelay.setup_utils.get_user_service_path")
     def test_service_exists_false(self, mock_get_path):
@@ -886,6 +886,8 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_exists.return_value = True
         mock_read_service.return_value = """[Unit]
     Description=MMRelay Service
+    After=network-online.target time-sync.target
+    Wants=network-online.target time-sync.target
     
     [Service]
     ExecStart=mmrelay --home %h/.mmrelay
@@ -922,6 +924,8 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_exists.return_value = True
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 ExecStart=mmrelay --home=
@@ -949,6 +953,8 @@ WantedBy=default.target
         mock_exists.return_value = True
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 ExecStart=mmrelay --home
@@ -976,6 +982,8 @@ WantedBy=default.target
         mock_exists.return_value = True
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 Environment=MMRELAY_HOME=
@@ -1003,6 +1011,8 @@ WantedBy=default.target
         mock_exists.return_value = True
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 ExecStart=mmrelay --home %h/.mmrelay
@@ -1032,6 +1042,8 @@ WantedBy=default.target
         mock_getmtime.side_effect = [1, 1]
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 Environment=MMRELAY_HOME=%h/.mmrelay
@@ -1062,6 +1074,8 @@ WantedBy=default.target
         mock_getmtime.side_effect = [1, 1]
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 Environment=PATH=%h/.local/bin
@@ -1092,6 +1106,8 @@ WantedBy=default.target
         mock_getmtime.side_effect = [1, 1]
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 ExecStart=/usr/bin/env PATH=%h/.local/bin MMRELAY_HOME=%h/.mmrelay mmrelay
@@ -1121,6 +1137,8 @@ WantedBy=default.target
         mock_getmtime.side_effect = [1, 1]
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 Environment="MMRELAY_HOME=%h/.mmrelay"
@@ -1151,6 +1169,8 @@ WantedBy=default.target
         mock_getmtime.side_effect = [1, 1]
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 Environment=PYTHONUNBUFFERED=1 MMRELAY_HOME=%h/.mmrelay
@@ -1181,6 +1201,8 @@ WantedBy=default.target
         mock_getmtime.side_effect = [1, 1]
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 ExecStart=/usr/bin/env MMRELAY_HOME=%h/.mmrelay
@@ -1208,7 +1230,8 @@ WantedBy=default.target
         mock_exists.return_value = True
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
-After=network.target
+After=network.target time-sync.target
+Wants=time-sync.target
 
 [Service]
 Type=simple
