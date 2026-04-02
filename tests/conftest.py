@@ -981,6 +981,10 @@ def reset_meshtastic_globals():
         "_ble_interface_create_timeout_secs": getattr(
             mu, "_ble_interface_create_timeout_secs", None
         ),
+        "RELAY_START_TIME": getattr(mu, "RELAY_START_TIME", None),
+        "_relay_connection_started_monotonic_secs": getattr(
+            mu, "_relay_connection_started_monotonic_secs", None
+        ),
         "_relay_rx_time_clock_skew_secs": getattr(
             mu, "_relay_rx_time_clock_skew_secs", None
         ),
@@ -1042,6 +1046,8 @@ def reset_meshtastic_globals():
         "BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS",
         None,
     )
+    mu.RELAY_START_TIME = time.time()
+    mu._relay_connection_started_monotonic_secs = time.monotonic()
     mu._relay_rx_time_clock_skew_secs = None
     mu._relay_startup_drain_deadline_monotonic_secs = None
     mu._startup_packet_drain_applied = False

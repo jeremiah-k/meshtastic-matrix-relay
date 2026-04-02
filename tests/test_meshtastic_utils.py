@@ -90,6 +90,11 @@ def stable_relay_start_time(monkeypatch):
         False,
         raising=False,
     )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_connection_started_monotonic_secs",
+        time.monotonic(),
+        raising=False,
+    )
 
 
 class _FakeEvent:

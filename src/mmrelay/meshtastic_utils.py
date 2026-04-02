@@ -162,6 +162,8 @@ _relay_rx_time_clock_skew_lock = threading.Lock()
 # Allow controlled skew bootstrap shortly after connect so startup can recover
 # when host time and packet rxTime disagree before clock sync settles.
 _RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS = 180.0
+# Keep this intentionally larger than MAX_INITIAL_SKEW_SECS so startup recovery
+# can handle multi-hour host clock jumps observed in real deployments.
 _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS = 24 * 60 * 60
 # Briefly drain inbound packets after connect to avoid relaying queued backlog
 # while connection/session timing state settles.
@@ -1140,6 +1142,61 @@ def _is_health_probe_response_packet(packet: dict[str, Any], interface: Any) -> 
     with _health_probe_request_lock:
         _prune_health_probe_tracking()
         return request_id in _health_probe_request_deadlines
+
+
+def _claim_health_probe_response_and_maybe_calibrate(
+    packet: dict[str, Any], interface: Any, rx_time: float
+) -> bool:
+    """
+    Atomically claim a tracked health-probe response and calibrate skew once.
+
+    Lock order intentionally matches connect_meshtastic():
+    _health_probe_request_lock -> _relay_rx_time_clock_skew_lock.
+    """
+    global _relay_rx_time_clock_skew_secs
+
+    request_id = _extract_packet_request_id(packet)
+    if request_id is None:
+        return False
+
+    sender = _coerce_int_id(packet.get("from"))
+    local_num_raw = getattr(getattr(interface, "myInfo", None), "my_node_num", None)
+    if local_num_raw is None:
+        local_num_raw = getattr(getattr(interface, "localNode", None), "nodeNum", None)
+    local_num = _coerce_int_id(local_num_raw)
+    if sender is not None and local_num is not None and sender != local_num:
+        return False
+
+    observed_skew: float | None = None
+    calibrated_now = False
+    with _health_probe_request_lock:
+        _prune_health_probe_tracking()
+        if request_id not in _health_probe_request_deadlines:
+            return False
+
+        # Claim request ID so late duplicates cannot recalibrate.
+        _health_probe_request_deadlines.pop(request_id, None)
+
+        if rx_time > 0:
+            observed_skew = time.time() - rx_time
+            if abs(observed_skew) > _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS:
+                logger.debug(
+                    "[HEALTH_CHECK] Skipping rxTime clock skew calibration %.3f seconds outside startup limit %.3f",
+                    observed_skew,
+                    _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS,
+                )
+            else:
+                with _relay_rx_time_clock_skew_lock:
+                    if _relay_rx_time_clock_skew_secs is None:
+                        _relay_rx_time_clock_skew_secs = observed_skew
+                        calibrated_now = True
+
+    if calibrated_now and observed_skew is not None:
+        logger.debug(
+            "[HEALTH_CHECK] Calibrated rxTime clock skew to %.3f seconds",
+            observed_skew,
+        )
+    return True
 
 
 def _set_probe_ack_flag_from_packet(local_node: Any, packet: Any) -> bool:
@@ -4258,28 +4315,10 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     except (TypeError, ValueError):
         rx_time = 0
 
-    is_health_probe_response = _is_health_probe_response_packet(packet, interface)
+    is_health_probe_response = _claim_health_probe_response_and_maybe_calibrate(
+        packet, interface, rx_time
+    )
     if is_health_probe_response:
-        if rx_time > 0:
-            observed_skew = time.time() - rx_time
-            calibrated_now = False
-            if abs(observed_skew) > _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS:
-                logger.debug(
-                    "[HEALTH_CHECK] Skipping rxTime clock skew calibration %.3f seconds outside startup limit %.3f",
-                    observed_skew,
-                    _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS,
-                )
-            else:
-                with _relay_rx_time_clock_skew_lock:
-                    if _relay_rx_time_clock_skew_secs is None:
-                        _relay_rx_time_clock_skew_secs = observed_skew
-                        calibrated_now = True
-            if calibrated_now:
-                logger.debug(
-                    "[HEALTH_CHECK] Calibrated rxTime clock skew to %.3f seconds",
-                    observed_skew,
-                )
-
         decoded = packet.get("decoded")
         portnum = decoded.get("portnum") if isinstance(decoded, dict) else None
         logger.debug(

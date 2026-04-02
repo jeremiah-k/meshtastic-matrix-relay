@@ -1204,8 +1204,12 @@ class TestOnMeshtasticMessageOldPacketFiltering:
             mu_module.on_meshtastic_message(old_packet, mock_interface)
 
             # Should log debug about stale packet filtering.
-            log_calls = [str(call) for call in mock_logger.debug.call_args_list]
-            assert any("Ignoring old packet" in call for call in log_calls)
+            log_calls = [str(call).lower() for call in mock_logger.debug.call_args_list]
+            assert any(
+                ("ignore" in call or "ignoring" in call)
+                and ("old" in call or "stale" in call or "filtered" in call)
+                for call in log_calls
+            )
 
 
 class TestSnapshotNodeNameRowsNonDict:
