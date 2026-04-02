@@ -1,7 +1,8 @@
 [Unit]
 Description=MMRelay - Meshtastic <=> Matrix Relay
-After=network-online.target
-Wants=network-online.target
+# Delay startup until network and initial clock synchronization are available.
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 Type=simple
