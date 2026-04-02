@@ -80,6 +80,11 @@ def stable_relay_start_time(monkeypatch):
         None,
         raising=False,
     )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_startup_drain_deadline_monotonic_secs",
+        None,
+        raising=False,
+    )
 
 
 class _FakeEvent:
@@ -184,6 +189,7 @@ class TestMeshtasticUtils(unittest.TestCase):
             time.monotonic()
         )
         mmrelay.meshtastic_utils._relay_rx_time_clock_skew_secs = None
+        mmrelay.meshtastic_utils._relay_startup_drain_deadline_monotonic_secs = None
         iface = mmrelay.meshtastic_utils.meshtastic_iface
         if iface is not None:
             disconnect_iface = getattr(
@@ -2092,6 +2098,61 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         assert mu._relay_rx_time_clock_skew_secs is None
         log_calls = [str(call) for call in mock_logger.debug.call_args_list]
         assert any("Ignoring old packet" in call for call in log_calls)
+
+    def test_on_meshtastic_message_drains_packets_during_startup_window(self):
+        """Packets should be consumed during the startup drain window."""
+        import mmrelay.meshtastic_utils as mu
+
+        mu._relay_startup_drain_deadline_monotonic_secs = 1_010.0
+        packet = {
+            "from": TEST_PACKET_FROM_ID,
+            "to": TEST_PACKET_FROM_ID,
+            "decoded": {"text": "startup packet", "portnum": TEXT_MESSAGE_APP},
+            "channel": 0,
+            "id": TEST_PACKET_ID,
+            "rxTime": 100_005.0,
+        }
+        mock_interface = MagicMock()
+        mock_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
+
+        with (
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_005.0),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+            patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+        ):
+            on_meshtastic_message(packet, mock_interface)
+
+        mock_submit_coro.assert_not_called()
+        log_calls = [str(call) for call in mock_logger.debug.call_args_list]
+        assert any(
+            "Draining startup packet during initial connection window" in c
+            for c in log_calls
+        )
+
+    def test_on_meshtastic_message_clears_expired_startup_drain_deadline(self):
+        """Expired startup drain deadline should be cleared on next packet."""
+        import mmrelay.meshtastic_utils as mu
+
+        mu._relay_startup_drain_deadline_monotonic_secs = 1_000.0
+        packet = {
+            "from": TEST_PACKET_FROM_ID,
+            "to": TEST_PACKET_FROM_ID,
+            "decoded": {"text": "packet after drain", "portnum": TEXT_MESSAGE_APP},
+            "channel": 0,
+            "id": TEST_PACKET_ID,
+            "rxTime": 100_005.0,
+        }
+        mock_interface = MagicMock()
+        mock_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
+
+        with (
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_005.0),
+            patch("mmrelay.meshtastic_utils.time.time", return_value=100_010.0),
+            patch("mmrelay.meshtastic_utils.logger"),
+        ):
+            on_meshtastic_message(packet, mock_interface)
+
+        assert mu._relay_startup_drain_deadline_monotonic_secs is None
 
     def test_is_health_probe_response_packet_handles_zero_sender_id(self):
         """Sender 0 should not match a non-zero local node id."""

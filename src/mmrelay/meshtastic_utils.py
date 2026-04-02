@@ -163,6 +163,10 @@ _relay_rx_time_clock_skew_lock = threading.Lock()
 # when host time and packet rxTime disagree before clock sync settles.
 _RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS = 180.0
 _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS = 24 * 60 * 60
+# Briefly drain inbound packets after connect to avoid relaying queued backlog
+# while connection/session timing state settles.
+_STARTUP_PACKET_DRAIN_SECS = 15.0
+_relay_startup_drain_deadline_monotonic_secs: float | None = None
 
 
 # Global variables for the Meshtastic connection and event loop management
@@ -3255,7 +3259,7 @@ def connect_meshtastic(
     """
     global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config
     global RELAY_START_TIME, _relay_connection_started_monotonic_secs
-    global _relay_rx_time_clock_skew_secs
+    global _relay_rx_time_clock_skew_secs, _relay_startup_drain_deadline_monotonic_secs
     global matrix_rooms, _ble_future, _ble_future_address
     global _ble_future_started_at, _ble_future_timeout_secs
     if shutting_down:
@@ -3847,6 +3851,10 @@ def connect_meshtastic(
                         RELAY_START_TIME = time.time()
                         _relay_connection_started_monotonic_secs = time.monotonic()
                         _relay_rx_time_clock_skew_secs = None
+                        _relay_startup_drain_deadline_monotonic_secs = (
+                            _relay_connection_started_monotonic_secs
+                            + _STARTUP_PACKET_DRAIN_SECS
+                        )
 
                 # CRITICAL VALIDATION: Verify we're connected to the correct BLE device.
                 # This prevents connection to wrong device due to substring matching
@@ -4229,7 +4237,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             - optional 'channel' (mapped channel value)
         interface: Meshtastic interface used to resolve node information and the relay node id. Must provide .myInfo.my_node_num and a .nodes mapping for sender metadata.
     """
-    global _relay_rx_time_clock_skew_secs
+    global _relay_rx_time_clock_skew_secs, _relay_startup_drain_deadline_monotonic_secs
 
     # Validate packet structure
     if not packet or not isinstance(packet, dict):
@@ -4272,8 +4280,25 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         )
         return
 
+    now_monotonic = time.monotonic()
     with _relay_rx_time_clock_skew_lock:
         relay_start_time = RELAY_START_TIME
+        startup_drain_deadline = _relay_startup_drain_deadline_monotonic_secs
+
+    if startup_drain_deadline is not None:
+        remaining_drain_secs = startup_drain_deadline - now_monotonic
+        if remaining_drain_secs > 0:
+            logger.debug(
+                "Draining startup packet during initial connection window (remaining=%.3f seconds)",
+                remaining_drain_secs,
+            )
+            return
+        with _relay_rx_time_clock_skew_lock:
+            if (
+                _relay_startup_drain_deadline_monotonic_secs is not None
+                and _relay_startup_drain_deadline_monotonic_secs <= now_monotonic
+            ):
+                _relay_startup_drain_deadline_monotonic_secs = None
 
     # Seed clock skew from the first non-health-probe packet with a valid
     # rxTime so that the cutoff works even when health checks are disabled.
