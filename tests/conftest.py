@@ -981,6 +981,9 @@ def reset_meshtastic_globals():
         "_ble_interface_create_timeout_secs": getattr(
             mu, "_ble_interface_create_timeout_secs", None
         ),
+        "_relay_rx_time_clock_skew_secs": getattr(
+            mu, "_relay_rx_time_clock_skew_secs", None
+        ),
         "_ble_executor_degraded_addresses": set(
             getattr(mu, "_ble_executor_degraded_addresses", None) or set()
         ),
@@ -1033,6 +1036,7 @@ def reset_meshtastic_globals():
         "BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS",
         None,
     )
+    mu._relay_rx_time_clock_skew_secs = None
     mu._health_probe_request_deadlines = {}
 
     yield

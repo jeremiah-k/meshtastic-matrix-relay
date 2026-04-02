@@ -254,68 +254,6 @@ class TestMeshtasticUtils(unittest.TestCase):
 
             # The global mock_submit_coro fixture will handle the AsyncMock properly
 
-    def test_on_meshtastic_message_adjusts_start_cutoff_for_clock_skew(self):
-        """
-        Packet filtering should tolerate relay/node clock skew after startup.
-        """
-        import mmrelay.meshtastic_utils as mu
-
-        mu.RELAY_START_TIME = 1_000_000.0
-        mu._relay_rx_time_clock_skew_secs = None
-        packet = {"decoded": {}, "rxTime": 995_010.0}
-
-        with (
-            patch("mmrelay.meshtastic_utils.time.time", return_value=1_000_010.0),
-            patch(
-                "mmrelay.meshtastic_utils._is_health_probe_response_packet",
-                return_value=True,
-            ) as mock_health_probe,
-        ):
-            on_meshtastic_message(packet, MagicMock())
-
-        mock_health_probe.assert_called_once()
-        self.assertAlmostEqual(mu._relay_rx_time_clock_skew_secs or 0.0, 5_000.0)
-
-    def test_on_meshtastic_message_drops_packet_older_than_adjusted_cutoff(self):
-        """
-        Packets older than the skew-adjusted startup cutoff should still be dropped.
-        """
-        import mmrelay.meshtastic_utils as mu
-
-        mu.RELAY_START_TIME = 1_000_000.0
-        mu._relay_rx_time_clock_skew_secs = 5_000.0
-        packet = {"decoded": {}, "rxTime": 994_900.0}
-
-        with patch(
-            "mmrelay.meshtastic_utils._is_health_probe_response_packet",
-            return_value=True,
-        ) as mock_health_probe:
-            on_meshtastic_message(packet, MagicMock())
-
-        mock_health_probe.assert_not_called()
-
-    def test_on_meshtastic_message_ignores_unrealistic_skew_sample(self):
-        """
-        Implausibly old rxTime values should not recalibrate clock skew.
-        """
-        import mmrelay.meshtastic_utils as mu
-
-        mu.RELAY_START_TIME = 1_000_000.0
-        mu._relay_rx_time_clock_skew_secs = None
-        packet = {"decoded": {}, "rxTime": 1.0}
-
-        with (
-            patch("mmrelay.meshtastic_utils.time.time", return_value=1_000_010.0),
-            patch(
-                "mmrelay.meshtastic_utils._is_health_probe_response_packet",
-                return_value=True,
-            ) as mock_health_probe,
-        ):
-            on_meshtastic_message(packet, MagicMock())
-
-        mock_health_probe.assert_not_called()
-        self.assertIsNone(mu._relay_rx_time_clock_skew_secs)
-
     def test_on_meshtastic_message_channel_fallback_for_string_portnum(self):
         """
         Text or detection packets with string portnums should fall back to channel 0 when channel is missing.
@@ -1983,13 +1921,15 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         Health probe responses should be logged with HEALTH_CHECK prefix and not
         processed as regular ADMIN_APP traffic.
         """
+        import mmrelay.meshtastic_utils as mu
+
         packet = {
             "from": TEST_PACKET_FROM_ID,
             "to": TEST_PACKET_FROM_ID,
             "decoded": {"portnum": "ADMIN_APP", "requestId": 4242},
             "channel": 0,
             "id": 22222,
-            "rxTime": TEST_PACKET_RX_TIME,
+            "rxTime": 95_000.0,
         }
         mock_interface = MagicMock()
         mock_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
@@ -2000,17 +1940,65 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
                 {4242: 9999999999.0},
                 clear=True,
             ),
+            patch("mmrelay.meshtastic_utils.time.time", return_value=100_000.0),
             patch("mmrelay.meshtastic_utils._run_meshtastic_plugins") as mock_plugins,
         ):
             with self.assertLogs("Meshtastic", level="DEBUG") as cm:
                 on_meshtastic_message(packet, mock_interface)
 
         mock_plugins.assert_not_called()
+        assert (mu._relay_rx_time_clock_skew_secs or 0.0) == pytest.approx(5_000.0)
         log_output = "\n".join(cm.output)
         self.assertIn(
             "[HEALTH_CHECK] Metadata probe response requestId=4242", log_output
         )
         self.assertIn("port=ADMIN_APP", log_output)
+
+    def test_on_meshtastic_message_filters_old_packets_using_calibrated_skew(self):
+        """Old packet filtering should use the calibrated rxTime skew."""
+        import mmrelay.meshtastic_utils as mu
+
+        mu.RELAY_START_TIME = 100_000.0
+        mu._relay_rx_time_clock_skew_secs = 5_000.0
+        packet = {
+            "from": TEST_PACKET_FROM_ID,
+            "to": TEST_PACKET_FROM_ID,
+            "decoded": {"text": "old message", "portnum": TEXT_MESSAGE_APP},
+            "channel": 0,
+            "id": TEST_PACKET_ID,
+            "rxTime": 94_900.0,
+        }
+        mock_interface = MagicMock()
+        mock_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            on_meshtastic_message(packet, mock_interface)
+
+        log_calls = [str(call) for call in mock_logger.debug.call_args_list]
+        assert any("Ignoring old packet" in call for call in log_calls)
+
+    def test_on_meshtastic_message_filters_old_packets_with_negative_skew(self):
+        """Negative skew (node ahead) should shift cutoff forward."""
+        import mmrelay.meshtastic_utils as mu
+
+        mu.RELAY_START_TIME = 100_000.0
+        mu._relay_rx_time_clock_skew_secs = -120.0
+        packet = {
+            "from": TEST_PACKET_FROM_ID,
+            "to": TEST_PACKET_FROM_ID,
+            "decoded": {"text": "old message", "portnum": TEXT_MESSAGE_APP},
+            "channel": 0,
+            "id": TEST_PACKET_ID,
+            "rxTime": 100_050.0,
+        }
+        mock_interface = MagicMock()
+        mock_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            on_meshtastic_message(packet, mock_interface)
+
+        log_calls = [str(call) for call in mock_logger.debug.call_args_list]
+        assert any("Ignoring old packet" in call for call in log_calls)
 
     def test_is_health_probe_response_packet_handles_zero_sender_id(self):
         """Sender 0 should not match a non-zero local node id."""

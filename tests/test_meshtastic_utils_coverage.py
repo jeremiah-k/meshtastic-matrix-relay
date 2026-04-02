@@ -44,6 +44,7 @@ def reset_meshtastic_state(reset_meshtastic_globals):
     mu._ble_future_timeout_secs = None
     mu._ble_timeout_counts = {}
     mu._health_probe_request_deadlines = {}
+    mu._relay_rx_time_clock_skew_secs = None
     mu._ble_executor_orphaned_workers_by_address = {}
     mu._metadata_executor_orphaned_workers = 0
     yield
@@ -1173,6 +1174,7 @@ class TestOnMeshtasticMessageOldPacketFiltering:
 
         # Set RELAY_START_TIME to a recent time
         mu_module.RELAY_START_TIME = time.time()
+        mu_module._relay_rx_time_clock_skew_secs = None
 
         # Create a packet with rx_time in the past (before RELAY_START_TIME)
         old_packet = {
