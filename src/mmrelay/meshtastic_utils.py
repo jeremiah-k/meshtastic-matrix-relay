@@ -4185,7 +4185,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             - optional 'channel' (mapped channel value)
         interface: Meshtastic interface used to resolve node information and the relay node id. Must provide .myInfo.my_node_num and a .nodes mapping for sender metadata.
     """
-    global config, matrix_rooms, _relay_rx_time_clock_skew_secs
+    global _relay_rx_time_clock_skew_secs
 
     # Validate packet structure
     if not packet or not isinstance(packet, dict):
