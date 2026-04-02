@@ -3776,9 +3776,13 @@ def connect_meshtastic(
             with meshtastic_lock:
                 meshtastic_client = client
                 # Use connection start time (not module import time) for stale rxTime filtering.
-                RELAY_START_TIME = time.time()
+                # Snapshot both RELAY_START_TIME and skew under the same lock so the
+                # stale-packet cutoff always sees a consistent pair.
                 with _relay_rx_time_clock_skew_lock:
+                    RELAY_START_TIME = time.time()
                     _relay_rx_time_clock_skew_secs = None
+                with _health_probe_request_lock:
+                    _health_probe_request_deadlines.clear()
 
                 # CRITICAL VALIDATION: Verify we're connected to the correct BLE device.
                 # This prevents connection to wrong device due to substring matching
@@ -4200,29 +4204,45 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         )
         return
 
+    # Seed clock skew from the first non-health-probe packet with a valid
+    # rxTime so that the cutoff works even when health checks are disabled.
+    if rx_time > 0:
+        observed_skew = time.time() - rx_time
+        calibrated_now = False
+        with _relay_rx_time_clock_skew_lock:
+            if _relay_rx_time_clock_skew_secs is None:
+                _relay_rx_time_clock_skew_secs = observed_skew
+                calibrated_now = True
+        if calibrated_now:
+            logger.debug(
+                "Calibrated rxTime clock skew from connect-time packet to %.3f seconds",
+                observed_skew,
+            )
+
     # Filter out old messages (from before relay start) to prevent flooding.
     # This handles cases where the node dumps stored history upon connection.
     # When health probes calibrate packet clock skew, adjust the relay start
     # cutoff so clock offsets do not hide fresh traffic.
     with _relay_rx_time_clock_skew_lock:
+        relay_start_time = RELAY_START_TIME
         calibrated_skew = _relay_rx_time_clock_skew_secs
-    effective_relay_start_time = RELAY_START_TIME
+    effective_relay_start_time = relay_start_time
     if calibrated_skew is not None:
-        effective_relay_start_time = RELAY_START_TIME - calibrated_skew
+        effective_relay_start_time = relay_start_time - calibrated_skew
 
     if rx_time > 0 and rx_time < effective_relay_start_time:
         if calibrated_skew is None:
             logger.debug(
                 "Ignoring old packet with rxTime %s (older than start time %s)",
                 rx_time,
-                RELAY_START_TIME,
+                relay_start_time,
             )
         else:
             logger.debug(
                 "Ignoring old packet with rxTime %s (older than adjusted start time %s; raw start=%s skew=%s)",
                 rx_time,
                 effective_relay_start_time,
-                RELAY_START_TIME,
+                relay_start_time,
                 calibrated_skew,
             )
         return
