@@ -2272,7 +2272,6 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                             try:
                                 # Create a fresh module to avoid re-running code in partially-initialized module
                                 plugin_module = importlib.util.module_from_spec(spec)
-                                sys.modules[module_name] = plugin_module
                                 _exec_plugin_module(
                                     spec=spec,
                                     plugin_module=plugin_module,
