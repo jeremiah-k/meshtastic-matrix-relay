@@ -1476,7 +1476,7 @@ def _exec_plugin_module(
         try:
             with _temp_sys_path(plugin_dir):
                 spec.loader.exec_module(plugin_module)
-        except Exception:
+        except BaseException:
             if previous_module is None:
                 sys.modules.pop(module_name, None)
             else:
@@ -2268,8 +2268,11 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                     f"Path refresh after auto-install failed: {e}"
                                 )
 
-                            # Try to load the module again
+                            # Try to load the module again with a fresh module object
                             try:
+                                # Create a fresh module to avoid re-running code in partially-initialized module
+                                plugin_module = importlib.util.module_from_spec(spec)
+                                sys.modules[module_name] = plugin_module
                                 _exec_plugin_module(
                                     spec=spec,
                                     plugin_module=plugin_module,

@@ -4632,7 +4632,9 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
                     module_name=mod_name,
                     plugin_dir=os.path.dirname(TEST_FILE_PATH),
                 )
-            except Exception as e:
+            except (
+                Exception
+            ) as e:  # noqa: BLE001 - intentional broad except for testing namespace cleanup
                 # The loader may raise; that is fine, we test namespace cleanup.
                 # The important assertion is that no RuntimeError from
                 # sys.modules corruption is raised.
