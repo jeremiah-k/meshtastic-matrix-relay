@@ -4365,6 +4365,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 and _relay_startup_drain_deadline_monotonic_secs <= now_monotonic
             ):
                 _relay_startup_drain_deadline_monotonic_secs = None
+                logger.debug("Startup drain window has ended — accepting packets")
 
     # Seed clock skew from the first non-health-probe packet with a valid
     # rxTime so that the cutoff works even when health checks are disabled.

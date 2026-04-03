@@ -973,6 +973,7 @@ async def main(config: dict[str, Any]) -> None:
 
             # Publish readiness only after startup wiring in this section is complete.
             _write_ready_file()
+            logger.info("Relay startup complete")
 
             # Start heartbeat AFTER readiness is confirmed
             if _ready_heartbeat_seconds > 0:
