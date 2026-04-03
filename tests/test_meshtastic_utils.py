@@ -1951,11 +1951,20 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
         }
+        mu.meshtastic_client = None
         mu.config = self.mock_config
         mu.matrix_rooms = self.mock_config["matrix_rooms"]
         mu.reconnecting = False
         mu.shutting_down = False
+        mu.reconnect_task = None
         mu._relay_active_client_id = None
+        mu._relay_connection_started_monotonic_secs = time.monotonic() - (
+            mu._RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS + 1.0
+        )
+        mu._relay_rx_time_clock_skew_secs = None
+        mu._relay_startup_drain_deadline_monotonic_secs = None
+        mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = None
+        mu._startup_packet_drain_applied = False
 
     def test_on_meshtastic_message_no_decoded(self):
         """
