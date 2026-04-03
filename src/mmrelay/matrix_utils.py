@@ -1194,6 +1194,15 @@ bot_user_name = None  # Detected upon logon
 bot_start_time = int(
     time.time() * MILLISECONDS_PER_SECOND
 )  # Timestamp when the bot starts, used to filter out old messages
+bot_start_monotonic_secs = time.monotonic()
+
+# Matrix server timestamps are epoch milliseconds. Ignore startup stale-event
+# filtering when values are not epoch-like (common in tests) or when local wall
+# time has stepped backwards since startup.
+_MATRIX_EVENT_EPOCH_FLOOR_MS = 946684800000  # 2000-01-01T00:00:00Z
+_MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS = 5 * MILLISECONDS_PER_SECOND
+_MATRIX_STALE_STARTUP_EVENT_DROP_MS = 5 * 60 * MILLISECONDS_PER_SECOND
+_MATRIX_CLOCK_ROLLBACK_DISABLE_MS = 60 * MILLISECONDS_PER_SECOND
 
 
 matrix_client = None
@@ -4254,18 +4263,54 @@ async def on_room_message(
     full_display_name = "Unknown user"
     message_timestamp = event.server_timestamp
 
-    # Do not hard-drop events using local startup wall clock. Startup clock
-    # corrections (for example after NTP sync) can move backward and make
-    # valid homeserver timestamps appear "old".
+    # Guard against clearly stale pre-start backlog while remaining tolerant to
+    # local startup clock corrections (for example, NTP stepping backward).
     if message_timestamp < bot_start_time:
-        logger.debug(
-            "Matrix event timestamp predates local startup baseline but will still be processed "
-            "(event_ts=%s bot_start_time=%s sender=%s room=%s)",
-            message_timestamp,
-            bot_start_time,
-            event.sender,
-            room.room_id,
+        skew_ms = bot_start_time - message_timestamp
+        now_ms = int(time.time() * MILLISECONDS_PER_SECOND)
+        elapsed_ms = int(
+            (time.monotonic() - bot_start_monotonic_secs) * MILLISECONDS_PER_SECOND
         )
+        expected_now_ms = bot_start_time + elapsed_ms
+        rollback_ms = expected_now_ms - now_ms
+        baseline_plausible = (
+            message_timestamp >= _MATRIX_EVENT_EPOCH_FLOOR_MS
+            and bot_start_time >= _MATRIX_EVENT_EPOCH_FLOOR_MS
+        )
+        rollback_detected = rollback_ms > _MATRIX_CLOCK_ROLLBACK_DISABLE_MS
+
+        if (
+            baseline_plausible
+            and not rollback_detected
+            and skew_ms > _MATRIX_STALE_STARTUP_EVENT_DROP_MS
+        ):
+            logger.debug(
+                "Dropping stale Matrix event predating startup baseline "
+                "(event_ts=%s bot_start_time=%s skew_ms=%s sender=%s room=%s)",
+                message_timestamp,
+                bot_start_time,
+                skew_ms,
+                event.sender,
+                room.room_id,
+            )
+            return
+
+        if skew_ms > _MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS:
+            reason = (
+                "clock rollback detected"
+                if rollback_detected
+                else "startup skew within tolerance window"
+            )
+            logger.debug(
+                "Processing Matrix event despite startup timestamp skew "
+                "(event_ts=%s bot_start_time=%s skew_ms=%s sender=%s room=%s reason=%s)",
+                message_timestamp,
+                bot_start_time,
+                skew_ms,
+                event.sender,
+                room.room_id,
+                reason,
+            )
 
     # Do not process messages from the bot itself
     if event.sender == bot_user_id:

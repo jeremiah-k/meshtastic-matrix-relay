@@ -2427,11 +2427,9 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         ):
             first_result = mu._seed_connect_time_skew(94_900.0)
 
-        self.assertTrue(first_result)
-        self.assertEqual(mu._relay_rx_time_clock_skew_secs, 5_100.0)
-        self.assertIsNone(
-            mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs
-        )
+        assert first_result
+        assert mu._relay_rx_time_clock_skew_secs == 5_100.0
+        assert mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs is None
 
         # Clearing calibrated skew should not re-enable bootstrap once the reconnect
         # one-shot allowance has been consumed.
@@ -2442,8 +2440,8 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         ):
             second_result = mu._seed_connect_time_skew(94_850.0)
 
-        self.assertFalse(second_result)
-        self.assertIsNone(mu._relay_rx_time_clock_skew_secs)
+        assert not second_result
+        assert mu._relay_rx_time_clock_skew_secs is None
 
     def test_claim_health_probe_uses_localnode_fallback(self):
         """_claim_health_probe_response_and_maybe_calibrate should fall back to localNode when myInfo is absent."""

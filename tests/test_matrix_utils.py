@@ -797,6 +797,7 @@ async def test_on_room_message_does_not_drop_old_timestamp_messages(
     mock_event.server_timestamp = 100
 
     with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
         patch(
             "mmrelay.matrix_utils.get_user_display_name",
             AsyncMock(return_value="user"),
@@ -810,6 +811,70 @@ async def test_on_room_message_does_not_drop_old_timestamp_messages(
         patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
         patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
         patch("mmrelay.matrix_utils.bot_start_time", 200),
+    ):
+        mock_get_message_queue.return_value.get_queue_size.return_value = 0
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_called_once()
+
+
+async def test_on_room_message_drops_clearly_stale_startup_backlog(
+    mock_room, mock_event, test_config
+):
+    """Clearly stale pre-start events should be dropped when startup clock is stable."""
+    mock_event.server_timestamp = 1_700_000_000_000
+
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            AsyncMock(return_value="user"),
+        ),
+        patch("mmrelay.matrix_utils.get_message_queue") as mock_get_message_queue,
+        patch(
+            "mmrelay.matrix_utils.queue_message", return_value=True
+        ) as mock_queue_message,
+        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
+        patch("mmrelay.matrix_utils.bot_start_time", 1_700_000_400_000),
+        patch("mmrelay.matrix_utils.bot_start_monotonic_secs", 10_000.0),
+        patch("mmrelay.matrix_utils.time.time", return_value=1_700_000_405.0),
+        patch("mmrelay.matrix_utils.time.monotonic", return_value=10_005.0),
+    ):
+        mock_get_message_queue.return_value.get_queue_size.return_value = 0
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_not_called()
+
+
+async def test_on_room_message_allows_old_timestamp_after_clock_rollback(
+    mock_room, mock_event, test_config
+):
+    """Clock rollback after startup should not drop legitimate Matrix events."""
+    message_ts = 1_775_234_301_537
+    startup_ts = message_ts + (5 * 60 * 60 * 1000)
+    mock_event.server_timestamp = message_ts
+
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            AsyncMock(return_value="user"),
+        ),
+        patch("mmrelay.matrix_utils.get_message_queue") as mock_get_message_queue,
+        patch(
+            "mmrelay.matrix_utils.queue_message", return_value=True
+        ) as mock_queue_message,
+        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
+        patch("mmrelay.matrix_utils.bot_start_time", startup_ts),
+        patch("mmrelay.matrix_utils.bot_start_monotonic_secs", 10_000.0),
+        patch("mmrelay.matrix_utils.time.time", return_value=message_ts / 1000),
+        patch("mmrelay.matrix_utils.time.monotonic", return_value=10_060.0),
     ):
         mock_get_message_queue.return_value.get_queue_size.return_value = 0
         await on_room_message(mock_room, mock_event)

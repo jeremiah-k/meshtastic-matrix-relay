@@ -4070,10 +4070,6 @@ def connect_meshtastic(
 
             # Acquire lock only for the final setup and subscription
             with meshtastic_lock:
-                meshtastic_client = client
-                _relay_active_client_id = id(client)
-                client_assigned_for_this_connect = True
-
                 # CRITICAL VALIDATION: Verify we're connected to the correct BLE device.
                 # This prevents connection to wrong device due to substring matching
                 # bugs in meshtastic library's find_device() function. The official
@@ -4093,7 +4089,7 @@ def connect_meshtastic(
                         CONFIG_KEY_BLE_ADDRESS
                     )
                     if expected_ble_address and not _validate_ble_connection_address(
-                        meshtastic_client, expected_ble_address
+                        client, expected_ble_address
                     ):
                         # Validation failed - wrong device connected
                         # Disconnect immediately to prevent communication with wrong device
@@ -4102,13 +4098,13 @@ def connect_meshtastic(
                             "Disconnecting and raising error to force retry."
                         )
                         try:
-                            if meshtastic_client is meshtastic_iface:
+                            if client is meshtastic_iface:
                                 # BLE interface - use proper disconnect sequence
                                 _disconnect_ble_interface(
                                     meshtastic_iface, reason="address validation failed"
                                 )
                             else:
-                                meshtastic_client.close()
+                                client.close()
                         except Exception as e:
                             logger.warning(f"Error closing invalid BLE connection: {e}")
                         raise ConnectionRefusedError(
@@ -4152,7 +4148,13 @@ def connect_meshtastic(
                             _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs,
                         )
 
-                nodeInfo = meshtastic_client.getMyNodeInfo()
+                # Publish the active client only after per-connection timing state
+                # has been reset, so callbacks cannot observe stale skew windows.
+                meshtastic_client = client
+                _relay_active_client_id = id(client)
+                client_assigned_for_this_connect = True
+
+                nodeInfo = client.getMyNodeInfo()
 
                 # Safely access node info fields
                 user_info = nodeInfo.get("user", {}) if nodeInfo else {}
@@ -4160,7 +4162,7 @@ def connect_meshtastic(
                 hw_model = user_info.get("hwModel", "unknown")
 
                 # Get firmware version from device metadata
-                metadata = _get_device_metadata(meshtastic_client)
+                metadata = _get_device_metadata(client)
                 firmware_version = metadata["firmware_version"]
 
                 if metadata.get("success"):
@@ -4205,7 +4207,7 @@ def connect_meshtastic(
                     logger.debug("Subscribed to meshtastic.connection.lost")
 
                 _schedule_connect_time_calibration_probe(
-                    meshtastic_client,
+                    client,
                     connection_type=connection_type,
                     active_config=config,
                 )
@@ -4594,9 +4596,12 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     active_client = meshtastic_client
     active_client_id = _relay_active_client_id
     if active_client is None:
-        if reconnecting:
+        # Runtime callbacks can still arrive briefly after teardown/cleanup
+        # because subscriptions are process-lifetime. When subscriptions are
+        # active and no client is published, always drop packet callbacks.
+        if subscribed_to_messages:
             logger.debug(
-                "Ignoring packet while reconnecting with no active Meshtastic client"
+                "Ignoring packet because no Meshtastic interface is currently active"
             )
             return
     else:
