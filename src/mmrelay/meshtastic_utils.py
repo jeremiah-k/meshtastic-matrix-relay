@@ -179,6 +179,8 @@ _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs: float | None = None
 
 # Global variables for the Meshtastic connection and event loop management
 meshtastic_client = None
+# Session guard to reject callbacks emitted by stale interfaces after reconnect.
+_relay_active_client_id: int | None = None
 meshtastic_iface = None  # BLE interface instance for process lifetime
 event_loop = None  # Will be set from main.py
 
@@ -3357,12 +3359,14 @@ def _get_connect_time_probe_settings(
     if not isinstance(health_cfg, dict):
         return default_enabled, default_timeout
 
-    enabled = _coerce_bool(
-        health_cfg.get(
-            "connect_probe_enabled",
-            health_cfg.get("enabled", default_enabled),
-        ),
+    inherited_enabled = _coerce_bool(
+        health_cfg.get("enabled", default_enabled),
         default_enabled,
+        "meshtastic.health_check.enabled",
+    )
+    enabled = _coerce_bool(
+        health_cfg.get("connect_probe_enabled", inherited_enabled),
+        inherited_enabled,
         "meshtastic.health_check.connect_probe_enabled",
     )
     timeout_secs = _coerce_positive_float(
@@ -3445,6 +3449,7 @@ def connect_meshtastic(
         The connected Meshtastic client instance on success, or `None` if a connection could not be established or shutdown is in progress.
     """
     global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config
+    global _relay_active_client_id
     global RELAY_START_TIME, _relay_connection_started_monotonic_secs
     global _relay_rx_time_clock_skew_secs, _relay_startup_drain_deadline_monotonic_secs
     global _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs
@@ -3487,6 +3492,7 @@ def connect_meshtastic(
                     "Error closing previous connection: %s", e, exc_info=True
                 )
             meshtastic_client = None
+            _relay_active_client_id = None
 
         # Check if config is available
         if config is None:
@@ -4033,6 +4039,7 @@ def connect_meshtastic(
             # Acquire lock only for the final setup and subscription
             with meshtastic_lock:
                 meshtastic_client = client
+                _relay_active_client_id = id(client)
 
                 # CRITICAL VALIDATION: Verify we're connected to the correct BLE device.
                 # This prevents connection to wrong device due to substring matching
@@ -4302,6 +4309,7 @@ def on_lost_meshtastic_connection(
     """
     # Keep these as one-global-per-line to minimize merge churn as this list evolves.
     global meshtastic_client
+    global _relay_active_client_id
     global meshtastic_iface
     global reconnecting
     global shutting_down
@@ -4375,6 +4383,7 @@ def on_lost_meshtastic_connection(
                 except Exception as e:
                     logger.warning(f"Error closing Meshtastic client: {e}")
         meshtastic_client = None
+        _relay_active_client_id = None
         ble_future_to_cancel = None
         stale_executor = None
         stale_ble_address: str | None = None
@@ -4519,6 +4528,24 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     # Validate packet structure
     if not packet or not isinstance(packet, dict):
         logger.error("Received malformed packet: packet is None or not a dict")
+        return
+
+    # Read-mostly guard values; avoid meshtastic_lock here because callbacks can
+    # fire synchronously while connect_meshtastic() still holds that lock.
+    active_client_id = _relay_active_client_id
+    reconnecting_now = reconnecting
+
+    if active_client_id is not None and id(interface) != active_client_id:
+        logger.debug(
+            "Ignoring packet from stale Meshtastic interface (packet_interface_id=%s active_client_id=%s)",
+            id(interface),
+            active_client_id,
+        )
+        return
+    if active_client_id is None and reconnecting_now:
+        logger.debug(
+            "Ignoring packet while reconnecting with no active Meshtastic client"
+        )
         return
 
     # Parse rxTime early so health-probe responses can calibrate packet clock skew.

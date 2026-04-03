@@ -76,6 +76,11 @@ def stable_relay_start_time(monkeypatch):
     """
     monkeypatch.setattr("mmrelay.meshtastic_utils.RELAY_START_TIME", 0, raising=False)
     monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_active_client_id",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
         "mmrelay.meshtastic_utils._relay_rx_time_clock_skew_secs",
         None,
         raising=False,
@@ -195,6 +200,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         import mmrelay.meshtastic_utils
 
         mmrelay.meshtastic_utils.meshtastic_client = None
+        mmrelay.meshtastic_utils._relay_active_client_id = None
         mmrelay.meshtastic_utils.config = None
         mmrelay.meshtastic_utils.matrix_rooms = []
         mmrelay.meshtastic_utils.reconnecting = False
@@ -2119,6 +2125,38 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             on_meshtastic_message(packet, mock_interface)
 
         assert mu._relay_rx_time_clock_skew_secs is None
+
+    def test_on_meshtastic_message_ignores_stale_interface_packet(self):
+        """Packets emitted by stale interfaces should not seed skew or be processed."""
+        import mmrelay.meshtastic_utils as mu
+
+        active_interface = MagicMock()
+        stale_interface = MagicMock()
+        mu.meshtastic_client = active_interface
+        mu._relay_active_client_id = id(active_interface)
+        mu._relay_rx_time_clock_skew_secs = None
+        mu._relay_connection_started_monotonic_secs = 1_000.0
+        mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = 1_005.0
+        mu.RELAY_START_TIME = 100_000.0
+        packet = {
+            "from": TEST_PACKET_FROM_ID,
+            "to": TEST_PACKET_FROM_ID,
+            "decoded": {"text": "stale iface packet", "portnum": TEXT_MESSAGE_APP},
+            "channel": 0,
+            "id": TEST_PACKET_ID,
+            "rxTime": 94_900.0,
+        }
+
+        with (
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+            patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+        ):
+            on_meshtastic_message(packet, stale_interface)
+
+        assert mu._relay_rx_time_clock_skew_secs is None
+        mock_submit_coro.assert_not_called()
+        log_calls = [str(call) for call in mock_logger.debug.call_args_list]
+        assert any("stale Meshtastic interface" in call for call in log_calls)
 
     def test_on_meshtastic_message_filters_old_packets_using_calibrated_skew(self):
         """Old packet filtering should use the calibrated rxTime skew."""

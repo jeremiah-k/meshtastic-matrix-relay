@@ -655,6 +655,44 @@ def test_connect_meshtastic_schedules_one_shot_probe_when_periodic_health_disabl
     )
 
 
+def test_connect_meshtastic_probe_invalid_override_inherits_parent_enabled(
+    reset_meshtastic_globals,
+):
+    """Invalid connect_probe_enabled should inherit health_check.enabled."""
+    mock_client = MagicMock()
+    mock_client.localNode = MagicMock()
+    mock_client.sendData = MagicMock()
+    mock_client.getMyNodeInfo.return_value = {
+        "user": {"shortName": "Node", "hwModel": "HW"}
+    }
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+            return_value=mock_client,
+        ),
+        patch(
+            "mmrelay.meshtastic_utils._get_device_metadata",
+            return_value={"firmware_version": "unknown", "success": False},
+        ),
+        patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit_probe,
+    ):
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "127.0.0.1",
+                "health_check": {
+                    "enabled": True,
+                    "connect_probe_enabled": "not-a-bool",
+                },
+            }
+        }
+        result = connect_meshtastic(passed_config=config)
+
+    assert result is mock_client
+    mock_submit_probe.assert_called_once()
+
+
 def test_connect_meshtastic_does_not_schedule_one_shot_probe_by_default(
     reset_meshtastic_globals,
 ):
