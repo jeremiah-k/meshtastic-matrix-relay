@@ -33,6 +33,7 @@ import mmrelay.plugin_loader as pl  # noqa: E402
 from mmrelay.constants.plugins import (  # noqa: E402
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,
     DEFAULT_BRANCHES,
+    GIT_CHECKOUT_CMD,
 )
 from mmrelay.plugin_loader import (  # noqa: E402
     _SYS_MODULES_LOCK,
@@ -518,6 +519,8 @@ class Plugin:
         self.assertEqual(plugins[0].plugin_name, "auto_plugin")
 
     def test_load_plugins_from_directory_auto_install_retry_no_plugin_class(self):
+        orig_pipx_home = os.environ.get("PIPX_HOME")
+        orig_pipx_local_venvs = os.environ.get("PIPX_LOCAL_VENVS")
         for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
             os.environ.pop(var, None)
         plugin_content = "import missingdep_noclass\n"
@@ -541,32 +544,54 @@ class Plugin:
             )
         finally:
             sys.modules.pop("missingdep_noclass", None)
+            if orig_pipx_home is not None:
+                os.environ["PIPX_HOME"] = orig_pipx_home
+            else:
+                os.environ.pop("PIPX_HOME", None)
+            if orig_pipx_local_venvs is not None:
+                os.environ["PIPX_LOCAL_VENVS"] = orig_pipx_local_venvs
+            else:
+                os.environ.pop("PIPX_LOCAL_VENVS", None)
 
     def test_load_plugins_from_directory_auto_install_retry_module_not_found(self):
-        for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
-            os.environ.pop(var, None)
-        plugin_content = "import missingdep_stillgone\n"
-        plugin_file = os.path.join(self.custom_dir, "auto_stillgone.py")
-        with open(plugin_file, "w", encoding="utf-8") as handle:
-            handle.write(plugin_content)
+        orig_pipx_home = os.environ.get("PIPX_HOME")
+        orig_pipx_local_venvs = os.environ.get("PIPX_LOCAL_VENVS")
+        try:
+            for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
+                os.environ.pop(var, None)
+            plugin_content = "import missingdep_stillgone\n"
+            plugin_file = os.path.join(self.custom_dir, "auto_stillgone.py")
+            with open(plugin_file, "w", encoding="utf-8") as handle:
+                handle.write(plugin_content)
 
-        def fake_run(_cmd, *_args, **_kwargs):
-            return subprocess.CompletedProcess(args=_cmd, returncode=0)
+            def fake_run(_cmd, *_args, **_kwargs):
+                return subprocess.CompletedProcess(args=_cmd, returncode=0)
 
-        with (
-            patch("mmrelay.plugin_loader._run", side_effect=fake_run),
-            patch("mmrelay.plugin_loader.logger") as mock_logger,
-        ):
-            plugins = load_plugins_from_directory(self.custom_dir)
-        self.assertEqual(len(plugins), 0)
-        self.assertTrue(
-            any(
-                "still not available after installation" in str(c)
-                for c in mock_logger.exception.call_args_list
+            with (
+                patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+                patch("mmrelay.plugin_loader.logger") as mock_logger,
+            ):
+                plugins = load_plugins_from_directory(self.custom_dir)
+            self.assertEqual(len(plugins), 0)
+            self.assertTrue(
+                any(
+                    "still not available after installation" in str(c)
+                    for c in mock_logger.exception.call_args_list
+                )
             )
-        )
+        finally:
+            if orig_pipx_home is not None:
+                os.environ["PIPX_HOME"] = orig_pipx_home
+            else:
+                os.environ.pop("PIPX_HOME", None)
+            if orig_pipx_local_venvs is not None:
+                os.environ["PIPX_LOCAL_VENVS"] = orig_pipx_local_venvs
+            else:
+                os.environ.pop("PIPX_LOCAL_VENVS", None)
 
     def test_load_plugins_from_directory_auto_install_retry_generic_exception(self):
+        orig_pipx_home = os.environ.get("PIPX_HOME")
+        orig_pipx_local_venvs = os.environ.get("PIPX_LOCAL_VENVS")
         for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
             os.environ.pop(var, None)
         plugin_content = "import missingdep_generic\nraise ValueError('test error')\n"
@@ -593,6 +618,14 @@ class Plugin:
             )
         finally:
             sys.modules.pop("missingdep_generic", None)
+            if orig_pipx_home is not None:
+                os.environ["PIPX_HOME"] = orig_pipx_home
+            else:
+                os.environ.pop("PIPX_HOME", None)
+            if orig_pipx_local_venvs is not None:
+                os.environ["PIPX_LOCAL_VENVS"] = orig_pipx_local_venvs
+            else:
+                os.environ.pop("PIPX_LOCAL_VENVS", None)
 
     def test_load_plugins_from_directory_syntax_error(self):
         """
@@ -2593,15 +2626,21 @@ class TestGitOperations(BaseGitTest):
     ):
         mock_run_git.side_effect = subprocess.CalledProcessError(1, "git checkout")
         result = pl._try_checkout_and_pull_ref(
-            "/tmp/repo",
+            self.temp_repo_path,
             "v1.0.0",
             "test-repo",
-            ref_type="tag",  # nosec B108
+            ref_type="tag",
         )
         self.assertFalse(result)
-        self.assertFalse(
-            any("-B" in call[0][0] for call in mock_run_git.call_args_list),
-            "tag checkout failure should not trigger branch-style force-sync",
+        self.assertEqual(
+            len(mock_run_git.call_args_list),
+            1,
+            "tag checkout failure should not trigger any additional git calls",
+        )
+        self.assertIn(
+            GIT_CHECKOUT_CMD,
+            mock_run_git.call_args_list[0][0][0],
+            "the only call should be the initial checkout attempt",
         )
 
     @patch("mmrelay.plugin_loader._run")
@@ -4802,26 +4841,26 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
         for name in module_names:
             sys.modules.pop(name, None)
 
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-                futures = [pool.submit(_load_module, name) for name in module_names]
-                _done, _not_done = concurrent.futures.wait(futures, timeout=5.0)
-                self.assertFalse(
-                    _not_done,
+            futures = [pool.submit(_load_module, name) for name in module_names]
+            _done, _not_done = concurrent.futures.wait(futures, timeout=5.0)
+            if _not_done:
+                for future in _not_done:
+                    future.cancel()
+                pool.shutdown(wait=False, cancel_futures=True)
+                self.fail(
                     f"Timed out waiting for {len(_not_done)} worker threads; "
                     f"exceptions so far: {caught_exceptions}",
                 )
 
-            # After all threads complete, none of the test modules should linger
-            # unless the exec succeeded - in that case the module is expected.
-            # Verify no stale partial state: the lock should have serialised
-            # all sys.modules mutations.
             self.assertEqual(
                 len(caught_exceptions),
                 0,
                 f"Exceptions during concurrent load: {caught_exceptions}",
             )
         finally:
+            pool.shutdown(wait=False, cancel_futures=True)
             for name in module_names:
                 sys.modules.pop(name, None)
 
