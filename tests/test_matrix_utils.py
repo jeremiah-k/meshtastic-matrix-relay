@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import importlib
 import os
 import re
@@ -75,6 +76,49 @@ TEST_FULL_MXID = "@user:matrix.org"
 # - Simplified async test execution without explicit asyncio.run() calls
 # - Enhanced test isolation and maintainability
 # - Alignment with modern Python testing practices
+
+
+@contextlib.contextmanager
+def _patch_on_room_message_time_context(
+    test_config,
+    bot_start_time,
+    bot_start_monotonic_secs,
+    current_time,
+    current_monotonic,
+):
+    """
+    Context manager that patches all time and module-level dependencies for on_room_message tests.
+
+    Patches: load_plugins, get_user_display_name, get_message_queue, queue_message,
+    connect_meshtastic, config, matrix_rooms, bot_user_id, bot_start_time,
+    bot_start_monotonic_secs, time.time, and time.monotonic.
+
+    Yields:
+        MagicMock: The mock_queue_message mock for assertions.
+    """
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            AsyncMock(return_value="user"),
+        ),
+        patch("mmrelay.matrix_utils.get_message_queue") as mock_get_message_queue,
+        patch(
+            "mmrelay.matrix_utils.queue_message", return_value=True
+        ) as mock_queue_message,
+        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
+        patch("mmrelay.matrix_utils.bot_start_time", bot_start_time),
+        patch(
+            "mmrelay.matrix_utils.bot_start_monotonic_secs", bot_start_monotonic_secs
+        ),
+        patch("mmrelay.matrix_utils.time.time", return_value=current_time),
+        patch("mmrelay.matrix_utils.time.monotonic", return_value=current_monotonic),
+    ):
+        mock_get_message_queue.return_value.get_queue_size.return_value = 0
+        yield mock_queue_message
 
 
 async def test_on_room_message_simple_text(
@@ -798,29 +842,13 @@ async def test_on_room_message_does_not_drop_old_timestamp_messages(
     startup_ts = message_ts + 100
     mock_event.server_timestamp = message_ts
 
-    with (
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
-        patch(
-            "mmrelay.matrix_utils.get_user_display_name",
-            AsyncMock(return_value="user"),
-        ),
-        patch("mmrelay.matrix_utils.get_message_queue") as mock_get_message_queue,
-        patch(
-            "mmrelay.matrix_utils.queue_message", return_value=True
-        ) as mock_queue_message,
-        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
-        patch("mmrelay.matrix_utils.config", test_config),
-        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
-        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
-        patch("mmrelay.matrix_utils.bot_start_time", startup_ts),
-        patch("mmrelay.matrix_utils.bot_start_monotonic_secs", 10_000.0),
-        patch(
-            "mmrelay.matrix_utils.time.time",
-            return_value=(startup_ts / 1000) + 0.01,
-        ),
-        patch("mmrelay.matrix_utils.time.monotonic", return_value=10_000.01),
-    ):
-        mock_get_message_queue.return_value.get_queue_size.return_value = 0
+    with _patch_on_room_message_time_context(
+        test_config=test_config,
+        bot_start_time=startup_ts,
+        bot_start_monotonic_secs=10_000.0,
+        current_time=(startup_ts / 1000) + 0.01,
+        current_monotonic=10_000.01,
+    ) as mock_queue_message:
         await on_room_message(mock_room, mock_event)
 
     mock_queue_message.assert_called_once()
@@ -832,26 +860,13 @@ async def test_on_room_message_drops_clearly_stale_startup_backlog(
     """Clearly stale pre-start events should be dropped when startup clock is stable."""
     mock_event.server_timestamp = 1_700_000_000_000
 
-    with (
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
-        patch(
-            "mmrelay.matrix_utils.get_user_display_name",
-            AsyncMock(return_value="user"),
-        ),
-        patch("mmrelay.matrix_utils.get_message_queue") as mock_get_message_queue,
-        patch(
-            "mmrelay.matrix_utils.queue_message", return_value=True
-        ) as mock_queue_message,
-        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
-        patch("mmrelay.matrix_utils.config", test_config),
-        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
-        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
-        patch("mmrelay.matrix_utils.bot_start_time", 1_700_000_400_000),
-        patch("mmrelay.matrix_utils.bot_start_monotonic_secs", 10_000.0),
-        patch("mmrelay.matrix_utils.time.time", return_value=1_700_000_405.0),
-        patch("mmrelay.matrix_utils.time.monotonic", return_value=10_005.0),
-    ):
-        mock_get_message_queue.return_value.get_queue_size.return_value = 0
+    with _patch_on_room_message_time_context(
+        test_config=test_config,
+        bot_start_time=1_700_000_400_000,
+        bot_start_monotonic_secs=10_000.0,
+        current_time=1_700_000_405.0,
+        current_monotonic=10_005.0,
+    ) as mock_queue_message:
         await on_room_message(mock_room, mock_event)
 
     mock_queue_message.assert_not_called()
@@ -865,26 +880,13 @@ async def test_on_room_message_allows_old_timestamp_after_clock_rollback(
     startup_ts = message_ts + (5 * 60 * 60 * 1000)
     mock_event.server_timestamp = message_ts
 
-    with (
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
-        patch(
-            "mmrelay.matrix_utils.get_user_display_name",
-            AsyncMock(return_value="user"),
-        ),
-        patch("mmrelay.matrix_utils.get_message_queue") as mock_get_message_queue,
-        patch(
-            "mmrelay.matrix_utils.queue_message", return_value=True
-        ) as mock_queue_message,
-        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
-        patch("mmrelay.matrix_utils.config", test_config),
-        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
-        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
-        patch("mmrelay.matrix_utils.bot_start_time", startup_ts),
-        patch("mmrelay.matrix_utils.bot_start_monotonic_secs", 10_000.0),
-        patch("mmrelay.matrix_utils.time.time", return_value=message_ts / 1000),
-        patch("mmrelay.matrix_utils.time.monotonic", return_value=10_060.0),
-    ):
-        mock_get_message_queue.return_value.get_queue_size.return_value = 0
+    with _patch_on_room_message_time_context(
+        test_config=test_config,
+        bot_start_time=startup_ts,
+        bot_start_monotonic_secs=10_000.0,
+        current_time=message_ts / 1000,
+        current_monotonic=10_060.0,
+    ) as mock_queue_message:
         await on_room_message(mock_room, mock_event)
 
     mock_queue_message.assert_called_once()

@@ -1207,6 +1207,31 @@ _MATRIX_STALE_STARTUP_EVENT_DROP_MS = _MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS
 _MATRIX_CLOCK_ROLLBACK_DISABLE_MS = 60 * MILLISECONDS_PER_SECOND
 
 
+def _estimate_clock_rollback_ms(
+    bot_start_time: int, bot_start_monotonic_secs: float
+) -> int:
+    """
+    Estimate how many milliseconds the local clock has rolled backward since bot startup.
+
+    Compares the expected current time (based on monotonic elapsed time since startup)
+    against the actual wall-clock time to detect clock rollback events.
+
+    Parameters:
+        bot_start_time: The bot's startup timestamp in milliseconds (from time.time()).
+        bot_start_monotonic_secs: The bot's startup monotonic time in seconds.
+
+    Returns:
+        The estimated rollback in milliseconds. Positive values indicate the local
+        clock appears to have stepped backward relative to the monotonic clock.
+    """
+    now_ms = int(time.time() * MILLISECONDS_PER_SECOND)
+    elapsed_ms = int(
+        (time.monotonic() - bot_start_monotonic_secs) * MILLISECONDS_PER_SECOND
+    )
+    expected_now_ms = bot_start_time + elapsed_ms
+    return expected_now_ms - now_ms
+
+
 matrix_client = None
 
 # Serialize connect_matrix startup publication and invite-state monkey patching.
@@ -4269,12 +4294,9 @@ async def on_room_message(
     # local startup clock corrections (for example, NTP stepping backward).
     if message_timestamp < bot_start_time:
         skew_ms = bot_start_time - message_timestamp
-        now_ms = int(time.time() * MILLISECONDS_PER_SECOND)
-        elapsed_ms = int(
-            (time.monotonic() - bot_start_monotonic_secs) * MILLISECONDS_PER_SECOND
+        rollback_ms = _estimate_clock_rollback_ms(
+            bot_start_time, bot_start_monotonic_secs
         )
-        expected_now_ms = bot_start_time + elapsed_ms
-        rollback_ms = expected_now_ms - now_ms
         baseline_plausible = (
             message_timestamp >= _MATRIX_EVENT_EPOCH_FLOOR_MS
             and bot_start_time >= _MATRIX_EVENT_EPOCH_FLOOR_MS

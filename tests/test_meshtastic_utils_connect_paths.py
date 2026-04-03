@@ -3,6 +3,7 @@ from collections.abc import Callable
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
 import serial
 
 import mmrelay.meshtastic_utils as mu
@@ -360,9 +361,8 @@ def test_connect_meshtastic_logs_firmware_version_on_success(
     )
 
 
-def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_subscribe(
-    reset_meshtastic_globals,
-):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_subscribe():
     """Fast inbound packets during receive subscribe should still seed startup skew."""
     mock_client = MagicMock()
     mock_client.getMyNodeInfo.return_value = {
@@ -413,9 +413,8 @@ def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_subscribe(
     mock_submit_coro.assert_not_called()
 
 
-def test_connect_meshtastic_arms_startup_drain_after_setup_completes(
-    reset_meshtastic_globals,
-):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_meshtastic_arms_startup_drain_after_setup_completes():
     """Startup drain should begin at subscribe readiness, not before slow setup."""
     mock_client = MagicMock()
     mock_client.getMyNodeInfo.return_value = {
@@ -484,9 +483,8 @@ def test_connect_meshtastic_arms_startup_drain_after_setup_completes(
     mock_submit_coro.assert_not_called()
 
 
-def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_metadata_reconnect(
-    reset_meshtastic_globals,
-):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_metadata_reconnect():
     """Reconnect path should bootstrap skew even when receive is already subscribed."""
     mock_client = MagicMock()
     mock_client.getMyNodeInfo.return_value = {
@@ -540,9 +538,8 @@ def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_metadata_rec
     mock_submit_coro.assert_not_called()
 
 
-def test_connect_meshtastic_resets_timing_before_get_my_node_info_on_reconnect(
-    reset_meshtastic_globals,
-):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_meshtastic_resets_timing_before_get_my_node_info_on_reconnect():
     """Reconnect should reset timing state before node-info fetch can process packets."""
     mock_client = MagicMock()
     startup_packet = {
@@ -612,9 +609,8 @@ def test_connect_meshtastic_resets_timing_before_get_my_node_info_on_reconnect(
     mock_submit_coro.assert_not_called()
 
 
-def test_connect_meshtastic_schedules_one_shot_probe_when_periodic_health_disabled(
-    reset_meshtastic_globals,
-):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_meshtastic_schedules_one_shot_probe_when_periodic_health_disabled():
     """Connect should schedule one-shot probe when explicitly enabled, even with periodic checks off."""
     mock_client = MagicMock()
     mock_client.localNode = MagicMock()
@@ -656,9 +652,8 @@ def test_connect_meshtastic_schedules_one_shot_probe_when_periodic_health_disabl
     )
 
 
-def test_connect_meshtastic_probe_invalid_override_inherits_parent_enabled(
-    reset_meshtastic_globals,
-):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_meshtastic_probe_invalid_override_inherits_parent_enabled():
     """Invalid connect_probe_enabled should inherit health_check.enabled."""
     mock_client = MagicMock()
     mock_client.localNode = MagicMock()
@@ -694,9 +689,8 @@ def test_connect_meshtastic_probe_invalid_override_inherits_parent_enabled(
     mock_submit_probe.assert_called_once()
 
 
-def test_connect_meshtastic_does_not_schedule_one_shot_probe_by_default(
-    reset_meshtastic_globals,
-):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_meshtastic_does_not_schedule_one_shot_probe_by_default():
     """Connect-time probe should remain opt-in when periodic health checks are disabled."""
     mock_client = MagicMock()
     mock_client.localNode = MagicMock()
@@ -729,9 +723,8 @@ def test_connect_meshtastic_does_not_schedule_one_shot_probe_by_default(
     mock_submit_probe.assert_not_called()
 
 
-def test_connect_meshtastic_probe_inherits_parent_when_override_omitted(
-    reset_meshtastic_globals,
-):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_meshtastic_probe_inherits_parent_when_override_omitted():
     """When connect_probe_enabled is omitted, it should inherit health_check.enabled."""
     mock_client = MagicMock()
     mock_client.localNode = MagicMock()
@@ -773,9 +766,8 @@ def test_connect_meshtastic_probe_inherits_parent_when_override_omitted(
     )
 
 
-def test_connect_meshtastic_clears_active_client_after_setup_failure_before_retry(
-    reset_meshtastic_globals,
-):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_meshtastic_clears_active_client_after_setup_failure_before_retry():
     """Setup failure after client assignment should clear active client state before retry."""
     first_client = MagicMock()
     first_client.getMyNodeInfo.side_effect = RuntimeError("node info failed")
@@ -973,9 +965,8 @@ def test_on_lost_meshtastic_connection_logs_unexpected_close_error(
     mock_logger.warning.assert_any_call("Error closing Meshtastic client: boom")
 
 
-def test_on_lost_meshtastic_connection_ignores_stale_interface_callback(
-    reset_meshtastic_globals,
-):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_on_lost_meshtastic_connection_ignores_stale_interface_callback():
     active_client = MagicMock()
     stale_interface = MagicMock()
     mu.meshtastic_client = active_client

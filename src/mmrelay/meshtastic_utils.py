@@ -4101,9 +4101,9 @@ def connect_meshtastic(
                             "BLE connection validation failed - connected to wrong device. "
                             "Disconnecting and raising error to force retry."
                         )
+                        was_shared_interface = client is meshtastic_iface
                         try:
-                            if client is meshtastic_iface:
-                                # BLE interface - use proper disconnect sequence
+                            if was_shared_interface:
                                 _disconnect_ble_interface(
                                     meshtastic_iface, reason="address validation failed"
                                 )
@@ -4111,6 +4111,9 @@ def connect_meshtastic(
                                 client.close()
                         except Exception as e:
                             logger.warning(f"Error closing invalid BLE connection: {e}")
+                        finally:
+                            if was_shared_interface:
+                                meshtastic_iface = None
                         raise ConnectionRefusedError(
                             f"Connected to wrong BLE device. Expected: {expected_ble_address}"
                         )
@@ -4216,12 +4219,17 @@ def connect_meshtastic(
                     active_config=config,
                 )
 
-        except (ConnectionRefusedError, MemoryError, BleExecutorDegradedError):
+        except ConnectionRefusedError:
             if client_assigned_for_this_connect and client is not None:
                 _cleanup_failed_assigned_client(client)
                 client_assigned_for_this_connect = False
                 successful = False
-            # Handle critical errors that should not be retried
+            raise
+        except (MemoryError, BleExecutorDegradedError):
+            if client_assigned_for_this_connect and client is not None:
+                _cleanup_failed_assigned_client(client)
+                client_assigned_for_this_connect = False
+                successful = False
             if (
                 startup_drain_armed_for_this_connect
                 or reconnect_bootstrap_armed_for_this_connect

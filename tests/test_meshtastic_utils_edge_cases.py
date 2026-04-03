@@ -92,6 +92,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         mmrelay.meshtastic_utils.meshtastic_client = None
         mmrelay.meshtastic_utils._relay_active_client_id = None
+        mmrelay.meshtastic_utils._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
+            None
+        )
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.config = None
         mmrelay.meshtastic_utils.matrix_rooms = []
