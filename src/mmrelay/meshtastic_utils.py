@@ -4596,10 +4596,12 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     active_client = meshtastic_client
     active_client_id = _relay_active_client_id
     if active_client is None:
-        # Runtime callbacks can still arrive briefly after teardown/cleanup
-        # because subscriptions are process-lifetime. When subscriptions are
-        # active and no client is published, always drop packet callbacks.
-        if subscribed_to_messages:
+        # Runtime callbacks can still arrive briefly during reconnect/teardown
+        # windows because subscriptions are process-lifetime.
+        #
+        # Keep direct unit-level handler invocation behavior unchanged when no
+        # active session is being transitioned.
+        if reconnecting or shutting_down or active_client_id is not None:
             logger.debug(
                 "Ignoring packet because no Meshtastic interface is currently active"
             )
