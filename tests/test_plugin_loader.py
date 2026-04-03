@@ -11,12 +11,14 @@ Tests the plugin discovery, loading, and management functionality including:
 - Plugin priority sorting and startup
 """
 
+import hashlib
 import importlib
 import os
 import shutil
 import subprocess  # nosec B404 - Used for controlled test environment operations
 import sys
 import tempfile
+import time
 import unittest
 from types import ModuleType
 from unittest.mock import ANY, MagicMock, call, patch
@@ -24,12 +26,21 @@ from unittest.mock import ANY, MagicMock, call, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import mmrelay.plugin_loader as pl
-from mmrelay.constants.plugins import DEFAULT_ALLOWED_COMMUNITY_HOSTS, DEFAULT_BRANCHES
-from mmrelay.plugin_loader import (
+# Capture test file path at module level for use in tests
+TEST_FILE_PATH = os.path.abspath(__file__)
+
+import mmrelay.plugin_loader as pl  # noqa: E402
+from mmrelay.constants.plugins import (  # noqa: E402
+    DEFAULT_ALLOWED_COMMUNITY_HOSTS,
+    DEFAULT_BRANCHES,
+    GIT_CHECKOUT_CMD,
+)
+from mmrelay.plugin_loader import (  # noqa: E402
+    _SYS_MODULES_LOCK,
     _clean_python_cache,
     _clone_new_repo_to_branch_or_tag,
     _collect_requirements,
+    _exec_plugin_module,
     _filter_risky_requirements,
     _install_requirements_for_repo,
     _is_repo_url_allowed,
@@ -48,7 +59,7 @@ from mmrelay.plugin_loader import (
     start_global_scheduler,
     stop_global_scheduler,
 )
-from tests.constants import TEST_GIT_TIMEOUT
+from tests.constants import TEST_GIT_TIMEOUT  # noqa: E402
 
 
 class MockPlugin:
@@ -320,6 +331,52 @@ class Plugin:
         self.assertEqual(plugins[0].plugin_name, "test_plugin")
         self.assertEqual(plugins[0].priority, 10)
 
+        module_name = (
+            "plugin_"
+            + hashlib.sha256(plugin_file.encode(pl.DEFAULT_TEXT_ENCODING)).hexdigest()
+        )
+        self.assertIn(module_name, sys.modules)
+        sys.modules.pop(module_name, None)
+
+    def test_load_plugins_from_directory_base_plugin_infers_custom_tier(self):
+        """Dynamically loaded BasePlugin should infer custom tier from filesystem."""
+        plugin_content = """
+from mmrelay.plugins.base_plugin import BasePlugin
+
+class Plugin(BasePlugin):
+    plugin_name = "test_plugin"
+
+    async def handle_meshtastic_message(self, packet, formatted_message, longname, meshnet_name):
+        return False
+
+    async def handle_room_message(self, room, event, full_message):
+        return False
+"""
+        plugin_file = os.path.join(self.custom_dir, "tier_plugin.py")
+        with open(plugin_file, "w", encoding="utf-8") as handle:
+            handle.write(plugin_content)
+
+        module_name = (
+            "plugin_"
+            + hashlib.sha256(plugin_file.encode(pl.DEFAULT_TEXT_ENCODING)).hexdigest()
+        )
+        sys.modules.pop(module_name, None)
+
+        legacy_config = {"plugins": {"test_plugin": {"active": True}}}
+        with (
+            patch("mmrelay.plugins.base_plugin.config", legacy_config),
+            patch(
+                "mmrelay.plugin_loader.get_custom_plugin_dirs",
+                return_value=[self.custom_dir],
+            ),
+            patch("mmrelay.plugin_loader.get_community_plugin_dirs", return_value=[]),
+        ):
+            plugins = load_plugins_from_directory(self.custom_dir)
+
+        self.assertEqual(len(plugins), 1)
+        self.assertEqual(getattr(plugins[0], "plugin_type", None), "custom")
+        sys.modules.pop(module_name, None)
+
     def test_load_plugins_from_directory_no_plugin_class(self):
         """
         Verify that loading plugins from a directory containing a Python file without a Plugin class returns an empty list.
@@ -461,6 +518,115 @@ class Plugin:
         self.assertEqual(len(plugins), 1)
         self.assertEqual(plugins[0].plugin_name, "auto_plugin")
 
+    def test_load_plugins_from_directory_auto_install_retry_no_plugin_class(self):
+        orig_pipx_home = os.environ.get("PIPX_HOME")
+        orig_pipx_local_venvs = os.environ.get("PIPX_LOCAL_VENVS")
+        for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
+            os.environ.pop(var, None)
+        plugin_content = "import missingdep_noclass\n"
+        plugin_file = os.path.join(self.custom_dir, "auto_noclass.py")
+        with open(plugin_file, "w", encoding="utf-8") as handle:
+            handle.write(plugin_content)
+
+        def fake_run(_cmd, *_args, **_kwargs):
+            sys.modules["missingdep_noclass"] = ModuleType("missingdep_noclass")
+            return subprocess.CompletedProcess(args=_cmd, returncode=0)
+
+        try:
+            with (
+                patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+                patch("mmrelay.plugin_loader.logger") as mock_logger,
+            ):
+                plugins = load_plugins_from_directory(self.custom_dir)
+            self.assertEqual(len(plugins), 0)
+            mock_logger.warning.assert_any_call(
+                f"{plugin_file} does not define a Plugin class."
+            )
+        finally:
+            sys.modules.pop("missingdep_noclass", None)
+            if orig_pipx_home is not None:
+                os.environ["PIPX_HOME"] = orig_pipx_home
+            else:
+                os.environ.pop("PIPX_HOME", None)
+            if orig_pipx_local_venvs is not None:
+                os.environ["PIPX_LOCAL_VENVS"] = orig_pipx_local_venvs
+            else:
+                os.environ.pop("PIPX_LOCAL_VENVS", None)
+
+    def test_load_plugins_from_directory_auto_install_retry_module_not_found(self):
+        orig_pipx_home = os.environ.get("PIPX_HOME")
+        orig_pipx_local_venvs = os.environ.get("PIPX_LOCAL_VENVS")
+        try:
+            for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
+                os.environ.pop(var, None)
+            plugin_content = "import missingdep_stillgone\n"
+            plugin_file = os.path.join(self.custom_dir, "auto_stillgone.py")
+            with open(plugin_file, "w", encoding="utf-8") as handle:
+                handle.write(plugin_content)
+
+            def fake_run(_cmd, *_args, **_kwargs):
+                return subprocess.CompletedProcess(args=_cmd, returncode=0)
+
+            with (
+                patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+                patch("mmrelay.plugin_loader.logger") as mock_logger,
+            ):
+                plugins = load_plugins_from_directory(self.custom_dir)
+            self.assertEqual(len(plugins), 0)
+            self.assertTrue(
+                any(
+                    "still not available after installation" in str(c)
+                    for c in mock_logger.exception.call_args_list
+                )
+            )
+        finally:
+            if orig_pipx_home is not None:
+                os.environ["PIPX_HOME"] = orig_pipx_home
+            else:
+                os.environ.pop("PIPX_HOME", None)
+            if orig_pipx_local_venvs is not None:
+                os.environ["PIPX_LOCAL_VENVS"] = orig_pipx_local_venvs
+            else:
+                os.environ.pop("PIPX_LOCAL_VENVS", None)
+
+    def test_load_plugins_from_directory_auto_install_retry_generic_exception(self):
+        orig_pipx_home = os.environ.get("PIPX_HOME")
+        orig_pipx_local_venvs = os.environ.get("PIPX_LOCAL_VENVS")
+        for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
+            os.environ.pop(var, None)
+        plugin_content = "import missingdep_generic\nraise ValueError('test error')\n"
+        plugin_file = os.path.join(self.custom_dir, "auto_generic.py")
+        with open(plugin_file, "w", encoding="utf-8") as handle:
+            handle.write(plugin_content)
+
+        def fake_run(_cmd, *_args, **_kwargs):
+            sys.modules["missingdep_generic"] = ModuleType("missingdep_generic")
+            return subprocess.CompletedProcess(args=_cmd, returncode=0)
+
+        try:
+            with (
+                patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+                patch("mmrelay.plugin_loader.logger") as mock_logger,
+            ):
+                plugins = load_plugins_from_directory(self.custom_dir)
+            self.assertEqual(len(plugins), 0)
+            self.assertTrue(
+                any(
+                    "Error loading plugin" in str(c)
+                    for c in mock_logger.exception.call_args_list
+                )
+            )
+        finally:
+            sys.modules.pop("missingdep_generic", None)
+            if orig_pipx_home is not None:
+                os.environ["PIPX_HOME"] = orig_pipx_home
+            else:
+                os.environ.pop("PIPX_HOME", None)
+            if orig_pipx_local_venvs is not None:
+                os.environ["PIPX_LOCAL_VENVS"] = orig_pipx_local_venvs
+            else:
+                os.environ.pop("PIPX_LOCAL_VENVS", None)
+
     def test_load_plugins_from_directory_syntax_error(self):
         """
         Verify that loading plugins from a directory containing a Python file with a syntax error returns an empty list without raising exceptions.
@@ -478,8 +644,14 @@ class Plugin:
         with open(plugin_file, "w") as f:
             f.write(plugin_content)
 
+        module_name = (
+            "plugin_"
+            + hashlib.sha256(plugin_file.encode(pl.DEFAULT_TEXT_ENCODING)).hexdigest()
+        )
+        sys.modules.pop(module_name, None)
         plugins = load_plugins_from_directory(self.custom_dir)
         self.assertEqual(plugins, [])
+        self.assertNotIn(module_name, sys.modules)
 
     def test_load_plugins_community_missing_repository_logs_errors(self):
         """Missing repository URL should log errors in community plugin processing."""
@@ -2220,7 +2392,13 @@ class TestGitOperations(BaseGitTest):
         mock_run_git.side_effect = [
             None,  # fetch
             subprocess.CalledProcessError(1, "git checkout"),  # checkout main fails
+            subprocess.CalledProcessError(
+                1, "git fetch"
+            ),  # force-sync fetch main fails
             subprocess.CalledProcessError(1, "git checkout"),  # checkout master fails
+            subprocess.CalledProcessError(
+                1, "git fetch"
+            ),  # force-sync fetch master fails
         ]
         repo_url = "https://github.com/test/plugin.git"
         ref = {"type": "branch", "value": "main"}
@@ -2229,6 +2407,35 @@ class TestGitOperations(BaseGitTest):
             os.makedirs(repo_path)
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
             self.assertFalse(result)
+            expected_calls = [
+                call(
+                    ["git", "-C", repo_path, "fetch", "origin"],
+                    timeout=TEST_GIT_TIMEOUT,
+                    retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                    retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                ),
+                call(
+                    ["git", "-C", repo_path, "checkout", "main"],
+                    timeout=TEST_GIT_TIMEOUT,
+                ),
+                call(
+                    ["git", "-C", repo_path, "fetch", "origin", "main"],
+                    timeout=TEST_GIT_TIMEOUT,
+                    retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                    retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                ),
+                call(
+                    ["git", "-C", repo_path, "checkout", "master"],
+                    timeout=TEST_GIT_TIMEOUT,
+                ),
+                call(
+                    ["git", "-C", repo_path, "fetch", "origin", "master"],
+                    timeout=TEST_GIT_TIMEOUT,
+                    retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                    retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                ),
+            ]
+            self.assertEqual(mock_run_git.call_args_list, expected_calls)
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
@@ -2253,6 +2460,65 @@ class TestGitOperations(BaseGitTest):
 
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
             self.assertTrue(result)
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_clone_or_update_repo_branch_pull_failure_force_syncs(
+        self, mock_run_git, _mock_is_allowed
+    ):
+        """Branch pull failures should fallback to a force-sync against origin."""
+        mock_run_git.side_effect = [
+            None,  # initial fetch in update flow
+            None,  # checkout branch succeeds
+            subprocess.CalledProcessError(1, "git pull"),  # pull fails
+            None,  # fetch origin branch for force sync succeeds
+            None,  # checkout -B branch origin/branch succeeds
+        ]
+
+        repo_url = "https://github.com/test/plugin.git"
+        ref = {"type": "branch", "value": "main"}
+
+        with tempfile.TemporaryDirectory() as plugins_dir:
+            repo_path = os.path.join(plugins_dir, "plugin")
+            os.makedirs(repo_path)
+
+            result = clone_or_update_repo(repo_url, ref, plugins_dir)
+            self.assertTrue(result)
+            expected_calls = [
+                call(
+                    ["git", "-C", repo_path, "fetch", "origin"],
+                    timeout=TEST_GIT_TIMEOUT,
+                    retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                    retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                ),
+                call(
+                    ["git", "-C", repo_path, "checkout", "main"],
+                    timeout=TEST_GIT_TIMEOUT,
+                ),
+                call(
+                    ["git", "-C", repo_path, "pull", "origin", "main"],
+                    timeout=TEST_GIT_TIMEOUT,
+                ),
+                call(
+                    ["git", "-C", repo_path, "fetch", "origin", "main"],
+                    timeout=TEST_GIT_TIMEOUT,
+                    retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                    retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                ),
+                call(
+                    [
+                        "git",
+                        "-C",
+                        repo_path,
+                        "checkout",
+                        "-B",
+                        "main",
+                        "origin/main",
+                    ],
+                    timeout=TEST_GIT_TIMEOUT,
+                ),
+            ]
+            self.assertEqual(mock_run_git.call_args_list, expected_calls)
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
@@ -2309,7 +2575,13 @@ class TestGitOperations(BaseGitTest):
         mock_run_git.side_effect = [
             None,  # fetch
             subprocess.CalledProcessError(1, "git checkout"),  # checkout main
+            subprocess.CalledProcessError(
+                1, "git fetch"
+            ),  # force-sync fetch main fails
             subprocess.CalledProcessError(1, "git checkout"),  # checkout master
+            subprocess.CalledProcessError(
+                1, "git fetch"
+            ),  # force-sync fetch master fails
         ]
         repo_url = "https://github.com/test/plugin.git"
         ref = {"type": "branch", "value": "main"}
@@ -2318,6 +2590,86 @@ class TestGitOperations(BaseGitTest):
             os.makedirs(repo_path)
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
             self.assertFalse(result)
+            expected_calls = [
+                call(
+                    ["git", "-C", repo_path, "fetch", "origin"],
+                    timeout=TEST_GIT_TIMEOUT,
+                    retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                    retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                ),
+                call(
+                    ["git", "-C", repo_path, "checkout", "main"],
+                    timeout=TEST_GIT_TIMEOUT,
+                ),
+                call(
+                    ["git", "-C", repo_path, "fetch", "origin", "main"],
+                    timeout=TEST_GIT_TIMEOUT,
+                    retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                    retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                ),
+                call(
+                    ["git", "-C", repo_path, "checkout", "master"],
+                    timeout=TEST_GIT_TIMEOUT,
+                ),
+                call(
+                    ["git", "-C", repo_path, "fetch", "origin", "master"],
+                    timeout=TEST_GIT_TIMEOUT,
+                    retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                    retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
+                ),
+            ]
+            self.assertEqual(mock_run_git.call_args_list, expected_calls)
+
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_try_checkout_and_pull_ref_tag_failure_returns_false_no_force_sync(
+        self, mock_run_git
+    ):
+        mock_run_git.side_effect = subprocess.CalledProcessError(1, "git checkout")
+        result = pl._try_checkout_and_pull_ref(
+            self.temp_repo_path,
+            "v1.0.0",
+            "test-repo",
+            ref_type="tag",
+        )
+        self.assertFalse(result)
+        self.assertEqual(
+            len(mock_run_git.call_args_list),
+            1,
+            "tag checkout failure should not trigger any additional git calls",
+        )
+        self.assertIn(
+            GIT_CHECKOUT_CMD,
+            mock_run_git.call_args_list[0][0][0],
+            "the only call should be the initial checkout attempt",
+        )
+
+    @patch("mmrelay.plugin_loader.logger")
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_try_checkout_and_pull_ref_branch_logs_original_failure_at_debug(
+        self, mock_run_git, mock_logger
+    ):
+        """Branch pull failure should log the original exception at debug level before force-sync."""
+        exc = subprocess.CalledProcessError(1, "git checkout")
+        mock_run_git.side_effect = [
+            exc,  # checkout fails
+            None,  # fetch origin branch for force sync succeeds
+            None,  # checkout -B branch origin/branch succeeds
+        ]
+
+        result = pl._try_checkout_and_pull_ref(
+            self.temp_repo_path,
+            "main",
+            "test-repo",
+            ref_type="branch",
+        )
+
+        self.assertTrue(result)
+        mock_logger.debug.assert_any_call(
+            "Pull/checkout failed for %s branch %s: %s",
+            "test-repo",
+            "main",
+            exc,
+        )
 
     @patch("mmrelay.plugin_loader._run")
     def test_run_git_merges_custom_env(self, mock_run):
@@ -4461,6 +4813,172 @@ class TestDependencyInstallation(BaseGitTest):
         # Should return False when all operations fail
         self.assertFalse(result)
         mock_logger.warning.assert_called()
+
+
+class TestExecPluginModuleThreadSafety(unittest.TestCase):
+    """Tests for thread-safe sys.modules manipulation in _exec_plugin_module."""
+
+    def test_concurrent_exec_does_not_corrupt_sys_modules(self):
+        """
+        Ensure that concurrent calls to _exec_plugin_module do not leave
+        sys.modules in an inconsistent state.
+
+        Each thread registers a unique module name and asserts it is visible
+        in sys.modules during execution.  After all threads finish, the
+        temporary entries must be cleaned up and no stale module should remain.
+        """
+        import concurrent.futures
+        import importlib.machinery
+
+        module_names = [f"_mmrelay_test_mod_{i}" for i in range(8)]
+        caught_exceptions = []
+
+        # Create a minimal loader class that doesn't reference __file__
+        class MinimalLoader:
+            def exec_module(self, module):
+                module.__dict__.setdefault("__builtins__", __builtins__)
+                assert (
+                    sys.modules.get(module.__name__) is module
+                ), f"Module {module.__name__} not bound in sys.modules before exec_module ran"
+                time.sleep(0.05)
+
+        def _load_module(mod_name: str) -> str:
+            """Simulate loading a plugin module under a unique name."""
+            spec = importlib.machinery.ModuleSpec(mod_name, loader=None)
+            # Use our minimal loader instead of SourceFileLoader
+            spec.loader = MinimalLoader()
+            module = ModuleType(mod_name)
+
+            try:
+                _exec_plugin_module(
+                    spec=spec,
+                    plugin_module=module,
+                    module_name=mod_name,
+                    plugin_dir=os.path.dirname(TEST_FILE_PATH),
+                )
+            except (
+                Exception
+            ) as e:  # noqa: BLE001 - intentional broad except for testing namespace cleanup
+                # The loader may raise; that is fine, we test namespace cleanup.
+                # The important assertion is that no RuntimeError from
+                # sys.modules corruption is raised.
+                caught_exceptions.append(e)
+            return mod_name
+
+        # Clean up any leftover entries from previous runs
+        for name in module_names:
+            sys.modules.pop(name, None)
+
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+        try:
+            futures = [pool.submit(_load_module, name) for name in module_names]
+            _done, _not_done = concurrent.futures.wait(futures, timeout=5.0)
+            if _not_done:
+                for future in _not_done:
+                    future.cancel()
+                pool.shutdown(wait=False, cancel_futures=True)
+                self.fail(
+                    f"Timed out waiting for {len(_not_done)} worker threads; "
+                    f"exceptions so far: {caught_exceptions}",
+                )
+
+            self.assertEqual(
+                len(caught_exceptions),
+                0,
+                f"Exceptions during concurrent load: {caught_exceptions}",
+            )
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+            for name in module_names:
+                sys.modules.pop(name, None)
+
+    def test_lock_is_module_level_and_reentrant(self):
+        """Verify _SYS_MODULES_LOCK is a module-level reentrant lock (RLock)."""
+        import inspect
+
+        lock = _SYS_MODULES_LOCK
+
+        first = lock.acquire(timeout=0.1)
+        self.assertTrue(first, "Lock should be acquirable")
+        second = False
+        try:
+            second = lock.acquire(timeout=0.1)
+            self.assertTrue(second, "Lock should be reentrant (RLock)")
+        finally:
+            if second:
+                lock.release()
+            if first:
+                lock.release()
+
+        src = inspect.getsource(pl)
+        self.assertIn(
+            "_SYS_MODULES_LOCK", src, "Lock name should appear in module source"
+        )
+
+    def test_exec_plugin_module_raises_import_error_when_no_loader(self):
+        import importlib.machinery
+
+        spec = importlib.machinery.ModuleSpec("_test_no_loader", loader=None)
+        module = ModuleType("_test_no_loader")
+        with self.assertRaises(ImportError) as ctx:
+            _exec_plugin_module(
+                spec=spec,
+                plugin_module=module,
+                module_name="_test_no_loader",
+                plugin_dir=os.path.dirname(TEST_FILE_PATH),
+            )
+        self.assertIn("No loader available", str(ctx.exception))
+
+    def test_exec_plugin_module_rollback_removes_sys_modules_on_exception(self):
+        import importlib.machinery
+
+        mod_name = "_test_rollback_remove_" + str(int(time.time() * 1000))
+        sys.modules.pop(mod_name, None)
+
+        class FailingLoader:
+            def exec_module(self, module):
+                raise RuntimeError("deliberate failure")
+
+        spec = importlib.machinery.ModuleSpec(mod_name, loader=None)
+        spec.loader = FailingLoader()
+        module = ModuleType(mod_name)
+
+        with self.assertRaises(RuntimeError):
+            _exec_plugin_module(
+                spec=spec,
+                plugin_module=module,
+                module_name=mod_name,
+                plugin_dir=os.path.dirname(TEST_FILE_PATH),
+            )
+        self.assertNotIn(mod_name, sys.modules)
+
+    def test_exec_plugin_module_rollback_restores_previous_module(self):
+        import importlib.machinery
+
+        mod_name = "_test_rollback_restore_" + str(int(time.time() * 1000))
+        previous = ModuleType(mod_name)
+        previous._marker = "previous"
+        sys.modules[mod_name] = previous
+
+        class FailingLoader:
+            def exec_module(self, module):
+                raise RuntimeError("deliberate failure")
+
+        spec = importlib.machinery.ModuleSpec(mod_name, loader=None)
+        spec.loader = FailingLoader()
+        module = ModuleType(mod_name)
+
+        try:
+            with self.assertRaises(RuntimeError):
+                _exec_plugin_module(
+                    spec=spec,
+                    plugin_module=module,
+                    module_name=mod_name,
+                    plugin_dir=os.path.dirname(TEST_FILE_PATH),
+                )
+            self.assertIs(sys.modules.get(mod_name), previous)
+        finally:
+            sys.modules.pop(mod_name, None)
 
 
 if __name__ == "__main__":

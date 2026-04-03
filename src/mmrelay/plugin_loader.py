@@ -1385,7 +1385,63 @@ def _try_checkout_and_pull_ref(
         )
         logger.info("Updated repository %s to %s %s", repo_name, ref_type, ref_value)
         return True
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        if ref_type == "branch":
+            logger.debug(
+                "Pull/checkout failed for %s branch %s: %s",
+                repo_name,
+                ref_value,
+                exc,
+            )
+            logger.warning(
+                "Pull failed for %s branch %s, attempting force sync to origin/%s",
+                repo_name,
+                ref_value,
+                ref_value,
+            )
+            try:
+                _run_git(
+                    [
+                        "git",
+                        "-C",
+                        repo_path,
+                        GIT_FETCH_CMD,
+                        GIT_REMOTE_ORIGIN,
+                        ref_value,
+                    ],
+                    timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+                    retry_attempts=GIT_RETRY_ATTEMPTS,
+                    retry_delay=GIT_RETRY_DELAY_SECONDS,
+                )
+                _run_git(
+                    [
+                        "git",
+                        "-C",
+                        repo_path,
+                        GIT_CHECKOUT_CMD,
+                        "-B",
+                        ref_value,
+                        f"{GIT_REMOTE_ORIGIN}/{ref_value}",
+                    ],
+                    timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+                )
+            except (
+                subprocess.CalledProcessError,
+                subprocess.TimeoutExpired,
+                FileNotFoundError,
+            ):
+                logger.warning(
+                    "Force sync failed for %s branch %s",
+                    repo_name,
+                    ref_value,
+                )
+                return False
+            else:
+                logger.info(
+                    "Force-synced repository %s to branch %s", repo_name, ref_value
+                )
+                return True
+
         logger.warning(
             "Failed to update %s %s for %s",
             ref_type,
@@ -1396,6 +1452,47 @@ def _try_checkout_and_pull_ref(
     except FileNotFoundError:
         logger.exception(f"Error updating repository {repo_name}; git not found.")
         return False
+
+
+# Guards sys.modules mutations performed by plugin_loader to avoid
+# exposing partially-initialized modules during concurrent loads.
+_SYS_MODULES_LOCK: threading.RLock = threading.RLock()
+
+
+def _exec_plugin_module(
+    *,
+    spec: importlib.machinery.ModuleSpec,  # pyright: ignore[reportAttributeAccessIssue]
+    plugin_module: ModuleType,
+    module_name: str,
+    plugin_dir: str,
+) -> None:
+    """
+    Execute a plugin module while keeping ``sys.modules`` consistent.
+
+    Registering the module before execution ensures ``inspect.getfile()`` works
+    for plugin classes during ``BasePlugin`` initialization (tier inference uses
+    class file paths).
+
+    A module-level lock serialises the ``sys.modules`` manipulation so
+    concurrent plugin loading threads cannot leave the global namespace in an
+    inconsistent state.
+    """
+    if spec.loader is None:
+        raise ImportError(f"No loader available for plugin module '{module_name}'")
+    # Intentionally hold lock during execution to avoid exposing partially
+    # initialized modules to other threads.
+    with _SYS_MODULES_LOCK:
+        previous_module = sys.modules.get(module_name)
+        sys.modules[module_name] = plugin_module
+        try:
+            with _temp_sys_path(plugin_dir):
+                spec.loader.exec_module(plugin_module)
+        except BaseException:
+            if previous_module is None:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = previous_module
+            raise
 
 
 def _try_fetch_and_checkout_tag(repo_path: str, ref_value: str, repo_name: str) -> bool:
@@ -2094,10 +2191,15 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
 
                     plugin_dir = os.path.dirname(plugin_path)
 
+                    module_imported = False
                     try:
-                        with _temp_sys_path(plugin_dir):
-                            if spec.loader:
-                                spec.loader.exec_module(plugin_module)
+                        _exec_plugin_module(
+                            spec=spec,
+                            plugin_module=plugin_module,
+                            module_name=module_name,
+                            plugin_dir=plugin_dir,
+                        )
+                        module_imported = True
                         if hasattr(plugin_module, "Plugin"):
                             plugins.append(plugin_module.Plugin())
                         else:
@@ -2179,11 +2281,17 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                     f"Path refresh after auto-install failed: {e}"
                                 )
 
-                            # Try to load the module again
                             try:
-                                with _temp_sys_path(plugin_dir):
-                                    if spec.loader:
-                                        spec.loader.exec_module(plugin_module)
+                                if not module_imported:
+                                    plugin_module = importlib.util.module_from_spec(
+                                        spec
+                                    )
+                                    _exec_plugin_module(
+                                        spec=spec,
+                                        plugin_module=plugin_module,
+                                        module_name=module_name,
+                                        plugin_dir=plugin_dir,
+                                    )
 
                                 if hasattr(plugin_module, "Plugin"):
                                     plugins.append(plugin_module.Plugin())
@@ -2196,7 +2304,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                     f"Module {missing_module} still not available after installation. "
                                     f"The package name might be different from the import name."
                                 )
-                            except Exception:
+                            except (Exception, SystemExit):
                                 logger.exception(
                                     "Error loading plugin %s after dependency installation",
                                     plugin_path,
@@ -2214,7 +2322,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                 f"  pip install {missing_pkg}        # if using pip\n"
                                 f"  pip install --user {missing_pkg}  # if not in a venv"
                             )
-                    except Exception:
+                    except (Exception, SystemExit):
                         logger.exception(f"Error loading plugin {plugin_path}")
             if not recursive:
                 break
@@ -2288,7 +2396,6 @@ def start_global_scheduler() -> None:
                 schedule.run_pending()
             # Wait until stop is requested or timeout elapses
             stop_event.wait(SCHEDULER_LOOP_WAIT_SECONDS)
-        logger.debug("Global scheduler thread stopped")
 
     _global_scheduler_thread = threading.Thread(
         target=scheduler_loop, name="global-plugin-scheduler", daemon=True

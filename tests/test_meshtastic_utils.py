@@ -2585,6 +2585,112 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         # Skew should be calibrated
         assert mu._relay_rx_time_clock_skew_secs == pytest.approx(50.0)
 
+    def test_on_meshtastic_message_packets_continue_after_drain_window_expires(self):
+        """After drain window expires, processing continues and submits for relay."""
+        import mmrelay.meshtastic_utils as mu
+
+        mu.RELAY_START_TIME = 100_000.0
+        mu._relay_rx_time_clock_skew_secs = None
+        mu._relay_startup_drain_deadline_monotonic_secs = 1_000.0
+        packet = {
+            "from": TEST_PACKET_FROM_ID,
+            "to": TEST_PACKET_FROM_ID,
+            "decoded": {"text": "post-drain packet", "portnum": TEXT_MESSAGE_APP},
+            "channel": 0,
+            "id": TEST_PACKET_ID,
+            "rxTime": 100_050.0,
+        }
+        mock_interface = MagicMock()
+        mock_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
+
+        with (
+            patch("mmrelay.meshtastic_utils.config", self.mock_config),
+            patch("mmrelay.meshtastic_utils.time.time", return_value=100_100.0),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_005.0),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            on_meshtastic_message(packet, mock_interface)
+
+        assert mu._relay_startup_drain_deadline_monotonic_secs is None
+        log_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        assert any("Startup drain window has ended" in c for c in log_calls)
+
+    def test_on_meshtastic_message_clears_drain_at_exact_deadline(self):
+        """Drain window should clear when packet arrives exactly at the deadline."""
+        import mmrelay.meshtastic_utils as mu
+
+        mu.RELAY_START_TIME = 100_000.0
+        mu._relay_rx_time_clock_skew_secs = None
+        mu._relay_startup_drain_deadline_monotonic_secs = 1_000.0
+        packet = {
+            "from": TEST_PACKET_FROM_ID,
+            "to": TEST_PACKET_FROM_ID,
+            "decoded": {"text": "exact deadline", "portnum": TEXT_MESSAGE_APP},
+            "channel": 0,
+            "id": TEST_PACKET_ID,
+            "rxTime": 100_050.0,
+        }
+        mock_interface = MagicMock()
+        mock_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
+
+        with (
+            patch("mmrelay.meshtastic_utils.config", self.mock_config),
+            patch("mmrelay.meshtastic_utils.time.time", return_value=100_100.0),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_000.0),
+            patch("mmrelay.meshtastic_utils.logger"),
+        ):
+            on_meshtastic_message(packet, mock_interface)
+
+        assert mu._relay_startup_drain_deadline_monotonic_secs is None
+
+    def test_on_meshtastic_message_drain_cleared_only_once_on_first_packet(self):
+        """After drain window expires, subsequent packets should not re-clear the deadline."""
+        import mmrelay.meshtastic_utils as mu
+
+        mu.RELAY_START_TIME = 100_000.0
+        mu._relay_rx_time_clock_skew_secs = None
+        mu._relay_startup_drain_deadline_monotonic_secs = 1_000.0
+
+        packet1 = {
+            "from": TEST_PACKET_FROM_ID,
+            "to": TEST_PACKET_FROM_ID,
+            "decoded": {"text": "packet 1", "portnum": TEXT_MESSAGE_APP},
+            "channel": 0,
+            "id": TEST_PACKET_ID,
+            "rxTime": 100_050.0,
+        }
+        packet2 = {
+            "from": TEST_PACKET_FROM_ID,
+            "to": TEST_PACKET_FROM_ID,
+            "decoded": {"text": "packet 2", "portnum": TEXT_MESSAGE_APP},
+            "channel": 0,
+            "id": TEST_PACKET_ID + 1,
+            "rxTime": 100_060.0,
+        }
+        mock_interface = MagicMock()
+        mock_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
+
+        debug_log_messages = []
+
+        def capture_debug(*args, **kwargs):
+            debug_log_messages.append(args[0] if args else "")
+
+        with (
+            patch("mmrelay.meshtastic_utils.config", self.mock_config),
+            patch("mmrelay.meshtastic_utils.time.time", return_value=100_100.0),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_005.0),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            mock_logger.debug.side_effect = capture_debug
+            on_meshtastic_message(packet1, mock_interface)
+            on_meshtastic_message(packet2, mock_interface)
+
+        assert mu._relay_startup_drain_deadline_monotonic_secs is None
+        drain_end_count = sum(
+            1 for msg in debug_log_messages if "Startup drain window has ended" in msg
+        )
+        assert drain_end_count == 1
+
 
 # Meshtastic connection retry tests - converted from unittest.TestCase to standalone pytest functions
 

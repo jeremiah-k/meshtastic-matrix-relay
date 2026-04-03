@@ -34,7 +34,7 @@ lint:
     - markdownlint@0.48.0
     - osv-scanner@2.3.5
     - prettier@3.8.1
-    - ruff@0.15.8
+    - ruff@0.15.9
     - trufflehog@3.94.2
     - yamllint@1.38.0
   definitions:
