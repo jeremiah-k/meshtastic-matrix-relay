@@ -4370,19 +4370,20 @@ def on_lost_meshtastic_connection(
         if shutting_down:
             logger.debug("Shutdown in progress. Not attempting to reconnect.")
             return
+        active_client = meshtastic_client
         active_client_id = _relay_active_client_id
-        if (
-            interface is not None
-            and active_client_id is not None
-            and id(interface) != active_client_id
-        ):
-            logger.debug(
-                "Ignoring connection-lost event from stale Meshtastic interface "
-                "(event_interface_id=%s active_client_id=%s)",
-                id(interface),
-                active_client_id,
+        if interface is not None and active_client is not None:
+            expected_client_id = (
+                active_client_id if active_client_id is not None else id(active_client)
             )
-            return
+            if id(interface) != expected_client_id:
+                logger.debug(
+                    "Ignoring connection-lost event from stale Meshtastic interface "
+                    "(event_interface_id=%s active_client_id=%s)",
+                    id(interface),
+                    expected_client_id,
+                )
+                return
         if reconnecting:
             logger.debug(
                 "Reconnection already in progress. Skipping additional reconnection attempt."
@@ -4590,15 +4591,25 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
 
     # Read-mostly guard values; avoid meshtastic_lock here because callbacks can
     # fire synchronously while connect_meshtastic() still holds that lock.
+    active_client = meshtastic_client
     active_client_id = _relay_active_client_id
-
-    if active_client_id is not None and id(interface) != active_client_id:
-        logger.debug(
-            "Ignoring packet from stale Meshtastic interface (packet_interface_id=%s active_client_id=%s)",
-            id(interface),
-            active_client_id,
+    if active_client is None:
+        if reconnecting:
+            logger.debug(
+                "Ignoring packet while reconnecting with no active Meshtastic client"
+            )
+            return
+    else:
+        expected_client_id = (
+            active_client_id if active_client_id is not None else id(active_client)
         )
-        return
+        if id(interface) != expected_client_id:
+            logger.debug(
+                "Ignoring packet from stale Meshtastic interface (packet_interface_id=%s active_client_id=%s)",
+                id(interface),
+                expected_client_id,
+            )
+            return
 
     # Parse rxTime early so health-probe responses can calibrate packet clock skew.
     rx_time_raw = packet.get("rxTime", 0)
