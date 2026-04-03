@@ -86,6 +86,11 @@ def stable_relay_start_time(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
         "mmrelay.meshtastic_utils._startup_packet_drain_applied",
         False,
         raising=False,
@@ -201,6 +206,9 @@ class TestMeshtasticUtils(unittest.TestCase):
         )
         mmrelay.meshtastic_utils._relay_rx_time_clock_skew_secs = None
         mmrelay.meshtastic_utils._relay_startup_drain_deadline_monotonic_secs = None
+        mmrelay.meshtastic_utils._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
+            None
+        )
         mmrelay.meshtastic_utils._startup_packet_drain_applied = False
         iface = mmrelay.meshtastic_utils.meshtastic_iface
         if iface is not None:
@@ -2338,6 +2346,40 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             "Calibrated rxTime clock skew from connect-time packet" in c
             for c in log_calls
         )
+
+    def test_seed_connect_time_skew_allows_one_prestart_bootstrap_on_reconnect(self):
+        """Reconnect path should allow one bounded pre-start bootstrap without startup drain."""
+        import mmrelay.meshtastic_utils as mu
+
+        mu._relay_rx_time_clock_skew_secs = None
+        mu._relay_connection_started_monotonic_secs = 1_000.0
+        mu.RELAY_START_TIME = 100_000.0
+        mu._relay_startup_drain_deadline_monotonic_secs = None
+        mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = 1_005.0
+
+        with (
+            patch("mmrelay.meshtastic_utils.time.time", return_value=100_000.0),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_001.0),
+        ):
+            first_result = mu._seed_connect_time_skew(94_900.0)
+
+        self.assertTrue(first_result)
+        self.assertEqual(mu._relay_rx_time_clock_skew_secs, 5_100.0)
+        self.assertIsNone(
+            mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs
+        )
+
+        # Clearing calibrated skew should not re-enable bootstrap once the reconnect
+        # one-shot allowance has been consumed.
+        mu._relay_rx_time_clock_skew_secs = None
+        with (
+            patch("mmrelay.meshtastic_utils.time.time", return_value=100_000.0),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_002.0),
+        ):
+            second_result = mu._seed_connect_time_skew(94_850.0)
+
+        self.assertFalse(second_result)
+        self.assertIsNone(mu._relay_rx_time_clock_skew_secs)
 
     def test_claim_health_probe_uses_localnode_fallback(self):
         """_claim_health_probe_response_and_maybe_calibrate should fall back to localNode when myInfo is absent."""

@@ -171,6 +171,10 @@ _STARTUP_PACKET_DRAIN_SECS = 15.0
 _relay_startup_drain_deadline_monotonic_secs: float | None = None
 # Only apply startup drain on the first successful process-lifetime connect.
 _startup_packet_drain_applied = False
+# On reconnects, allow exactly one bounded pre-start skew bootstrap packet
+# without enabling a full reconnect drain window.
+_RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS = 5.0
+_relay_reconnect_prestart_bootstrap_deadline_monotonic_secs: float | None = None
 
 
 # Global variables for the Meshtastic connection and event loop management
@@ -1077,6 +1081,7 @@ def _seed_connect_time_skew(rx_time: float) -> bool:
         bool: True when a new skew value was calibrated for this packet.
     """
     global _relay_rx_time_clock_skew_secs
+    global _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs
 
     if rx_time <= 0:
         return False
@@ -1093,10 +1098,23 @@ def _seed_connect_time_skew(rx_time: float) -> bool:
         startup_age = max(0.0, now_monotonic - _relay_connection_started_monotonic_secs)
         within_startup_window = startup_age <= _RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS
         startup_drain_active = _relay_startup_drain_deadline_monotonic_secs is not None
+        reconnect_bootstrap_deadline = (
+            _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs
+        )
+        reconnect_bootstrap_active = (
+            reconnect_bootstrap_deadline is not None
+            and reconnect_bootstrap_deadline >= now_monotonic
+        )
+        if (
+            reconnect_bootstrap_deadline is not None
+            and reconnect_bootstrap_deadline < now_monotonic
+        ):
+            _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = None
         packet_is_post_start = rx_time >= relay_start_time
 
         if not packet_is_post_start and (
-            not within_startup_window or not startup_drain_active
+            not within_startup_window
+            or (not startup_drain_active and not reconnect_bootstrap_active)
         ):
             return False
 
@@ -1110,11 +1128,25 @@ def _seed_connect_time_skew(rx_time: float) -> bool:
 
         _relay_rx_time_clock_skew_secs = observed_skew
         calibrated_skew = observed_skew
+        calibrated_from_reconnect_prestart = (
+            not packet_is_post_start
+            and not startup_drain_active
+            and reconnect_bootstrap_active
+        )
+        if calibrated_from_reconnect_prestart:
+            # Consume the one-shot reconnect bootstrap allowance.
+            _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = None
 
     if packet_is_post_start:
         logger.debug(
             "Calibrated rxTime clock skew from connect-time packet to %.3f seconds",
             calibrated_skew,
+        )
+    elif calibrated_from_reconnect_prestart:
+        logger.debug(
+            "Bootstrapped rxTime clock skew from reconnect packet to %.3f seconds (startup_age=%.3f seconds)",
+            calibrated_skew,
+            startup_age,
         )
     else:
         logger.debug(
@@ -3303,6 +3335,107 @@ def _get_connection_retry_wait_time(attempts: int) -> float:
     )
 
 
+def _get_connect_time_probe_settings(
+    active_config: dict[str, Any] | None, connection_type: str
+) -> tuple[bool, float]:
+    """
+    Return connect-time probe enablement and timeout settings for a connection.
+    """
+    if connection_type == CONNECTION_TYPE_BLE:
+        return False, float(DEFAULT_MESHTASTIC_OPERATION_TIMEOUT)
+
+    default_timeout = float(DEFAULT_MESHTASTIC_OPERATION_TIMEOUT)
+    default_enabled = True
+    if not isinstance(active_config, dict):
+        return default_enabled, default_timeout
+
+    meshtastic_cfg = active_config.get(CONFIG_SECTION_MESHTASTIC)
+    if not isinstance(meshtastic_cfg, dict):
+        return default_enabled, default_timeout
+
+    health_cfg = meshtastic_cfg.get("health_check")
+    if not isinstance(health_cfg, dict):
+        return default_enabled, default_timeout
+
+    enabled = _coerce_bool(
+        health_cfg.get("connect_probe_enabled", default_enabled),
+        default_enabled,
+        "meshtastic.health_check.connect_probe_enabled",
+    )
+    timeout_secs = _coerce_positive_float(
+        health_cfg.get("probe_timeout", default_timeout),
+        default_timeout,
+        "meshtastic.health_check.probe_timeout",
+    )
+    return enabled, timeout_secs
+
+
+def _schedule_connect_time_calibration_probe(
+    client: Any,
+    *,
+    connection_type: str,
+    active_config: dict[str, Any] | None,
+) -> None:
+    """
+    Best-effort one-shot metadata probe after connect for skew calibration backup.
+    """
+    enabled, timeout_secs = _get_connect_time_probe_settings(
+        active_config, connection_type
+    )
+    if not enabled:
+        logger.debug("Connect-time metadata probe is disabled in configuration")
+        return
+
+    local_node = getattr(client, "localNode", None)
+    local_node_num_raw = getattr(local_node, "nodeNum", None)
+    if isinstance(local_node_num_raw, bool) or not isinstance(
+        local_node_num_raw, (int, str)
+    ):
+        local_node_num = None
+    else:
+        local_node_num = _coerce_int_id(local_node_num_raw)
+    if (
+        local_node is None
+        or local_node_num is None
+        or not callable(getattr(client, "sendData", None))
+    ):
+        logger.debug(
+            "Skipping connect-time metadata probe; client lacks localNode/sendData support"
+        )
+        return
+
+    try:
+        probe_future = _submit_metadata_probe(
+            functools.partial(
+                _probe_device_connection,
+                client,
+                timeout_secs,
+            )
+        )
+    except MetadataExecutorDegradedError:
+        logger.debug(
+            "Skipping connect-time metadata probe; metadata executor is degraded"
+        )
+        return
+    except RuntimeError as exc:
+        logger.debug(
+            "Skipping connect-time metadata probe; submission failed",
+            exc_info=exc,
+        )
+        return
+
+    if probe_future is None:
+        logger.debug(
+            "Skipping connect-time metadata probe; metadata probe already in progress"
+        )
+        return
+
+    logger.debug(
+        "Scheduled one-shot connect-time metadata probe (timeout=%.1fs)",
+        timeout_secs,
+    )
+
+
 def connect_meshtastic(
     passed_config: dict[str, Any] | None = None,
     force_connect: bool = False,
@@ -3322,6 +3455,7 @@ def connect_meshtastic(
     global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config
     global RELAY_START_TIME, _relay_connection_started_monotonic_secs
     global _relay_rx_time_clock_skew_secs, _relay_startup_drain_deadline_monotonic_secs
+    global _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs
     global _startup_packet_drain_applied
     global matrix_rooms, _ble_future, _ble_future_address
     global _ble_future_started_at, _ble_future_timeout_secs
@@ -3456,6 +3590,7 @@ def connect_meshtastic(
         ble_address: str | None = None
         supports_auto_reconnect = False
         startup_drain_armed_for_this_connect = False
+        reconnect_bootstrap_armed_for_this_connect = False
 
         try:
             client = None
@@ -3964,9 +4099,27 @@ def connect_meshtastic(
                                 _relay_connection_started_monotonic_secs
                                 + _STARTUP_PACKET_DRAIN_SECS
                             )
+                            _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
+                                None
+                            )
                             startup_drain_armed_for_this_connect = True
+                            timing_mode = "startup"
                         else:
                             _relay_startup_drain_deadline_monotonic_secs = None
+                            _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
+                                _relay_connection_started_monotonic_secs
+                                + _RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS
+                            )
+                            reconnect_bootstrap_armed_for_this_connect = True
+                            timing_mode = "reconnect"
+                        logger.debug(
+                            "Initialized connection timing state mode=%s start=%.3f monotonic_start=%.3f startup_drain_deadline=%s reconnect_bootstrap_deadline=%s",
+                            timing_mode,
+                            RELAY_START_TIME,
+                            _relay_connection_started_monotonic_secs,
+                            _relay_startup_drain_deadline_monotonic_secs,
+                            _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs,
+                        )
 
                 nodeInfo = meshtastic_client.getMyNodeInfo()
 
@@ -4006,17 +4159,39 @@ def connect_meshtastic(
                     subscribed_to_connection_lost = True
                     logger.debug("Subscribed to meshtastic.connection.lost")
 
+                _schedule_connect_time_calibration_probe(
+                    meshtastic_client,
+                    connection_type=connection_type,
+                    active_config=config,
+                )
+
         except (ConnectionRefusedError, MemoryError, BleExecutorDegradedError):
             # Handle critical errors that should not be retried
-            if startup_drain_armed_for_this_connect:
+            if (
+                startup_drain_armed_for_this_connect
+                or reconnect_bootstrap_armed_for_this_connect
+            ):
                 with _relay_rx_time_clock_skew_lock:
-                    _relay_startup_drain_deadline_monotonic_secs = None
+                    if startup_drain_armed_for_this_connect:
+                        _relay_startup_drain_deadline_monotonic_secs = None
+                    if reconnect_bootstrap_armed_for_this_connect:
+                        _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
+                            None
+                        )
             logger.exception("Critical connection error")
             return None
         except (FuturesTimeoutError, TimeoutError) as e:
-            if startup_drain_armed_for_this_connect:
+            if (
+                startup_drain_armed_for_this_connect
+                or reconnect_bootstrap_armed_for_this_connect
+            ):
                 with _relay_rx_time_clock_skew_lock:
-                    _relay_startup_drain_deadline_monotonic_secs = None
+                    if startup_drain_armed_for_this_connect:
+                        _relay_startup_drain_deadline_monotonic_secs = None
+                    if reconnect_bootstrap_armed_for_this_connect:
+                        _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
+                            None
+                        )
             if shutting_down:
                 break
             attempts += 1
@@ -4041,9 +4216,17 @@ def connect_meshtastic(
             )
             time.sleep(wait_time)
         except Exception as e:
-            if startup_drain_armed_for_this_connect:
+            if (
+                startup_drain_armed_for_this_connect
+                or reconnect_bootstrap_armed_for_this_connect
+            ):
                 with _relay_rx_time_clock_skew_lock:
-                    _relay_startup_drain_deadline_monotonic_secs = None
+                    if startup_drain_armed_for_this_connect:
+                        _relay_startup_drain_deadline_monotonic_secs = None
+                    if reconnect_bootstrap_armed_for_this_connect:
+                        _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
+                            None
+                        )
             if shutting_down:
                 logger.debug("Shutdown in progress. Aborting connection attempts.")
                 break
