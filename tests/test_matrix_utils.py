@@ -794,7 +794,9 @@ async def test_on_room_message_does_not_drop_old_timestamp_messages(
     mock_room, mock_event, test_config
 ):
     """Older event timestamps should still be processed after startup clock corrections."""
-    mock_event.server_timestamp = 100
+    message_ts = 1_700_000_000_000
+    startup_ts = message_ts + 100
+    mock_event.server_timestamp = message_ts
 
     with (
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
@@ -810,7 +812,13 @@ async def test_on_room_message_does_not_drop_old_timestamp_messages(
         patch("mmrelay.matrix_utils.config", test_config),
         patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
         patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
-        patch("mmrelay.matrix_utils.bot_start_time", 200),
+        patch("mmrelay.matrix_utils.bot_start_time", startup_ts),
+        patch("mmrelay.matrix_utils.bot_start_monotonic_secs", 10_000.0),
+        patch(
+            "mmrelay.matrix_utils.time.time",
+            return_value=(startup_ts / 1000) + 0.01,
+        ),
+        patch("mmrelay.matrix_utils.time.monotonic", return_value=10_000.01),
     ):
         mock_get_message_queue.return_value.get_queue_size.return_value = 0
         await on_room_message(mock_room, mock_event)

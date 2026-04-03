@@ -1201,7 +1201,9 @@ bot_start_monotonic_secs = time.monotonic()
 # time has stepped backwards since startup.
 _MATRIX_EVENT_EPOCH_FLOOR_MS = 946684800000  # 2000-01-01T00:00:00Z
 _MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS = 5 * MILLISECONDS_PER_SECOND
-_MATRIX_STALE_STARTUP_EVENT_DROP_MS = 5 * 60 * MILLISECONDS_PER_SECOND
+# Drop pre-start events beyond a small startup tolerance when local startup
+# clock appears stable.
+_MATRIX_STALE_STARTUP_EVENT_DROP_MS = _MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS
 _MATRIX_CLOCK_ROLLBACK_DISABLE_MS = 60 * MILLISECONDS_PER_SECOND
 
 

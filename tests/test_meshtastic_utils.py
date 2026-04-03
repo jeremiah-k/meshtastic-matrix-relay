@@ -105,6 +105,16 @@ def stable_relay_start_time(monkeypatch):
         0.0,
         raising=False,
     )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.subscribed_to_messages",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.subscribed_to_connection_lost",
+        False,
+        raising=False,
+    )
 
 
 class _FakeEvent:

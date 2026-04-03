@@ -27,8 +27,12 @@ from pubsub import pub
 
 from mmrelay.config import get_meshtastic_config_value
 from mmrelay.constants.config import (
+    CONFIG_KEY_CONNECT_PROBE_ENABLED,
+    CONFIG_KEY_ENABLED,
+    CONFIG_KEY_HEALTH_CHECK,
     CONFIG_KEY_MESHNET_NAME,
     CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
+    CONFIG_KEY_PROBE_TIMEOUT,
     CONFIG_SECTION_MESHTASTIC,
     DEFAULT_DETECTION_SENSOR,
     DEFAULT_HEALTH_CHECK_ENABLED,
@@ -3355,22 +3359,22 @@ def _get_connect_time_probe_settings(
     if not isinstance(meshtastic_cfg, dict):
         return default_enabled, default_timeout
 
-    health_cfg = meshtastic_cfg.get("health_check")
+    health_cfg = meshtastic_cfg.get(CONFIG_KEY_HEALTH_CHECK)
     if not isinstance(health_cfg, dict):
         return default_enabled, default_timeout
 
     inherited_enabled = _coerce_bool(
-        health_cfg.get("enabled", default_enabled),
+        health_cfg.get(CONFIG_KEY_ENABLED, default_enabled),
         default_enabled,
         "meshtastic.health_check.enabled",
     )
     enabled = _coerce_bool(
-        health_cfg.get("connect_probe_enabled", inherited_enabled),
+        health_cfg.get(CONFIG_KEY_CONNECT_PROBE_ENABLED, inherited_enabled),
         inherited_enabled,
         "meshtastic.health_check.connect_probe_enabled",
     )
     timeout_secs = _coerce_positive_float(
-        health_cfg.get("probe_timeout", default_timeout),
+        health_cfg.get(CONFIG_KEY_PROBE_TIMEOUT, default_timeout),
         default_timeout,
         "meshtastic.health_check.probe_timeout",
     )
@@ -4374,6 +4378,15 @@ def on_lost_meshtastic_connection(
             return
         active_client = meshtastic_client
         active_client_id = _relay_active_client_id
+        if (
+            interface is not None
+            and active_client is None
+            and subscribed_to_connection_lost
+        ):
+            logger.debug(
+                "Ignoring connection-lost event because no Meshtastic interface is currently active"
+            )
+            return
         if interface is not None and active_client is not None:
             expected_client_id = (
                 active_client_id if active_client_id is not None else id(active_client)
@@ -4601,7 +4614,12 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         #
         # Keep direct unit-level handler invocation behavior unchanged when no
         # active session is being transitioned.
-        if reconnecting or shutting_down or active_client_id is not None:
+        if (
+            subscribed_to_messages
+            or reconnecting
+            or shutting_down
+            or active_client_id is not None
+        ):
             logger.debug(
                 "Ignoring packet because no Meshtastic interface is currently active"
             )

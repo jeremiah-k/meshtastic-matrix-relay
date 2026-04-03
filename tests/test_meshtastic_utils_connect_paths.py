@@ -1,5 +1,6 @@
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import serial
@@ -644,12 +645,12 @@ def test_connect_meshtastic_schedules_one_shot_probe_when_periodic_health_disabl
             }
         }
         result = connect_meshtastic(passed_config=config)
+        mock_submit_probe.assert_called_once()
         submitted_probe = mock_submit_probe.call_args.args[0]
         assert callable(submitted_probe)
         submitted_probe()
 
     assert result is mock_client
-    mock_submit_probe.assert_called_once()
     mock_probe_device_connection.assert_called_once_with(
         mock_client, float(DEFAULT_MESHTASTIC_OPERATION_TIMEOUT)
     )
@@ -726,6 +727,50 @@ def test_connect_meshtastic_does_not_schedule_one_shot_probe_by_default(
 
     assert result is mock_client
     mock_submit_probe.assert_not_called()
+
+
+def test_connect_meshtastic_probe_inherits_parent_when_override_omitted(
+    reset_meshtastic_globals,
+):
+    """When connect_probe_enabled is omitted, it should inherit health_check.enabled."""
+    mock_client = MagicMock()
+    mock_client.localNode = MagicMock()
+    mock_client.sendData = MagicMock()
+    mock_client.getMyNodeInfo.return_value = {
+        "user": {"shortName": "Node", "hwModel": "HW"}
+    }
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+            return_value=mock_client,
+        ),
+        patch(
+            "mmrelay.meshtastic_utils._get_device_metadata",
+            return_value={"firmware_version": "unknown", "success": False},
+        ),
+        patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit_probe,
+        patch(
+            "mmrelay.meshtastic_utils._probe_device_connection"
+        ) as mock_probe_device_connection,
+    ):
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "127.0.0.1",
+                "health_check": {"enabled": True},
+            }
+        }
+        result = connect_meshtastic(passed_config=config)
+        mock_submit_probe.assert_called_once()
+        submitted_probe = mock_submit_probe.call_args.args[0]
+        assert callable(submitted_probe)
+        submitted_probe()
+
+    assert result is mock_client
+    mock_probe_device_connection.assert_called_once_with(
+        mock_client, float(DEFAULT_MESHTASTIC_OPERATION_TIMEOUT)
+    )
 
 
 def test_connect_meshtastic_clears_active_client_after_setup_failure_before_retry(
