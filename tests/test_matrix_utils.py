@@ -790,17 +790,31 @@ async def test_on_room_message_detection_sensor_connect_failure(
     mock_queue_message.assert_not_called()
 
 
-async def test_on_room_message_ignores_old_messages(mock_room, mock_event):
-    """Messages sent before the bot start time should be ignored."""
+async def test_on_room_message_does_not_drop_old_timestamp_messages(
+    mock_room, mock_event, test_config
+):
+    """Older event timestamps should still be processed after startup clock corrections."""
     mock_event.server_timestamp = 100
 
     with (
-        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            AsyncMock(return_value="user"),
+        ),
+        patch("mmrelay.matrix_utils.get_message_queue") as mock_get_message_queue,
+        patch(
+            "mmrelay.matrix_utils.queue_message", return_value=True
+        ) as mock_queue_message,
+        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
         patch("mmrelay.matrix_utils.bot_start_time", 200),
     ):
+        mock_get_message_queue.return_value.get_queue_size.return_value = 0
         await on_room_message(mock_room, mock_event)
 
-    mock_queue_message.assert_not_called()
+    mock_queue_message.assert_called_once()
 
 
 async def test_on_room_message_config_none_logs_and_returns(

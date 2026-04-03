@@ -4231,7 +4231,7 @@ async def on_room_message(
     """
     Handle an incoming Matrix room event and bridge eligible events to Meshtastic.
 
-    Processes RoomMessageText, RoomMessageNotice, RoomMessageEmote, and ReactionEvent events for configured rooms. Filters out events older than the bot start time and messages sent by the bot. Respects per-room and global interaction settings (reactions and replies), delegates command handling to plugins (preventing relay when handled), and forwards eligible reactions, replies, detection-sensor packets, remote-meshnet messages, and ordinary Matrix messages to Meshtastic. When configured, creates and attaches message mapping metadata for reply/reaction correlation.
+    Processes RoomMessageText, RoomMessageNotice, RoomMessageEmote, and ReactionEvent events for configured rooms. Ignores messages sent by the bot. Respects per-room and global interaction settings (reactions and replies), delegates command handling to plugins (preventing relay when handled), and forwards eligible reactions, replies, detection-sensor packets, remote-meshnet messages, and ordinary Matrix messages to Meshtastic. When configured, creates and attaches message mapping metadata for reply/reaction correlation.
 
     Parameters:
         room (MatrixRoom): The Matrix room where the event was received.
@@ -4254,9 +4254,18 @@ async def on_room_message(
     full_display_name = "Unknown user"
     message_timestamp = event.server_timestamp
 
-    # We do not relay messages that occurred before the bot started
+    # Do not hard-drop events using local startup wall clock. Startup clock
+    # corrections (for example after NTP sync) can move backward and make
+    # valid homeserver timestamps appear "old".
     if message_timestamp < bot_start_time:
-        return
+        logger.debug(
+            "Matrix event timestamp predates local startup baseline but will still be processed "
+            "(event_ts=%s bot_start_time=%s sender=%s room=%s)",
+            message_timestamp,
+            bot_start_time,
+            event.sender,
+            room.room_id,
+        )
 
     # Do not process messages from the bot itself
     if event.sender == bot_user_id:

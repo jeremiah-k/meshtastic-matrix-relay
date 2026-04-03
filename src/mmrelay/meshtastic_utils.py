@@ -3809,6 +3809,11 @@ def connect_meshtastic(
                                     meshtastic_iface = future.result(
                                         timeout=create_timeout_secs
                                     )
+                                    if meshtastic_iface is None:
+                                        _clear_ble_future(future)
+                                        raise ConnectionRefusedError(
+                                            "BLE interface creation returned no interface"
+                                        )
                                     logger.debug(
                                         f"BLE interface created successfully for {ble_address}"
                                     )
