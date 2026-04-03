@@ -467,6 +467,82 @@ def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_metadata_rec
     mock_submit_coro.assert_not_called()
 
 
+def test_connect_meshtastic_resets_timing_before_get_my_node_info_on_reconnect(
+    reset_meshtastic_globals,
+):
+    """Reconnect should reset timing state before node-info fetch can process packets."""
+    mock_client = MagicMock()
+    startup_packet = {
+        "from": 123,
+        "to": 456,
+        "decoded": {"text": "startup packet", "portnum": "TEXT_MESSAGE_APP"},
+        "channel": 0,
+        "id": 1001,
+        "rxTime": 95_000.0,
+    }
+
+    mu.subscribed_to_messages = True
+    mu.subscribed_to_connection_lost = True
+    mu.RELAY_START_TIME = 50_000.0
+    mu._relay_connection_started_monotonic_secs = 500.0
+    mu._relay_rx_time_clock_skew_secs = 123.0
+    mu._startup_packet_drain_applied = True
+    mu._relay_startup_drain_deadline_monotonic_secs = 999.0
+    mu._health_probe_request_deadlines[4242] = 9_999_999.0
+
+    saw_reset_state_during_get_node_info = False
+
+    def _get_node_info_side_effect() -> dict[str, dict[str, str]]:
+        nonlocal saw_reset_state_during_get_node_info
+        if (
+            mu.RELAY_START_TIME == 100_000.0
+            and mu._relay_connection_started_monotonic_secs == 1_000.0
+            and mu._relay_rx_time_clock_skew_secs is None
+            and mu._relay_startup_drain_deadline_monotonic_secs is None
+            and not mu._health_probe_request_deadlines
+        ):
+            saw_reset_state_during_get_node_info = True
+        mu.on_meshtastic_message(startup_packet, mock_client)
+        return {"user": {"shortName": "Node", "hwModel": "HW"}}
+
+    mock_client.getMyNodeInfo.side_effect = _get_node_info_side_effect
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+            return_value=mock_client,
+        ),
+        patch(
+            "mmrelay.meshtastic_utils._get_device_metadata",
+            return_value={"firmware_version": "unknown", "success": False},
+        ),
+        patch("mmrelay.meshtastic_utils.pub.subscribe") as mock_subscribe,
+        patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        patch("mmrelay.meshtastic_utils.time.time", return_value=100_000.0),
+        patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_000.0),
+    ):
+        config = {
+            "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "127.0.0.1"}
+        }
+        result = connect_meshtastic(passed_config=config)
+
+    assert result is mock_client
+    assert saw_reset_state_during_get_node_info is True
+    assert mu._relay_startup_drain_deadline_monotonic_secs is None
+    assert not mu._health_probe_request_deadlines
+    mock_subscribe.assert_not_called()
+    mock_submit_coro.assert_not_called()
+    assert any(
+        call.args
+        and "Ignoring old packet with rxTime %s (older than start time %s)"
+        in str(call.args[0])
+        and len(call.args) >= 3
+        and call.args[2] == 100_000.0
+        for call in mock_logger.debug.call_args_list
+    )
+
+
 def test_connect_meshtastic_timeout_breaks_on_shutdown(reset_meshtastic_globals):
     def _timeout_then_shutdown(*_args, **_kwargs):
         """Set shutting_down flag and raise TimeoutError."""

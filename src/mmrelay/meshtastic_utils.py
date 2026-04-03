@@ -3455,6 +3455,7 @@ def connect_meshtastic(
         # Initialize before try block to avoid unbound variable errors
         ble_address: str | None = None
         supports_auto_reconnect = False
+        startup_drain_armed_for_this_connect = False
 
         try:
             client = None
@@ -3945,20 +3946,13 @@ def connect_meshtastic(
                             f"Connected to wrong BLE device. Expected: {expected_ble_address}"
                         )
 
-                nodeInfo = meshtastic_client.getMyNodeInfo()
-
-                # Safely access node info fields
-                user_info = nodeInfo.get("user", {}) if nodeInfo else {}
-                short_name = user_info.get("shortName", "unknown")
-                hw_model = user_info.get("hwModel", "unknown")
-
                 # Clear health probe deadlines BEFORE resetting clock skew to prevent
                 # race condition where a late ACK from the previous interface could
                 # seed the new connection with stale skew values.
                 #
-                # Initialize connection timing state exactly once and before inbound
-                # packet subscription so fast transports cannot deliver packets into
-                # an unarmed startup-drain/skew-bootstrap window.
+                # Initialize connection timing state exactly once before metadata
+                # probes, node-info fetches, and subscription setup so reconnects
+                # cannot handle inbound packets with stale session timing.
                 with _health_probe_request_lock:
                     _health_probe_request_deadlines.clear()
                     with _relay_rx_time_clock_skew_lock:
@@ -3970,9 +3964,16 @@ def connect_meshtastic(
                                 _relay_connection_started_monotonic_secs
                                 + _STARTUP_PACKET_DRAIN_SECS
                             )
-                            _startup_packet_drain_applied = True
+                            startup_drain_armed_for_this_connect = True
                         else:
                             _relay_startup_drain_deadline_monotonic_secs = None
+
+                nodeInfo = meshtastic_client.getMyNodeInfo()
+
+                # Safely access node info fields
+                user_info = nodeInfo.get("user", {}) if nodeInfo else {}
+                short_name = user_info.get("shortName", "unknown")
+                hw_model = user_info.get("hwModel", "unknown")
 
                 # Get firmware version from device metadata
                 metadata = _get_device_metadata(meshtastic_client)
@@ -3987,6 +3988,9 @@ def connect_meshtastic(
                     logger.debug(
                         "Device firmware version unavailable from getMetadata()"
                     )
+
+                if startup_drain_armed_for_this_connect:
+                    _startup_packet_drain_applied = True
 
                 # Subscribe to message and connection lost events (only once per application run)
                 global subscribed_to_messages, subscribed_to_connection_lost
@@ -4004,9 +4008,15 @@ def connect_meshtastic(
 
         except (ConnectionRefusedError, MemoryError, BleExecutorDegradedError):
             # Handle critical errors that should not be retried
+            if startup_drain_armed_for_this_connect:
+                with _relay_rx_time_clock_skew_lock:
+                    _relay_startup_drain_deadline_monotonic_secs = None
             logger.exception("Critical connection error")
             return None
         except (FuturesTimeoutError, TimeoutError) as e:
+            if startup_drain_armed_for_this_connect:
+                with _relay_rx_time_clock_skew_lock:
+                    _relay_startup_drain_deadline_monotonic_secs = None
             if shutting_down:
                 break
             attempts += 1
@@ -4031,6 +4041,9 @@ def connect_meshtastic(
             )
             time.sleep(wait_time)
         except Exception as e:
+            if startup_drain_armed_for_this_connect:
+                with _relay_rx_time_clock_skew_lock:
+                    _relay_startup_drain_deadline_monotonic_secs = None
             if shutting_down:
                 logger.debug("Shutdown in progress. Aborting connection attempts.")
                 break
