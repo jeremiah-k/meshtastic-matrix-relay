@@ -3903,18 +3903,6 @@ def connect_meshtastic(
             # Acquire lock only for the final setup and subscription
             with meshtastic_lock:
                 meshtastic_client = client
-                # Clear health probe deadlines BEFORE resetting clock skew to prevent
-                # race condition where a late ACK from the previous interface could
-                # seed the new connection with stale skew values.
-                with _health_probe_request_lock:
-                    _health_probe_request_deadlines.clear()
-                    # Now reset timing variables while holding both locks.
-                    # This ensures the stale-packet cutoff always sees a consistent pair.
-                    with _relay_rx_time_clock_skew_lock:
-                        RELAY_START_TIME = time.time()
-                        _relay_connection_started_monotonic_secs = time.monotonic()
-                        _relay_rx_time_clock_skew_secs = None
-                        _relay_startup_drain_deadline_monotonic_secs = None
 
                 # CRITICAL VALIDATION: Verify we're connected to the correct BLE device.
                 # This prevents connection to wrong device due to substring matching
@@ -3978,6 +3966,28 @@ def connect_meshtastic(
                         "Device firmware version unavailable from getMetadata()"
                     )
 
+                # Clear health probe deadlines BEFORE resetting clock skew to prevent
+                # race condition where a late ACK from the previous interface could
+                # seed the new connection with stale skew values.
+                #
+                # Initialize connection timing state exactly once and before inbound
+                # packet subscription so fast transports cannot deliver packets into
+                # an unarmed startup-drain/skew-bootstrap window.
+                with _health_probe_request_lock:
+                    _health_probe_request_deadlines.clear()
+                    with _relay_rx_time_clock_skew_lock:
+                        RELAY_START_TIME = time.time()
+                        _relay_connection_started_monotonic_secs = time.monotonic()
+                        _relay_rx_time_clock_skew_secs = None
+                        if not _startup_packet_drain_applied:
+                            _relay_startup_drain_deadline_monotonic_secs = (
+                                _relay_connection_started_monotonic_secs
+                                + _STARTUP_PACKET_DRAIN_SECS
+                            )
+                            _startup_packet_drain_applied = True
+                        else:
+                            _relay_startup_drain_deadline_monotonic_secs = None
+
                 # Subscribe to message and connection lost events (only once per application run)
                 global subscribed_to_messages, subscribed_to_connection_lost
                 if not subscribed_to_messages:
@@ -3991,19 +4001,6 @@ def connect_meshtastic(
                     )
                     subscribed_to_connection_lost = True
                     logger.debug("Subscribed to meshtastic.connection.lost")
-
-                # Arm startup-drain only after connection setup fully succeeds.
-                with _relay_rx_time_clock_skew_lock:
-                    RELAY_START_TIME = time.time()
-                    _relay_connection_started_monotonic_secs = time.monotonic()
-                    if not _startup_packet_drain_applied:
-                        _relay_startup_drain_deadline_monotonic_secs = (
-                            _relay_connection_started_monotonic_secs
-                            + _STARTUP_PACKET_DRAIN_SECS
-                        )
-                        _startup_packet_drain_applied = True
-                    else:
-                        _relay_startup_drain_deadline_monotonic_secs = None
 
         except (ConnectionRefusedError, MemoryError, BleExecutorDegradedError):
             # Handle critical errors that should not be retried

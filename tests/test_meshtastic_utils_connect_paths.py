@@ -357,6 +357,57 @@ def test_connect_meshtastic_logs_firmware_version_on_success(
     )
 
 
+def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_subscribe(
+    reset_meshtastic_globals,
+):
+    """Fast inbound packets during receive subscribe should still seed startup skew."""
+    mock_client = MagicMock()
+    mock_client.getMyNodeInfo.return_value = {
+        "user": {"shortName": "Node", "hwModel": "HW"}
+    }
+    startup_packet = {
+        "from": 123,
+        "to": 456,
+        "decoded": {"text": "startup packet", "portnum": "TEXT_MESSAGE_APP"},
+        "channel": 0,
+        "id": 999,
+        "rxTime": 94_900.0,
+    }
+
+    def _subscribe_side_effect(callback, topic):
+        if topic == "meshtastic.receive":
+            callback(startup_packet, mock_client)
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+            return_value=mock_client,
+        ),
+        patch(
+            "mmrelay.meshtastic_utils._get_device_metadata",
+            return_value={"firmware_version": "unknown", "success": False},
+        ),
+        patch(
+            "mmrelay.meshtastic_utils.pub.subscribe",
+            side_effect=_subscribe_side_effect,
+        ),
+        patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+        patch("mmrelay.meshtastic_utils.time.time", return_value=100_000.0),
+        patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_000.0),
+    ):
+        config = {
+            "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "127.0.0.1"}
+        }
+        result = connect_meshtastic(passed_config=config)
+
+    assert result is mock_client
+    assert mu._relay_rx_time_clock_skew_secs == 5_100.0
+    assert mu._relay_startup_drain_deadline_monotonic_secs == (
+        1_000.0 + mu._STARTUP_PACKET_DRAIN_SECS
+    )
+    mock_submit_coro.assert_not_called()
+
+
 def test_connect_meshtastic_timeout_breaks_on_shutdown(reset_meshtastic_globals):
     def _timeout_then_shutdown(*_args, **_kwargs):
         """Set shutting_down flag and raise TimeoutError."""
