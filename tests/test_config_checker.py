@@ -285,16 +285,12 @@ class TestConfigChecker(unittest.TestCase):
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("mmrelay.cli.validate_yaml_syntax")
-    @patch("mmrelay.cli._print_unified_e2ee_analysis")
     @patch("mmrelay.e2ee_utils.get_e2ee_status")
     @patch("builtins.print")
-    @patch("builtins.open", new_callable=mock_open)
     def test_check_config_invalid_connect_probe_enabled_type(
         self,
-        _mock_open,
         mock_print,
         mock_get_e2ee_status,
-        _mock_print_unified_e2ee,
         mock_validate_yaml,
         mock_isfile,
         mock_get_paths,
@@ -322,7 +318,11 @@ class TestConfigChecker(unittest.TestCase):
             "issues": [],
         }
 
-        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+        with (
+            patch("builtins.open", mock_open(read_data="test")),
+            patch("mmrelay.cli._print_unified_e2ee_analysis"),
+            patch("mmrelay.cli._validate_credentials_json", return_value=False),
+        ):
             result = check_config()
 
         assert not result
@@ -334,16 +334,12 @@ class TestConfigChecker(unittest.TestCase):
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("mmrelay.cli.validate_yaml_syntax")
-    @patch("mmrelay.cli._print_unified_e2ee_analysis")
     @patch("mmrelay.e2ee_utils.get_e2ee_status")
     @patch("builtins.print")
-    @patch("builtins.open", new_callable=mock_open)
     def test_check_config_invalid_probe_timeout_value(
         self,
-        _mock_open,
         mock_print,
         mock_get_e2ee_status,
-        _mock_print_unified_e2ee,
         mock_validate_yaml,
         mock_isfile,
         mock_get_paths,
@@ -371,7 +367,11 @@ class TestConfigChecker(unittest.TestCase):
             "issues": [],
         }
 
-        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+        with (
+            patch("builtins.open", mock_open(read_data="test")),
+            patch("mmrelay.cli._print_unified_e2ee_analysis"),
+            patch("mmrelay.cli._validate_credentials_json", return_value=False),
+        ):
             result = check_config()
 
         assert not result
@@ -383,16 +383,12 @@ class TestConfigChecker(unittest.TestCase):
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("mmrelay.cli.validate_yaml_syntax")
-    @patch("mmrelay.cli._print_unified_e2ee_analysis")
     @patch("mmrelay.e2ee_utils.get_e2ee_status")
     @patch("builtins.print")
-    @patch("builtins.open", new_callable=mock_open)
     def test_check_config_negative_probe_timeout_value(
         self,
-        _mock_open,
         mock_print,
         mock_get_e2ee_status,
-        _mock_print_unified_e2ee,
         mock_validate_yaml,
         mock_isfile,
         mock_get_paths,
@@ -420,7 +416,11 @@ class TestConfigChecker(unittest.TestCase):
             "issues": [],
         }
 
-        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+        with (
+            patch("builtins.open", mock_open(read_data="test")),
+            patch("mmrelay.cli._print_unified_e2ee_analysis"),
+            patch("mmrelay.cli._validate_credentials_json", return_value=False),
+        ):
             result = check_config()
 
         assert not result
@@ -432,16 +432,12 @@ class TestConfigChecker(unittest.TestCase):
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("mmrelay.cli.validate_yaml_syntax")
-    @patch("mmrelay.cli._print_unified_e2ee_analysis")
     @patch("mmrelay.e2ee_utils.get_e2ee_status")
     @patch("builtins.print")
-    @patch("builtins.open", new_callable=mock_open)
     def test_check_config_non_finite_probe_timeout_value(
         self,
-        _mock_open,
         mock_print,
         mock_get_e2ee_status,
-        _mock_print_unified_e2ee,
         mock_validate_yaml,
         mock_isfile,
         mock_get_paths,
@@ -469,7 +465,11 @@ class TestConfigChecker(unittest.TestCase):
             "issues": [],
         }
 
-        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+        with (
+            patch("builtins.open", mock_open(read_data="test")),
+            patch("mmrelay.cli._print_unified_e2ee_analysis"),
+            patch("mmrelay.cli._validate_credentials_json", return_value=False),
+        ):
             result = check_config()
 
         assert not result
@@ -481,16 +481,12 @@ class TestConfigChecker(unittest.TestCase):
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("mmrelay.cli.validate_yaml_syntax")
-    @patch("mmrelay.cli._print_unified_e2ee_analysis")
     @patch("mmrelay.e2ee_utils.get_e2ee_status")
     @patch("builtins.print")
-    @patch("builtins.open", new_callable=mock_open)
     def test_check_config_boolean_probe_timeout_value(
         self,
-        _mock_open,
         mock_print,
         mock_get_e2ee_status,
-        _mock_print_unified_e2ee,
         mock_validate_yaml,
         mock_isfile,
         mock_get_paths,
@@ -518,7 +514,11 @@ class TestConfigChecker(unittest.TestCase):
             "issues": [],
         }
 
-        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+        with (
+            patch("builtins.open", mock_open(read_data="test")),
+            patch("mmrelay.cli._print_unified_e2ee_analysis"),
+            patch("mmrelay.cli._validate_credentials_json", return_value=False),
+        ):
             result = check_config()
 
         assert not result
@@ -530,22 +530,18 @@ class TestConfigChecker(unittest.TestCase):
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("mmrelay.cli.validate_yaml_syntax")
-    @patch("mmrelay.cli._print_unified_e2ee_analysis")
     @patch("mmrelay.e2ee_utils.get_e2ee_status")
     @patch("builtins.print")
-    @patch("builtins.open", new_callable=mock_open)
     def test_check_config_invalid_probe_timeout_non_finite(
         self,
-        _mock_open,
         mock_print,
         mock_get_e2ee_status,
-        _mock_print_unified_e2ee,
         mock_validate_yaml,
         mock_isfile,
         mock_get_paths,
         mock_parse_args,
     ):
-        """probe_timeout must be a positive finite number when provided."""
+        """probe_timeout must reject NaN values."""
         mock_parse_args.return_value = self.mock_args
         invalid_config = {
             "matrix": self.valid_config["matrix"].copy(),
@@ -553,7 +549,7 @@ class TestConfigChecker(unittest.TestCase):
             "meshtastic": {
                 "connection_type": CONNECTION_TYPE_TCP,
                 "host": "192.168.1.100",
-                "health_check": {"probe_timeout": float("inf")},
+                "health_check": {"probe_timeout": float("nan")},
             },
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -567,12 +563,16 @@ class TestConfigChecker(unittest.TestCase):
             "issues": [],
         }
 
-        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+        with (
+            patch("builtins.open", mock_open(read_data="test")),
+            patch("mmrelay.cli._print_unified_e2ee_analysis"),
+            patch("mmrelay.cli._validate_credentials_json", return_value=False),
+        ):
             result = check_config()
 
         assert not result
         mock_print.assert_any_call(
-            "Error: 'meshtastic.health_check.probe_timeout' must be a positive finite number, got: inf"
+            "Error: 'meshtastic.health_check.probe_timeout' must be a positive finite number, got: nan"
         )
 
     @patch("mmrelay.cli.parse_arguments")
