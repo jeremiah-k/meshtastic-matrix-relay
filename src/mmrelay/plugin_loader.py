@@ -2181,8 +2181,8 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
 
                     plugin_dir = os.path.dirname(plugin_path)
 
+                    module_imported = False
                     try:
-                        module_imported = False
                         _exec_plugin_module(
                             spec=spec,
                             plugin_module=plugin_module,

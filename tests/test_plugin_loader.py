@@ -29,9 +29,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 # Capture test file path at module level for use in tests
 TEST_FILE_PATH = os.path.abspath(__file__)
 
-import mmrelay.plugin_loader as pl
-from mmrelay.constants.plugins import DEFAULT_ALLOWED_COMMUNITY_HOSTS, DEFAULT_BRANCHES
-from mmrelay.plugin_loader import (
+import mmrelay.plugin_loader as pl  # noqa: E402
+from mmrelay.constants.plugins import (  # noqa: E402
+    DEFAULT_ALLOWED_COMMUNITY_HOSTS,
+    DEFAULT_BRANCHES,
+)
+from mmrelay.plugin_loader import (  # noqa: E402
     _SYS_MODULES_LOCK,
     _clean_python_cache,
     _clone_new_repo_to_branch_or_tag,
@@ -55,7 +58,7 @@ from mmrelay.plugin_loader import (
     start_global_scheduler,
     stop_global_scheduler,
 )
-from tests.constants import TEST_GIT_TIMEOUT
+from tests.constants import TEST_GIT_TIMEOUT  # noqa: E402
 
 
 class MockPlugin:
@@ -2590,7 +2593,10 @@ class TestGitOperations(BaseGitTest):
     ):
         mock_run_git.side_effect = subprocess.CalledProcessError(1, "git checkout")
         result = pl._try_checkout_and_pull_ref(
-            "/tmp/repo", "v1.0.0", "test-repo", ref_type="tag"
+            "/tmp/repo",
+            "v1.0.0",
+            "test-repo",
+            ref_type="tag",  # nosec B108
         )
         self.assertFalse(result)
         self.assertFalse(
