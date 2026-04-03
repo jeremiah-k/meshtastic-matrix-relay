@@ -3952,20 +3952,6 @@ def connect_meshtastic(
                 short_name = user_info.get("shortName", "unknown")
                 hw_model = user_info.get("hwModel", "unknown")
 
-                # Get firmware version from device metadata
-                metadata = _get_device_metadata(meshtastic_client)
-                firmware_version = metadata["firmware_version"]
-
-                if metadata.get("success"):
-                    logger.info(
-                        f"Connected to {short_name} / {hw_model} / Meshtastic Firmware version {firmware_version}"
-                    )
-                else:
-                    logger.info(f"Connected to {short_name} / {hw_model}")
-                    logger.debug(
-                        "Device firmware version unavailable from getMetadata()"
-                    )
-
                 # Clear health probe deadlines BEFORE resetting clock skew to prevent
                 # race condition where a late ACK from the previous interface could
                 # seed the new connection with stale skew values.
@@ -3987,6 +3973,20 @@ def connect_meshtastic(
                             _startup_packet_drain_applied = True
                         else:
                             _relay_startup_drain_deadline_monotonic_secs = None
+
+                # Get firmware version from device metadata
+                metadata = _get_device_metadata(meshtastic_client)
+                firmware_version = metadata["firmware_version"]
+
+                if metadata.get("success"):
+                    logger.info(
+                        f"Connected to {short_name} / {hw_model} / Meshtastic Firmware version {firmware_version}"
+                    )
+                else:
+                    logger.info(f"Connected to {short_name} / {hw_model}")
+                    logger.debug(
+                        "Device firmware version unavailable from getMetadata()"
+                    )
 
                 # Subscribe to message and connection lost events (only once per application run)
                 global subscribed_to_messages, subscribed_to_connection_lost

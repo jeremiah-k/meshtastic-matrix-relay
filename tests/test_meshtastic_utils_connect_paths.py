@@ -1,4 +1,5 @@
 import time
+from typing import Any, Callable
 from unittest.mock import MagicMock, patch
 
 import serial
@@ -374,7 +375,9 @@ def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_subscribe(
         "rxTime": 94_900.0,
     }
 
-    def _subscribe_side_effect(callback, topic):
+    def _subscribe_side_effect(
+        callback: Callable[[dict[str, Any], Any], None], topic: str
+    ) -> None:
         if topic == "meshtastic.receive":
             callback(startup_packet, mock_client)
 
@@ -405,6 +408,62 @@ def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_subscribe(
     assert mu._relay_startup_drain_deadline_monotonic_secs == (
         1_000.0 + mu._STARTUP_PACKET_DRAIN_SECS
     )
+    mock_submit_coro.assert_not_called()
+
+
+def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_metadata_reconnect(
+    reset_meshtastic_globals,
+):
+    """Reconnect path should bootstrap skew even when receive is already subscribed."""
+    mock_client = MagicMock()
+    mock_client.getMyNodeInfo.return_value = {
+        "user": {"shortName": "Node", "hwModel": "HW"}
+    }
+    startup_packet = {
+        "from": 123,
+        "to": 456,
+        "decoded": {"text": "startup packet", "portnum": "TEXT_MESSAGE_APP"},
+        "channel": 0,
+        "id": 1000,
+        "rxTime": 94_900.0,
+    }
+
+    # Simulate reconnect state: handlers were already subscribed on a prior connect.
+    mu.subscribed_to_messages = True
+    mu.subscribed_to_connection_lost = True
+    mu.RELAY_START_TIME = 200_000.0
+    mu._relay_rx_time_clock_skew_secs = None
+    mu._relay_startup_drain_deadline_monotonic_secs = None
+
+    def _metadata_side_effect(_client: Any) -> dict[str, Any]:
+        mu.on_meshtastic_message(startup_packet, mock_client)
+        return {"firmware_version": "unknown", "success": False}
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+            return_value=mock_client,
+        ),
+        patch(
+            "mmrelay.meshtastic_utils._get_device_metadata",
+            side_effect=_metadata_side_effect,
+        ),
+        patch("mmrelay.meshtastic_utils.pub.subscribe") as mock_subscribe,
+        patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+        patch("mmrelay.meshtastic_utils.time.time", return_value=100_000.0),
+        patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_000.0),
+    ):
+        config = {
+            "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "127.0.0.1"}
+        }
+        result = connect_meshtastic(passed_config=config)
+
+    assert result is mock_client
+    assert mu._relay_rx_time_clock_skew_secs == 5_100.0
+    assert mu._relay_startup_drain_deadline_monotonic_secs == (
+        1_000.0 + mu._STARTUP_PACKET_DRAIN_SECS
+    )
+    mock_subscribe.assert_not_called()
     mock_submit_coro.assert_not_called()
 
 
