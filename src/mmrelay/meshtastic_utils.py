@@ -3619,8 +3619,8 @@ def connect_meshtastic(
         reconnect_bootstrap_armed_for_this_connect = False
         client_assigned_for_this_connect = False
 
+        client = None
         try:
-            client = None
             if connection_type == CONNECTION_TYPE_SERIAL:
                 # Serial connection
                 serial_port = config["meshtastic"].get(CONFIG_KEY_SERIAL_PORT)
