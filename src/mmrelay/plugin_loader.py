@@ -2182,12 +2182,14 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                     plugin_dir = os.path.dirname(plugin_path)
 
                     try:
+                        module_imported = False
                         _exec_plugin_module(
                             spec=spec,
                             plugin_module=plugin_module,
                             module_name=module_name,
                             plugin_dir=plugin_dir,
                         )
+                        module_imported = True
                         if hasattr(plugin_module, "Plugin"):
                             plugins.append(plugin_module.Plugin())
                         else:
@@ -2269,16 +2271,17 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                     f"Path refresh after auto-install failed: {e}"
                                 )
 
-                            # Try to load the module again with a fresh module object
                             try:
-                                # Create a fresh module to avoid re-running code in partially-initialized module
-                                plugin_module = importlib.util.module_from_spec(spec)
-                                _exec_plugin_module(
-                                    spec=spec,
-                                    plugin_module=plugin_module,
-                                    module_name=module_name,
-                                    plugin_dir=plugin_dir,
-                                )
+                                if not module_imported:
+                                    plugin_module = importlib.util.module_from_spec(
+                                        spec
+                                    )
+                                    _exec_plugin_module(
+                                        spec=spec,
+                                        plugin_module=plugin_module,
+                                        module_name=module_name,
+                                        plugin_dir=plugin_dir,
+                                    )
 
                                 if hasattr(plugin_module, "Plugin"):
                                     plugins.append(plugin_module.Plugin())

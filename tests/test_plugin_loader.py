@@ -2593,6 +2593,10 @@ class TestGitOperations(BaseGitTest):
             "/tmp/repo", "v1.0.0", "test-repo", ref_type="tag"
         )
         self.assertFalse(result)
+        self.assertFalse(
+            any("-B" in call[0][0] for call in mock_run_git.call_args_list),
+            "tag checkout failure should not trigger branch-style force-sync",
+        )
 
     @patch("mmrelay.plugin_loader._run")
     def test_run_git_merges_custom_env(self, mock_run):
@@ -4815,15 +4819,23 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
             for name in module_names:
                 sys.modules.pop(name, None)
 
-    def test_lock_is_module_level_and_behavioral(self):
-        """Verify _SYS_MODULES_LOCK is a module-level lock with basic acquire/release."""
+    def test_lock_is_module_level_and_reentrant(self):
+        """Verify _SYS_MODULES_LOCK is a module-level reentrant lock (RLock)."""
         import inspect
 
         lock = _SYS_MODULES_LOCK
 
-        acquired = lock.acquire(timeout=0.1)
-        self.assertTrue(acquired, "Lock should be acquirable")
-        lock.release()
+        first = lock.acquire(timeout=0.1)
+        self.assertTrue(first, "Lock should be acquirable")
+        second = False
+        try:
+            second = lock.acquire(timeout=0.1)
+            self.assertTrue(second, "Lock should be reentrant (RLock)")
+        finally:
+            if second:
+                lock.release()
+            if first:
+                lock.release()
 
         src = inspect.getsource(pl)
         self.assertIn(
@@ -4840,7 +4852,7 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
                 spec=spec,
                 plugin_module=module,
                 module_name="_test_no_loader",
-                plugin_dir="/tmp",
+                plugin_dir=os.path.dirname(TEST_FILE_PATH),
             )
         self.assertIn("No loader available", str(ctx.exception))
 
@@ -4863,7 +4875,7 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
                 spec=spec,
                 plugin_module=module,
                 module_name=mod_name,
-                plugin_dir="/tmp",
+                plugin_dir=os.path.dirname(TEST_FILE_PATH),
             )
         self.assertNotIn(mod_name, sys.modules)
 
@@ -4889,7 +4901,7 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
                     spec=spec,
                     plugin_module=module,
                     module_name=mod_name,
-                    plugin_dir="/tmp",
+                    plugin_dir=os.path.dirname(TEST_FILE_PATH),
                 )
             self.assertIs(sys.modules.get(mod_name), previous)
         finally:
