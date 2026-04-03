@@ -2145,6 +2145,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
         active_interface = MagicMock()
         stale_interface = MagicMock()
+        stale_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
         mu.meshtastic_client = active_interface
         mu._relay_active_client_id = id(active_interface)
         mu._relay_rx_time_clock_skew_secs = None
@@ -2163,10 +2164,13 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         with (
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
             patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+            patch("mmrelay.meshtastic_utils.time.time", return_value=100_000.0),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_001.0),
         ):
             on_meshtastic_message(packet, stale_interface)
 
         assert mu._relay_rx_time_clock_skew_secs is None
+        assert mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs == 1_005.0
         mock_submit_coro.assert_not_called()
         log_calls = [str(call) for call in mock_logger.debug.call_args_list]
         assert any("stale Meshtastic interface" in call for call in log_calls)

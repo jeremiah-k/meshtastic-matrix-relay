@@ -4370,6 +4370,19 @@ def on_lost_meshtastic_connection(
         if shutting_down:
             logger.debug("Shutdown in progress. Not attempting to reconnect.")
             return
+        active_client_id = _relay_active_client_id
+        if (
+            interface is not None
+            and active_client_id is not None
+            and id(interface) != active_client_id
+        ):
+            logger.debug(
+                "Ignoring connection-lost event from stale Meshtastic interface "
+                "(event_interface_id=%s active_client_id=%s)",
+                id(interface),
+                active_client_id,
+            )
+            return
         if reconnecting:
             logger.debug(
                 "Reconnection already in progress. Skipping additional reconnection attempt."

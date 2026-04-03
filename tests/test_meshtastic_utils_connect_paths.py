@@ -431,7 +431,7 @@ def test_connect_meshtastic_arms_startup_drain_after_setup_completes(
             return monotonic_values.pop(0)
         return 1_030.0
 
-    def _metadata_side_effect(_client: Any) -> dict[str, Any]:
+    def _metadata_side_effect(_client: object) -> dict[str, object]:
         nonlocal startup_deadline_seen_during_metadata
         startup_deadline_seen_during_metadata = (
             mu._relay_startup_drain_deadline_monotonic_secs
@@ -508,7 +508,7 @@ def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_metadata_rec
     mu._startup_packet_drain_applied = True
     mu._relay_startup_drain_deadline_monotonic_secs = None
 
-    def _metadata_side_effect(_client: Any) -> dict[str, Any]:
+    def _metadata_side_effect(_client: object) -> dict[str, object]:
         mu.on_meshtastic_message(startup_packet, mock_client)
         return {"firmware_version": "unknown", "success": False}
 
@@ -926,6 +926,28 @@ def test_on_lost_meshtastic_connection_logs_unexpected_close_error(
         on_lost_meshtastic_connection(detection_source="test")
 
     mock_logger.warning.assert_any_call("Error closing Meshtastic client: boom")
+
+
+def test_on_lost_meshtastic_connection_ignores_stale_interface_callback(
+    reset_meshtastic_globals,
+):
+    active_client = MagicMock()
+    stale_interface = MagicMock()
+    mu.meshtastic_client = active_client
+    mu._relay_active_client_id = id(active_client)
+    mu.reconnecting = False
+    mu.shutting_down = False
+
+    with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+        on_lost_meshtastic_connection(
+            interface=stale_interface, detection_source="test"
+        )
+
+    assert mu.reconnecting is False
+    assert mu.meshtastic_client is active_client
+    active_client.close.assert_not_called()
+    debug_calls = [str(call) for call in mock_logger.debug.call_args_list]
+    assert any("stale Meshtastic interface" in call for call in debug_calls)
 
 
 class TestBleDegradedStateSubmissionBlocking:
