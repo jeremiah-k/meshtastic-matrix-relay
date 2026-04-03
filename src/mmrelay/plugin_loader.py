@@ -2386,7 +2386,6 @@ def start_global_scheduler() -> None:
                 schedule.run_pending()
             # Wait until stop is requested or timeout elapses
             stop_event.wait(SCHEDULER_LOOP_WAIT_SECONDS)
-        logger.debug("Global scheduler thread stopped")
 
     _global_scheduler_thread = threading.Thread(
         target=scheduler_loop, name="global-plugin-scheduler", daemon=True
