@@ -4224,6 +4224,19 @@ def connect_meshtastic(
                 _cleanup_failed_assigned_client(client)
                 client_assigned_for_this_connect = False
                 successful = False
+            if (
+                startup_drain_armed_for_this_connect
+                or reconnect_bootstrap_armed_for_this_connect
+            ):
+                with _relay_rx_time_clock_skew_lock:
+                    if startup_drain_armed_for_this_connect:
+                        _relay_startup_drain_deadline_monotonic_secs = None
+                        if startup_drain_applied_for_this_connect:
+                            _startup_packet_drain_applied = False
+                    if reconnect_bootstrap_armed_for_this_connect:
+                        _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
+                            None
+                        )
             return None
         except (MemoryError, BleExecutorDegradedError):
             if client_assigned_for_this_connect and client is not None:

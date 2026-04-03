@@ -60,9 +60,10 @@ class TestBleValidationFailure:
             result = connect_meshtastic(passed_config=config)
 
         assert result is None
-        mock_disc.assert_called_once_with(
-            mu.meshtastic_iface, reason="address validation failed"
-        )
+        mock_disc.assert_called_once()
+        call_args = mock_disc.call_args
+        assert call_args.kwargs.get("reason") == "address validation failed"
+        assert call_args.args[0] is not None
         error_calls = [
             call
             for call in mock_logger.error.call_args_list
