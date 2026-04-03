@@ -93,7 +93,7 @@ class TestBleValidationFailure:
                 return_value=False,
             ),
             patch("mmrelay.meshtastic_utils._disconnect_ble_interface"),
-            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+            patch("mmrelay.meshtastic_utils.logger"),
         ):
             saved_iface = None
 

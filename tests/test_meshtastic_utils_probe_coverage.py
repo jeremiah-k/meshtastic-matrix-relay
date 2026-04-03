@@ -7,11 +7,6 @@ import pytest
 
 import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.config import (
-    CONFIG_KEY_CONNECT_PROBE_ENABLED,
-    CONFIG_KEY_ENABLED,
-    CONFIG_KEY_HEALTH_CHECK,
-    CONFIG_KEY_PROBE_TIMEOUT,
-    CONFIG_SECTION_MESHTASTIC,
     DEFAULT_HEALTH_CHECK_ENABLED,
 )
 from mmrelay.constants.network import (

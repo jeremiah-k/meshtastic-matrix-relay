@@ -11,7 +11,6 @@ Tests the configuration validation functionality including:
 """
 
 import argparse
-import math
 import os
 import sys
 import unittest
@@ -380,6 +379,7 @@ class TestConfigChecker(unittest.TestCase):
             "Error: 'meshtastic.health_check.probe_timeout' must be a positive finite number, got: 0"
         )
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("mmrelay.cli.validate_yaml_syntax")

@@ -4224,7 +4224,7 @@ def connect_meshtastic(
                 _cleanup_failed_assigned_client(client)
                 client_assigned_for_this_connect = False
                 successful = False
-            raise
+            return None
         except (MemoryError, BleExecutorDegradedError):
             if client_assigned_for_this_connect and client is not None:
                 _cleanup_failed_assigned_client(client)

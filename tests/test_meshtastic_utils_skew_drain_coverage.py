@@ -1,4 +1,3 @@
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -6,8 +5,6 @@ import pytest
 import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.network import (
     CONNECTION_TYPE_TCP,
-    INFINITE_RETRIES,
-    MAX_TIMEOUT_RETRIES_INFINITE,
 )
 from mmrelay.meshtastic_utils import connect_meshtastic
 
