@@ -2643,6 +2643,34 @@ class TestGitOperations(BaseGitTest):
             "the only call should be the initial checkout attempt",
         )
 
+    @patch("mmrelay.plugin_loader.logger")
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_try_checkout_and_pull_ref_branch_logs_original_failure_at_debug(
+        self, mock_run_git, mock_logger
+    ):
+        """Branch pull failure should log the original exception at debug level before force-sync."""
+        exc = subprocess.CalledProcessError(1, "git checkout")
+        mock_run_git.side_effect = [
+            exc,  # checkout fails
+            None,  # fetch origin branch for force sync succeeds
+            None,  # checkout -B branch origin/branch succeeds
+        ]
+
+        result = pl._try_checkout_and_pull_ref(
+            self.temp_repo_path,
+            "main",
+            "test-repo",
+            ref_type="branch",
+        )
+
+        self.assertTrue(result)
+        mock_logger.debug.assert_any_call(
+            "Pull/checkout failed for %s branch %s: %s",
+            "test-repo",
+            "main",
+            exc,
+        )
+
     @patch("mmrelay.plugin_loader._run")
     def test_run_git_merges_custom_env(self, mock_run):
         """Custom environment variables should be merged into git subprocess env."""

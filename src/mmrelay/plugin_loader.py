@@ -1385,8 +1385,14 @@ def _try_checkout_and_pull_ref(
         )
         logger.info("Updated repository %s to %s %s", repo_name, ref_type, ref_value)
         return True
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         if ref_type == "branch":
+            logger.debug(
+                "Pull/checkout failed for %s branch %s: %s",
+                repo_name,
+                ref_value,
+                exc,
+            )
             logger.warning(
                 "Pull failed for %s branch %s, attempting force sync to origin/%s",
                 repo_name,
@@ -1448,12 +1454,14 @@ def _try_checkout_and_pull_ref(
         return False
 
 
+# Guards sys.modules mutations performed by plugin_loader to avoid
+# exposing partially-initialized modules during concurrent loads.
 _SYS_MODULES_LOCK: threading.RLock = threading.RLock()
 
 
 def _exec_plugin_module(
     *,
-    spec: importlib.machinery.ModuleSpec,
+    spec: importlib.machinery.ModuleSpec,  # pyright: ignore[reportAttributeAccessIssue]
     plugin_module: ModuleType,
     module_name: str,
     plugin_dir: str,
@@ -1471,6 +1479,8 @@ def _exec_plugin_module(
     """
     if spec.loader is None:
         raise ImportError(f"No loader available for plugin module '{module_name}'")
+    # Intentionally hold lock during execution to avoid exposing partially
+    # initialized modules to other threads.
     with _SYS_MODULES_LOCK:
         previous_module = sys.modules.get(module_name)
         sys.modules[module_name] = plugin_module
