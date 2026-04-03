@@ -178,6 +178,69 @@ class TestTimeoutExceptionHandler:
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
+class TestInfiniteRetriesAbort:
+    def test_aborts_after_max_consecutive_timeouts(self):
+        with (
+            patch(
+                "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+                side_effect=TimeoutError("timeout"),
+            ),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+            patch("mmrelay.meshtastic_utils.time.sleep"),
+        ):
+            config = {
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "127.0.0.1",
+                }
+            }
+            result = connect_meshtastic(passed_config=config)
+
+        assert result is None
+        mock_logger.exception.assert_called_with(
+            "Connection timed out after %s attempts (unlimited retries); aborting",
+            6,
+        )
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+class TestStartupDrainRaceCondition:
+    def test_drain_race_skips_arm_when_already_applied(self):
+        mock_client = MagicMock()
+        mock_client.getMyNodeInfo.return_value = {
+            "user": {"shortName": "Node", "hwModel": "HW"}
+        }
+
+        def _metadata_side_effect(_client):
+            mu._startup_packet_drain_applied = True
+            return {"firmware_version": "unknown", "success": False}
+
+        with (
+            patch(
+                "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+                return_value=mock_client,
+            ),
+            patch(
+                "mmrelay.meshtastic_utils._get_device_metadata",
+                side_effect=_metadata_side_effect,
+            ),
+            patch("mmrelay.meshtastic_utils.logger"),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_000.0),
+        ):
+            config = {
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "127.0.0.1",
+                }
+            }
+            result = connect_meshtastic(passed_config=config)
+
+        assert result is mock_client
+        assert mu._startup_packet_drain_applied is True
+        assert mu._relay_startup_drain_deadline_monotonic_secs is None
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestGenericExceptionHandler:
     def test_generic_exception_after_drain_armed_cleans_up(self):
         first_client = MagicMock()
