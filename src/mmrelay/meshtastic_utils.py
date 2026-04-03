@@ -3345,7 +3345,7 @@ def _get_connect_time_probe_settings(
         return False, float(DEFAULT_MESHTASTIC_OPERATION_TIMEOUT)
 
     default_timeout = float(DEFAULT_MESHTASTIC_OPERATION_TIMEOUT)
-    default_enabled = True
+    default_enabled = DEFAULT_HEALTH_CHECK_ENABLED
     if not isinstance(active_config, dict):
         return default_enabled, default_timeout
 
@@ -3358,7 +3358,10 @@ def _get_connect_time_probe_settings(
         return default_enabled, default_timeout
 
     enabled = _coerce_bool(
-        health_cfg.get("connect_probe_enabled", default_enabled),
+        health_cfg.get(
+            "connect_probe_enabled",
+            health_cfg.get("enabled", default_enabled),
+        ),
         default_enabled,
         "meshtastic.health_check.connect_probe_enabled",
     )
@@ -3387,18 +3390,7 @@ def _schedule_connect_time_calibration_probe(
         return
 
     local_node = getattr(client, "localNode", None)
-    local_node_num_raw = getattr(local_node, "nodeNum", None)
-    if isinstance(local_node_num_raw, bool) or not isinstance(
-        local_node_num_raw, (int, str)
-    ):
-        local_node_num = None
-    else:
-        local_node_num = _coerce_int_id(local_node_num_raw)
-    if (
-        local_node is None
-        or local_node_num is None
-        or not callable(getattr(client, "sendData", None))
-    ):
+    if local_node is None or not callable(getattr(client, "sendData", None)):
         logger.debug(
             "Skipping connect-time metadata probe; client lacks localNode/sendData support"
         )
@@ -3589,7 +3581,9 @@ def connect_meshtastic(
         # Initialize before try block to avoid unbound variable errors
         ble_address: str | None = None
         supports_auto_reconnect = False
+        startup_drain_pending_for_this_connect = False
         startup_drain_armed_for_this_connect = False
+        startup_drain_applied_for_this_connect = False
         reconnect_bootstrap_armed_for_this_connect = False
 
         try:
@@ -4095,15 +4089,12 @@ def connect_meshtastic(
                         _relay_connection_started_monotonic_secs = time.monotonic()
                         _relay_rx_time_clock_skew_secs = None
                         if not _startup_packet_drain_applied:
-                            _relay_startup_drain_deadline_monotonic_secs = (
-                                _relay_connection_started_monotonic_secs
-                                + _STARTUP_PACKET_DRAIN_SECS
-                            )
+                            _relay_startup_drain_deadline_monotonic_secs = None
                             _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
                                 None
                             )
-                            startup_drain_armed_for_this_connect = True
-                            timing_mode = "startup"
+                            startup_drain_pending_for_this_connect = True
+                            timing_mode = "startup_pending"
                         else:
                             _relay_startup_drain_deadline_monotonic_secs = None
                             _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
@@ -4142,8 +4133,22 @@ def connect_meshtastic(
                         "Device firmware version unavailable from getMetadata()"
                     )
 
-                if startup_drain_armed_for_this_connect:
-                    _startup_packet_drain_applied = True
+                # Arm startup drain only once setup completes, so the full drain
+                # interval is available when receive handling becomes active.
+                if startup_drain_pending_for_this_connect:
+                    with _relay_rx_time_clock_skew_lock:
+                        if not _startup_packet_drain_applied:
+                            _relay_startup_drain_deadline_monotonic_secs = (
+                                time.monotonic() + _STARTUP_PACKET_DRAIN_SECS
+                            )
+                            _startup_packet_drain_applied = True
+                            startup_drain_applied_for_this_connect = True
+                            startup_drain_armed_for_this_connect = True
+                    if startup_drain_armed_for_this_connect:
+                        logger.debug(
+                            "Armed startup drain window deadline=%s after setup completion",
+                            _relay_startup_drain_deadline_monotonic_secs,
+                        )
 
                 # Subscribe to message and connection lost events (only once per application run)
                 global subscribed_to_messages, subscribed_to_connection_lost
@@ -4174,6 +4179,8 @@ def connect_meshtastic(
                 with _relay_rx_time_clock_skew_lock:
                     if startup_drain_armed_for_this_connect:
                         _relay_startup_drain_deadline_monotonic_secs = None
+                        if startup_drain_applied_for_this_connect:
+                            _startup_packet_drain_applied = False
                     if reconnect_bootstrap_armed_for_this_connect:
                         _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
                             None
@@ -4188,6 +4195,8 @@ def connect_meshtastic(
                 with _relay_rx_time_clock_skew_lock:
                     if startup_drain_armed_for_this_connect:
                         _relay_startup_drain_deadline_monotonic_secs = None
+                        if startup_drain_applied_for_this_connect:
+                            _startup_packet_drain_applied = False
                     if reconnect_bootstrap_armed_for_this_connect:
                         _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
                             None
@@ -4223,6 +4232,8 @@ def connect_meshtastic(
                 with _relay_rx_time_clock_skew_lock:
                     if startup_drain_armed_for_this_connect:
                         _relay_startup_drain_deadline_monotonic_secs = None
+                        if startup_drain_applied_for_this_connect:
+                            _startup_packet_drain_applied = False
                     if reconnect_bootstrap_armed_for_this_connect:
                         _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
                             None

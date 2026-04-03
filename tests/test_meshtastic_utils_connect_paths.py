@@ -412,6 +412,77 @@ def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_subscribe(
     mock_submit_coro.assert_not_called()
 
 
+def test_connect_meshtastic_arms_startup_drain_after_setup_completes(
+    reset_meshtastic_globals,
+):
+    """Startup drain should begin at subscribe readiness, not before slow setup."""
+    mock_client = MagicMock()
+    mock_client.getMyNodeInfo.return_value = {
+        "user": {"shortName": "Node", "hwModel": "HW"}
+    }
+
+    startup_deadline_seen_during_metadata: float | None = None
+    startup_deadline_seen_at_subscribe: float | None = None
+
+    monotonic_values = [1_000.0, 1_030.0]
+
+    def _monotonic_side_effect() -> float:
+        if monotonic_values:
+            return monotonic_values.pop(0)
+        return 1_030.0
+
+    def _metadata_side_effect(_client: Any) -> dict[str, Any]:
+        nonlocal startup_deadline_seen_during_metadata
+        startup_deadline_seen_during_metadata = (
+            mu._relay_startup_drain_deadline_monotonic_secs
+        )
+        return {"firmware_version": "unknown", "success": False}
+
+    def _subscribe_side_effect(
+        _callback: Callable[[dict[str, Any], Any], None], topic: str
+    ) -> None:
+        nonlocal startup_deadline_seen_at_subscribe
+        if topic == "meshtastic.receive":
+            startup_deadline_seen_at_subscribe = (
+                mu._relay_startup_drain_deadline_monotonic_secs
+            )
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+            return_value=mock_client,
+        ),
+        patch(
+            "mmrelay.meshtastic_utils._get_device_metadata",
+            side_effect=_metadata_side_effect,
+        ),
+        patch(
+            "mmrelay.meshtastic_utils.pub.subscribe",
+            side_effect=_subscribe_side_effect,
+        ),
+        patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+        patch("mmrelay.meshtastic_utils.time.time", return_value=100_000.0),
+        patch(
+            "mmrelay.meshtastic_utils.time.monotonic",
+            side_effect=_monotonic_side_effect,
+        ),
+    ):
+        config = {
+            "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "127.0.0.1"}
+        }
+        result = connect_meshtastic(passed_config=config)
+
+    assert result is mock_client
+    assert startup_deadline_seen_during_metadata is None
+    assert startup_deadline_seen_at_subscribe == (
+        1_030.0 + mu._STARTUP_PACKET_DRAIN_SECS
+    )
+    assert mu._relay_startup_drain_deadline_monotonic_secs == (
+        1_030.0 + mu._STARTUP_PACKET_DRAIN_SECS
+    )
+    mock_submit_coro.assert_not_called()
+
+
 def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_metadata_reconnect(
     reset_meshtastic_globals,
 ):
@@ -543,9 +614,53 @@ def test_connect_meshtastic_resets_timing_before_get_my_node_info_on_reconnect(
 def test_connect_meshtastic_schedules_one_shot_probe_when_periodic_health_disabled(
     reset_meshtastic_globals,
 ):
-    """Connect should still schedule one-shot metadata probe when periodic health checks are off."""
+    """Connect should schedule one-shot probe when explicitly enabled, even with periodic checks off."""
     mock_client = MagicMock()
-    mock_client.localNode.nodeNum = 123
+    mock_client.localNode = MagicMock()
+    mock_client.sendData = MagicMock()
+    mock_client.getMyNodeInfo.return_value = {
+        "user": {"shortName": "Node", "hwModel": "HW"}
+    }
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+            return_value=mock_client,
+        ),
+        patch(
+            "mmrelay.meshtastic_utils._get_device_metadata",
+            return_value={"firmware_version": "unknown", "success": False},
+        ),
+        patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit_probe,
+        patch(
+            "mmrelay.meshtastic_utils._probe_device_connection"
+        ) as mock_probe_device_connection,
+    ):
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "127.0.0.1",
+                "health_check": {"enabled": False, "connect_probe_enabled": True},
+            }
+        }
+        result = connect_meshtastic(passed_config=config)
+        submitted_probe = mock_submit_probe.call_args.args[0]
+        assert callable(submitted_probe)
+        submitted_probe()
+
+    assert result is mock_client
+    mock_submit_probe.assert_called_once()
+    mock_probe_device_connection.assert_called_once_with(
+        mock_client, float(DEFAULT_MESHTASTIC_OPERATION_TIMEOUT)
+    )
+
+
+def test_connect_meshtastic_does_not_schedule_one_shot_probe_by_default(
+    reset_meshtastic_globals,
+):
+    """Connect-time probe should remain opt-in when periodic health checks are disabled."""
+    mock_client = MagicMock()
+    mock_client.localNode = MagicMock()
     mock_client.sendData = MagicMock()
     mock_client.getMyNodeInfo.return_value = {
         "user": {"shortName": "Node", "hwModel": "HW"}
@@ -572,12 +687,7 @@ def test_connect_meshtastic_schedules_one_shot_probe_when_periodic_health_disabl
         result = connect_meshtastic(passed_config=config)
 
     assert result is mock_client
-    mock_submit_probe.assert_called_once()
-    submitted_probe = mock_submit_probe.call_args.args[0]
-    assert callable(submitted_probe)
-    assert getattr(submitted_probe, "func", None) is mu._probe_device_connection
-    assert submitted_probe.args[0] is mock_client
-    assert submitted_probe.args[1] == float(DEFAULT_MESHTASTIC_OPERATION_TIMEOUT)
+    mock_submit_probe.assert_not_called()
 
 
 def test_connect_meshtastic_timeout_breaks_on_shutdown(reset_meshtastic_globals):
