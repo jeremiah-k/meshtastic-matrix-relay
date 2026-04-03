@@ -728,6 +728,51 @@ def test_connect_meshtastic_does_not_schedule_one_shot_probe_by_default(
     mock_submit_probe.assert_not_called()
 
 
+def test_connect_meshtastic_clears_active_client_after_setup_failure_before_retry(
+    reset_meshtastic_globals,
+):
+    """Setup failure after client assignment should clear active client state before retry."""
+    first_client = MagicMock()
+    first_client.getMyNodeInfo.side_effect = RuntimeError("node info failed")
+
+    second_client = MagicMock()
+    second_client.getMyNodeInfo.return_value = {
+        "user": {"shortName": "Node", "hwModel": "HW"}
+    }
+
+    saw_cleanup_before_retry = False
+
+    def _sleep_side_effect(_seconds: float) -> None:
+        nonlocal saw_cleanup_before_retry
+        if mu.meshtastic_client is None and mu._relay_active_client_id is None:
+            saw_cleanup_before_retry = True
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+            side_effect=[first_client, second_client],
+        ),
+        patch(
+            "mmrelay.meshtastic_utils._get_device_metadata",
+            return_value={"firmware_version": "unknown", "success": False},
+        ),
+        patch("mmrelay.meshtastic_utils.time.sleep", side_effect=_sleep_side_effect),
+    ):
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "127.0.0.1",
+                "retries": 1,
+            }
+        }
+        result = connect_meshtastic(passed_config=config, force_connect=True)
+
+    assert result is second_client
+    assert saw_cleanup_before_retry is True
+    first_client.close.assert_called_once()
+    assert mu._relay_active_client_id == id(second_client)
+
+
 def test_connect_meshtastic_timeout_breaks_on_shutdown(reset_meshtastic_globals):
     def _timeout_then_shutdown(*_args, **_kwargs):
         """Set shutting_down flag and raise TimeoutError."""

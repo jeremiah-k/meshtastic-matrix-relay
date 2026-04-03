@@ -3579,6 +3579,32 @@ def connect_meshtastic(
     )
     ble_create_timeout_secs = max(configured_timeout_secs, create_timeout_floor_secs)
 
+    def _cleanup_failed_assigned_client(failed_client: Any) -> None:
+        """
+        Clear active client state when setup fails after client assignment.
+        """
+        global meshtastic_client, meshtastic_iface, _relay_active_client_id
+
+        with meshtastic_lock:
+            if meshtastic_client is not failed_client:
+                return
+            try:
+                if failed_client is meshtastic_iface:
+                    _disconnect_ble_interface(
+                        meshtastic_iface, reason="connect setup failed"
+                    )
+                    meshtastic_iface = None
+                else:
+                    failed_client.close()
+            except Exception as cleanup_error:  # noqa: BLE001 - best-effort cleanup
+                logger.warning(
+                    "Error closing Meshtastic client after setup failure: %s",
+                    cleanup_error,
+                )
+            finally:
+                meshtastic_client = None
+                _relay_active_client_id = None
+
     while (
         not successful
         and (retry_limit == 0 or attempts <= retry_limit)
@@ -3591,6 +3617,7 @@ def connect_meshtastic(
         startup_drain_armed_for_this_connect = False
         startup_drain_applied_for_this_connect = False
         reconnect_bootstrap_armed_for_this_connect = False
+        client_assigned_for_this_connect = False
 
         try:
             client = None
@@ -4040,6 +4067,7 @@ def connect_meshtastic(
             with meshtastic_lock:
                 meshtastic_client = client
                 _relay_active_client_id = id(client)
+                client_assigned_for_this_connect = True
 
                 # CRITICAL VALIDATION: Verify we're connected to the correct BLE device.
                 # This prevents connection to wrong device due to substring matching
@@ -4178,6 +4206,10 @@ def connect_meshtastic(
                 )
 
         except (ConnectionRefusedError, MemoryError, BleExecutorDegradedError):
+            if client_assigned_for_this_connect and client is not None:
+                _cleanup_failed_assigned_client(client)
+                client_assigned_for_this_connect = False
+                successful = False
             # Handle critical errors that should not be retried
             if (
                 startup_drain_armed_for_this_connect
@@ -4195,6 +4227,10 @@ def connect_meshtastic(
             logger.exception("Critical connection error")
             return None
         except (FuturesTimeoutError, TimeoutError) as e:
+            successful = False
+            if client_assigned_for_this_connect and client is not None:
+                _cleanup_failed_assigned_client(client)
+                client_assigned_for_this_connect = False
             if (
                 startup_drain_armed_for_this_connect
                 or reconnect_bootstrap_armed_for_this_connect
@@ -4232,6 +4268,10 @@ def connect_meshtastic(
             )
             time.sleep(wait_time)
         except Exception as e:
+            successful = False
+            if client_assigned_for_this_connect and client is not None:
+                _cleanup_failed_assigned_client(client)
+                client_assigned_for_this_connect = False
             if (
                 startup_drain_armed_for_this_connect
                 or reconnect_bootstrap_armed_for_this_connect
@@ -4533,18 +4573,12 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     # Read-mostly guard values; avoid meshtastic_lock here because callbacks can
     # fire synchronously while connect_meshtastic() still holds that lock.
     active_client_id = _relay_active_client_id
-    reconnecting_now = reconnecting
 
     if active_client_id is not None and id(interface) != active_client_id:
         logger.debug(
             "Ignoring packet from stale Meshtastic interface (packet_interface_id=%s active_client_id=%s)",
             id(interface),
             active_client_id,
-        )
-        return
-    if active_client_id is None and reconnecting_now:
-        logger.debug(
-            "Ignoring packet while reconnecting with no active Meshtastic client"
         )
         return
 

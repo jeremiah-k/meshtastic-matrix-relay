@@ -865,9 +865,18 @@ class TestMeshtasticUtils(unittest.TestCase):
         first_client.getMyNodeInfo.side_effect = RuntimeError("node info failed")
 
         second_client = MagicMock()
-        second_client.getMyNodeInfo.return_value = {
-            "user": {"shortName": "second", "hwModel": "test"}
-        }
+        saw_clean_startup_state_on_retry = False
+
+        def _second_node_info() -> dict[str, dict[str, str]]:
+            nonlocal saw_clean_startup_state_on_retry
+            if (
+                mu._startup_packet_drain_applied is False
+                and mu._relay_startup_drain_deadline_monotonic_secs is None
+            ):
+                saw_clean_startup_state_on_retry = True
+            return {"user": {"shortName": "second", "hwModel": "test"}}
+
+        second_client.getMyNodeInfo.side_effect = _second_node_info
 
         mock_serial.side_effect = [first_client, second_client]
 
@@ -896,14 +905,11 @@ class TestMeshtasticUtils(unittest.TestCase):
                 return_value={"success": False, "firmware_version": "unknown"},
             ),
         ):
-            _ = connect_meshtastic(passed_config=config, force_connect=True)
-            first_applied = mu._startup_packet_drain_applied
-            first_deadline = mu._relay_startup_drain_deadline_monotonic_secs
-            second_result = connect_meshtastic(passed_config=config, force_connect=True)
+            result = connect_meshtastic(passed_config=config, force_connect=True)
 
-        assert first_applied is False
-        assert first_deadline is None
-        assert second_result is second_client
+        assert result is second_client
+        assert saw_clean_startup_state_on_retry is True
+        first_client.close.assert_called_once()
         assert mu._startup_packet_drain_applied is True
         assert mu._relay_startup_drain_deadline_monotonic_secs is not None
 
@@ -1934,6 +1940,8 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         """
         Initializes mock configuration data for use in test cases.
         """
+        import mmrelay.meshtastic_utils as mu
+
         self.mock_config = {
             "meshtastic": {
                 "connection_type": CONNECTION_TYPE_SERIAL,
@@ -1943,6 +1951,11 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
         }
+        mu.config = self.mock_config
+        mu.matrix_rooms = self.mock_config["matrix_rooms"]
+        mu.reconnecting = False
+        mu.shutting_down = False
+        mu._relay_active_client_id = None
 
     def test_on_meshtastic_message_no_decoded(self):
         """
