@@ -47,9 +47,13 @@ from mmrelay.constants.cli import (
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
     CONFIG_KEY_BOT_USER_ID,
+    CONFIG_KEY_CONNECT_PROBE_ENABLED,
     CONFIG_KEY_DEVICE_ID,
+    CONFIG_KEY_ENABLED,
+    CONFIG_KEY_HEALTH_CHECK,
     CONFIG_KEY_HOMESERVER,
     CONFIG_KEY_PASSWORD,
+    CONFIG_KEY_PROBE_TIMEOUT,
     CONFIG_SECTION_DATABASE_LEGACY,
     CONFIG_SECTION_MATRIX,
     CONFIG_SECTION_MESHTASTIC,
@@ -1510,6 +1514,50 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             "   Find MAC/name with: meshtastic --ble-scan (requires pipx install 'mmrelay[ble]')"
                         )
                         return False
+
+                health_check = meshtastic_section.get(CONFIG_KEY_HEALTH_CHECK)
+                if health_check is not None:
+                    if not isinstance(health_check, dict):
+                        print(
+                            "Error: 'meshtastic.health_check' must be a mapping (YAML object)"
+                        )
+                        return False
+
+                    if CONFIG_KEY_ENABLED in health_check and not isinstance(
+                        health_check[CONFIG_KEY_ENABLED], bool
+                    ):
+                        print(
+                            "Error: 'meshtastic.health_check.enabled' "
+                            f"must be of type bool, got: {health_check[CONFIG_KEY_ENABLED]}"
+                        )
+                        return False
+
+                    if (
+                        CONFIG_KEY_CONNECT_PROBE_ENABLED in health_check
+                        and not isinstance(
+                            health_check[CONFIG_KEY_CONNECT_PROBE_ENABLED], bool
+                        )
+                    ):
+                        print(
+                            "Error: 'meshtastic.health_check.connect_probe_enabled' "
+                            f"must be of type bool, got: {health_check[CONFIG_KEY_CONNECT_PROBE_ENABLED]}"
+                        )
+                        return False
+
+                    if CONFIG_KEY_PROBE_TIMEOUT in health_check:
+                        probe_timeout = health_check[CONFIG_KEY_PROBE_TIMEOUT]
+                        if (
+                            isinstance(probe_timeout, bool)
+                            or not isinstance(probe_timeout, (int, float))
+                            or not math.isfinite(probe_timeout)
+                            or probe_timeout <= 0
+                        ):
+                            print(
+                                "Error: 'meshtastic.health_check.probe_timeout' "
+                                "must be a positive finite number, "
+                                f"got: {probe_timeout}"
+                            )
+                            return False
 
                 # Check for other important optional configurations and provide guidance
                 optional_configs: dict[str, dict[str, Any]] = {

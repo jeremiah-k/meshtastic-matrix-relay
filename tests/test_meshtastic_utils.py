@@ -14,7 +14,6 @@ import asyncio
 import contextlib
 import os
 import sys
-import time
 import unittest
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from types import SimpleNamespace
@@ -39,6 +38,7 @@ from mmrelay.constants.network import (
     MAX_TIMEOUT_RETRIES_INFINITE,
     METADATA_WATCHDOG_SECS,
     STALE_DISCONNECT_TIMEOUT_SECS,
+    STARTUP_PACKET_DRAIN_SECS,
 )
 from mmrelay.meshtastic_utils import (
     _get_device_metadata,
@@ -65,16 +65,14 @@ from tests.constants import (
 TEST_PACKET_RX_TIME = 1234567890
 
 
-@pytest.fixture
-def stable_relay_start_time(monkeypatch):
-    """
-    Keep message-processing tests deterministic regardless of wall-clock time.
-
-    Many packet fixtures in this module use fixed historical `rxTime` values.
-    Pinning RELAY_START_TIME prevents accidental stale-message filtering during
-    tests that are unrelated to startup history behavior.
-    """
-    monkeypatch.setattr("mmrelay.meshtastic_utils.RELAY_START_TIME", 0, raising=False)
+@pytest.fixture(autouse=True)
+def reset_meshtastic_relay_state(monkeypatch):
+    """Reset all Meshtastic relay module globals to prevent cross-test leakage."""
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_active_client_id",
+        None,
+        raising=False,
+    )
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._relay_rx_time_clock_skew_secs",
         None,
@@ -82,6 +80,11 @@ def stable_relay_start_time(monkeypatch):
     )
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._relay_startup_drain_deadline_monotonic_secs",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs",
         None,
         raising=False,
     )
@@ -95,6 +98,33 @@ def stable_relay_start_time(monkeypatch):
         0.0,
         raising=False,
     )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.subscribed_to_messages",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.subscribed_to_connection_lost",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._health_probe_request_deadlines",
+        {},
+        raising=False,
+    )
+
+
+@pytest.fixture
+def stable_relay_start_time(monkeypatch):
+    """
+    Keep message-processing tests deterministic regardless of wall-clock time.
+
+    Many packet fixtures in this module use fixed historical `rxTime` values.
+    Pinning RELAY_START_TIME prevents accidental stale-message filtering during
+    tests that are unrelated to startup history behavior.
+    """
+    monkeypatch.setattr("mmrelay.meshtastic_utils.RELAY_START_TIME", 0, raising=False)
 
 
 class _FakeEvent:
@@ -195,13 +225,6 @@ class TestMeshtasticUtils(unittest.TestCase):
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.shutting_down = False
         mmrelay.meshtastic_utils.reconnect_task = None
-        mmrelay.meshtastic_utils._relay_connection_started_monotonic_secs = (
-            time.monotonic()
-            - (mmrelay.meshtastic_utils._RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS + 1.0)
-        )
-        mmrelay.meshtastic_utils._relay_rx_time_clock_skew_secs = None
-        mmrelay.meshtastic_utils._relay_startup_drain_deadline_monotonic_secs = None
-        mmrelay.meshtastic_utils._startup_packet_drain_applied = False
         iface = mmrelay.meshtastic_utils.meshtastic_iface
         if iface is not None:
             disconnect_iface = getattr(
@@ -824,7 +847,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         assert result_first is first_client
         assert mu._startup_packet_drain_applied is True
         assert mu._relay_startup_drain_deadline_monotonic_secs == pytest.approx(
-            1_000.0 + mu._STARTUP_PACKET_DRAIN_SECS
+            1_000.0 + STARTUP_PACKET_DRAIN_SECS
         )
 
         with (
@@ -851,9 +874,18 @@ class TestMeshtasticUtils(unittest.TestCase):
         first_client.getMyNodeInfo.side_effect = RuntimeError("node info failed")
 
         second_client = MagicMock()
-        second_client.getMyNodeInfo.return_value = {
-            "user": {"shortName": "second", "hwModel": "test"}
-        }
+        saw_clean_startup_state_on_retry = False
+
+        def _second_node_info() -> dict[str, dict[str, str]]:
+            nonlocal saw_clean_startup_state_on_retry
+            if (
+                mu._startup_packet_drain_applied is False
+                and mu._relay_startup_drain_deadline_monotonic_secs is None
+            ):
+                saw_clean_startup_state_on_retry = True
+            return {"user": {"shortName": "second", "hwModel": "test"}}
+
+        second_client.getMyNodeInfo.side_effect = _second_node_info
 
         mock_serial.side_effect = [first_client, second_client]
 
@@ -882,14 +914,11 @@ class TestMeshtasticUtils(unittest.TestCase):
                 return_value={"success": False, "firmware_version": "unknown"},
             ),
         ):
-            _ = connect_meshtastic(passed_config=config, force_connect=True)
-            first_applied = mu._startup_packet_drain_applied
-            first_deadline = mu._relay_startup_drain_deadline_monotonic_secs
-            second_result = connect_meshtastic(passed_config=config, force_connect=True)
+            result = connect_meshtastic(passed_config=config, force_connect=True)
 
-        assert first_applied is False
-        assert first_deadline is None
-        assert second_result is second_client
+        assert result is second_client
+        assert saw_clean_startup_state_on_retry is True
+        first_client.close.assert_called_once()
         assert mu._startup_packet_drain_applied is True
         assert mu._relay_startup_drain_deadline_monotonic_secs is not None
 
@@ -1920,6 +1949,8 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         """
         Initializes mock configuration data for use in test cases.
         """
+        import mmrelay.meshtastic_utils as mu
+
         self.mock_config = {
             "meshtastic": {
                 "connection_type": CONNECTION_TYPE_SERIAL,
@@ -1929,6 +1960,12 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
         }
+        mu.meshtastic_client = None
+        mu.config = self.mock_config
+        mu.matrix_rooms = self.mock_config["matrix_rooms"]
+        mu.reconnecting = False
+        mu.shutting_down = False
+        mu.reconnect_task = None
 
     def test_on_meshtastic_message_no_decoded(self):
         """
@@ -2111,6 +2148,42 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             on_meshtastic_message(packet, mock_interface)
 
         assert mu._relay_rx_time_clock_skew_secs is None
+
+    def test_on_meshtastic_message_ignores_stale_interface_packet(self):
+        """Packets emitted by stale interfaces should not seed skew or be processed."""
+        import mmrelay.meshtastic_utils as mu
+
+        active_interface = MagicMock()
+        stale_interface = MagicMock()
+        stale_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
+        mu.meshtastic_client = active_interface
+        mu._relay_active_client_id = id(active_interface)
+        mu._relay_rx_time_clock_skew_secs = None
+        mu._relay_connection_started_monotonic_secs = 1_000.0
+        mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = 1_005.0
+        mu.RELAY_START_TIME = 100_000.0
+        packet = {
+            "from": TEST_PACKET_FROM_ID,
+            "to": TEST_PACKET_FROM_ID,
+            "decoded": {"text": "stale iface packet", "portnum": TEXT_MESSAGE_APP},
+            "channel": 0,
+            "id": TEST_PACKET_ID,
+            "rxTime": 94_900.0,
+        }
+
+        with (
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+            patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+            patch("mmrelay.meshtastic_utils.time.time", return_value=100_000.0),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_001.0),
+        ):
+            on_meshtastic_message(packet, stale_interface)
+
+        assert mu._relay_rx_time_clock_skew_secs is None
+        assert mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs == 1_005.0
+        mock_submit_coro.assert_not_called()
+        log_calls = [str(call) for call in mock_logger.debug.call_args_list]
+        assert any("stale Meshtastic interface" in call for call in log_calls)
 
     def test_on_meshtastic_message_filters_old_packets_using_calibrated_skew(self):
         """Old packet filtering should use the calibrated rxTime skew."""
@@ -2338,6 +2411,38 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             "Calibrated rxTime clock skew from connect-time packet" in c
             for c in log_calls
         )
+
+    def test_seed_connect_time_skew_allows_one_prestart_bootstrap_on_reconnect(self):
+        """Reconnect path should allow one bounded pre-start bootstrap without startup drain."""
+        import mmrelay.meshtastic_utils as mu
+
+        mu._relay_rx_time_clock_skew_secs = None
+        mu._relay_connection_started_monotonic_secs = 1_000.0
+        mu.RELAY_START_TIME = 100_000.0
+        mu._relay_startup_drain_deadline_monotonic_secs = None
+        mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = 1_005.0
+
+        with (
+            patch("mmrelay.meshtastic_utils.time.time", return_value=100_000.0),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_001.0),
+        ):
+            first_result = mu._seed_connect_time_skew(94_900.0)
+
+        assert first_result
+        assert mu._relay_rx_time_clock_skew_secs == 5_100.0
+        assert mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs is None
+
+        # Clearing calibrated skew should not re-enable bootstrap once the reconnect
+        # one-shot allowance has been consumed.
+        mu._relay_rx_time_clock_skew_secs = None
+        with (
+            patch("mmrelay.meshtastic_utils.time.time", return_value=100_000.0),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_002.0),
+        ):
+            second_result = mu._seed_connect_time_skew(94_850.0)
+
+        assert not second_result
+        assert mu._relay_rx_time_clock_skew_secs is None
 
     def test_claim_health_probe_uses_localnode_fallback(self):
         """_claim_health_probe_response_and_maybe_calibrate should fall back to localNode when myInfo is absent."""

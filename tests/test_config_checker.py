@@ -284,6 +284,349 @@ class TestConfigChecker(unittest.TestCase):
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.e2ee_utils.get_e2ee_status")
+    @patch("builtins.print")
+    def test_check_config_invalid_connect_probe_enabled_type(
+        self,
+        mock_print,
+        mock_get_e2ee_status,
+        mock_validate_yaml,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """connect_probe_enabled must be boolean when provided."""
+        mock_parse_args.return_value = self.mock_args
+        invalid_config = {
+            "matrix": self.valid_config["matrix"].copy(),
+            "matrix_rooms": list(self.valid_config["matrix_rooms"]),
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.100",
+                "health_check": {"connect_probe_enabled": "yes"},
+            },
+        }
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, invalid_config)
+        mock_get_e2ee_status.return_value = {
+            "overall_status": "ready",
+            "enabled": True,
+            "available": True,
+            "configured": True,
+            "issues": [],
+        }
+
+        with (
+            patch("builtins.open", mock_open(read_data="test")),
+            patch("mmrelay.cli._print_unified_e2ee_analysis"),
+            patch("mmrelay.cli._validate_credentials_json", return_value=False),
+        ):
+            result = check_config()
+
+        assert not result
+        mock_print.assert_any_call(
+            "Error: 'meshtastic.health_check.connect_probe_enabled' must be of type bool, got: yes"
+        )
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.e2ee_utils.get_e2ee_status")
+    @patch("builtins.print")
+    def test_check_config_invalid_health_check_enabled_type(
+        self,
+        mock_print,
+        mock_get_e2ee_status,
+        mock_validate_yaml,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """health_check.enabled must be boolean when provided."""
+        mock_parse_args.return_value = self.mock_args
+        invalid_config = {
+            "matrix": self.valid_config["matrix"].copy(),
+            "matrix_rooms": list(self.valid_config["matrix_rooms"]),
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.100",
+                "health_check": {"enabled": "yes"},
+            },
+        }
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, invalid_config)
+        mock_get_e2ee_status.return_value = {
+            "overall_status": "ready",
+            "enabled": True,
+            "available": True,
+            "configured": True,
+            "issues": [],
+        }
+
+        with (
+            patch("builtins.open", mock_open(read_data="test")),
+            patch("mmrelay.cli._print_unified_e2ee_analysis"),
+            patch("mmrelay.cli._validate_credentials_json", return_value=False),
+        ):
+            result = check_config()
+
+        assert not result
+        mock_print.assert_any_call(
+            "Error: 'meshtastic.health_check.enabled' must be of type bool, got: yes"
+        )
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.e2ee_utils.get_e2ee_status")
+    @patch("builtins.print")
+    def test_check_config_invalid_probe_timeout_value(
+        self,
+        mock_print,
+        mock_get_e2ee_status,
+        mock_validate_yaml,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """probe_timeout must be a positive finite number when provided."""
+        mock_parse_args.return_value = self.mock_args
+        invalid_config = {
+            "matrix": self.valid_config["matrix"].copy(),
+            "matrix_rooms": list(self.valid_config["matrix_rooms"]),
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.100",
+                "health_check": {"probe_timeout": 0},
+            },
+        }
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, invalid_config)
+        mock_get_e2ee_status.return_value = {
+            "overall_status": "ready",
+            "enabled": True,
+            "available": True,
+            "configured": True,
+            "issues": [],
+        }
+
+        with (
+            patch("builtins.open", mock_open(read_data="test")),
+            patch("mmrelay.cli._print_unified_e2ee_analysis"),
+            patch("mmrelay.cli._validate_credentials_json", return_value=False),
+        ):
+            result = check_config()
+
+        assert not result
+        mock_print.assert_any_call(
+            "Error: 'meshtastic.health_check.probe_timeout' must be a positive finite number, got: 0"
+        )
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.e2ee_utils.get_e2ee_status")
+    @patch("builtins.print")
+    def test_check_config_negative_probe_timeout_value(
+        self,
+        mock_print,
+        mock_get_e2ee_status,
+        mock_validate_yaml,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """probe_timeout must reject negative values."""
+        mock_parse_args.return_value = self.mock_args
+        invalid_config = {
+            "matrix": self.valid_config["matrix"].copy(),
+            "matrix_rooms": list(self.valid_config["matrix_rooms"]),
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.100",
+                "health_check": {"probe_timeout": -5},
+            },
+        }
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, invalid_config)
+        mock_get_e2ee_status.return_value = {
+            "overall_status": "ready",
+            "enabled": True,
+            "available": True,
+            "configured": True,
+            "issues": [],
+        }
+
+        with (
+            patch("builtins.open", mock_open(read_data="test")),
+            patch("mmrelay.cli._print_unified_e2ee_analysis"),
+            patch("mmrelay.cli._validate_credentials_json", return_value=False),
+        ):
+            result = check_config()
+
+        assert not result
+        mock_print.assert_any_call(
+            "Error: 'meshtastic.health_check.probe_timeout' must be a positive finite number, got: -5"
+        )
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.e2ee_utils.get_e2ee_status")
+    @patch("builtins.print")
+    def test_check_config_non_finite_probe_timeout_value(
+        self,
+        mock_print,
+        mock_get_e2ee_status,
+        mock_validate_yaml,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """probe_timeout must reject non-finite values like inf and nan."""
+        mock_parse_args.return_value = self.mock_args
+        invalid_config = {
+            "matrix": self.valid_config["matrix"].copy(),
+            "matrix_rooms": list(self.valid_config["matrix_rooms"]),
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.100",
+                "health_check": {"probe_timeout": float("inf")},
+            },
+        }
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, invalid_config)
+        mock_get_e2ee_status.return_value = {
+            "overall_status": "ready",
+            "enabled": True,
+            "available": True,
+            "configured": True,
+            "issues": [],
+        }
+
+        with (
+            patch("builtins.open", mock_open(read_data="test")),
+            patch("mmrelay.cli._print_unified_e2ee_analysis"),
+            patch("mmrelay.cli._validate_credentials_json", return_value=False),
+        ):
+            result = check_config()
+
+        assert not result
+        mock_print.assert_any_call(
+            "Error: 'meshtastic.health_check.probe_timeout' must be a positive finite number, got: inf"
+        )
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.e2ee_utils.get_e2ee_status")
+    @patch("builtins.print")
+    def test_check_config_boolean_probe_timeout_value(
+        self,
+        mock_print,
+        mock_get_e2ee_status,
+        mock_validate_yaml,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """probe_timeout must reject boolean values."""
+        mock_parse_args.return_value = self.mock_args
+        invalid_config = {
+            "matrix": self.valid_config["matrix"].copy(),
+            "matrix_rooms": list(self.valid_config["matrix_rooms"]),
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.100",
+                "health_check": {"probe_timeout": True},
+            },
+        }
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, invalid_config)
+        mock_get_e2ee_status.return_value = {
+            "overall_status": "ready",
+            "enabled": True,
+            "available": True,
+            "configured": True,
+            "issues": [],
+        }
+
+        with (
+            patch("builtins.open", mock_open(read_data="test")),
+            patch("mmrelay.cli._print_unified_e2ee_analysis"),
+            patch("mmrelay.cli._validate_credentials_json", return_value=False),
+        ):
+            result = check_config()
+
+        assert not result
+        mock_print.assert_any_call(
+            "Error: 'meshtastic.health_check.probe_timeout' must be a positive finite number, got: True"
+        )
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.e2ee_utils.get_e2ee_status")
+    @patch("builtins.print")
+    def test_check_config_invalid_probe_timeout_non_finite(
+        self,
+        mock_print,
+        mock_get_e2ee_status,
+        mock_validate_yaml,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """probe_timeout must reject NaN values."""
+        mock_parse_args.return_value = self.mock_args
+        invalid_config = {
+            "matrix": self.valid_config["matrix"].copy(),
+            "matrix_rooms": list(self.valid_config["matrix_rooms"]),
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.100",
+                "health_check": {"probe_timeout": float("nan")},
+            },
+        }
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, invalid_config)
+        mock_get_e2ee_status.return_value = {
+            "overall_status": "ready",
+            "enabled": True,
+            "available": True,
+            "configured": True,
+            "issues": [],
+        }
+
+        with (
+            patch("builtins.open", mock_open(read_data="test")),
+            patch("mmrelay.cli._print_unified_e2ee_analysis"),
+            patch("mmrelay.cli._validate_credentials_json", return_value=False),
+        ):
+            result = check_config()
+
+        assert not result
+        mock_print.assert_any_call(
+            "Error: 'meshtastic.health_check.probe_timeout' must be a positive finite number, got: nan"
+        )
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
     @patch("builtins.print")
     def test_check_config_no_file_found(
         self, mock_print, mock_isfile, mock_get_paths, mock_parse_args

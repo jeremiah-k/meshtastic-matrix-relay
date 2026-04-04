@@ -50,6 +50,8 @@ CONFIG_KEY_NODEDB_REFRESH_INTERVAL: Final[str] = "nodedb_refresh_interval"
 CONFIG_KEY_HEALTH_CHECK: Final[str] = "health_check"
 CONFIG_KEY_ENABLED: Final[str] = "enabled"
 CONFIG_KEY_HEARTBEAT_INTERVAL: Final[str] = "heartbeat_interval"
+CONFIG_KEY_CONNECT_PROBE_ENABLED: Final[str] = "connect_probe_enabled"
+CONFIG_KEY_PROBE_TIMEOUT: Final[str] = "probe_timeout"
 
 # Logging configuration keys
 CONFIG_KEY_LEVEL: Final[str] = "level"

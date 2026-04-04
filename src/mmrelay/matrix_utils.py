@@ -127,11 +127,16 @@ from mmrelay.constants.messages import (
     SHORTNAME_FALLBACK_LENGTH,
 )
 from mmrelay.constants.network import (
+    MATRIX_CLOCK_ROLLBACK_DISABLE_MS,
     MATRIX_EARLY_SYNC_TIMEOUT,
+    MATRIX_EVENT_EPOCH_FLOOR_MS,
     MATRIX_INITIAL_SYNC_MAX_ATTEMPTS,
     MATRIX_INITIAL_SYNC_RETRY_MAX_DELAY_SECS,
     MATRIX_LOGIN_TIMEOUT,
     MATRIX_ROOM_SEND_TIMEOUT,
+    MATRIX_STALE_STARTUP_EVENT_DROP_MS,
+    MATRIX_STARTUP_STALE_FILTER_WINDOW_MS,
+    MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS,
     MATRIX_SYNC_OPERATION_TIMEOUT,
     MATRIX_SYNC_RETRY_DELAY_SECS,
     MATRIX_TO_DEVICE_TIMEOUT,
@@ -1194,6 +1199,44 @@ bot_user_name = None  # Detected upon logon
 bot_start_time = int(
     time.time() * MILLISECONDS_PER_SECOND
 )  # Timestamp when the bot starts, used to filter out old messages
+bot_start_monotonic_secs = time.monotonic()
+
+
+def _estimate_clock_rollback_ms(
+    bot_start_time: int, bot_start_monotonic_secs: float
+) -> int:
+    """
+    Estimate how many milliseconds the local clock has rolled backward since bot startup.
+
+    Compares the expected current time (based on monotonic elapsed time since startup)
+    against the actual wall-clock time to detect clock rollback events.
+
+    Parameters:
+        bot_start_time: The bot's startup timestamp in milliseconds (from time.time()).
+        bot_start_monotonic_secs: The bot's startup monotonic time in seconds.
+
+    Returns:
+        The estimated rollback in milliseconds. Positive values indicate the local
+        clock appears to have stepped backward relative to the monotonic clock.
+    """
+    now_ms = int(time.time() * MILLISECONDS_PER_SECOND)
+    elapsed_ms = int(
+        (time.monotonic() - bot_start_monotonic_secs) * MILLISECONDS_PER_SECOND
+    )
+    expected_now_ms = bot_start_time + elapsed_ms
+    return expected_now_ms - now_ms
+
+
+def _refresh_bot_start_timestamps() -> None:
+    """
+    Refresh bot_start_time and bot_start_monotonic_secs to the current wall/monotonic time.
+
+    Called at the start of each Matrix bootstrap so that stale-event startup
+    window filtering is anchored to the actual bootstrap rather than module import.
+    """
+    global bot_start_time, bot_start_monotonic_secs
+    bot_start_time = int(time.time() * MILLISECONDS_PER_SECOND)
+    bot_start_monotonic_secs = time.monotonic()
 
 
 matrix_client = None
@@ -2479,6 +2522,10 @@ async def connect_matrix(
     async with _MATRIX_STARTUP_SYNC_LOCK:
         if matrix_client:
             return matrix_client
+
+        # Refresh startup timestamps for this bootstrap so stale-event
+        # filtering uses the actual bootstrap window, not module import time.
+        _refresh_bot_start_timestamps()
 
         # Use local variable during initialization to avoid exposing half-initialized client
         client = _initialize_matrix_client(
@@ -4231,7 +4278,7 @@ async def on_room_message(
     """
     Handle an incoming Matrix room event and bridge eligible events to Meshtastic.
 
-    Processes RoomMessageText, RoomMessageNotice, RoomMessageEmote, and ReactionEvent events for configured rooms. Filters out events older than the bot start time and messages sent by the bot. Respects per-room and global interaction settings (reactions and replies), delegates command handling to plugins (preventing relay when handled), and forwards eligible reactions, replies, detection-sensor packets, remote-meshnet messages, and ordinary Matrix messages to Meshtastic. When configured, creates and attaches message mapping metadata for reply/reaction correlation.
+    Processes RoomMessageText, RoomMessageNotice, RoomMessageEmote, and ReactionEvent events for configured rooms. Ignores messages sent by the bot. Respects per-room and global interaction settings (reactions and replies), delegates command handling to plugins (preventing relay when handled), and forwards eligible reactions, replies, detection-sensor packets, remote-meshnet messages, and ordinary Matrix messages to Meshtastic. When configured, creates and attaches message mapping metadata for reply/reaction correlation.
 
     Parameters:
         room (MatrixRoom): The Matrix room where the event was received.
@@ -4254,9 +4301,65 @@ async def on_room_message(
     full_display_name = "Unknown user"
     message_timestamp = event.server_timestamp
 
-    # We do not relay messages that occurred before the bot started
+    # Guard against clearly stale pre-start backlog while remaining tolerant to
+    # local startup clock corrections (for example, NTP stepping backward).
     if message_timestamp < bot_start_time:
-        return
+        skew_ms = bot_start_time - message_timestamp
+        rollback_ms = _estimate_clock_rollback_ms(
+            bot_start_time, bot_start_monotonic_secs
+        )
+        elapsed_since_start_ms = max(
+            0,
+            int(
+                (time.monotonic() - bot_start_monotonic_secs) * MILLISECONDS_PER_SECOND
+            ),
+        )
+        baseline_plausible = (
+            message_timestamp >= MATRIX_EVENT_EPOCH_FLOOR_MS
+            and bot_start_time >= MATRIX_EVENT_EPOCH_FLOOR_MS
+        )
+        rollback_detected = rollback_ms > MATRIX_CLOCK_ROLLBACK_DISABLE_MS
+        startup_window_active = (
+            elapsed_since_start_ms <= MATRIX_STARTUP_STALE_FILTER_WINDOW_MS
+        )
+
+        if (
+            baseline_plausible
+            and startup_window_active
+            and not rollback_detected
+            and skew_ms > MATRIX_STALE_STARTUP_EVENT_DROP_MS
+        ):
+            logger.debug(
+                "Dropping stale Matrix event predating startup baseline "
+                "(event_ts=%s bot_start_time=%s skew_ms=%s sender=%s room=%s)",
+                message_timestamp,
+                bot_start_time,
+                skew_ms,
+                event.sender,
+                room.room_id,
+            )
+            return
+
+        if skew_ms > MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS:
+            reason = (
+                "clock rollback detected"
+                if rollback_detected
+                else (
+                    "within startup window, tolerating skew"
+                    if startup_window_active
+                    else "startup stale filter window elapsed"
+                )
+            )
+            logger.debug(
+                "Processing Matrix event despite startup timestamp skew "
+                "(event_ts=%s bot_start_time=%s skew_ms=%s sender=%s room=%s reason=%s)",
+                message_timestamp,
+                bot_start_time,
+                skew_ms,
+                event.sender,
+                room.room_id,
+                reason,
+            )
 
     # Do not process messages from the bot itself
     if event.sender == bot_user_id:

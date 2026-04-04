@@ -982,6 +982,7 @@ def reset_meshtastic_globals():
             mu, "_ble_interface_create_timeout_secs", None
         ),
         "RELAY_START_TIME": getattr(mu, "RELAY_START_TIME", None),
+        "_relay_active_client_id": getattr(mu, "_relay_active_client_id", None),
         "_relay_connection_started_monotonic_secs": getattr(
             mu, "_relay_connection_started_monotonic_secs", None
         ),
@@ -990,6 +991,9 @@ def reset_meshtastic_globals():
         ),
         "_relay_startup_drain_deadline_monotonic_secs": getattr(
             mu, "_relay_startup_drain_deadline_monotonic_secs", None
+        ),
+        "_relay_reconnect_prestart_bootstrap_deadline_monotonic_secs": getattr(
+            mu, "_relay_reconnect_prestart_bootstrap_deadline_monotonic_secs", None
         ),
         "_startup_packet_drain_applied": getattr(
             mu, "_startup_packet_drain_applied", False
@@ -1047,9 +1051,11 @@ def reset_meshtastic_globals():
         None,
     )
     mu.RELAY_START_TIME = time.time()
+    mu._relay_active_client_id = None
     mu._relay_connection_started_monotonic_secs = time.monotonic()
     mu._relay_rx_time_clock_skew_secs = None
     mu._relay_startup_drain_deadline_monotonic_secs = None
+    mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = None
     mu._startup_packet_drain_applied = False
     mu._health_probe_request_deadlines = {}
 

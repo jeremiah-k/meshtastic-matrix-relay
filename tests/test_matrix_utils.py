@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import importlib
 import os
 import re
@@ -20,6 +21,12 @@ from mmrelay.constants.formats import (
     DETECTION_SENSOR_APP,
     MATRIX_SUPPRESS_KEY,
     TEXT_MESSAGE_APP,
+)
+from mmrelay.constants.network import (
+    MATRIX_CLOCK_ROLLBACK_DISABLE_MS,
+    MATRIX_STALE_STARTUP_EVENT_DROP_MS,
+    MATRIX_STARTUP_STALE_FILTER_WINDOW_MS,
+    MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS,
 )
 from mmrelay.matrix_utils import (
     ImageUploadError,
@@ -75,6 +82,49 @@ TEST_FULL_MXID = "@user:matrix.org"
 # - Simplified async test execution without explicit asyncio.run() calls
 # - Enhanced test isolation and maintainability
 # - Alignment with modern Python testing practices
+
+
+@contextlib.contextmanager
+def _patch_on_room_message_time_context(
+    test_config,
+    bot_start_time,
+    bot_start_monotonic_secs,
+    current_time,
+    current_monotonic,
+):
+    """
+    Context manager that patches all time and module-level dependencies for on_room_message tests.
+
+    Patches: load_plugins, get_user_display_name, get_message_queue, queue_message,
+    connect_meshtastic, config, matrix_rooms, bot_user_id, bot_start_time,
+    bot_start_monotonic_secs, time.time, and time.monotonic.
+
+    Yields:
+        MagicMock: The mock_queue_message mock for assertions.
+    """
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            AsyncMock(return_value="user"),
+        ),
+        patch("mmrelay.matrix_utils.get_message_queue") as mock_get_message_queue,
+        patch(
+            "mmrelay.matrix_utils.queue_message", return_value=True
+        ) as mock_queue_message,
+        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
+        patch("mmrelay.matrix_utils.bot_start_time", bot_start_time),
+        patch(
+            "mmrelay.matrix_utils.bot_start_monotonic_secs", bot_start_monotonic_secs
+        ),
+        patch("mmrelay.matrix_utils.time.time", return_value=current_time),
+        patch("mmrelay.matrix_utils.time.monotonic", return_value=current_monotonic),
+    ):
+        mock_get_message_queue.return_value.get_queue_size.return_value = 0
+        yield mock_queue_message
 
 
 async def test_on_room_message_simple_text(
@@ -790,17 +840,93 @@ async def test_on_room_message_detection_sensor_connect_failure(
     mock_queue_message.assert_not_called()
 
 
-async def test_on_room_message_ignores_old_messages(mock_room, mock_event):
-    """Messages sent before the bot start time should be ignored."""
-    mock_event.server_timestamp = 100
+async def test_on_room_message_does_not_drop_old_timestamp_messages(
+    mock_room, mock_event, test_config
+):
+    """Older event timestamps should still be processed after startup clock corrections."""
+    base_ts = 1_700_000_000_000
+    message_ts = base_ts
+    startup_ts = message_ts + MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS - 1
+    mock_event.server_timestamp = message_ts
 
-    with (
-        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
-        patch("mmrelay.matrix_utils.bot_start_time", 200),
-    ):
+    with _patch_on_room_message_time_context(
+        test_config=test_config,
+        bot_start_time=startup_ts,
+        bot_start_monotonic_secs=10_000.0,
+        current_time=(startup_ts / 1000) + 0.01,
+        current_monotonic=10_000.01,
+    ) as mock_queue_message:
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_called_once()
+
+
+async def test_on_room_message_drops_clearly_stale_startup_backlog(
+    mock_room, mock_event, test_config
+):
+    """Clearly stale pre-start events should be dropped when startup clock is stable."""
+    base_ts = 1_700_000_000_000
+    message_ts = base_ts
+    bot_start_time = message_ts + MATRIX_STALE_STARTUP_EVENT_DROP_MS + 1000
+    mock_event.server_timestamp = message_ts
+
+    with _patch_on_room_message_time_context(
+        test_config=test_config,
+        bot_start_time=bot_start_time,
+        bot_start_monotonic_secs=10_000.0,
+        current_time=bot_start_time / 1000
+        + MATRIX_STARTUP_STALE_FILTER_WINDOW_MS / 1000 / 4,
+        current_monotonic=10_000.0 + MATRIX_STARTUP_STALE_FILTER_WINDOW_MS / 1000 / 4,
+    ) as mock_queue_message:
         await on_room_message(mock_room, mock_event)
 
     mock_queue_message.assert_not_called()
+
+
+async def test_on_room_message_allows_old_timestamp_after_clock_rollback(
+    mock_room, mock_event, test_config
+):
+    """Clock rollback after startup should not drop legitimate Matrix events."""
+    base_ts = 1_700_000_000_000
+    message_ts = base_ts
+    startup_ts = message_ts + MATRIX_CLOCK_ROLLBACK_DISABLE_MS + 1000
+    mock_event.server_timestamp = message_ts
+
+    with _patch_on_room_message_time_context(
+        test_config=test_config,
+        bot_start_time=startup_ts,
+        bot_start_monotonic_secs=10_000.0,
+        current_time=message_ts / 1000,
+        current_monotonic=10_000.0 + MATRIX_STARTUP_STALE_FILTER_WINDOW_MS / 1000 / 2,
+    ) as mock_queue_message:
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_called_once()
+
+
+async def test_on_room_message_allows_stale_timestamp_after_startup_window(
+    mock_room, mock_event, test_config
+):
+    """Stale startup filtering should not drop old events after startup window elapses."""
+    base_ts = 1_700_000_000_000
+    message_ts = base_ts
+    bot_start_time = message_ts + MATRIX_STALE_STARTUP_EVENT_DROP_MS + 1000
+    mock_event.server_timestamp = message_ts
+
+    with _patch_on_room_message_time_context(
+        test_config=test_config,
+        bot_start_time=bot_start_time,
+        bot_start_monotonic_secs=10_000.0,
+        current_time=bot_start_time / 1000
+        + (MATRIX_STARTUP_STALE_FILTER_WINDOW_MS / 1000)
+        + 100,
+        current_monotonic=10_000.0
+        + (MATRIX_STARTUP_STALE_FILTER_WINDOW_MS / 1000)
+        + 100,
+    ) as mock_queue_message:
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_called_once()
 
 
 async def test_on_room_message_config_none_logs_and_returns(

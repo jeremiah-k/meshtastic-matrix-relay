@@ -91,6 +91,10 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         import mmrelay.meshtastic_utils
 
         mmrelay.meshtastic_utils.meshtastic_client = None
+        mmrelay.meshtastic_utils._relay_active_client_id = None
+        mmrelay.meshtastic_utils._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
+            None
+        )
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.config = None
         mmrelay.meshtastic_utils.matrix_rooms = []
@@ -196,9 +200,11 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
     def test_connect_meshtastic_tcp_connection_refused(self):
         """
-        Verify connect_meshtastic returns None and logs an exception when a TCP connection is refused.
+        Verify connect_meshtastic returns None when a TCP connection is refused.
 
-        Patches the TCPInterface to raise ConnectionRefusedError and asserts that connect_meshtastic returns None and that logger.exception is invoked.
+        Patches the TCPInterface to raise ConnectionRefusedError and asserts that
+        connect_meshtastic returns None. ConnectionRefusedError is not treated as
+        a critical error (no logger.exception) to allow retry/backoff.
         """
         config = {
             "meshtastic": {
@@ -211,10 +217,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
             side_effect=ConnectionRefusedError("Connection refused"),
         ):
-            with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            with patch("mmrelay.meshtastic_utils.logger"):
                 result = connect_meshtastic(config)
                 self.assertIsNone(result)
-                mock_logger.exception.assert_called()
 
     def test_connect_meshtastic_invalid_connection_type(self):
         """

@@ -27,8 +27,12 @@ from pubsub import pub
 
 from mmrelay.config import get_meshtastic_config_value
 from mmrelay.constants.config import (
+    CONFIG_KEY_CONNECT_PROBE_ENABLED,
+    CONFIG_KEY_ENABLED,
+    CONFIG_KEY_HEALTH_CHECK,
     CONFIG_KEY_MESHNET_NAME,
     CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
+    CONFIG_KEY_PROBE_TIMEOUT,
     CONFIG_SECTION_MESHTASTIC,
     DEFAULT_DETECTION_SENSOR,
     DEFAULT_HEALTH_CHECK_ENABLED,
@@ -51,10 +55,13 @@ from mmrelay.constants.messages import (
 )
 from mmrelay.constants.network import (
     ACK_POLL_INTERVAL_SECS,
+    BLE_CONN_SUPPRESSED_TOKEN,
     BLE_CONNECT_TIMEOUT_SECS,
+    BLE_CONNECTED_ELSEWHERE_TOKEN,
     BLE_DISCONNECT_MAX_RETRIES,
     BLE_DISCONNECT_SETTLE_SECS,
     BLE_DISCONNECT_TIMEOUT_SECS,
+    BLE_DUP_CONNECT_SUPPRESSED_TOKEN,
     BLE_FUTURE_STALE_GRACE_SECS,
     BLE_FUTURE_WATCHDOG_SECS,
     BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
@@ -87,8 +94,14 @@ from mmrelay.constants.network import (
     INFINITE_RETRIES,
     INITIAL_HEALTH_CHECK_DELAY,
     MAX_TIMEOUT_RETRIES_INFINITE,
+    MESHTASTIC_BLE_GATE_RESET_FUNC,
+    MESHTASTIC_BLE_GATING_MODULE_PATH,
     METADATA_WATCHDOG_SECS,
+    RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS,
+    RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS,
+    RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS,
     STALE_DISCONNECT_TIMEOUT_SECS,
+    STARTUP_PACKET_DRAIN_SECS,
 )
 from mmrelay.db_utils import (
     NodeNameState,
@@ -138,13 +151,15 @@ logger = get_logger(name="Meshtastic")
 _ble_gate_reset_callable: Callable[[], None] | None = None
 _ble_gating_module: Any | None = None
 try:
-    _ble_gating_module = importlib.import_module("meshtastic.interfaces.ble.gating")
+    _ble_gating_module = importlib.import_module(MESHTASTIC_BLE_GATING_MODULE_PATH)
 except ModuleNotFoundError:
     _ble_gating_module = None
 except Exception:  # noqa: BLE001 - defensive import of optional fork-specific feature
     _ble_gating_module = None
 else:
-    clear_all_registries = getattr(_ble_gating_module, "_clear_all_registries", None)
+    clear_all_registries = getattr(
+        _ble_gating_module, MESHTASTIC_BLE_GATE_RESET_FUNC, None
+    )
     if callable(clear_all_registries):
         _ble_gate_reset_callable = cast(Callable[[], None], clear_all_registries)
 
@@ -161,20 +176,20 @@ _relay_rx_time_clock_skew_secs: float | None = None
 _relay_rx_time_clock_skew_lock = threading.Lock()
 # Allow controlled skew bootstrap shortly after connect so startup can recover
 # when host time and packet rxTime disagree before clock sync settles.
-_RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS = 180.0
-# Keep this intentionally larger than MAX_INITIAL_SKEW_SECS so startup recovery
-# can handle multi-hour host clock jumps observed in real deployments.
-_RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS = 24 * 60 * 60
 # Briefly drain inbound packets after connect to avoid relaying queued backlog
 # while connection/session timing state settles.
-_STARTUP_PACKET_DRAIN_SECS = 15.0
 _relay_startup_drain_deadline_monotonic_secs: float | None = None
 # Only apply startup drain on the first successful process-lifetime connect.
 _startup_packet_drain_applied = False
+# On reconnects, allow exactly one bounded pre-start skew bootstrap packet
+# without enabling a full reconnect drain window.
+_relay_reconnect_prestart_bootstrap_deadline_monotonic_secs: float | None = None
 
 
 # Global variables for the Meshtastic connection and event loop management
 meshtastic_client = None
+# Session guard to reject callbacks emitted by stale interfaces after reconnect.
+_relay_active_client_id: int | None = None
 meshtastic_iface = None  # BLE interface instance for process lifetime
 event_loop = None  # Will be set from main.py
 
@@ -275,8 +290,9 @@ def _is_ble_duplicate_connect_suppressed_error(exc: BaseException) -> bool:
     message = str(exc).strip().lower()
     if not message:
         return False
-    return "recently connected elsewhere" in message or (
-        "connection suppressed" in message and "connected elsewhere" in message
+    return BLE_DUP_CONNECT_SUPPRESSED_TOKEN in message or (
+        BLE_CONN_SUPPRESSED_TOKEN in message
+        and BLE_CONNECTED_ELSEWHERE_TOKEN in message
     )
 
 
@@ -1077,9 +1093,14 @@ def _seed_connect_time_skew(rx_time: float) -> bool:
         bool: True when a new skew value was calibrated for this packet.
     """
     global _relay_rx_time_clock_skew_secs
+    global _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs
 
     if rx_time <= 0:
         return False
+
+    calibrated_skew: float = 0.0
+    startup_age: float = 0.0
+    calibrated_from_reconnect_prestart: bool = False
 
     now_wall = time.time()
     now_monotonic = time.monotonic()
@@ -1091,30 +1112,57 @@ def _seed_connect_time_skew(rx_time: float) -> bool:
 
         relay_start_time = RELAY_START_TIME
         startup_age = max(0.0, now_monotonic - _relay_connection_started_monotonic_secs)
-        within_startup_window = startup_age <= _RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS
+        within_startup_window = startup_age <= RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS
         startup_drain_active = _relay_startup_drain_deadline_monotonic_secs is not None
+        reconnect_bootstrap_deadline = (
+            _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs
+        )
+        reconnect_bootstrap_active = (
+            reconnect_bootstrap_deadline is not None
+            and reconnect_bootstrap_deadline >= now_monotonic
+        )
+        if (
+            reconnect_bootstrap_deadline is not None
+            and reconnect_bootstrap_deadline < now_monotonic
+        ):
+            _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = None
         packet_is_post_start = rx_time >= relay_start_time
 
         if not packet_is_post_start and (
-            not within_startup_window or not startup_drain_active
+            not within_startup_window
+            or (not startup_drain_active and not reconnect_bootstrap_active)
         ):
             return False
 
-        if abs(observed_skew) > _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS:
+        if abs(observed_skew) > RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS:
             logger.debug(
                 "Skipping rxTime skew bootstrap %.3f seconds outside startup limit %.3f",
                 observed_skew,
-                _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS,
+                RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS,
             )
             return False
 
         _relay_rx_time_clock_skew_secs = observed_skew
         calibrated_skew = observed_skew
+        calibrated_from_reconnect_prestart = (
+            not packet_is_post_start
+            and not startup_drain_active
+            and reconnect_bootstrap_active
+        )
+        if calibrated_from_reconnect_prestart:
+            # Consume the one-shot reconnect bootstrap allowance.
+            _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = None
 
     if packet_is_post_start:
         logger.debug(
             "Calibrated rxTime clock skew from connect-time packet to %.3f seconds",
             calibrated_skew,
+        )
+    elif calibrated_from_reconnect_prestart:
+        logger.debug(
+            "Bootstrapped rxTime clock skew from reconnect packet to %.3f seconds (startup_age=%.3f seconds)",
+            calibrated_skew,
+            startup_age,
         )
     else:
         logger.debug(
@@ -1182,11 +1230,11 @@ def _claim_health_probe_response_and_maybe_calibrate(
 
         if rx_time > 0:
             observed_skew = time.time() - rx_time
-            if abs(observed_skew) > _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS:
+            if abs(observed_skew) > RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS:
                 logger.debug(
                     "[HEALTH_CHECK] Skipping rxTime clock skew calibration %.3f seconds outside startup limit %.3f",
                     observed_skew,
-                    _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS,
+                    RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS,
                 )
             else:
                 with _relay_rx_time_clock_skew_lock:
@@ -3303,6 +3351,152 @@ def _get_connection_retry_wait_time(attempts: int) -> float:
     )
 
 
+def _get_connect_time_probe_settings(
+    active_config: dict[str, Any] | None, connection_type: str
+) -> tuple[bool, float]:
+    """
+    Return connect-time probe enablement and timeout settings for a connection.
+    """
+    default_timeout = float(DEFAULT_MESHTASTIC_OPERATION_TIMEOUT)
+    default_enabled = DEFAULT_HEALTH_CHECK_ENABLED
+    if not isinstance(active_config, dict):
+        return default_enabled, default_timeout
+
+    meshtastic_cfg = active_config.get(CONFIG_SECTION_MESHTASTIC)
+    if not isinstance(meshtastic_cfg, dict):
+        return default_enabled, default_timeout
+
+    health_cfg = meshtastic_cfg.get(CONFIG_KEY_HEALTH_CHECK)
+    if not isinstance(health_cfg, dict):
+        return default_enabled, default_timeout
+
+    inherited_enabled = _coerce_bool(
+        health_cfg.get(CONFIG_KEY_ENABLED, default_enabled),
+        default_enabled,
+        "meshtastic.health_check.enabled",
+    )
+    enabled = _coerce_bool(
+        health_cfg.get(CONFIG_KEY_CONNECT_PROBE_ENABLED, inherited_enabled),
+        inherited_enabled,
+        "meshtastic.health_check.connect_probe_enabled",
+    )
+    timeout_secs = _coerce_positive_float(
+        health_cfg.get(CONFIG_KEY_PROBE_TIMEOUT, default_timeout),
+        default_timeout,
+        "meshtastic.health_check.probe_timeout",
+    )
+    return enabled, timeout_secs
+
+
+def _schedule_connect_time_calibration_probe(
+    client: Any,
+    *,
+    connection_type: str,
+    active_config: dict[str, Any] | None,
+) -> None:
+    """
+    Best-effort one-shot metadata probe after connect for skew calibration backup.
+    """
+    enabled, timeout_secs = _get_connect_time_probe_settings(
+        active_config, connection_type
+    )
+    if not enabled:
+        logger.debug("Connect-time metadata probe is disabled in configuration")
+        return
+
+    local_node = getattr(client, "localNode", None)
+    if local_node is None or not callable(getattr(client, "sendData", None)):
+        logger.debug(
+            "Skipping connect-time metadata probe; client lacks localNode/sendData support"
+        )
+        return
+
+    try:
+        probe_future = _submit_metadata_probe(
+            functools.partial(
+                _probe_device_connection,
+                client,
+                timeout_secs,
+            )
+        )
+    except MetadataExecutorDegradedError:
+        logger.debug(
+            "Skipping connect-time metadata probe; metadata executor is degraded"
+        )
+        return
+    except RuntimeError as exc:
+        logger.debug(
+            "Skipping connect-time metadata probe; submission failed",
+            exc_info=exc,
+        )
+        return
+
+    if probe_future is None:
+        logger.debug(
+            "Skipping connect-time metadata probe; metadata probe already in progress"
+        )
+        return
+
+    logger.debug(
+        "Scheduled one-shot connect-time metadata probe (timeout=%.1fs)",
+        timeout_secs,
+    )
+
+
+def _rollback_connect_attempt_state(
+    client: Any,
+    client_assigned_for_this_connect: bool,
+    startup_drain_armed_for_this_connect: bool,
+    startup_drain_applied_for_this_connect: bool,
+    reconnect_bootstrap_armed_for_this_connect: bool,
+) -> bool:
+    """
+    Centralize cleanup of partially-assigned clients and timing state when a connect attempt fails.
+
+    Returns the updated value for client_assigned_for_this_connect (always False after cleanup).
+    """
+    global meshtastic_client, meshtastic_iface, _relay_active_client_id
+    global _relay_startup_drain_deadline_monotonic_secs, _startup_packet_drain_applied
+    global _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs
+
+    if client is not None and (
+        client_assigned_for_this_connect or client is meshtastic_iface
+    ):
+        with meshtastic_lock:
+            if meshtastic_client is client or client is meshtastic_iface:
+                try:
+                    if client is meshtastic_iface:
+                        _disconnect_ble_interface(
+                            meshtastic_iface, reason="connect setup failed"
+                        )
+                        meshtastic_iface = None
+                    else:
+                        client.close()
+                except Exception as cleanup_error:  # noqa: BLE001 - best-effort cleanup
+                    logger.warning(
+                        "Error closing Meshtastic client after setup failure: %s",
+                        cleanup_error,
+                    )
+                finally:
+                    if meshtastic_client is client:
+                        meshtastic_client = None
+                        _relay_active_client_id = None
+
+    if (
+        startup_drain_armed_for_this_connect
+        or reconnect_bootstrap_armed_for_this_connect
+    ):
+        with _relay_rx_time_clock_skew_lock:
+            if startup_drain_armed_for_this_connect:
+                _relay_startup_drain_deadline_monotonic_secs = None
+                if startup_drain_applied_for_this_connect:
+                    _startup_packet_drain_applied = False
+            if reconnect_bootstrap_armed_for_this_connect:
+                _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = None
+
+    return False
+
+
 def connect_meshtastic(
     passed_config: dict[str, Any] | None = None,
     force_connect: bool = False,
@@ -3320,8 +3514,10 @@ def connect_meshtastic(
         The connected Meshtastic client instance on success, or `None` if a connection could not be established or shutdown is in progress.
     """
     global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config
+    global _relay_active_client_id
     global RELAY_START_TIME, _relay_connection_started_monotonic_secs
     global _relay_rx_time_clock_skew_secs, _relay_startup_drain_deadline_monotonic_secs
+    global _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs
     global _startup_packet_drain_applied
     global matrix_rooms, _ble_future, _ble_future_address
     global _ble_future_started_at, _ble_future_timeout_secs
@@ -3361,6 +3557,7 @@ def connect_meshtastic(
                     "Error closing previous connection: %s", e, exc_info=True
                 )
             meshtastic_client = None
+            _relay_active_client_id = None
 
         # Check if config is available
         if config is None:
@@ -3455,9 +3652,14 @@ def connect_meshtastic(
         # Initialize before try block to avoid unbound variable errors
         ble_address: str | None = None
         supports_auto_reconnect = False
+        startup_drain_pending_for_this_connect = False
+        startup_drain_armed_for_this_connect = False
+        startup_drain_applied_for_this_connect = False
+        reconnect_bootstrap_armed_for_this_connect = False
+        client_assigned_for_this_connect = False
 
+        client = None
         try:
-            client = None
             if connection_type == CONNECTION_TYPE_SERIAL:
                 # Serial connection
                 serial_port = config["meshtastic"].get(CONFIG_KEY_SERIAL_PORT)
@@ -3646,6 +3848,11 @@ def connect_meshtastic(
                                     meshtastic_iface = future.result(
                                         timeout=create_timeout_secs
                                     )
+                                    if meshtastic_iface is None:
+                                        _clear_ble_future(future)
+                                        raise RuntimeError(
+                                            "BLE interface creation returned no interface"
+                                        )
                                     logger.debug(
                                         f"BLE interface created successfully for {ble_address}"
                                     )
@@ -3902,20 +4109,6 @@ def connect_meshtastic(
 
             # Acquire lock only for the final setup and subscription
             with meshtastic_lock:
-                meshtastic_client = client
-                # Clear health probe deadlines BEFORE resetting clock skew to prevent
-                # race condition where a late ACK from the previous interface could
-                # seed the new connection with stale skew values.
-                with _health_probe_request_lock:
-                    _health_probe_request_deadlines.clear()
-                    # Now reset timing variables while holding both locks.
-                    # This ensures the stale-packet cutoff always sees a consistent pair.
-                    with _relay_rx_time_clock_skew_lock:
-                        RELAY_START_TIME = time.time()
-                        _relay_connection_started_monotonic_secs = time.monotonic()
-                        _relay_rx_time_clock_skew_secs = None
-                        _relay_startup_drain_deadline_monotonic_secs = None
-
                 # CRITICAL VALIDATION: Verify we're connected to the correct BLE device.
                 # This prevents connection to wrong device due to substring matching
                 # bugs in meshtastic library's find_device() function. The official
@@ -3935,7 +4128,7 @@ def connect_meshtastic(
                         CONFIG_KEY_BLE_ADDRESS
                     )
                     if expected_ble_address and not _validate_ble_connection_address(
-                        meshtastic_client, expected_ble_address
+                        client, expected_ble_address
                     ):
                         # Validation failed - wrong device connected
                         # Disconnect immediately to prevent communication with wrong device
@@ -3943,29 +4136,75 @@ def connect_meshtastic(
                             "BLE connection validation failed - connected to wrong device. "
                             "Disconnecting and raising error to force retry."
                         )
+                        was_shared_interface = client is meshtastic_iface
                         try:
-                            if meshtastic_client is meshtastic_iface:
-                                # BLE interface - use proper disconnect sequence
+                            if was_shared_interface:
                                 _disconnect_ble_interface(
                                     meshtastic_iface, reason="address validation failed"
                                 )
                             else:
-                                meshtastic_client.close()
+                                client.close()
                         except Exception as e:
                             logger.warning(f"Error closing invalid BLE connection: {e}")
+                        finally:
+                            if was_shared_interface:
+                                meshtastic_iface = None
                         raise ConnectionRefusedError(
                             f"Connected to wrong BLE device. Expected: {expected_ble_address}"
                         )
 
-                nodeInfo = meshtastic_client.getMyNodeInfo()
+                # Clear health probe deadlines BEFORE resetting clock skew to prevent
+                # race condition where a late ACK from the previous interface could
+                # seed the new connection with stale skew values.
+                #
+                # Initialize connection timing state exactly once before metadata
+                # probes, node-info fetches, and subscription setup so reconnects
+                # cannot handle inbound packets with stale session timing.
+                with _health_probe_request_lock:
+                    _health_probe_request_deadlines.clear()
+                    with _relay_rx_time_clock_skew_lock:
+                        RELAY_START_TIME = time.time()
+                        _relay_connection_started_monotonic_secs = time.monotonic()
+                        _relay_rx_time_clock_skew_secs = None
+                        if not _startup_packet_drain_applied:
+                            _relay_startup_drain_deadline_monotonic_secs = None
+                            _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
+                                None
+                            )
+                            startup_drain_pending_for_this_connect = True
+                            timing_mode = "startup_pending"
+                        else:
+                            _relay_startup_drain_deadline_monotonic_secs = None
+                            _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
+                                _relay_connection_started_monotonic_secs
+                                + RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS
+                            )
+                            reconnect_bootstrap_armed_for_this_connect = True
+                            timing_mode = "reconnect"
+                        logger.debug(
+                            "Initialized connection timing state mode=%s start=%.3f monotonic_start=%.3f startup_drain_deadline=%s reconnect_bootstrap_deadline=%s",
+                            timing_mode,
+                            RELAY_START_TIME,
+                            _relay_connection_started_monotonic_secs,
+                            _relay_startup_drain_deadline_monotonic_secs,
+                            _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs,
+                        )
+
+                # Publish the active client only after per-connection timing state
+                # has been reset, so callbacks cannot observe stale skew windows.
+                meshtastic_client = client
+                _relay_active_client_id = id(client)
+                client_assigned_for_this_connect = True
+
+                node_info = client.getMyNodeInfo()
 
                 # Safely access node info fields
-                user_info = nodeInfo.get("user", {}) if nodeInfo else {}
+                user_info = node_info.get("user", {}) if node_info else {}
                 short_name = user_info.get("shortName", "unknown")
                 hw_model = user_info.get("hwModel", "unknown")
 
                 # Get firmware version from device metadata
-                metadata = _get_device_metadata(meshtastic_client)
+                metadata = _get_device_metadata(client)
                 firmware_version = metadata["firmware_version"]
 
                 if metadata.get("success"):
@@ -3977,6 +4216,23 @@ def connect_meshtastic(
                     logger.debug(
                         "Device firmware version unavailable from getMetadata()"
                     )
+
+                # Arm startup drain only once setup completes, so the full drain
+                # interval is available when receive handling becomes active.
+                if startup_drain_pending_for_this_connect:
+                    with _relay_rx_time_clock_skew_lock:
+                        if not _startup_packet_drain_applied:
+                            _relay_startup_drain_deadline_monotonic_secs = (
+                                time.monotonic() + STARTUP_PACKET_DRAIN_SECS
+                            )
+                            _startup_packet_drain_applied = True
+                            startup_drain_applied_for_this_connect = True
+                            startup_drain_armed_for_this_connect = True
+                    if startup_drain_armed_for_this_connect:
+                        logger.debug(
+                            "Armed startup drain window deadline=%s after setup completion",
+                            _relay_startup_drain_deadline_monotonic_secs,
+                        )
 
                 # Subscribe to message and connection lost events (only once per application run)
                 global subscribed_to_messages, subscribed_to_connection_lost
@@ -3992,24 +4248,44 @@ def connect_meshtastic(
                     subscribed_to_connection_lost = True
                     logger.debug("Subscribed to meshtastic.connection.lost")
 
-                # Arm startup-drain only after connection setup fully succeeds.
-                with _relay_rx_time_clock_skew_lock:
-                    RELAY_START_TIME = time.time()
-                    _relay_connection_started_monotonic_secs = time.monotonic()
-                    if not _startup_packet_drain_applied:
-                        _relay_startup_drain_deadline_monotonic_secs = (
-                            _relay_connection_started_monotonic_secs
-                            + _STARTUP_PACKET_DRAIN_SECS
-                        )
-                        _startup_packet_drain_applied = True
-                    else:
-                        _relay_startup_drain_deadline_monotonic_secs = None
+                _schedule_connect_time_calibration_probe(
+                    client,
+                    connection_type=connection_type,
+                    active_config=config,
+                )
 
-        except (ConnectionRefusedError, MemoryError, BleExecutorDegradedError):
-            # Handle critical errors that should not be retried
+        except ConnectionRefusedError:
+            _rollback_connect_attempt_state(
+                client=client,
+                client_assigned_for_this_connect=client_assigned_for_this_connect,
+                startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
+                startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
+                reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+            )
+            client_assigned_for_this_connect = False
+            successful = False
+            return None
+        except (MemoryError, BleExecutorDegradedError):
+            _rollback_connect_attempt_state(
+                client=client,
+                client_assigned_for_this_connect=client_assigned_for_this_connect,
+                startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
+                startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
+                reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+            )
+            client_assigned_for_this_connect = False
+            successful = False
             logger.exception("Critical connection error")
             return None
         except (FuturesTimeoutError, TimeoutError) as e:
+            successful = False
+            client_assigned_for_this_connect = _rollback_connect_attempt_state(
+                client=client,
+                client_assigned_for_this_connect=client_assigned_for_this_connect,
+                startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
+                startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
+                reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+            )
             if shutting_down:
                 break
             attempts += 1
@@ -4034,6 +4310,14 @@ def connect_meshtastic(
             )
             time.sleep(wait_time)
         except Exception as e:
+            successful = False
+            client_assigned_for_this_connect = _rollback_connect_attempt_state(
+                client=client,
+                client_assigned_for_this_connect=client_assigned_for_this_connect,
+                startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
+                startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
+                reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+            )
             if shutting_down:
                 logger.debug("Shutdown in progress. Aborting connection attempts.")
                 break
@@ -4098,6 +4382,7 @@ def on_lost_meshtastic_connection(
     """
     # Keep these as one-global-per-line to minimize merge churn as this list evolves.
     global meshtastic_client
+    global _relay_active_client_id
     global meshtastic_iface
     global reconnecting
     global shutting_down
@@ -4113,6 +4398,29 @@ def on_lost_meshtastic_connection(
         if shutting_down:
             logger.debug("Shutdown in progress. Not attempting to reconnect.")
             return
+        active_client = meshtastic_client
+        active_client_id = _relay_active_client_id
+        if (
+            interface is not None
+            and active_client is None
+            and subscribed_to_connection_lost
+        ):
+            logger.debug(
+                "Ignoring connection-lost event because no Meshtastic interface is currently active"
+            )
+            return
+        if interface is not None and active_client is not None:
+            expected_client_id = (
+                active_client_id if active_client_id is not None else id(active_client)
+            )
+            if id(interface) != expected_client_id:
+                logger.debug(
+                    "Ignoring connection-lost event from stale Meshtastic interface "
+                    "(event_interface_id=%s active_client_id=%s)",
+                    id(interface),
+                    expected_client_id,
+                )
+                return
         if reconnecting:
             logger.debug(
                 "Reconnection already in progress. Skipping additional reconnection attempt."
@@ -4171,6 +4479,7 @@ def on_lost_meshtastic_connection(
                 except Exception as e:
                     logger.warning(f"Error closing Meshtastic client: {e}")
         meshtastic_client = None
+        _relay_active_client_id = None
         ble_future_to_cancel = None
         stale_executor = None
         stale_ble_address: str | None = None
@@ -4316,6 +4625,38 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     if not packet or not isinstance(packet, dict):
         logger.error("Received malformed packet: packet is None or not a dict")
         return
+
+    # Read-mostly guard values; avoid meshtastic_lock here because callbacks can
+    # fire synchronously while connect_meshtastic() still holds that lock.
+    active_client = meshtastic_client
+    active_client_id = _relay_active_client_id
+    if active_client is None:
+        if active_client_id is not None:
+            logger.error(
+                "Inconsistent relay state: active_client is None but active_client_id=%s — this should not happen",
+                active_client_id,
+            )
+        # Runtime callbacks can still arrive briefly during reconnect/teardown
+        # windows because subscriptions are process-lifetime.
+        #
+        # Keep direct unit-level handler invocation behavior unchanged when no
+        # active session is being transitioned.
+        if subscribed_to_messages or reconnecting or shutting_down:
+            logger.debug(
+                "Ignoring packet because no Meshtastic interface is currently active"
+            )
+            return
+    else:
+        expected_client_id = (
+            active_client_id if active_client_id is not None else id(active_client)
+        )
+        if id(interface) != expected_client_id:
+            logger.debug(
+                "Ignoring packet from stale Meshtastic interface (packet_interface_id=%s active_client_id=%s)",
+                id(interface),
+                expected_client_id,
+            )
+            return
 
     # Parse rxTime early so health-probe responses can calibrate packet clock skew.
     rx_time_raw = packet.get("rxTime", 0)
