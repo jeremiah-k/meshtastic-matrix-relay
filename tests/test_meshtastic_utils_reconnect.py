@@ -62,32 +62,31 @@ class TestReconnectCancellation:
         mu.shutting_down = False
         mu.reconnect_task_future = None
 
+        async def _sleep_side_effect(_seconds):
+            mu.shutting_down = True
+            await asyncio.sleep(0)
+
         async def _run_with_cancel():
             reconnect_task = asyncio.create_task(reconnect())
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.05)
             reconnect_task.cancel()
-            await reconnect_task
-
-        async def _sleep_side_effect(_seconds):
-            await asyncio.sleep(0.001)
-
-        with (
-            patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=False),
-            patch(
-                "mmrelay.meshtastic_utils.asyncio.sleep", side_effect=_sleep_side_effect
-            ),
-            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
-        ):
             try:
-                asyncio.run(_run_with_cancel())
+                await reconnect_task
             except (asyncio.CancelledError, RuntimeError):
                 pass
 
-        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
-        assert any("Shutdown in progress" in c for c in debug_calls) or any(
-            "Reconnection task was cancelled" in str(c)
-            for c in mock_logger.info.call_args_list
-        )
+        with (
+            patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.sleep", side_effect=_sleep_side_effect
+            ),
+            patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=None),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            asyncio.run(_run_with_cancel())
+
+        info_calls = [str(c) for c in mock_logger.info.call_args_list]
+        assert any("Reconnection task was cancelled" in c for c in info_calls)
         assert mu.reconnecting is False
 
 
@@ -109,7 +108,7 @@ class TestReconnectShutdownAbort:
             await reconnect()
 
         with (
-            patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=False),
+            patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
             patch(
                 "mmrelay.meshtastic_utils.asyncio.sleep", side_effect=_sleep_side_effect
             ),
