@@ -3452,9 +3452,12 @@ def _rollback_connect_attempt_state(
 
     Returns the updated value for client_assigned_for_this_connect (always False after cleanup).
     """
+    global meshtastic_client, meshtastic_iface, _relay_active_client_id
+    global _relay_startup_drain_deadline_monotonic_secs, _startup_packet_drain_applied
+    global _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs
+
     if client_assigned_for_this_connect and client is not None:
         with meshtastic_lock:
-            global meshtastic_client, meshtastic_iface, _relay_active_client_id
             if meshtastic_client is client:
                 try:
                     if client is meshtastic_iface:
@@ -3634,32 +3637,6 @@ def connect_meshtastic(
         "_ble_interface_create_timeout_secs",
     )
     ble_create_timeout_secs = max(configured_timeout_secs, create_timeout_floor_secs)
-
-    def _cleanup_failed_assigned_client(failed_client: Any) -> None:
-        """
-        Clear active client state when setup fails after client assignment.
-        """
-        global meshtastic_client, meshtastic_iface, _relay_active_client_id
-
-        with meshtastic_lock:
-            if meshtastic_client is not failed_client:
-                return
-            try:
-                if failed_client is meshtastic_iface:
-                    _disconnect_ble_interface(
-                        meshtastic_iface, reason="connect setup failed"
-                    )
-                    meshtastic_iface = None
-                else:
-                    failed_client.close()
-            except Exception as cleanup_error:  # noqa: BLE001 - best-effort cleanup
-                logger.warning(
-                    "Error closing Meshtastic client after setup failure: %s",
-                    cleanup_error,
-                )
-            finally:
-                meshtastic_client = None
-                _relay_active_client_id = None
 
     while (
         not successful
