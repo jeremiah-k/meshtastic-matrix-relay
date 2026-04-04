@@ -367,6 +367,8 @@ def test_connect_meshtastic_logs_firmware_version_on_success(
 def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_subscribe():
     """Fast inbound packets during receive subscribe should still seed startup skew."""
     mock_client = MagicMock()
+    mock_client.myInfo.my_node_num = 456
+    mock_client.localNode.nodeNum = 456
     mock_client.getMyNodeInfo.return_value = {
         "user": {"shortName": "Node", "hwModel": "HW"}
     }
@@ -487,6 +489,8 @@ def test_connect_meshtastic_arms_startup_drain_after_setup_completes():
 def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_metadata_reconnect():
     """Reconnect path should bootstrap skew even when receive is already subscribed."""
     mock_client = MagicMock()
+    mock_client.myInfo.my_node_num = 456
+    mock_client.localNode.nodeNum = 456
     mock_client.getMyNodeInfo.return_value = {
         "user": {"shortName": "Node", "hwModel": "HW"}
     }
@@ -542,6 +546,8 @@ def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_metadata_rec
 def test_connect_meshtastic_resets_timing_before_get_my_node_info_on_reconnect():
     """Reconnect should reset timing state before node-info fetch can process packets."""
     mock_client = MagicMock()
+    mock_client.myInfo.my_node_num = 456
+    mock_client.localNode.nodeNum = 456
     startup_packet = {
         "from": 123,
         "to": 456,

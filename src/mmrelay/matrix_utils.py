@@ -1227,6 +1227,18 @@ def _estimate_clock_rollback_ms(
     return expected_now_ms - now_ms
 
 
+def _refresh_bot_start_timestamps() -> None:
+    """
+    Refresh bot_start_time and bot_start_monotonic_secs to the current wall/monotonic time.
+
+    Called at the start of each Matrix bootstrap so that stale-event startup
+    window filtering is anchored to the actual bootstrap rather than module import.
+    """
+    global bot_start_time, bot_start_monotonic_secs
+    bot_start_time = int(time.time() * MILLISECONDS_PER_SECOND)
+    bot_start_monotonic_secs = time.monotonic()
+
+
 matrix_client = None
 
 # Serialize connect_matrix startup publication and invite-state monkey patching.
@@ -2510,6 +2522,10 @@ async def connect_matrix(
     async with _MATRIX_STARTUP_SYNC_LOCK:
         if matrix_client:
             return matrix_client
+
+        # Refresh startup timestamps for this bootstrap so stale-event
+        # filtering uses the actual bootstrap window, not module import time.
+        _refresh_bot_start_timestamps()
 
         # Use local variable during initialization to avoid exposing half-initialized client
         client = _initialize_matrix_client(

@@ -22,6 +22,12 @@ from mmrelay.constants.formats import (
     MATRIX_SUPPRESS_KEY,
     TEXT_MESSAGE_APP,
 )
+from mmrelay.constants.network import (
+    MATRIX_CLOCK_ROLLBACK_DISABLE_MS,
+    MATRIX_STALE_STARTUP_EVENT_DROP_MS,
+    MATRIX_STARTUP_STALE_FILTER_WINDOW_MS,
+    MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS,
+)
 from mmrelay.matrix_utils import (
     ImageUploadError,
     NioLocalTransportError,
@@ -838,8 +844,9 @@ async def test_on_room_message_does_not_drop_old_timestamp_messages(
     mock_room, mock_event, test_config
 ):
     """Older event timestamps should still be processed after startup clock corrections."""
-    message_ts = 1_700_000_000_000
-    startup_ts = message_ts + 100
+    base_ts = 1_700_000_000_000
+    message_ts = base_ts
+    startup_ts = message_ts + MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS - 1
     mock_event.server_timestamp = message_ts
 
     with _patch_on_room_message_time_context(
@@ -858,13 +865,16 @@ async def test_on_room_message_drops_clearly_stale_startup_backlog(
     mock_room, mock_event, test_config
 ):
     """Clearly stale pre-start events should be dropped when startup clock is stable."""
-    mock_event.server_timestamp = 1_700_000_000_000
+    base_ts = 1_700_000_000_000
+    message_ts = base_ts
+    bot_start_time = message_ts + MATRIX_STALE_STARTUP_EVENT_DROP_MS + 1000
+    mock_event.server_timestamp = message_ts
 
     with _patch_on_room_message_time_context(
         test_config=test_config,
-        bot_start_time=1_700_000_400_000,
+        bot_start_time=bot_start_time,
         bot_start_monotonic_secs=10_000.0,
-        current_time=1_700_000_405.0,
+        current_time=bot_start_time / 1000 + 5.0,
         current_monotonic=10_005.0,
     ) as mock_queue_message:
         await on_room_message(mock_room, mock_event)
@@ -876,8 +886,9 @@ async def test_on_room_message_allows_old_timestamp_after_clock_rollback(
     mock_room, mock_event, test_config
 ):
     """Clock rollback after startup should not drop legitimate Matrix events."""
-    message_ts = 1_775_234_301_537
-    startup_ts = message_ts + (5 * 60 * 60 * 1000)
+    base_ts = 1_700_000_000_000
+    message_ts = base_ts
+    startup_ts = message_ts + MATRIX_CLOCK_ROLLBACK_DISABLE_MS + 1000
     mock_event.server_timestamp = message_ts
 
     with _patch_on_room_message_time_context(
@@ -896,14 +907,21 @@ async def test_on_room_message_allows_stale_timestamp_after_startup_window(
     mock_room, mock_event, test_config
 ):
     """Stale startup filtering should not drop old events after startup window elapses."""
-    mock_event.server_timestamp = 1_700_000_000_000
+    base_ts = 1_700_000_000_000
+    message_ts = base_ts
+    bot_start_time = message_ts + MATRIX_STALE_STARTUP_EVENT_DROP_MS + 1000
+    mock_event.server_timestamp = message_ts
 
     with _patch_on_room_message_time_context(
         test_config=test_config,
-        bot_start_time=1_700_000_400_000,
+        bot_start_time=bot_start_time,
         bot_start_monotonic_secs=10_000.0,
-        current_time=1_700_000_900.0,
-        current_monotonic=10_500.0,
+        current_time=bot_start_time / 1000
+        + (MATRIX_STARTUP_STALE_FILTER_WINDOW_MS / 1000)
+        + 100,
+        current_monotonic=10_000.0
+        + (MATRIX_STARTUP_STALE_FILTER_WINDOW_MS / 1000)
+        + 100,
     ) as mock_queue_message:
         await on_room_message(mock_room, mock_event)
 

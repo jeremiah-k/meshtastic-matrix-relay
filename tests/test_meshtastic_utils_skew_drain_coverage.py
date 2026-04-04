@@ -1,3 +1,4 @@
+from typing import Any, NoReturn
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -151,7 +152,7 @@ class TestTimeoutExceptionHandler:
         first_client.close.assert_called_once()
 
     def test_timeout_breaks_on_shutdown(self):
-        def _timeout_then_shutdown(*_args, **_kwargs):
+        def _timeout_then_shutdown(*_args: Any, **_kwargs: Any) -> NoReturn:
             mu.shutting_down = True
             raise TimeoutError("timeout")
 
@@ -209,7 +210,7 @@ class TestStartupDrainRaceCondition:
             "user": {"shortName": "Node", "hwModel": "HW"}
         }
 
-        def _metadata_side_effect(_client):
+        def _metadata_side_effect(_client: Any) -> dict[str, Any]:
             mu._startup_packet_drain_applied = True
             return {"firmware_version": "unknown", "success": False}
 

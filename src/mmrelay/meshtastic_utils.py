@@ -3357,9 +3357,6 @@ def _get_connect_time_probe_settings(
     """
     Return connect-time probe enablement and timeout settings for a connection.
     """
-    if connection_type == CONNECTION_TYPE_BLE:
-        return False, float(DEFAULT_MESHTASTIC_OPERATION_TIMEOUT)
-
     default_timeout = float(DEFAULT_MESHTASTIC_OPERATION_TIMEOUT)
     default_enabled = DEFAULT_HEALTH_CHECK_ENABLED
     if not isinstance(active_config, dict):
@@ -3850,7 +3847,7 @@ def connect_meshtastic(
                                     )
                                     if meshtastic_iface is None:
                                         _clear_ble_future(future)
-                                        raise ConnectionRefusedError(
+                                        raise RuntimeError(
                                             "BLE interface creation returned no interface"
                                         )
                                     logger.debug(

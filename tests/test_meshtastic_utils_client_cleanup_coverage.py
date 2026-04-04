@@ -1,4 +1,3 @@
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -74,12 +73,8 @@ class TestBleValidationFailure:
     def test_ble_validation_failure_non_iface_client_closes(self):
         config = _ble_config()
 
-        other_client = MagicMock()
-
         class _FakeBLEWithSideEffect(_FakeBLEInterfaceCompat):
-            def __init__(self, **kwargs: object) -> None:
-                super().__init__(**kwargs)
-                self._other = other_client
+            pass
 
         orig_init = _FakeBLEWithSideEffect.__init__
 
@@ -88,17 +83,23 @@ class TestBleValidationFailure:
                 "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
                 new=_FakeBLEWithSideEffect,
             ),
-            patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
+            patch(
+                "mmrelay.meshtastic_utils._disconnect_ble_by_address"
+            ) as mock_disconnect_by_addr,
             patch(
                 "mmrelay.meshtastic_utils._validate_ble_connection_address",
                 return_value=False,
             ),
-            patch("mmrelay.meshtastic_utils._disconnect_ble_interface"),
+            patch(
+                "mmrelay.meshtastic_utils._disconnect_ble_interface"
+            ) as mock_disconnect_iface,
             patch("mmrelay.meshtastic_utils.logger"),
         ):
             saved_iface = None
 
-            def _capture_iface(self: Any, **kwargs: object) -> None:
+            def _capture_iface(
+                self: "_FakeBLEWithSideEffect", **kwargs: object
+            ) -> None:
                 nonlocal saved_iface
                 orig_init(self, **kwargs)
                 saved_iface = mu.meshtastic_iface
@@ -113,10 +114,15 @@ class TestBleValidationFailure:
 
         assert result is None
 
+        # Verify _disconnect_ble_interface was called during the validation failure cleanup
+        assert mock_disconnect_iface.call_count >= 1
+        # Verify _disconnect_ble_by_address was called during retry (meshtastic_iface was None)
+        assert mock_disconnect_by_addr.call_count >= 1
+
     def test_ble_validation_failure_client_not_iface_uses_close(self):
         config = _ble_config()
 
-        def _validate_and_clear_iface(client: object, addr: str) -> bool:
+        def _validate_and_clear_iface(_client: object, _addr: str) -> bool:
             mu.meshtastic_iface = None
             return False
 

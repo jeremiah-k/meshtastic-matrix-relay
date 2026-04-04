@@ -1534,6 +1534,7 @@ class TestBleInterfaceCreationShuttingDown:
             "meshtastic": {
                 CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_BLE,
                 CONFIG_KEY_BLE_ADDRESS: TEST_BLE_MAC,
+                "retries": 1,
             }
         }
 
@@ -1568,7 +1569,7 @@ class TestBleInterfaceCreationShuttingDown:
                                     with patch("mmrelay.meshtastic_utils.meshtastic"):
                                         mu.connect_meshtastic()
 
-                                        mock_ensure.assert_called_once_with(
+                                        mock_ensure.assert_any_call(
                                             TEST_BLE_MAC,
                                             operation="interface creation",
                                         )

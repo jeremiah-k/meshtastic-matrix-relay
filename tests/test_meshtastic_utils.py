@@ -68,16 +68,9 @@ from tests.constants import (
 TEST_PACKET_RX_TIME = 1234567890
 
 
-@pytest.fixture
-def stable_relay_start_time(monkeypatch):
-    """
-    Keep message-processing tests deterministic regardless of wall-clock time.
-
-    Many packet fixtures in this module use fixed historical `rxTime` values.
-    Pinning RELAY_START_TIME prevents accidental stale-message filtering during
-    tests that are unrelated to startup history behavior.
-    """
-    monkeypatch.setattr("mmrelay.meshtastic_utils.RELAY_START_TIME", 0, raising=False)
+@pytest.fixture(autouse=True)
+def reset_meshtastic_relay_state(monkeypatch):
+    """Reset all Meshtastic relay module globals to prevent cross-test leakage."""
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._relay_active_client_id",
         None,
@@ -118,6 +111,18 @@ def stable_relay_start_time(monkeypatch):
         False,
         raising=False,
     )
+
+
+@pytest.fixture
+def stable_relay_start_time(monkeypatch):
+    """
+    Keep message-processing tests deterministic regardless of wall-clock time.
+
+    Many packet fixtures in this module use fixed historical `rxTime` values.
+    Pinning RELAY_START_TIME prevents accidental stale-message filtering during
+    tests that are unrelated to startup history behavior.
+    """
+    monkeypatch.setattr("mmrelay.meshtastic_utils.RELAY_START_TIME", 0, raising=False)
 
 
 class _FakeEvent:
@@ -213,21 +218,11 @@ class TestMeshtasticUtils(unittest.TestCase):
         import mmrelay.meshtastic_utils
 
         mmrelay.meshtastic_utils.meshtastic_client = None
-        mmrelay.meshtastic_utils._relay_active_client_id = None
         mmrelay.meshtastic_utils.config = None
         mmrelay.meshtastic_utils.matrix_rooms = []
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.shutting_down = False
         mmrelay.meshtastic_utils.reconnect_task = None
-        mmrelay.meshtastic_utils._relay_connection_started_monotonic_secs = (
-            time.monotonic() - (RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS + 1.0)
-        )
-        mmrelay.meshtastic_utils._relay_rx_time_clock_skew_secs = None
-        mmrelay.meshtastic_utils._relay_startup_drain_deadline_monotonic_secs = None
-        mmrelay.meshtastic_utils._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
-            None
-        )
-        mmrelay.meshtastic_utils._startup_packet_drain_applied = False
         iface = mmrelay.meshtastic_utils.meshtastic_iface
         if iface is not None:
             disconnect_iface = getattr(
@@ -1969,14 +1964,6 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         mu.reconnecting = False
         mu.shutting_down = False
         mu.reconnect_task = None
-        mu._relay_active_client_id = None
-        mu._relay_connection_started_monotonic_secs = time.monotonic() - (
-            RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS + 1.0
-        )
-        mu._relay_rx_time_clock_skew_secs = None
-        mu._relay_startup_drain_deadline_monotonic_secs = None
-        mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = None
-        mu._startup_packet_drain_applied = False
 
     def test_on_meshtastic_message_no_decoded(self):
         """
