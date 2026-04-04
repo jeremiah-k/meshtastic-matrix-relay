@@ -3440,6 +3440,54 @@ def _schedule_connect_time_calibration_probe(
     )
 
 
+def _rollback_connect_attempt_state(
+    client: Any,
+    client_assigned_for_this_connect: bool,
+    startup_drain_armed_for_this_connect: bool,
+    startup_drain_applied_for_this_connect: bool,
+    reconnect_bootstrap_armed_for_this_connect: bool,
+) -> bool:
+    """
+    Centralize cleanup of partially-assigned clients and timing state when a connect attempt fails.
+
+    Returns the updated value for client_assigned_for_this_connect (always False after cleanup).
+    """
+    if client_assigned_for_this_connect and client is not None:
+        with meshtastic_lock:
+            global meshtastic_client, meshtastic_iface, _relay_active_client_id
+            if meshtastic_client is client:
+                try:
+                    if client is meshtastic_iface:
+                        _disconnect_ble_interface(
+                            meshtastic_iface, reason="connect setup failed"
+                        )
+                        meshtastic_iface = None
+                    else:
+                        client.close()
+                except Exception as cleanup_error:  # noqa: BLE001 - best-effort cleanup
+                    logger.warning(
+                        "Error closing Meshtastic client after setup failure: %s",
+                        cleanup_error,
+                    )
+                finally:
+                    meshtastic_client = None
+                    _relay_active_client_id = None
+
+    if (
+        startup_drain_armed_for_this_connect
+        or reconnect_bootstrap_armed_for_this_connect
+    ):
+        with _relay_rx_time_clock_skew_lock:
+            if startup_drain_armed_for_this_connect:
+                _relay_startup_drain_deadline_monotonic_secs = None
+                if startup_drain_applied_for_this_connect:
+                    _startup_packet_drain_applied = False
+            if reconnect_bootstrap_armed_for_this_connect:
+                _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = None
+
+    return False
+
+
 def connect_meshtastic(
     passed_config: dict[str, Any] | None = None,
     force_connect: bool = False,
@@ -4224,62 +4272,37 @@ def connect_meshtastic(
                 )
 
         except ConnectionRefusedError:
-            if client_assigned_for_this_connect and client is not None:
-                _cleanup_failed_assigned_client(client)
-                client_assigned_for_this_connect = False
-                successful = False
-            if (
-                startup_drain_armed_for_this_connect
-                or reconnect_bootstrap_armed_for_this_connect
-            ):
-                with _relay_rx_time_clock_skew_lock:
-                    if startup_drain_armed_for_this_connect:
-                        _relay_startup_drain_deadline_monotonic_secs = None
-                        if startup_drain_applied_for_this_connect:
-                            _startup_packet_drain_applied = False
-                    if reconnect_bootstrap_armed_for_this_connect:
-                        _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
-                            None
-                        )
+            _rollback_connect_attempt_state(
+                client=client,
+                client_assigned_for_this_connect=client_assigned_for_this_connect,
+                startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
+                startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
+                reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+            )
+            client_assigned_for_this_connect = False
+            successful = False
             return None
         except (MemoryError, BleExecutorDegradedError):
-            if client_assigned_for_this_connect and client is not None:
-                _cleanup_failed_assigned_client(client)
-                client_assigned_for_this_connect = False
-                successful = False
-            if (
-                startup_drain_armed_for_this_connect
-                or reconnect_bootstrap_armed_for_this_connect
-            ):
-                with _relay_rx_time_clock_skew_lock:
-                    if startup_drain_armed_for_this_connect:
-                        _relay_startup_drain_deadline_monotonic_secs = None
-                        if startup_drain_applied_for_this_connect:
-                            _startup_packet_drain_applied = False
-                    if reconnect_bootstrap_armed_for_this_connect:
-                        _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
-                            None
-                        )
+            _rollback_connect_attempt_state(
+                client=client,
+                client_assigned_for_this_connect=client_assigned_for_this_connect,
+                startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
+                startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
+                reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+            )
+            client_assigned_for_this_connect = False
+            successful = False
             logger.exception("Critical connection error")
             return None
         except (FuturesTimeoutError, TimeoutError) as e:
             successful = False
-            if client_assigned_for_this_connect and client is not None:
-                _cleanup_failed_assigned_client(client)
-                client_assigned_for_this_connect = False
-            if (
-                startup_drain_armed_for_this_connect
-                or reconnect_bootstrap_armed_for_this_connect
-            ):
-                with _relay_rx_time_clock_skew_lock:
-                    if startup_drain_armed_for_this_connect:
-                        _relay_startup_drain_deadline_monotonic_secs = None
-                        if startup_drain_applied_for_this_connect:
-                            _startup_packet_drain_applied = False
-                    if reconnect_bootstrap_armed_for_this_connect:
-                        _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
-                            None
-                        )
+            client_assigned_for_this_connect = _rollback_connect_attempt_state(
+                client=client,
+                client_assigned_for_this_connect=client_assigned_for_this_connect,
+                startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
+                startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
+                reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+            )
             if shutting_down:
                 break
             attempts += 1
@@ -4305,22 +4328,13 @@ def connect_meshtastic(
             time.sleep(wait_time)
         except Exception as e:
             successful = False
-            if client_assigned_for_this_connect and client is not None:
-                _cleanup_failed_assigned_client(client)
-                client_assigned_for_this_connect = False
-            if (
-                startup_drain_armed_for_this_connect
-                or reconnect_bootstrap_armed_for_this_connect
-            ):
-                with _relay_rx_time_clock_skew_lock:
-                    if startup_drain_armed_for_this_connect:
-                        _relay_startup_drain_deadline_monotonic_secs = None
-                        if startup_drain_applied_for_this_connect:
-                            _startup_packet_drain_applied = False
-                    if reconnect_bootstrap_armed_for_this_connect:
-                        _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
-                            None
-                        )
+            client_assigned_for_this_connect = _rollback_connect_attempt_state(
+                client=client,
+                client_assigned_for_this_connect=client_assigned_for_this_connect,
+                startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
+                startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
+                reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+            )
             if shutting_down:
                 logger.debug("Shutdown in progress. Aborting connection attempts.")
                 break
