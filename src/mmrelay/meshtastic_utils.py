@@ -4113,7 +4113,22 @@ def _connect_meshtastic_impl(
                                     raise TimeoutError(
                                         f"BLE connection attempt timed out for {ble_address}."
                                     ) from err
-                            except TimeoutError:
+                            except TimeoutError as err:
+                                if shutting_down or str(err) == "Shutdown in progress":
+                                    if future.cancel():
+                                        _clear_ble_future(future)
+                                    else:
+                                        _schedule_ble_future_cleanup(
+                                            future,
+                                            ble_address,
+                                            reason="interface creation shutdown cancellation",
+                                        )
+                                        _attach_late_ble_interface_disposer(
+                                            future,
+                                            ble_address,
+                                            reason="interface creation shutdown cancellation",
+                                        )
+                                    meshtastic_iface = None
                                 raise
                             except Exception:
                                 # Late BLE worker failures can surface during shutdown
@@ -4233,12 +4248,13 @@ def _connect_meshtastic_impl(
                             )
                             logger.info(f"BLE connection established to {ble_address}")
                             reset_executor_degraded_state(ble_address=ble_address)
-                        except TimeoutError as err:
+                        except (TimeoutError, FuturesTimeoutError) as err:
                             if shutting_down or str(err) == "Shutdown in progress":
                                 logger.debug(
                                     "BLE connect() interrupted by shutdown for %s",
                                     ble_address,
                                 )
+                                shutdown_iface = iface
                                 if connect_future.cancel():
                                     _clear_ble_future(connect_future)
                                 else:
@@ -4246,6 +4262,12 @@ def _connect_meshtastic_impl(
                                         connect_future,
                                         ble_address,
                                         reason="connect shutdown cancellation",
+                                    )
+                                    _attach_late_ble_interface_disposer(
+                                        connect_future,
+                                        ble_address,
+                                        reason="connect shutdown cancellation",
+                                        fallback_iface=shutdown_iface,
                                     )
                                 iface = None
                                 meshtastic_iface = None
