@@ -218,13 +218,17 @@ meshtastic_iface_lock = (
 meshtastic_sub_lock = threading.Lock()
 subscribed_to_messages = False
 subscribed_to_connection_lost = False
+# Guard for brief in-flight callback windows during explicit unsubscribe.
+_callbacks_tearing_down = False
 
 
 def ensure_meshtastic_callbacks_subscribed() -> None:
     """Ensure Meshtastic pubsub callbacks are subscribed exactly once."""
+    global _callbacks_tearing_down
     global subscribed_to_messages, subscribed_to_connection_lost
 
     with meshtastic_sub_lock:
+        _callbacks_tearing_down = False
         if not subscribed_to_messages:
             pub.subscribe(on_meshtastic_message, "meshtastic.receive")
             subscribed_to_messages = True
@@ -238,9 +242,11 @@ def ensure_meshtastic_callbacks_subscribed() -> None:
 
 def unsubscribe_meshtastic_callbacks() -> None:
     """Best-effort unsubscribe for Meshtastic pubsub callbacks."""
+    global _callbacks_tearing_down
     global subscribed_to_messages, subscribed_to_connection_lost
 
     with meshtastic_sub_lock:
+        _callbacks_tearing_down = True
         if subscribed_to_messages:
             try:
                 pub.unsubscribe(on_meshtastic_message, "meshtastic.receive")
@@ -4193,8 +4199,8 @@ def _connect_meshtastic_impl(
                             )
                             logger.info(f"BLE connection established to {ble_address}")
                             reset_executor_degraded_state(ble_address=ble_address)
-                        except TimeoutError:
-                            if shutting_down:
+                        except TimeoutError as err:
+                            if shutting_down or str(err) == "Shutdown in progress":
                                 logger.debug(
                                     "BLE connect() interrupted by shutdown for %s",
                                     ble_address,
@@ -4209,50 +4215,52 @@ def _connect_meshtastic_impl(
                                     )
                                 iface = None
                                 meshtastic_iface = None
-                            raise
-                        except FuturesTimeoutError as err:
-                            # Use logger.exception so timeouts include stack context (TRY400),
-                            # but raise a short error and keep operator guidance in logs (TRY003).
-                            logger.exception(
-                                f"BLE connect() call timed out after {BLE_CONNECT_TIMEOUT_SECS} seconds for %s.",
-                                ble_address,
-                            )
-                            logger.warning(
-                                "This may indicate a BlueZ or adapter issue."
-                            )
-                            logger.warning(
-                                f"BlueZ may be in a bad state. {BLE_TROUBLESHOOTING_GUIDANCE.format(ble_address=ble_address)}"
-                            )
-                            # Best-effort cancellation: a hung BLE connect blocks the worker
-                            # thread, so we cancel to allow retries only if it completes.
-                            if connect_future.cancel():
-                                _clear_ble_future(connect_future)
                             else:
-                                timed_out_iface = iface
-                                # Clear global/local references before attaching late
-                                # disposer so late completions cannot observe stale active
-                                # globals and skip cleanup.
+                                # Use logger.exception so timeouts include stack context (TRY400),
+                                # but raise a short error and keep operator guidance in logs (TRY003).
+                                logger.exception(
+                                    f"BLE connect() call timed out after {BLE_CONNECT_TIMEOUT_SECS} seconds for %s.",
+                                    ble_address,
+                                )
+                                logger.warning(
+                                    "This may indicate a BlueZ or adapter issue."
+                                )
+                                logger.warning(
+                                    f"BlueZ may be in a bad state. {BLE_TROUBLESHOOTING_GUIDANCE.format(ble_address=ble_address)}"
+                                )
+                                # Best-effort cancellation: a hung BLE connect blocks the worker
+                                # thread, so we cancel to allow retries only if it completes.
+                                if connect_future.cancel():
+                                    _clear_ble_future(connect_future)
+                                else:
+                                    timed_out_iface = iface
+                                    # Clear global/local references before attaching late
+                                    # disposer so late completions cannot observe stale active
+                                    # globals and skip cleanup.
+                                    iface = None
+                                    meshtastic_iface = None
+                                    _schedule_ble_future_cleanup(
+                                        connect_future,
+                                        ble_address,
+                                        reason="connect timeout",
+                                    )
+                                    _attach_late_ble_interface_disposer(
+                                        connect_future,
+                                        ble_address,
+                                        reason="connect timeout",
+                                        fallback_iface=timed_out_iface,
+                                    )
+                                    timeout_count = _record_ble_timeout(ble_address)
+                                    _maybe_reset_ble_executor(
+                                        ble_address, timeout_count
+                                    )
+                                # Don't use iface if connect() timed out - it may be in an inconsistent state
                                 iface = None
                                 meshtastic_iface = None
-                                _schedule_ble_future_cleanup(
-                                    connect_future,
-                                    ble_address,
-                                    reason="connect timeout",
-                                )
-                                _attach_late_ble_interface_disposer(
-                                    connect_future,
-                                    ble_address,
-                                    reason="connect timeout",
-                                    fallback_iface=timed_out_iface,
-                                )
-                                timeout_count = _record_ble_timeout(ble_address)
-                                _maybe_reset_ble_executor(ble_address, timeout_count)
-                            # Don't use iface if connect() timed out - it may be in an inconsistent state
-                            iface = None
-                            meshtastic_iface = None
-                            raise TimeoutError(
-                                f"BLE connect() timed out for {ble_address}."
-                            ) from err
+                                raise TimeoutError(
+                                    f"BLE connect() timed out for {ble_address}."
+                                ) from err
+                            raise
                     elif iface is not None and hasattr(iface, "connect"):
                         logger.debug(
                             "Skipping explicit BLE connect in compatibility mode; "
@@ -4659,7 +4667,12 @@ def on_lost_meshtastic_connection(
         if (
             interface is not None
             and active_client is None
-            and subscribed_to_connection_lost
+            and (
+                _callbacks_tearing_down
+                or subscribed_to_connection_lost
+                or reconnecting
+                or shutting_down
+            )
         ):
             logger.debug(
                 "Ignoring connection-lost event because no Meshtastic interface is currently active"
@@ -4796,7 +4809,7 @@ async def reconnect() -> None:
 
     Retries connect_meshtastic(force_connect=True) until a connection is obtained, the application begins shutting down, or the task is cancelled. Starts with DEFAULT_BACKOFF_TIME and doubles the wait after each failed attempt, capped at 300 seconds. Stops promptly on cancellation or when shutting_down is set, and ensures the module-level `reconnecting` flag is cleared before returning.
     """
-    global meshtastic_client, reconnecting, shutting_down, reconnect_task_future
+    global reconnecting, shutting_down, reconnect_task_future
     backoff_time = DEFAULT_BACKOFF_TIME
     try:
         while not shutting_down:
@@ -4849,7 +4862,6 @@ async def reconnect() -> None:
                 reconnect_task_future = connect_future
                 connected_client = await connect_future
                 if connected_client is not None:
-                    meshtastic_client = connected_client
                     logger.info("Reconnected successfully.")
                     break
             except Exception:
@@ -4907,7 +4919,12 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         #
         # Keep direct unit-level handler invocation behavior unchanged when no
         # active session is being transitioned.
-        if subscribed_to_messages or reconnecting or shutting_down:
+        if (
+            _callbacks_tearing_down
+            or subscribed_to_messages
+            or reconnecting
+            or shutting_down
+        ):
             logger.debug(
                 "Ignoring packet because no Meshtastic interface is currently active"
             )

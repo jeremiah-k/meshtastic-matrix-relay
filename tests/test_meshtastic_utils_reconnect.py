@@ -20,10 +20,15 @@ class TestReconnectSuccess:
         mu.shutting_down = False
         mu.reconnect_task_future = None
 
+        def _connect_side_effect(_cfg, _force):
+            mu.meshtastic_client = mock_client
+            return mock_client
+
         with (
             patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
             patch(
-                "mmrelay.meshtastic_utils.connect_meshtastic", return_value=mock_client
+                "mmrelay.meshtastic_utils.connect_meshtastic",
+                side_effect=_connect_side_effect,
             ),
             patch("mmrelay.meshtastic_utils.asyncio.sleep", new_callable=AsyncMock),
         ):
@@ -33,11 +38,12 @@ class TestReconnectSuccess:
         assert mu.reconnecting is False
         assert mu.reconnect_task_future is None
 
-    async def test_reconnect_clears_future_after_success(self):
+    async def test_reconnect_success_does_not_republish_client_global(self):
         mock_client = MagicMock()
         mu.reconnecting = True
         mu.shutting_down = False
         mu.reconnect_task_future = None
+        mu.meshtastic_client = None
 
         with (
             patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
@@ -50,7 +56,7 @@ class TestReconnectSuccess:
 
         assert mu.reconnect_task_future is None
         assert mu.reconnecting is False
-        assert mu.meshtastic_client is mock_client
+        assert mu.meshtastic_client is None
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")

@@ -960,6 +960,7 @@ def reset_meshtastic_globals():
         "subscribed_to_connection_lost": getattr(
             mu, "subscribed_to_connection_lost", False
         ),
+        "_callbacks_tearing_down": getattr(mu, "_callbacks_tearing_down", False),
         "_metadata_future": getattr(mu, "_metadata_future", None),
         "_metadata_future_started_at": getattr(mu, "_metadata_future_started_at", None),
         "_ble_future": getattr(mu, "_ble_future", None),
@@ -1024,6 +1025,7 @@ def reset_meshtastic_globals():
     mu.reconnect_task_future = None
     mu.subscribed_to_messages = False
     mu.subscribed_to_connection_lost = False
+    mu._callbacks_tearing_down = False
     mu._metadata_future = None
     mu._metadata_future_started_at = None
     cleanup_ble_future_state(mu)
@@ -1120,6 +1122,7 @@ def reset_meshtastic_globals():
                 )
         mu.subscribed_to_messages = False
         mu.subscribed_to_connection_lost = False
+        mu._callbacks_tearing_down = False
         cleanup_ble_future_state(mu)
         mu.shutdown_shared_executors()
         mu.meshtastic_iface = None

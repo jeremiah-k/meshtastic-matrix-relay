@@ -17,6 +17,7 @@ class TestEnsureCallbacksSubscribed:
     def test_subscribes_to_both_topics(self):
         mu.subscribed_to_messages = False
         mu.subscribed_to_connection_lost = False
+        mu._callbacks_tearing_down = True
 
         with patch("mmrelay.meshtastic_utils.pub.subscribe") as mock_subscribe:
             ensure_meshtastic_callbacks_subscribed()
@@ -28,6 +29,7 @@ class TestEnsureCallbacksSubscribed:
         )
         assert mu.subscribed_to_messages is True
         assert mu.subscribed_to_connection_lost is True
+        assert mu._callbacks_tearing_down is False
 
     def test_idempotent_does_not_double_subscribe(self):
         mu.subscribed_to_messages = False
@@ -68,6 +70,7 @@ class TestUnsubscribeCallbacks:
     def test_unsubscribes_from_both_topics_when_subscribed(self):
         mu.subscribed_to_messages = True
         mu.subscribed_to_connection_lost = True
+        mu._callbacks_tearing_down = False
 
         with patch("mmrelay.meshtastic_utils.pub.unsubscribe") as mock_unsubscribe:
             unsubscribe_meshtastic_callbacks()
@@ -79,6 +82,7 @@ class TestUnsubscribeCallbacks:
         )
         assert mu.subscribed_to_messages is False
         assert mu.subscribed_to_connection_lost is False
+        assert mu._callbacks_tearing_down is True
 
     def test_suppresses_exception_from_unsubscribe_messages(self):
         mu.subscribed_to_messages = True

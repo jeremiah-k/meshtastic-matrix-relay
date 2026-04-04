@@ -29,6 +29,25 @@ class TestOnLostConnectionNoActiveClient:
             for c in debug_calls
         )
 
+    def test_ignores_when_no_active_client_and_callbacks_tearing_down(self):
+        mu.meshtastic_client = None
+        mu.subscribed_to_connection_lost = False
+        mu._callbacks_tearing_down = True
+        mu.shutting_down = False
+
+        mock_interface = MagicMock()
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            on_lost_meshtastic_connection(interface=mock_interface)
+
+        assert mu.reconnecting is False
+        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        assert any(
+            "Ignoring connection-lost event because no Meshtastic interface is currently active"
+            in c
+            for c in debug_calls
+        )
+
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestOnLostConnectionStaleInterface:
@@ -88,6 +107,22 @@ class TestOnMeshtasticMessageNoActiveClient:
     def test_ignores_packet_when_reconnecting(self):
         mu.meshtastic_client = None
         mu.reconnecting = True
+
+        mock_interface = MagicMock()
+        packet = {"decoded": {"text": "hello"}, "fromId": "!abc", "to": 4294967295}
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            on_meshtastic_message(packet, mock_interface)
+
+        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        assert any(
+            "Ignoring packet because no Meshtastic interface is currently active" in c
+            for c in debug_calls
+        )
+
+    def test_ignores_packet_when_callbacks_tearing_down(self):
+        mu.meshtastic_client = None
+        mu._callbacks_tearing_down = True
 
         mock_interface = MagicMock()
         packet = {"decoded": {"text": "hello"}, "fromId": "!abc", "to": 4294967295}
