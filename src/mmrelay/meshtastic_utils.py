@@ -196,6 +196,9 @@ event_loop = None  # Will be set from main.py
 meshtastic_lock = (
     threading.Lock()
 )  # To prevent race conditions on meshtastic_client access
+# Serialize full connect attempt lifecycles so concurrent callers do not
+# create overlapping clients/interfaces and race rollback cleanup.
+_connect_attempt_lock = threading.RLock()
 
 reconnecting = False
 shutting_down = False
@@ -3498,6 +3501,33 @@ def _rollback_connect_attempt_state(
 
 
 def connect_meshtastic(
+    passed_config: dict[str, Any] | None = None,
+    force_connect: bool = False,
+) -> Any:
+    """
+    Establish a Meshtastic connection while serializing full connect lifecycles.
+
+    This wrapper prevents overlapping `connect_meshtastic()` attempts across
+    threads. Callers that arrive while another connect is in progress wait for
+    that attempt to finish and then execute normally.
+    """
+    acquired_without_wait = _connect_attempt_lock.acquire(blocking=False)
+    if not acquired_without_wait:
+        logger.debug(
+            "connect_meshtastic() already in progress; waiting for active attempt to finish"
+        )
+        _connect_attempt_lock.acquire()
+
+    try:
+        return _connect_meshtastic_impl(
+            passed_config=passed_config,
+            force_connect=force_connect,
+        )
+    finally:
+        _connect_attempt_lock.release()
+
+
+def _connect_meshtastic_impl(
     passed_config: dict[str, Any] | None = None,
     force_connect: bool = False,
 ) -> Any:
