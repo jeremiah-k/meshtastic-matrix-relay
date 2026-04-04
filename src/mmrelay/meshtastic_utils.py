@@ -3655,14 +3655,14 @@ def connect_meshtastic(
         else config if isinstance(config, dict) else None
     )
     if isinstance(config_source, dict):
-        connection_type = config_source.get(CONFIG_SECTION_MESHTASTIC, {}).get(
-            CONFIG_KEY_CONNECTION_TYPE
-        )
-        if connection_type == CONNECTION_TYPE_BLE:
-            wait_budget_secs = max(
-                wait_budget_secs,
-                _CONNECT_ATTEMPT_BLE_WAIT_MAX_SECS,
-            )
+        meshtastic_section = config_source.get(CONFIG_SECTION_MESHTASTIC)
+        if isinstance(meshtastic_section, dict):
+            connection_type = meshtastic_section.get(CONFIG_KEY_CONNECTION_TYPE)
+            if connection_type == CONNECTION_TYPE_BLE:
+                wait_budget_secs = max(
+                    wait_budget_secs,
+                    _CONNECT_ATTEMPT_BLE_WAIT_MAX_SECS,
+                )
 
     wait_deadline = time.monotonic() + wait_budget_secs
 
