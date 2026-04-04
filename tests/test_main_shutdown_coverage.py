@@ -192,13 +192,20 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
             mu.reconnect_task = None
             mu.reconnect_task_future = None
 
+            original_wait_for = asyncio.wait_for
+            wait_for_call_count = 0
+
+            async def _wait_for_that_times_out_on_gather(coro, timeout):
+                nonlocal wait_for_call_count
+                wait_for_call_count += 1
+                if wait_for_call_count >= 2:
+                    raise asyncio.TimeoutError()
+                return await original_wait_for(coro, timeout)
+
             async def _check_connection_that_ignores_cancel(*_args, **_kwargs):
                 try:
                     while True:
-                        try:
-                            await asyncio.sleep(10)
-                        except asyncio.CancelledError:
-                            pass
+                        await asyncio.sleep(10)
                 except asyncio.CancelledError:
                     pass
 
@@ -221,6 +228,10 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
                     side_effect=_make_patched_get_running_loop(),
                 ),
                 patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
+                patch(
+                    "mmrelay.main.asyncio.wait_for",
+                    side_effect=_wait_for_that_times_out_on_gather,
+                ),
                 patch(
                     "mmrelay.main.meshtastic_utils.check_connection",
                     side_effect=_check_connection_that_ignores_cancel,
