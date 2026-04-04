@@ -2352,6 +2352,7 @@ def _wait_for_future_result_with_shutdown(
 
     deadline = time.monotonic() + float(timeout_seconds)
     poll_budget = max(0.05, float(poll_seconds))
+    immediate_timeout_count = 0
 
     while True:
         if shutting_down:
@@ -2361,9 +2362,21 @@ def _wait_for_future_result_with_shutdown(
         if remaining <= 0:
             raise FuturesTimeoutError()
 
+        wait_budget = min(remaining, poll_budget)
+        call_started = time.monotonic()
         try:
-            return result_future.result(timeout=min(remaining, poll_budget))
+            return result_future.result(timeout=wait_budget)
         except FuturesTimeoutError:
+            call_elapsed = time.monotonic() - call_started
+            # Some mocked futures raise timeout immediately instead of blocking for
+            # the timeout duration. Avoid a busy-loop that can run until the full
+            # deadline in that scenario.
+            if call_elapsed < min(0.01, wait_budget * 0.1):
+                immediate_timeout_count += 1
+                if immediate_timeout_count >= 3:
+                    raise
+            else:
+                immediate_timeout_count = 0
             continue
 
 
@@ -4670,7 +4683,6 @@ def on_lost_meshtastic_connection(
             and (
                 _callbacks_tearing_down
                 or subscribed_to_connection_lost
-                or reconnecting
                 or shutting_down
             )
         ):
