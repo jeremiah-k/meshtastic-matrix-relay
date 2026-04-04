@@ -294,15 +294,18 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
             mu.reconnect_task = None
 
             captured_future = None
+            cancel_observed = False
 
             def _capture_reconnect_future(*_args, **_kwargs):
                 nonlocal captured_future
+                nonlocal cancel_observed
 
                 async def _fake_reconnect():
+                    nonlocal cancel_observed
                     try:
                         await asyncio.sleep(300)
                     except asyncio.CancelledError:
-                        pass
+                        cancel_observed = True
 
                 loop = asyncio.get_running_loop()
                 captured_future = loop.create_task(_fake_reconnect())
@@ -343,7 +346,8 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
                 asyncio.run(main(self.mock_config))
 
             assert captured_future is not None
-            assert captured_future.cancelled()
+            assert captured_future.cancelled() or cancel_observed
+            assert captured_future.done()
             assert mu.reconnect_task_future is None
         finally:
             mu.meshtastic_client = original_client
