@@ -2444,6 +2444,32 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         assert not second_result
         assert mu._relay_rx_time_clock_skew_secs is None
 
+    def test_seed_connect_time_skew_accepts_day_scale_future_offset(self):
+        """Day-scale node clock offsets should still be calibratable."""
+        import mmrelay.meshtastic_utils as mu
+
+        now_wall = 200_000.0
+        now_mono = 1_005.0
+        rx_time = now_wall + 100_654.84
+
+        mu._relay_rx_time_clock_skew_secs = None
+        mu._relay_connection_started_monotonic_secs = 1_000.0
+        mu.RELAY_START_TIME = 190_000.0
+        mu._relay_startup_drain_deadline_monotonic_secs = None
+        mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = None
+
+        with (
+            patch("mmrelay.meshtastic_utils.time.time", return_value=now_wall),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=now_mono),
+        ):
+            result = mu._seed_connect_time_skew(rx_time)
+
+        self.assertTrue(result)
+        skew = mu._relay_rx_time_clock_skew_secs
+        self.assertIsNotNone(skew)
+        assert skew is not None
+        self.assertLess(abs(skew + 100_654.84), 1e-6)
+
     def test_claim_health_probe_uses_localnode_fallback(self):
         """_claim_health_probe_response_and_maybe_calibrate should fall back to localNode when myInfo is absent."""
         import mmrelay.meshtastic_utils as mu
