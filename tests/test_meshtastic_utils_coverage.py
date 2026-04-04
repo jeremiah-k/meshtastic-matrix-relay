@@ -27,6 +27,7 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_BLE,
     CONNECTION_TYPE_TCP,
     METADATA_WATCHDOG_SECS,
+    RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS,
 )
 from tests.constants import TEST_BLE_MAC
 
@@ -50,7 +51,7 @@ def reset_meshtastic_state(reset_meshtastic_globals):
     # Keep startup bootstrap window deterministically closed in this suite unless
     # a test explicitly opts into startup-window behavior.
     mu._relay_connection_started_monotonic_secs = time.monotonic() - (
-        mu._RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS + 1.0
+        RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS + 1.0
     )
     mu._ble_executor_orphaned_workers_by_address = {}
     mu._metadata_executor_orphaned_workers = 0
