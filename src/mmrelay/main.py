@@ -875,7 +875,7 @@ async def main(config: dict[str, Any]) -> None:
                 backoff_seconds = min(backoff_seconds * 2.0, max_backoff_seconds)
 
     async def _await_background_task_shutdown(
-        task: asyncio.Task[Any] | None,
+        task: asyncio.Future[Any] | None,
         *,
         task_name: str,
         timeout_seconds: float,
@@ -1099,17 +1099,26 @@ async def main(config: dict[str, Any]) -> None:
             task_name="connection health task",
             timeout_seconds=5.0,
         )
+        reconnect_future_obj = meshtastic_utils.reconnect_task_future
         reconnect_task_obj = meshtastic_utils.reconnect_task
         if reconnect_task_obj:
             reconnect_task_obj.cancel()
             meshtastic_logger.info("Cancelled Meshtastic reconnect task.")
-            if isinstance(reconnect_task_obj, asyncio.Task):
+            if isinstance(reconnect_task_obj, asyncio.Future):
                 await _await_background_task_shutdown(
                     reconnect_task_obj,
                     task_name="Meshtastic reconnect task",
                     timeout_seconds=5.0,
                 )
             meshtastic_utils.reconnect_task = None
+        if reconnect_future_obj is not None:
+            reconnect_future_obj.cancel()
+            await _await_background_task_shutdown(
+                reconnect_future_obj,
+                task_name="Meshtastic reconnect worker future",
+                timeout_seconds=5.0,
+            )
+            meshtastic_utils.reconnect_task_future = None
         meshtastic_utils.unsubscribe_meshtastic_callbacks()
         # Cleanup
         matrix_logger.info("Stopping plugins...")

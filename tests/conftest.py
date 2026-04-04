@@ -950,6 +950,10 @@ def reset_meshtastic_globals():
         "reconnecting": getattr(mu, "reconnecting", False),
         "shutting_down": getattr(mu, "shutting_down", False),
         "reconnect_task": getattr(mu, "reconnect_task", None),
+        "reconnect_task_future": getattr(mu, "reconnect_task_future", None),
+        "_connect_attempt_in_progress": getattr(
+            mu, "_connect_attempt_in_progress", False
+        ),
         "subscribed_to_messages": getattr(mu, "subscribed_to_messages", False),
         "subscribed_to_connection_lost": getattr(
             mu, "subscribed_to_connection_lost", False
@@ -1015,6 +1019,8 @@ def reset_meshtastic_globals():
     mu.reconnecting = False
     mu.shutting_down = False
     mu.reconnect_task = None
+    mu.reconnect_task_future = None
+    mu._connect_attempt_in_progress = False
     mu.subscribed_to_messages = False
     mu.subscribed_to_connection_lost = False
     mu._metadata_future = None
@@ -1089,9 +1095,14 @@ def reset_meshtastic_globals():
 
         _cancel_and_drain_future_like(getattr(mu, "reconnect_task", None), timeout=0.2)
         _cancel_and_drain_future_like(
+            getattr(mu, "reconnect_task_future", None), timeout=0.2
+        )
+        _cancel_and_drain_future_like(
             getattr(mu, "_metadata_future", None), timeout=0.2
         )
         mu.reconnect_task = None
+        mu.reconnect_task_future = None
+        mu._connect_attempt_in_progress = False
         mu._metadata_future = None
         mu._metadata_future_started_at = None
         if mu.subscribed_to_messages:

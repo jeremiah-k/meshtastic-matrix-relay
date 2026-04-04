@@ -164,6 +164,14 @@ def reset_meshtastic_utils_globals(*, shutdown_executors: bool = False) -> None:
             with contextlib.suppress(Exception):
                 task.cancel()
         module.reconnect_task = None  # type: ignore[attr-defined]
+    if hasattr(module, "reconnect_task_future"):
+        future = module.reconnect_task_future  # type: ignore[attr-defined]
+        if future is not None and hasattr(future, "cancel"):
+            with contextlib.suppress(Exception):
+                future.cancel()
+        module.reconnect_task_future = None  # type: ignore[attr-defined]
+    if hasattr(module, "_connect_attempt_in_progress"):
+        module._connect_attempt_in_progress = False  # type: ignore[attr-defined]
     if hasattr(module, "subscribed_to_messages"):
         if module.subscribed_to_messages:  # type: ignore[attr-defined]
             with contextlib.suppress(Exception):

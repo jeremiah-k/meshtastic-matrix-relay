@@ -199,11 +199,15 @@ meshtastic_lock = (
 # Serialize full connect attempt lifecycles so concurrent callers do not
 # create overlapping clients/interfaces and race rollback cleanup.
 _connect_attempt_lock = threading.RLock()
+_connect_attempt_condition = threading.Condition(_connect_attempt_lock)
+_connect_attempt_in_progress = False
+_CONNECT_ATTEMPT_WAIT_POLL_SECS = 1.0
 
 reconnecting = False
 shutting_down = False
 
 reconnect_task = None  # To keep track of the reconnect task
+reconnect_task_future: asyncio.Future[Any] | None = None
 meshtastic_iface_lock = (
     threading.Lock()
 )  # To prevent race conditions on BLE interface singleton creation
@@ -3543,18 +3547,28 @@ def connect_meshtastic(
     force_connect: bool = False,
 ) -> Any:
     """
-    Establish a Meshtastic connection while serializing full connect lifecycles.
+    Establish a Meshtastic connection while preventing overlapping attempts.
 
-    This wrapper prevents overlapping `connect_meshtastic()` attempts across
-    threads. Callers that arrive while another connect is in progress wait for
-    that attempt to finish and then execute normally.
+    This wrapper coordinates concurrent callers with an in-progress marker.
+    Callers that arrive while another connect is running wait for that attempt
+    to finish, then retry acquisition.
     """
-    acquired_without_wait = _connect_attempt_lock.acquire(blocking=False)
-    if not acquired_without_wait:
-        logger.debug(
-            "connect_meshtastic() already in progress; waiting for active attempt to finish"
-        )
-        _connect_attempt_lock.acquire()
+    global _connect_attempt_in_progress
+
+    while True:
+        with _connect_attempt_condition:
+            if not _connect_attempt_in_progress:
+                _connect_attempt_in_progress = True
+                break
+
+            logger.debug(
+                "connect_meshtastic() already in progress; waiting for active attempt to finish"
+            )
+            while _connect_attempt_in_progress and not shutting_down:
+                _connect_attempt_condition.wait(timeout=_CONNECT_ATTEMPT_WAIT_POLL_SECS)
+            if shutting_down:
+                logger.debug("Shutdown in progress. Not attempting to connect.")
+                return None
 
     try:
         return _connect_meshtastic_impl(
@@ -3562,7 +3576,9 @@ def connect_meshtastic(
             force_connect=force_connect,
         )
     finally:
-        _connect_attempt_lock.release()
+        with _connect_attempt_condition:
+            _connect_attempt_in_progress = False
+            _connect_attempt_condition.notify_all()
 
 
 def _connect_meshtastic_impl(
@@ -4597,7 +4613,7 @@ async def reconnect() -> None:
 
     Retries connect_meshtastic(force_connect=True) until a connection is obtained, the application begins shutting down, or the task is cancelled. Starts with DEFAULT_BACKOFF_TIME and doubles the wait after each failed attempt, capped at 300 seconds. Stops promptly on cancellation or when shutting_down is set, and ensures the module-level `reconnecting` flag is cleared before returning.
     """
-    global meshtastic_client, reconnecting, shutting_down
+    global meshtastic_client, reconnecting, shutting_down, reconnect_task_future
     backoff_time = DEFAULT_BACKOFF_TIME
     try:
         while not shutting_down:
@@ -4644,9 +4660,15 @@ async def reconnect() -> None:
                 loop = asyncio.get_running_loop()
                 # Pass the current config during reconnection to ensure matrix_rooms is populated
                 # Using None for passed_config would skip matrix_rooms initialization
-                meshtastic_client = await loop.run_in_executor(
+                connect_future = loop.run_in_executor(
                     None, connect_meshtastic, config, True
                 )
+                reconnect_task_future = connect_future
+                try:
+                    meshtastic_client = await connect_future
+                finally:
+                    if reconnect_task_future is connect_future:
+                        reconnect_task_future = None
                 if meshtastic_client:
                     logger.info("Reconnected successfully.")
                     break
@@ -4658,6 +4680,7 @@ async def reconnect() -> None:
     except asyncio.CancelledError:
         logger.info("Reconnection task was cancelled.")
     finally:
+        reconnect_task_future = None
         reconnecting = False
 
 

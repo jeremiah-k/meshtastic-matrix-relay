@@ -963,7 +963,6 @@ class TestMain(unittest.TestCase):
                 ) as mock_disconnect_iface,
                 patch(
                     "mmrelay.main.meshtastic_utils.unsubscribe_meshtastic_callbacks",
-                    create=True,
                 ) as mock_unsubscribe_callbacks,
                 patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
                 patch(
