@@ -1099,6 +1099,18 @@ async def main(config: dict[str, Any]) -> None:
             task_name="connection health task",
             timeout_seconds=5.0,
         )
+        reconnect_task_obj = meshtastic_utils.reconnect_task
+        if reconnect_task_obj:
+            reconnect_task_obj.cancel()
+            meshtastic_logger.info("Cancelled Meshtastic reconnect task.")
+            if isinstance(reconnect_task_obj, asyncio.Task):
+                await _await_background_task_shutdown(
+                    reconnect_task_obj,
+                    task_name="Meshtastic reconnect task",
+                    timeout_seconds=5.0,
+                )
+            meshtastic_utils.reconnect_task = None
+        meshtastic_utils.unsubscribe_meshtastic_callbacks()
         # Cleanup
         matrix_logger.info("Stopping plugins...")
         await _run_blocking_shutdown_step(
@@ -1120,11 +1132,6 @@ async def main(config: dict[str, Any]) -> None:
         if wipe_on_restart:
             logger.debug("wipe_on_restart enabled. Wiping message_map now (shutdown).")
             wipe_message_map()
-
-        # Cancel the reconnect task if it exists
-        if meshtastic_utils.reconnect_task:
-            meshtastic_utils.reconnect_task.cancel()
-            meshtastic_logger.info("Cancelled Meshtastic reconnect task.")
 
         matrix_logger.info("Shutdown complete.")
         if fatal_exception is not None and sys.exc_info()[1] is None:

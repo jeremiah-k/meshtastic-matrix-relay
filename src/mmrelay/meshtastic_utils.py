@@ -212,6 +212,42 @@ meshtastic_iface_lock = (
 subscribed_to_messages = False
 subscribed_to_connection_lost = False
 
+
+def ensure_meshtastic_callbacks_subscribed() -> None:
+    """Ensure Meshtastic pubsub callbacks are subscribed exactly once."""
+    global subscribed_to_messages, subscribed_to_connection_lost
+
+    if not subscribed_to_messages:
+        pub.subscribe(on_meshtastic_message, "meshtastic.receive")
+        subscribed_to_messages = True
+        logger.debug("Subscribed to meshtastic.receive")
+
+    if not subscribed_to_connection_lost:
+        pub.subscribe(on_lost_meshtastic_connection, "meshtastic.connection.lost")
+        subscribed_to_connection_lost = True
+        logger.debug("Subscribed to meshtastic.connection.lost")
+
+
+def unsubscribe_meshtastic_callbacks() -> None:
+    """Best-effort unsubscribe for Meshtastic pubsub callbacks."""
+    global subscribed_to_messages, subscribed_to_connection_lost
+
+    if subscribed_to_messages:
+        with contextlib.suppress(Exception):
+            pub.unsubscribe(on_meshtastic_message, "meshtastic.receive")
+        subscribed_to_messages = False
+        logger.debug("Unsubscribed from meshtastic.receive")
+
+    if subscribed_to_connection_lost:
+        with contextlib.suppress(Exception):
+            pub.unsubscribe(
+                on_lost_meshtastic_connection,
+                "meshtastic.connection.lost",
+            )
+        subscribed_to_connection_lost = False
+        logger.debug("Unsubscribed from meshtastic.connection.lost")
+
+
 # Shared executor for getMetadata() to avoid leaking threads when metadata calls hang.
 # A single worker is enough because getMetadata() is serialized by design.
 _metadata_executor: ThreadPoolExecutor | None = ThreadPoolExecutor(max_workers=1)
@@ -373,7 +409,8 @@ def _shutdown_shared_executors() -> None:
     global _ble_future_started_at, _ble_future_timeout_secs
     global _metadata_executor, _metadata_future, _metadata_future_started_at
     global _health_probe_request_deadlines
-    global _metadata_executor_orphaned_workers, _ble_executor_orphaned_workers_by_address
+    global _metadata_executor_orphaned_workers
+    global _ble_executor_orphaned_workers_by_address
     global _ble_executor_degraded_addresses, _metadata_executor_degraded
 
     # Cancel any pending BLE operation
@@ -462,7 +499,8 @@ def reset_executor_degraded_state(
         bool: True if any degraded state was reset, False otherwise.
     """
     global _ble_executor_degraded_addresses, _metadata_executor_degraded
-    global _metadata_executor_orphaned_workers, _ble_executor_orphaned_workers_by_address
+    global _metadata_executor_orphaned_workers
+    global _ble_executor_orphaned_workers_by_address
     global _ble_executor, _metadata_executor
 
     reset_any = False
@@ -4264,19 +4302,8 @@ def _connect_meshtastic_impl(
                             _relay_startup_drain_deadline_monotonic_secs,
                         )
 
-                # Subscribe to message and connection lost events (only once per application run)
-                global subscribed_to_messages, subscribed_to_connection_lost
-                if not subscribed_to_messages:
-                    pub.subscribe(on_meshtastic_message, "meshtastic.receive")
-                    subscribed_to_messages = True
-                    logger.debug("Subscribed to meshtastic.receive")
-
-                if not subscribed_to_connection_lost:
-                    pub.subscribe(
-                        on_lost_meshtastic_connection, "meshtastic.connection.lost"
-                    )
-                    subscribed_to_connection_lost = True
-                    logger.debug("Subscribed to meshtastic.connection.lost")
+                # Subscribe to message and connection-lost events.
+                ensure_meshtastic_callbacks_subscribed()
 
                 _schedule_connect_time_calibration_probe(
                     client,
@@ -4654,6 +4681,10 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     # Validate packet structure
     if not packet or not isinstance(packet, dict):
         logger.error("Received malformed packet: packet is None or not a dict")
+        return
+
+    if shutting_down:
+        logger.debug("Shutdown in progress. Ignoring incoming messages.")
         return
 
     # Read-mostly guard values; avoid meshtastic_lock here because callbacks can

@@ -917,6 +917,76 @@ class TestMain(unittest.TestCase):
 
         self.assertIsNone(mu.meshtastic_iface)
 
+    def test_main_shutdown_cancels_reconnect_before_ble_disconnect_and_unsubscribes(
+        self,
+    ):
+        """Shutdown should cancel reconnect before BLE disconnect and unsubscribe callbacks."""
+
+        import mmrelay.meshtastic_utils as mu
+
+        mock_iface = MagicMock()
+        reconnect_task = MagicMock()
+        mu.reconnect_task = reconnect_task
+
+        def _connect_meshtastic(*_args: Any, **_kwargs: Any) -> Any:
+            mu.meshtastic_iface = mock_iface
+            return mock_iface
+
+        mock_matrix_client = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+
+        def _assert_disconnect_after_cancel(iface: Any, reason: str = "") -> None:
+            assert iface is mock_iface
+            assert reason == "shutdown"
+            assert reconnect_task.cancel.called
+
+        try:
+            with (
+                patch("mmrelay.main.initialize_database"),
+                patch("mmrelay.main.load_plugins"),
+                patch("mmrelay.main.start_message_queue"),
+                patch(
+                    "mmrelay.main.connect_meshtastic",
+                    side_effect=_connect_meshtastic,
+                ),
+                patch(
+                    "mmrelay.main.connect_matrix",
+                    side_effect=_make_async_return(mock_matrix_client),
+                ),
+                patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
+                patch("mmrelay.main.shutdown_plugins"),
+                patch("mmrelay.main.stop_message_queue"),
+                patch("mmrelay.main.get_message_queue") as mock_get_queue,
+                patch(
+                    "mmrelay.main.meshtastic_utils._disconnect_ble_interface",
+                    side_effect=_assert_disconnect_after_cancel,
+                ) as mock_disconnect_iface,
+                patch(
+                    "mmrelay.main.meshtastic_utils.unsubscribe_meshtastic_callbacks",
+                    create=True,
+                ) as mock_unsubscribe_callbacks,
+                patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+                patch(
+                    "mmrelay.main.asyncio.get_running_loop",
+                    side_effect=_make_patched_get_running_loop(),
+                ),
+                patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
+                patch(
+                    "mmrelay.main.meshtastic_utils.check_connection", new=_async_noop
+                ),
+            ):
+                mock_queue = MagicMock()
+                mock_queue.ensure_processor_started = MagicMock()
+                mock_get_queue.return_value = mock_queue
+
+                asyncio.run(main(self.mock_config))
+
+            reconnect_task.cancel.assert_called_once()
+            mock_disconnect_iface.assert_called_once_with(mock_iface, reason="shutdown")
+            mock_unsubscribe_callbacks.assert_called_once()
+        finally:
+            mu.reconnect_task = None
+
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")

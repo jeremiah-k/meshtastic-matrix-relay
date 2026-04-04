@@ -113,6 +113,10 @@ class TestOnMeshtasticMessageNoActiveClient:
 
         debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
         assert any(
+            "Shutdown in progress. Ignoring incoming messages." in c
+            for c in debug_calls
+        )
+        assert not any(
             "Ignoring packet because no Meshtastic interface is currently active" in c
             for c in debug_calls
         )
