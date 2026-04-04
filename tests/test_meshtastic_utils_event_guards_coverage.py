@@ -127,8 +127,8 @@ class TestOnMeshtasticMessageNoActiveClient:
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             on_meshtastic_message(packet, mock_interface)
 
-        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        error_calls = [str(c) for c in mock_logger.error.call_args_list]
         assert any(
-            "Ignoring packet because no Meshtastic interface is currently active" in c
-            for c in debug_calls
+            "Inconsistent relay state: active_client is None but active_client_id=" in c
+            for c in error_calls
         )
