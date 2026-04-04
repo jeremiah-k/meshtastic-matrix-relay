@@ -4771,8 +4771,8 @@ async def reconnect() -> None:
                 loop = asyncio.get_running_loop()
                 # Pass the current config during reconnection to ensure matrix_rooms is populated
                 # Using None for passed_config would skip matrix_rooms initialization
-                connect_future = loop.run_in_executor(
-                    None, connect_meshtastic, config, True
+                connect_future = asyncio.ensure_future(
+                    loop.run_in_executor(None, connect_meshtastic, config, True)
                 )
                 reconnect_task_future = connect_future
                 meshtastic_client = await connect_future
