@@ -97,6 +97,29 @@ def test_connect_meshtastic_serializes_concurrent_connect_attempts(
     assert mock_tcp.call_count == 1
 
 
+def test_connect_meshtastic_waiter_times_out_when_attempt_stuck(
+    reset_meshtastic_globals,
+):
+    """Waiting callers should return quickly when a connect attempt is stuck."""
+    with mu._connect_attempt_condition:
+        mu._connect_attempt_in_progress = True
+
+    start = time.monotonic()
+    with (
+        patch.object(mu, "_CONNECT_ATTEMPT_WAIT_MAX_SECS", 0.02),
+        patch.object(mu, "_CONNECT_ATTEMPT_WAIT_POLL_SECS", 0.005),
+    ):
+        result = connect_meshtastic()
+    elapsed = time.monotonic() - start
+
+    with mu._connect_attempt_condition:
+        mu._connect_attempt_in_progress = False
+        mu._connect_attempt_condition.notify_all()
+
+    assert result is None
+    assert elapsed < 0.2
+
+
 def test_connect_meshtastic_network_alias_warns_and_uses_tcp(reset_meshtastic_globals):
     mock_client = MagicMock()
     mock_client.getMyNodeInfo.return_value = {

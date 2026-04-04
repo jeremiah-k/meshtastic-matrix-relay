@@ -951,6 +951,8 @@ def reset_meshtastic_globals():
         "shutting_down": getattr(mu, "shutting_down", False),
         "reconnect_task": getattr(mu, "reconnect_task", None),
         "reconnect_task_future": getattr(mu, "reconnect_task_future", None),
+        "_connect_attempt_lock": getattr(mu, "_connect_attempt_lock", None),
+        "_connect_attempt_condition": getattr(mu, "_connect_attempt_condition", None),
         "_connect_attempt_in_progress": getattr(
             mu, "_connect_attempt_in_progress", False
         ),
@@ -1020,7 +1022,13 @@ def reset_meshtastic_globals():
     mu.shutting_down = False
     mu.reconnect_task = None
     mu.reconnect_task_future = None
-    mu._connect_attempt_in_progress = False
+    connect_condition = getattr(mu, "_connect_attempt_condition", None)
+    if connect_condition is not None:
+        with connect_condition:
+            mu._connect_attempt_in_progress = False
+            connect_condition.notify_all()
+    else:
+        mu._connect_attempt_in_progress = False
     mu.subscribed_to_messages = False
     mu.subscribed_to_connection_lost = False
     mu._metadata_future = None
@@ -1102,7 +1110,13 @@ def reset_meshtastic_globals():
         )
         mu.reconnect_task = None
         mu.reconnect_task_future = None
-        mu._connect_attempt_in_progress = False
+        connect_condition = getattr(mu, "_connect_attempt_condition", None)
+        if connect_condition is not None:
+            with connect_condition:
+                mu._connect_attempt_in_progress = False
+                connect_condition.notify_all()
+        else:
+            mu._connect_attempt_in_progress = False
         mu._metadata_future = None
         mu._metadata_future_started_at = None
         if mu.subscribed_to_messages:

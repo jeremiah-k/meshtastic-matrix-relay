@@ -632,6 +632,53 @@ async def main(config: dict[str, Any]) -> None:
             meshtastic_utils.meshtastic_client = None
             meshtastic_utils.meshtastic_iface = None
 
+    async def _cleanup_meshtastic_reconnect_state(*, context: str) -> None:
+        """Cancel reconnect work and unsubscribe Meshtastic callbacks."""
+
+        async def _cancel_future_with_timeout(
+            future_obj: asyncio.Future[Any] | None,
+            *,
+            task_name: str,
+        ) -> None:
+            if future_obj is None:
+                return
+            future_obj.cancel()
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(future_obj, return_exceptions=True),
+                    timeout=5.0,
+                )
+            except asyncio.TimeoutError:
+                meshtastic_logger.warning(
+                    "Timed out waiting for %s during %s",
+                    task_name,
+                    context,
+                )
+
+        reconnect_task_obj = meshtastic_utils.reconnect_task
+        if reconnect_task_obj is not None:
+            reconnect_task_obj.cancel()
+            meshtastic_logger.info("Cancelled Meshtastic reconnect task.")
+            if isinstance(reconnect_task_obj, asyncio.Future):
+                await _cancel_future_with_timeout(
+                    reconnect_task_obj,
+                    task_name="Meshtastic reconnect task",
+                )
+            meshtastic_utils.reconnect_task = None
+
+        reconnect_future_obj = meshtastic_utils.reconnect_task_future
+        if reconnect_future_obj is not None:
+            if isinstance(reconnect_future_obj, asyncio.Future):
+                await _cancel_future_with_timeout(
+                    reconnect_future_obj,
+                    task_name="Meshtastic reconnect worker future",
+                )
+            else:
+                reconnect_future_obj.cancel()
+            meshtastic_utils.reconnect_task_future = None
+
+        meshtastic_utils.unsubscribe_meshtastic_callbacks()
+
     try:
         # Load plugins early (run in executor to avoid blocking event loop with time.sleep)
         plugins_cleanup_needed = True
@@ -786,6 +833,7 @@ async def main(config: dict[str, Any]) -> None:
                 meshtastic_logger.warning(
                     "Timed out waiting for connection health task during startup rollback"
                 )
+        await _cleanup_meshtastic_reconnect_state(context="startup rollback")
         _remove_ready_file()
         if plugins_cleanup_needed:
             await _run_blocking_shutdown_step(
@@ -1099,27 +1147,7 @@ async def main(config: dict[str, Any]) -> None:
             task_name="connection health task",
             timeout_seconds=5.0,
         )
-        reconnect_future_obj = meshtastic_utils.reconnect_task_future
-        reconnect_task_obj = meshtastic_utils.reconnect_task
-        if reconnect_task_obj:
-            reconnect_task_obj.cancel()
-            meshtastic_logger.info("Cancelled Meshtastic reconnect task.")
-            if isinstance(reconnect_task_obj, asyncio.Future):
-                await _await_background_task_shutdown(
-                    reconnect_task_obj,
-                    task_name="Meshtastic reconnect task",
-                    timeout_seconds=5.0,
-                )
-            meshtastic_utils.reconnect_task = None
-        if reconnect_future_obj is not None:
-            reconnect_future_obj.cancel()
-            await _await_background_task_shutdown(
-                reconnect_future_obj,
-                task_name="Meshtastic reconnect worker future",
-                timeout_seconds=5.0,
-            )
-            meshtastic_utils.reconnect_task_future = None
-        meshtastic_utils.unsubscribe_meshtastic_callbacks()
+        await _cleanup_meshtastic_reconnect_state(context="shutdown")
         # Cleanup
         matrix_logger.info("Stopping plugins...")
         await _run_blocking_shutdown_step(

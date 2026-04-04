@@ -202,6 +202,7 @@ _connect_attempt_lock = threading.RLock()
 _connect_attempt_condition = threading.Condition(_connect_attempt_lock)
 _connect_attempt_in_progress = False
 _CONNECT_ATTEMPT_WAIT_POLL_SECS = 1.0
+_CONNECT_ATTEMPT_WAIT_MAX_SECS = 5.0
 
 reconnecting = False
 shutting_down = False
@@ -213,6 +214,7 @@ meshtastic_iface_lock = (
 )  # To prevent race conditions on BLE interface singleton creation
 
 # Subscription flags to prevent duplicate subscriptions
+meshtastic_sub_lock = threading.Lock()
 subscribed_to_messages = False
 subscribed_to_connection_lost = False
 
@@ -221,35 +223,37 @@ def ensure_meshtastic_callbacks_subscribed() -> None:
     """Ensure Meshtastic pubsub callbacks are subscribed exactly once."""
     global subscribed_to_messages, subscribed_to_connection_lost
 
-    if not subscribed_to_messages:
-        pub.subscribe(on_meshtastic_message, "meshtastic.receive")
-        subscribed_to_messages = True
-        logger.debug("Subscribed to meshtastic.receive")
+    with meshtastic_sub_lock:
+        if not subscribed_to_messages:
+            pub.subscribe(on_meshtastic_message, "meshtastic.receive")
+            subscribed_to_messages = True
+            logger.debug("Subscribed to meshtastic.receive")
 
-    if not subscribed_to_connection_lost:
-        pub.subscribe(on_lost_meshtastic_connection, "meshtastic.connection.lost")
-        subscribed_to_connection_lost = True
-        logger.debug("Subscribed to meshtastic.connection.lost")
+        if not subscribed_to_connection_lost:
+            pub.subscribe(on_lost_meshtastic_connection, "meshtastic.connection.lost")
+            subscribed_to_connection_lost = True
+            logger.debug("Subscribed to meshtastic.connection.lost")
 
 
 def unsubscribe_meshtastic_callbacks() -> None:
     """Best-effort unsubscribe for Meshtastic pubsub callbacks."""
     global subscribed_to_messages, subscribed_to_connection_lost
 
-    if subscribed_to_messages:
-        with contextlib.suppress(Exception):
-            pub.unsubscribe(on_meshtastic_message, "meshtastic.receive")
-        subscribed_to_messages = False
-        logger.debug("Unsubscribed from meshtastic.receive")
+    with meshtastic_sub_lock:
+        if subscribed_to_messages:
+            with contextlib.suppress(Exception):
+                pub.unsubscribe(on_meshtastic_message, "meshtastic.receive")
+            subscribed_to_messages = False
+            logger.debug("Unsubscribed from meshtastic.receive")
 
-    if subscribed_to_connection_lost:
-        with contextlib.suppress(Exception):
-            pub.unsubscribe(
-                on_lost_meshtastic_connection,
-                "meshtastic.connection.lost",
-            )
-        subscribed_to_connection_lost = False
-        logger.debug("Unsubscribed from meshtastic.connection.lost")
+        if subscribed_to_connection_lost:
+            with contextlib.suppress(Exception):
+                pub.unsubscribe(
+                    on_lost_meshtastic_connection,
+                    "meshtastic.connection.lost",
+                )
+            subscribed_to_connection_lost = False
+            logger.debug("Unsubscribed from meshtastic.connection.lost")
 
 
 # Shared executor for getMetadata() to avoid leaking threads when metadata calls hang.
@@ -3554,6 +3558,7 @@ def connect_meshtastic(
     to finish, then retry acquisition.
     """
     global _connect_attempt_in_progress
+    wait_deadline = time.monotonic() + _CONNECT_ATTEMPT_WAIT_MAX_SECS
 
     while True:
         with _connect_attempt_condition:
@@ -3561,14 +3566,31 @@ def connect_meshtastic(
                 _connect_attempt_in_progress = True
                 break
 
+            remaining_wait = wait_deadline - time.monotonic()
+            if remaining_wait <= 0:
+                logger.debug(
+                    "Timed out waiting for active connect attempt; returning current client state"
+                )
+                return meshtastic_client
+
             logger.debug(
                 "connect_meshtastic() already in progress; waiting for active attempt to finish"
             )
             while _connect_attempt_in_progress and not shutting_down:
-                _connect_attempt_condition.wait(timeout=_CONNECT_ATTEMPT_WAIT_POLL_SECS)
+                remaining_wait = wait_deadline - time.monotonic()
+                if remaining_wait <= 0:
+                    break
+                _connect_attempt_condition.wait(
+                    timeout=min(_CONNECT_ATTEMPT_WAIT_POLL_SECS, remaining_wait)
+                )
             if shutting_down:
                 logger.debug("Shutdown in progress. Not attempting to connect.")
                 return None
+            if _connect_attempt_in_progress and time.monotonic() >= wait_deadline:
+                logger.debug(
+                    "Timed out waiting for active connect attempt; returning current client state"
+                )
+                return meshtastic_client
 
     try:
         return _connect_meshtastic_impl(
@@ -4276,6 +4298,32 @@ def _connect_meshtastic_impl(
 
                 # Publish the active client only after per-connection timing state
                 # has been reset, so callbacks cannot observe stale skew windows.
+                if shutting_down:
+                    logger.debug(
+                        "Shutdown started during connect setup; closing new client before publish"
+                    )
+                    try:
+                        if client is meshtastic_iface:
+                            _disconnect_ble_interface(
+                                meshtastic_iface,
+                                reason="connect setup cancelled by shutdown",
+                            )
+                            meshtastic_iface = None
+                        else:
+                            client.close()
+                    except Exception as cleanup_error:  # noqa: BLE001 - best effort
+                        logger.warning(
+                            "Error closing Meshtastic client during shutdown race: %s",
+                            cleanup_error,
+                        )
+                    with _relay_rx_time_clock_skew_lock:
+                        if reconnect_bootstrap_armed_for_this_connect:
+                            _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
+                                None
+                            )
+                    successful = False
+                    return None
+
                 meshtastic_client = client
                 _relay_active_client_id = id(client)
                 client_assigned_for_this_connect = True

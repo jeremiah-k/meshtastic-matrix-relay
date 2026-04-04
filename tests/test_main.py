@@ -924,6 +924,8 @@ class TestMain(unittest.TestCase):
 
         import mmrelay.meshtastic_utils as mu
 
+        _reset_all_mmrelay_globals()
+
         mock_iface = MagicMock()
         reconnect_task = MagicMock()
         mu.reconnect_task = reconnect_task
@@ -984,7 +986,7 @@ class TestMain(unittest.TestCase):
             mock_disconnect_iface.assert_called_once_with(mock_iface, reason="shutdown")
             mock_unsubscribe_callbacks.assert_called_once()
         finally:
-            mu.reconnect_task = None
+            _reset_all_mmrelay_globals()
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
@@ -2987,6 +2989,59 @@ class TestStartupRollback(unittest.TestCase):
                 asyncio.run(main(config))
 
             mock_stop_queue.assert_called_once()
+
+    @patch("mmrelay.main.initialize_database")
+    @patch("mmrelay.main.load_plugins")
+    @patch("mmrelay.main.start_message_queue")
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.connect_meshtastic")
+    @patch("mmrelay.main._remove_ready_file")
+    @patch("mmrelay.main.shutdown_plugins")
+    @patch("mmrelay.main.stop_message_queue")
+    def test_startup_rollback_cleans_reconnect_state_and_callbacks(
+        self,
+        mock_stop_queue,
+        mock_shutdown_plugins,
+        mock_remove_ready,
+        mock_connect_meshtastic,
+        mock_connect_matrix,
+        mock_start_queue,
+        mock_load_plugins,
+        mock_init_db,
+    ):
+        """Startup rollback should cancel reconnect work and unsubscribe callbacks."""
+
+        mock_connect_meshtastic.return_value = MagicMock()
+        mock_connect_matrix.side_effect = RuntimeError("After meshtastic client error")
+
+        import mmrelay.meshtastic_utils as mu
+
+        reconnect_task = MagicMock()
+        reconnect_future = MagicMock()
+        mu.reconnect_task = reconnect_task
+        mu.reconnect_task_future = reconnect_future
+
+        config = {"matrix_rooms": [{"id": "!room:matrix.org"}]}
+
+        with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_make_patched_get_running_loop(),
+            ),
+            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+            patch(
+                "mmrelay.main.meshtastic_utils.unsubscribe_meshtastic_callbacks"
+            ) as mock_unsubscribe,
+            patch("mmrelay.main.logger"),
+        ):
+            with self.assertRaises(RuntimeError):
+                asyncio.run(main(config))
+
+        reconnect_task.cancel.assert_called_once()
+        reconnect_future.cancel.assert_called_once()
+        mock_unsubscribe.assert_called_once()
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
