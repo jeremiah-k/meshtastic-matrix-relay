@@ -204,6 +204,9 @@ _connect_attempt_condition = threading.Condition(_connect_attempt_lock)
 _connect_attempt_in_progress = False
 _CONNECT_ATTEMPT_WAIT_POLL_SECS = 1.0
 _CONNECT_ATTEMPT_WAIT_MAX_SECS = 5.0
+_CONNECT_ATTEMPT_BLE_WAIT_MAX_SECS = (
+    BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS + BLE_CONNECT_TIMEOUT_SECS
+)
 
 reconnecting = False
 shutting_down = False
@@ -3398,7 +3401,7 @@ def _get_portnum_name(portnum: Any) -> str:
 
     if isinstance(portnum, int) and not isinstance(portnum, bool):
         try:
-            return portnums_pb2.PortNum.Name(portnum)  # type: ignore[no-any-return]
+            return portnums_pb2.PortNum.Name(portnum)  # type: ignore[arg-type]
         except ValueError:
             return f"UNKNOWN (portnum={portnum})"
 
@@ -3644,7 +3647,24 @@ def connect_meshtastic(
     to finish, then retry acquisition.
     """
     global _connect_attempt_in_progress
-    wait_deadline = time.monotonic() + _CONNECT_ATTEMPT_WAIT_MAX_SECS
+
+    wait_budget_secs = _CONNECT_ATTEMPT_WAIT_MAX_SECS
+    config_source = (
+        passed_config
+        if isinstance(passed_config, dict)
+        else config if isinstance(config, dict) else None
+    )
+    if isinstance(config_source, dict):
+        connection_type = config_source.get(CONFIG_SECTION_MESHTASTIC, {}).get(
+            CONFIG_KEY_CONNECTION_TYPE
+        )
+        if connection_type == CONNECTION_TYPE_BLE:
+            wait_budget_secs = max(
+                wait_budget_secs,
+                _CONNECT_ATTEMPT_BLE_WAIT_MAX_SECS,
+            )
+
+    wait_deadline = time.monotonic() + wait_budget_secs
 
     while True:
         with _connect_attempt_condition:
@@ -3844,6 +3864,7 @@ def _connect_meshtastic_impl(
         # Initialize before try block to avoid unbound variable errors
         ble_address: str | None = None
         supports_auto_reconnect = False
+        ble_connect_timeout_logged_for_attempt = False
         startup_drain_pending_for_this_connect = False
         startup_drain_armed_for_this_connect = False
         startup_drain_applied_for_this_connect = False
@@ -4231,6 +4252,7 @@ def _connect_meshtastic_impl(
                             else:
                                 # Use logger.exception so timeouts include stack context (TRY400),
                                 # but raise a short error and keep operator guidance in logs (TRY003).
+                                ble_connect_timeout_logged_for_attempt = True
                                 logger.exception(
                                     f"BLE connect() call timed out after {BLE_CONNECT_TIMEOUT_SECS} seconds for %s.",
                                     ble_address,
@@ -4565,6 +4587,20 @@ def _connect_meshtastic_impl(
             )
             if shutting_down:
                 break
+            if (
+                connection_type == CONNECTION_TYPE_BLE
+                and ble_address
+                and not ble_connect_timeout_logged_for_attempt
+                and str(e).startswith("BLE connect() timed out for ")
+            ):
+                logger.exception(
+                    f"BLE connect() call timed out after {BLE_CONNECT_TIMEOUT_SECS} seconds for %s.",
+                    ble_address,
+                )
+                logger.warning("This may indicate a BlueZ or adapter issue.")
+                logger.warning(
+                    f"BlueZ may be in a bad state. {BLE_TROUBLESHOOTING_GUIDANCE.format(ble_address=ble_address)}"
+                )
             attempts += 1
             if retry_limit == INFINITE_RETRIES:
                 timeout_attempts += 1
