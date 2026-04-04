@@ -3519,6 +3519,7 @@ def _rollback_connect_attempt_state(
     startup_drain_armed_for_this_connect: bool,
     startup_drain_applied_for_this_connect: bool,
     reconnect_bootstrap_armed_for_this_connect: bool,
+    lock_held: bool = False,
 ) -> bool:
     """
     Centralize cleanup of partially-assigned clients and timing state when a connect attempt fails.
@@ -3529,10 +3530,11 @@ def _rollback_connect_attempt_state(
     global _relay_startup_drain_deadline_monotonic_secs, _startup_packet_drain_applied
     global _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs
 
+    _lock_ctx = contextlib.nullcontext() if lock_held else meshtastic_lock
     if client is not None and (
         client_assigned_for_this_connect or client is meshtastic_iface
     ):
-        with meshtastic_lock:
+        with _lock_ctx:
             if meshtastic_client is client or client is meshtastic_iface:
                 try:
                     if client is meshtastic_iface:
@@ -4361,6 +4363,7 @@ def _connect_meshtastic_impl(
                         startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
                         startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
                         reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+                        lock_held=True,
                     )
                     successful = False
                     return None
@@ -4384,6 +4387,7 @@ def _connect_meshtastic_impl(
                         startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
                         startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
                         reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+                        lock_held=True,
                     )
                     successful = False
                     return None
@@ -4425,6 +4429,7 @@ def _connect_meshtastic_impl(
                         startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
                         startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
                         reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+                        lock_held=True,
                     )
                     successful = False
                     return None
@@ -4724,7 +4729,7 @@ async def reconnect() -> None:
 
     Retries connect_meshtastic(force_connect=True) until a connection is obtained, the application begins shutting down, or the task is cancelled. Starts with DEFAULT_BACKOFF_TIME and doubles the wait after each failed attempt, capped at 300 seconds. Stops promptly on cancellation or when shutting_down is set, and ensures the module-level `reconnecting` flag is cleared before returning.
     """
-    global meshtastic_client, reconnecting, shutting_down, reconnect_task_future
+    global reconnecting, shutting_down, reconnect_task_future
     backoff_time = DEFAULT_BACKOFF_TIME
     try:
         while not shutting_down:
@@ -4775,8 +4780,8 @@ async def reconnect() -> None:
                     loop.run_in_executor(None, connect_meshtastic, config, True)
                 )
                 reconnect_task_future = connect_future
-                meshtastic_client = await connect_future
-                if meshtastic_client:
+                connected_client = await connect_future
+                if connected_client is not None:
                     logger.info("Reconnected successfully.")
                     break
             except Exception:

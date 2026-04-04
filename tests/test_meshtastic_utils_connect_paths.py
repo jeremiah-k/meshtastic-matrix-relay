@@ -40,9 +40,8 @@ def test_connect_meshtastic_returns_existing_client(reset_meshtastic_globals):
     mock_tcp.assert_not_called()
 
 
-def test_connect_meshtastic_serializes_concurrent_connect_attempts(
-    reset_meshtastic_globals,
-):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_meshtastic_serializes_concurrent_connect_attempts():
     config = {
         "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "127.0.0.1"}
     }
@@ -99,9 +98,8 @@ def test_connect_meshtastic_serializes_concurrent_connect_attempts(
     assert mock_tcp.call_count == 1
 
 
-def test_connect_meshtastic_waiter_times_out_when_attempt_stuck(
-    reset_meshtastic_globals,
-):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_meshtastic_waiter_times_out_when_attempt_stuck():
     """Waiting callers should return quickly when a connect attempt is stuck."""
     with mu._connect_attempt_condition:
         mu._connect_attempt_in_progress = True

@@ -2464,11 +2464,10 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         ):
             result = mu._seed_connect_time_skew(rx_time)
 
-        self.assertTrue(result)
+        assert result
         skew = mu._relay_rx_time_clock_skew_secs
-        self.assertIsNotNone(skew)
         assert skew is not None
-        self.assertLess(abs(skew + 100_654.84), 1e-6)
+        assert abs(skew + 100_654.84) < 1e-6
 
     def test_claim_health_probe_uses_localnode_fallback(self):
         """_claim_health_probe_response_and_maybe_calibrate should fall back to localNode when myInfo is absent."""

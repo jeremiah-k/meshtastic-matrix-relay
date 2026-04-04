@@ -1,3 +1,4 @@
+import time
 from unittest.mock import patch
 
 import pytest
@@ -144,9 +145,12 @@ class TestConnectMeshtasticShutdownGuard:
         mu._connect_attempt_in_progress = True
         mu.shutting_down = True
 
+        start = time.monotonic()
         result = connect_meshtastic(passed_config=None)
+        elapsed = time.monotonic() - start
 
         assert result is None
+        assert elapsed < 0.2
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")

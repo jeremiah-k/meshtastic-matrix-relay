@@ -1022,7 +1022,6 @@ def reset_meshtastic_globals():
     mu.shutting_down = False
     mu.reconnect_task = None
     mu.reconnect_task_future = None
-    mu._connect_attempt_in_progress = False
     mu.subscribed_to_messages = False
     mu.subscribed_to_connection_lost = False
     mu._metadata_future = None
@@ -1109,7 +1108,6 @@ def reset_meshtastic_globals():
         )
         mu.reconnect_task = None
         mu.reconnect_task_future = None
-        mu._connect_attempt_in_progress = False
         mu._metadata_future = None
         mu._metadata_future_started_at = None
         if mu.subscribed_to_messages:
