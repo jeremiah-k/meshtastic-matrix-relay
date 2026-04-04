@@ -1059,6 +1059,7 @@ async def refresh_node_name_tables(
             interval = parsed
 
     previous_state: NodeNameState | None = None
+    client_unavailable_reason: str | None = None
     while not shutdown_event.is_set():
         try:
             nodes_snapshot, client_missing = await asyncio.to_thread(
@@ -1067,14 +1068,27 @@ async def refresh_node_name_tables(
 
             if nodes_snapshot is None:
                 if client_missing:
-                    logger.debug(
-                        "Skipping name-cache refresh from NodeDB because Meshtastic client is unavailable"
-                    )
+                    if reconnecting:
+                        next_reason = "reconnecting"
+                        if client_unavailable_reason != next_reason:
+                            logger.debug(
+                                "Skipping name-cache refresh from NodeDB while reconnection is in progress"
+                            )
+                        client_unavailable_reason = next_reason
+                    else:
+                        next_reason = "unavailable"
+                        if client_unavailable_reason != next_reason:
+                            logger.debug(
+                                "Skipping name-cache refresh from NodeDB because Meshtastic client is unavailable"
+                            )
+                        client_unavailable_reason = next_reason
                 else:
+                    client_unavailable_reason = None
                     logger.debug(
                         "Skipping name-cache refresh from NodeDB because client.nodes is unavailable"
                     )
             else:
+                client_unavailable_reason = None
                 previous_state = await asyncio.to_thread(
                     sync_name_tables_if_changed,
                     nodes_snapshot,
@@ -2315,6 +2329,36 @@ def _wait_for_result(
     finally:
         new_loop.close()
         asyncio.set_event_loop(None)
+
+
+def _wait_for_future_result_with_shutdown(
+    result_future: Future[Any],
+    *,
+    timeout_seconds: float,
+    poll_seconds: float = 1.0,
+) -> Any:
+    """Wait for a concurrent future while remaining responsive to shutdown.
+
+    Polls `result_future.result()` in short intervals so long BLE operations can
+    abort quickly when `shutting_down` is set, instead of waiting the full
+    timeout budget in one blocking call.
+    """
+
+    deadline = time.monotonic() + float(timeout_seconds)
+    poll_budget = max(0.05, float(poll_seconds))
+
+    while True:
+        if shutting_down:
+            raise TimeoutError("Shutdown in progress")
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise FuturesTimeoutError()
+
+        try:
+            return result_future.result(timeout=min(remaining, poll_budget))
+        except FuturesTimeoutError:
+            continue
 
 
 def _resolve_plugin_timeout(
@@ -3974,8 +4018,11 @@ def _connect_meshtastic_impl(
                                     _ble_future_timeout_secs = create_timeout_secs
                                 future.add_done_callback(_clear_ble_future)
                                 try:
-                                    meshtastic_iface = future.result(
-                                        timeout=create_timeout_secs
+                                    meshtastic_iface = (
+                                        _wait_for_future_result_with_shutdown(
+                                            future,
+                                            timeout_seconds=create_timeout_secs,
+                                        )
                                     )
                                     if meshtastic_iface is None:
                                         _clear_ble_future(future)
@@ -4140,9 +4187,29 @@ def _connect_meshtastic_impl(
                             _ble_future_timeout_secs = BLE_CONNECT_TIMEOUT_SECS
                         connect_future.add_done_callback(_clear_ble_future)
                         try:
-                            connect_future.result(timeout=BLE_CONNECT_TIMEOUT_SECS)
+                            _wait_for_future_result_with_shutdown(
+                                connect_future,
+                                timeout_seconds=BLE_CONNECT_TIMEOUT_SECS,
+                            )
                             logger.info(f"BLE connection established to {ble_address}")
                             reset_executor_degraded_state(ble_address=ble_address)
+                        except TimeoutError:
+                            if shutting_down:
+                                logger.debug(
+                                    "BLE connect() interrupted by shutdown for %s",
+                                    ble_address,
+                                )
+                                if connect_future.cancel():
+                                    _clear_ble_future(connect_future)
+                                else:
+                                    _schedule_ble_future_cleanup(
+                                        connect_future,
+                                        ble_address,
+                                        reason="connect shutdown cancellation",
+                                    )
+                                iface = None
+                                meshtastic_iface = None
+                            raise
                         except FuturesTimeoutError as err:
                             # Use logger.exception so timeouts include stack context (TRY400),
                             # but raise a short error and keep operator guidance in logs (TRY003).

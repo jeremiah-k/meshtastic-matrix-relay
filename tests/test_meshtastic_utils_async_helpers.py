@@ -1,8 +1,17 @@
 import asyncio
 from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from unittest.mock import MagicMock, patch
 
-from mmrelay.meshtastic_utils import _get_name_safely, _make_awaitable, _wait_for_result
+import pytest
+
+import mmrelay.meshtastic_utils as mu
+from mmrelay.meshtastic_utils import (
+    _get_name_safely,
+    _make_awaitable,
+    _wait_for_future_result_with_shutdown,
+    _wait_for_result,
+)
 
 
 class _DummyLoop:
@@ -192,3 +201,45 @@ def test_get_name_safely_returns_sender_on_exception():
         raise TypeError("boom")
 
     assert _get_name_safely(_bad_lookup, 123) == "123"
+
+
+def test_wait_for_future_result_with_shutdown_returns_result():
+    future = Future()
+    future.set_result("ok")
+
+    result = _wait_for_future_result_with_shutdown(
+        future,
+        timeout_seconds=0.1,
+        poll_seconds=0.01,
+    )
+
+    assert result == "ok"
+
+
+def test_wait_for_future_result_with_shutdown_aborts_when_shutting_down():
+    future = MagicMock()
+
+    with patch.object(mu, "shutting_down", True):
+        with pytest.raises(TimeoutError, match="Shutdown in progress"):
+            _wait_for_future_result_with_shutdown(
+                future,
+                timeout_seconds=0.5,
+                poll_seconds=0.01,
+            )
+
+    future.result.assert_not_called()
+
+
+def test_wait_for_future_result_with_shutdown_raises_futures_timeout():
+    future = MagicMock()
+    future.result.side_effect = FuturesTimeoutError
+
+    with patch.object(mu, "shutting_down", False):
+        with pytest.raises(FuturesTimeoutError):
+            _wait_for_future_result_with_shutdown(
+                future,
+                timeout_seconds=0.02,
+                poll_seconds=0.005,
+            )
+
+    assert future.result.call_count >= 1
