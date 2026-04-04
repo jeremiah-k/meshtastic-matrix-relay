@@ -1092,6 +1092,10 @@ def _seed_connect_time_skew(rx_time: float) -> bool:
     if rx_time <= 0:
         return False
 
+    calibrated_skew: float = 0.0
+    startup_age: float = 0.0
+    calibrated_from_reconnect_prestart: bool = False
+
     now_wall = time.time()
     now_monotonic = time.monotonic()
     observed_skew = now_wall - rx_time
@@ -4630,17 +4634,17 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     active_client = meshtastic_client
     active_client_id = _relay_active_client_id
     if active_client is None:
+        if active_client_id is not None:
+            logger.error(
+                "Inconsistent relay state: active_client is None but active_client_id=%s — this should not happen",
+                active_client_id,
+            )
         # Runtime callbacks can still arrive briefly during reconnect/teardown
         # windows because subscriptions are process-lifetime.
         #
         # Keep direct unit-level handler invocation behavior unchanged when no
         # active session is being transitioned.
-        if (
-            subscribed_to_messages
-            or reconnecting
-            or shutting_down
-            or active_client_id is not None
-        ):
+        if subscribed_to_messages or reconnecting or shutting_down:
             logger.debug(
                 "Ignoring packet because no Meshtastic interface is currently active"
             )

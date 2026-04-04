@@ -337,3 +337,28 @@ class TestCleanupFailedAssignedClient:
         mock_client.close.assert_called()
         assert mu.meshtastic_client is None
         assert mu._relay_active_client_id is None
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+class TestInconsistentRelayState:
+    def test_on_meshtastic_message_logs_error_when_client_none_but_id_set(self):
+        mu.meshtastic_client = None
+        mu._relay_active_client_id = 12345
+
+        mock_interface = MagicMock()
+        packet = {
+            "decoded": {"text": "hello", "portnum": "TEXT_MESSAGE_APP"},
+            "from": "!abc12345",
+            "to": 4294967295,
+            "id": 0x12345678,
+        }
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            mu.on_meshtastic_message(packet, mock_interface)
+
+        error_calls = [
+            call
+            for call in mock_logger.error.call_args_list
+            if call.args and "Inconsistent relay state" in str(call.args[0])
+        ]
+        assert error_calls

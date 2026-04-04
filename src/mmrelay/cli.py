@@ -49,6 +49,7 @@ from mmrelay.constants.config import (
     CONFIG_KEY_BOT_USER_ID,
     CONFIG_KEY_CONNECT_PROBE_ENABLED,
     CONFIG_KEY_DEVICE_ID,
+    CONFIG_KEY_ENABLED,
     CONFIG_KEY_HEALTH_CHECK,
     CONFIG_KEY_HOMESERVER,
     CONFIG_KEY_PASSWORD,
@@ -1519,6 +1520,15 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     if not isinstance(health_check, dict):
                         print(
                             "Error: 'meshtastic.health_check' must be a mapping (YAML object)"
+                        )
+                        return False
+
+                    if CONFIG_KEY_ENABLED in health_check and not isinstance(
+                        health_check[CONFIG_KEY_ENABLED], bool
+                    ):
+                        print(
+                            "Error: 'meshtastic.health_check.enabled' "
+                            f"must be of type bool, got: {health_check[CONFIG_KEY_ENABLED]}"
                         )
                         return False
 
