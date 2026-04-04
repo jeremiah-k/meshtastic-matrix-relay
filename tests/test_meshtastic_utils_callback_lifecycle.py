@@ -90,7 +90,7 @@ class TestUnsubscribeCallbacks:
         ):
             unsubscribe_meshtastic_callbacks()
 
-        assert mu.subscribed_to_messages is False
+        assert mu.subscribed_to_messages is True
 
     def test_suppresses_exception_from_unsubscribe_connection_lost(self):
         mu.subscribed_to_messages = False
@@ -102,7 +102,7 @@ class TestUnsubscribeCallbacks:
         ):
             unsubscribe_meshtastic_callbacks()
 
-        assert mu.subscribed_to_connection_lost is False
+        assert mu.subscribed_to_connection_lost is True
 
     def test_suppresses_exception_from_both_unsubscribes(self):
         mu.subscribed_to_messages = True
@@ -114,8 +114,8 @@ class TestUnsubscribeCallbacks:
         ):
             unsubscribe_meshtastic_callbacks()
 
-        assert mu.subscribed_to_messages is False
-        assert mu.subscribed_to_connection_lost is False
+        assert mu.subscribed_to_messages is True
+        assert mu.subscribed_to_connection_lost is True
 
     def test_idempotent_when_already_unsubscribed(self):
         mu.subscribed_to_messages = False

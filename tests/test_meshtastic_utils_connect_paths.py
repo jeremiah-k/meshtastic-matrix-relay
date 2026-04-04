@@ -53,7 +53,8 @@ def test_connect_meshtastic_serializes_concurrent_connect_attempts(
 
     constructor_entered = threading.Event()
     allow_constructor_return = threading.Event()
-    worker_errors: list[BaseException] = []
+    second_ready_to_connect = threading.Event()
+    worker_errors: list[Exception] = []
     worker_results: list[Any | None] = [None, None]
 
     def _tcp_constructor(*_args: Any, **_kwargs: Any) -> Any:
@@ -63,8 +64,10 @@ def test_connect_meshtastic_serializes_concurrent_connect_attempts(
 
     def _run_connect(index: int) -> None:
         try:
+            if index == 1:
+                second_ready_to_connect.set()
             worker_results[index] = connect_meshtastic(passed_config=config)
-        except BaseException as exc:  # pragma: no cover - exercised only on failure
+        except Exception as exc:  # pragma: no cover - exercised only on failure
             worker_errors.append(exc)
 
     with (
@@ -82,8 +85,7 @@ def test_connect_meshtastic_serializes_concurrent_connect_attempts(
         first.start()
         assert constructor_entered.wait(timeout=1.0)
         second.start()
-        # Give the second thread time to block on connect serialization.
-        time.sleep(0.05)
+        assert second_ready_to_connect.wait(timeout=1.0)
         assert mock_tcp.call_count == 1
         allow_constructor_return.set()
         first.join(timeout=1.0)
@@ -108,6 +110,7 @@ def test_connect_meshtastic_waiter_times_out_when_attempt_stuck(
     with (
         patch.object(mu, "_CONNECT_ATTEMPT_WAIT_MAX_SECS", 0.02),
         patch.object(mu, "_CONNECT_ATTEMPT_WAIT_POLL_SECS", 0.005),
+        patch("mmrelay.meshtastic_utils._connect_meshtastic_impl") as mock_impl,
     ):
         result = connect_meshtastic()
     elapsed = time.monotonic() - start
@@ -117,6 +120,8 @@ def test_connect_meshtastic_waiter_times_out_when_attempt_stuck(
         mu._connect_attempt_condition.notify_all()
 
     assert result is None
+    assert elapsed >= 0.015
+    mock_impl.assert_not_called()
     assert elapsed < 0.2
 
 

@@ -24,6 +24,7 @@ import serial  # For serial port exceptions
 import serial.tools.list_ports  # Import serial tools for port listing
 from meshtastic.protobuf import admin_pb2, mesh_pb2, portnums_pb2
 from pubsub import pub
+from pubsub.core.topicexc import TopicNameError
 
 from mmrelay.config import get_meshtastic_config_value
 from mmrelay.constants.config import (
@@ -241,19 +242,39 @@ def unsubscribe_meshtastic_callbacks() -> None:
 
     with meshtastic_sub_lock:
         if subscribed_to_messages:
-            with contextlib.suppress(Exception):
+            try:
                 pub.unsubscribe(on_meshtastic_message, "meshtastic.receive")
-            subscribed_to_messages = False
-            logger.debug("Unsubscribed from meshtastic.receive")
+            except TopicNameError:
+                subscribed_to_messages = False
+                logger.debug(
+                    "meshtastic.receive topic missing during unsubscribe; treated as unsubscribed"
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to unsubscribe from meshtastic.receive; keeping subscribed_to_messages=True"
+                )
+            else:
+                subscribed_to_messages = False
+                logger.debug("Unsubscribed from meshtastic.receive")
 
         if subscribed_to_connection_lost:
-            with contextlib.suppress(Exception):
+            try:
                 pub.unsubscribe(
                     on_lost_meshtastic_connection,
                     "meshtastic.connection.lost",
                 )
-            subscribed_to_connection_lost = False
-            logger.debug("Unsubscribed from meshtastic.connection.lost")
+            except TopicNameError:
+                subscribed_to_connection_lost = False
+                logger.debug(
+                    "meshtastic.connection.lost topic missing during unsubscribe; treated as unsubscribed"
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to unsubscribe from meshtastic.connection.lost; keeping subscribed_to_connection_lost=True"
+                )
+            else:
+                subscribed_to_connection_lost = False
+                logger.debug("Unsubscribed from meshtastic.connection.lost")
 
 
 # Shared executor for getMetadata() to avoid leaking threads when metadata calls hang.
@@ -3569,9 +3590,9 @@ def connect_meshtastic(
             remaining_wait = wait_deadline - time.monotonic()
             if remaining_wait <= 0:
                 logger.debug(
-                    "Timed out waiting for active connect attempt; returning current client state"
+                    "Timed out waiting for active connect attempt; returning no client"
                 )
-                return meshtastic_client
+                return None
 
             logger.debug(
                 "connect_meshtastic() already in progress; waiting for active attempt to finish"
@@ -3588,9 +3609,9 @@ def connect_meshtastic(
                 return None
             if _connect_attempt_in_progress and time.monotonic() >= wait_deadline:
                 logger.debug(
-                    "Timed out waiting for active connect attempt; returning current client state"
+                    "Timed out waiting for active connect attempt; returning no client"
                 )
-                return meshtastic_client
+                return None
 
     try:
         return _connect_meshtastic_impl(
@@ -4330,6 +4351,20 @@ def _connect_meshtastic_impl(
 
                 node_info = client.getMyNodeInfo()
 
+                if shutting_down:
+                    logger.debug(
+                        "Shutdown started during connect setup (after getMyNodeInfo); rolling back client"
+                    )
+                    client_assigned_for_this_connect = _rollback_connect_attempt_state(
+                        client=client,
+                        client_assigned_for_this_connect=client_assigned_for_this_connect,
+                        startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
+                        startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
+                        reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+                    )
+                    successful = False
+                    return None
+
                 # Safely access node info fields
                 user_info = node_info.get("user", {}) if node_info else {}
                 short_name = user_info.get("shortName", "unknown")
@@ -4338,6 +4373,20 @@ def _connect_meshtastic_impl(
                 # Get firmware version from device metadata
                 metadata = _get_device_metadata(client)
                 firmware_version = metadata["firmware_version"]
+
+                if shutting_down:
+                    logger.debug(
+                        "Shutdown started during connect setup (after metadata); rolling back client"
+                    )
+                    client_assigned_for_this_connect = _rollback_connect_attempt_state(
+                        client=client,
+                        client_assigned_for_this_connect=client_assigned_for_this_connect,
+                        startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
+                        startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
+                        reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+                    )
+                    successful = False
+                    return None
 
                 if metadata.get("success"):
                     logger.info(
@@ -4365,6 +4414,20 @@ def _connect_meshtastic_impl(
                             "Armed startup drain window deadline=%s after setup completion",
                             _relay_startup_drain_deadline_monotonic_secs,
                         )
+
+                if shutting_down:
+                    logger.debug(
+                        "Shutdown started before callback subscription; rolling back client"
+                    )
+                    client_assigned_for_this_connect = _rollback_connect_attempt_state(
+                        client=client,
+                        client_assigned_for_this_connect=client_assigned_for_this_connect,
+                        startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
+                        startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
+                        reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+                    )
+                    successful = False
+                    return None
 
                 # Subscribe to message and connection-lost events.
                 ensure_meshtastic_callbacks_subscribed()
@@ -4712,11 +4775,7 @@ async def reconnect() -> None:
                     None, connect_meshtastic, config, True
                 )
                 reconnect_task_future = connect_future
-                try:
-                    meshtastic_client = await connect_future
-                finally:
-                    if reconnect_task_future is connect_future:
-                        reconnect_task_future = None
+                meshtastic_client = await connect_future
                 if meshtastic_client:
                     logger.info("Reconnected successfully.")
                     break
@@ -4728,7 +4787,9 @@ async def reconnect() -> None:
     except asyncio.CancelledError:
         logger.info("Reconnection task was cancelled.")
     finally:
-        reconnect_task_future = None
+        if reconnect_task_future is not None:
+            if reconnect_task_future.done() and not reconnect_task_future.cancelled():
+                reconnect_task_future = None
         reconnecting = False
 
 

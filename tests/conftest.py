@@ -1022,13 +1022,7 @@ def reset_meshtastic_globals():
     mu.shutting_down = False
     mu.reconnect_task = None
     mu.reconnect_task_future = None
-    connect_condition = getattr(mu, "_connect_attempt_condition", None)
-    if connect_condition is not None:
-        with connect_condition:
-            mu._connect_attempt_in_progress = False
-            connect_condition.notify_all()
-    else:
-        mu._connect_attempt_in_progress = False
+    mu._connect_attempt_in_progress = False
     mu.subscribed_to_messages = False
     mu.subscribed_to_connection_lost = False
     mu._metadata_future = None
@@ -1072,6 +1066,11 @@ def reset_meshtastic_globals():
     mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = None
     mu._startup_packet_drain_applied = False
     mu._health_probe_request_deadlines = {}
+    connect_condition = getattr(mu, "_connect_attempt_condition", None)
+    if connect_condition is not None:
+        with connect_condition:
+            mu._connect_attempt_in_progress = False
+            connect_condition.notify_all()
 
     yield
     try:
@@ -1110,13 +1109,7 @@ def reset_meshtastic_globals():
         )
         mu.reconnect_task = None
         mu.reconnect_task_future = None
-        connect_condition = getattr(mu, "_connect_attempt_condition", None)
-        if connect_condition is not None:
-            with connect_condition:
-                mu._connect_attempt_in_progress = False
-                connect_condition.notify_all()
-        else:
-            mu._connect_attempt_in_progress = False
+        mu._connect_attempt_in_progress = False
         mu._metadata_future = None
         mu._metadata_future_started_at = None
         if mu.subscribed_to_messages:
@@ -1133,6 +1126,11 @@ def reset_meshtastic_globals():
         mu.shutdown_shared_executors()
         mu.meshtastic_iface = None
         mu.meshtastic_client = None
+        connect_condition = getattr(mu, "_connect_attempt_condition", None)
+        if connect_condition is not None:
+            with connect_condition:
+                mu._connect_attempt_in_progress = False
+                connect_condition.notify_all()
     finally:
         for attr_name, original_value in original_values.items():
             setattr(mu, attr_name, original_value)
