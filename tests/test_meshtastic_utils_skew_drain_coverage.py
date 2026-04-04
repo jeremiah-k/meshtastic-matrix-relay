@@ -5,6 +5,7 @@ import pytest
 import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.network import (
     CONNECTION_TYPE_TCP,
+    STARTUP_PACKET_DRAIN_SECS,
 )
 from mmrelay.meshtastic_utils import connect_meshtastic
 
@@ -65,7 +66,7 @@ class TestConnectMeshtasticDrainArming:
         assert result is mock_client
         assert mu._startup_packet_drain_applied is True
         assert mu._relay_startup_drain_deadline_monotonic_secs == pytest.approx(
-            now_mono + mu._STARTUP_PACKET_DRAIN_SECS
+            now_mono + STARTUP_PACKET_DRAIN_SECS
         )
 
 

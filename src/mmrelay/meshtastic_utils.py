@@ -55,10 +55,13 @@ from mmrelay.constants.messages import (
 )
 from mmrelay.constants.network import (
     ACK_POLL_INTERVAL_SECS,
+    BLE_CONN_SUPPRESSED_TOKEN,
     BLE_CONNECT_TIMEOUT_SECS,
+    BLE_CONNECTED_ELSEWHERE_TOKEN,
     BLE_DISCONNECT_MAX_RETRIES,
     BLE_DISCONNECT_SETTLE_SECS,
     BLE_DISCONNECT_TIMEOUT_SECS,
+    BLE_DUP_CONNECT_SUPPRESSED_TOKEN,
     BLE_FUTURE_STALE_GRACE_SECS,
     BLE_FUTURE_WATCHDOG_SECS,
     BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
@@ -91,8 +94,14 @@ from mmrelay.constants.network import (
     INFINITE_RETRIES,
     INITIAL_HEALTH_CHECK_DELAY,
     MAX_TIMEOUT_RETRIES_INFINITE,
+    MESHTASTIC_BLE_GATE_RESET_FUNC,
+    MESHTASTIC_BLE_GATING_MODULE_PATH,
     METADATA_WATCHDOG_SECS,
+    RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS,
+    RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS,
+    RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS,
     STALE_DISCONNECT_TIMEOUT_SECS,
+    STARTUP_PACKET_DRAIN_SECS,
 )
 from mmrelay.db_utils import (
     NodeNameState,
@@ -142,13 +151,15 @@ logger = get_logger(name="Meshtastic")
 _ble_gate_reset_callable: Callable[[], None] | None = None
 _ble_gating_module: Any | None = None
 try:
-    _ble_gating_module = importlib.import_module("meshtastic.interfaces.ble.gating")
+    _ble_gating_module = importlib.import_module(MESHTASTIC_BLE_GATING_MODULE_PATH)
 except ModuleNotFoundError:
     _ble_gating_module = None
 except Exception:  # noqa: BLE001 - defensive import of optional fork-specific feature
     _ble_gating_module = None
 else:
-    clear_all_registries = getattr(_ble_gating_module, "_clear_all_registries", None)
+    clear_all_registries = getattr(
+        _ble_gating_module, MESHTASTIC_BLE_GATE_RESET_FUNC, None
+    )
     if callable(clear_all_registries):
         _ble_gate_reset_callable = cast(Callable[[], None], clear_all_registries)
 
@@ -165,19 +176,13 @@ _relay_rx_time_clock_skew_secs: float | None = None
 _relay_rx_time_clock_skew_lock = threading.Lock()
 # Allow controlled skew bootstrap shortly after connect so startup can recover
 # when host time and packet rxTime disagree before clock sync settles.
-_RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS = 180.0
-# Keep this intentionally larger than MAX_INITIAL_SKEW_SECS so startup recovery
-# can handle multi-hour host clock jumps observed in real deployments.
-_RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS = 24 * 60 * 60
 # Briefly drain inbound packets after connect to avoid relaying queued backlog
 # while connection/session timing state settles.
-_STARTUP_PACKET_DRAIN_SECS = 15.0
 _relay_startup_drain_deadline_monotonic_secs: float | None = None
 # Only apply startup drain on the first successful process-lifetime connect.
 _startup_packet_drain_applied = False
 # On reconnects, allow exactly one bounded pre-start skew bootstrap packet
 # without enabling a full reconnect drain window.
-_RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS = 5.0
 _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs: float | None = None
 
 
@@ -285,8 +290,9 @@ def _is_ble_duplicate_connect_suppressed_error(exc: BaseException) -> bool:
     message = str(exc).strip().lower()
     if not message:
         return False
-    return "recently connected elsewhere" in message or (
-        "connection suppressed" in message and "connected elsewhere" in message
+    return BLE_DUP_CONNECT_SUPPRESSED_TOKEN in message or (
+        BLE_CONN_SUPPRESSED_TOKEN in message
+        and BLE_CONNECTED_ELSEWHERE_TOKEN in message
     )
 
 
@@ -1106,7 +1112,7 @@ def _seed_connect_time_skew(rx_time: float) -> bool:
 
         relay_start_time = RELAY_START_TIME
         startup_age = max(0.0, now_monotonic - _relay_connection_started_monotonic_secs)
-        within_startup_window = startup_age <= _RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS
+        within_startup_window = startup_age <= RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS
         startup_drain_active = _relay_startup_drain_deadline_monotonic_secs is not None
         reconnect_bootstrap_deadline = (
             _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs
@@ -1128,11 +1134,11 @@ def _seed_connect_time_skew(rx_time: float) -> bool:
         ):
             return False
 
-        if abs(observed_skew) > _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS:
+        if abs(observed_skew) > RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS:
             logger.debug(
                 "Skipping rxTime skew bootstrap %.3f seconds outside startup limit %.3f",
                 observed_skew,
-                _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS,
+                RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS,
             )
             return False
 
@@ -1224,11 +1230,11 @@ def _claim_health_probe_response_and_maybe_calibrate(
 
         if rx_time > 0:
             observed_skew = time.time() - rx_time
-            if abs(observed_skew) > _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS:
+            if abs(observed_skew) > RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS:
                 logger.debug(
                     "[HEALTH_CHECK] Skipping rxTime clock skew calibration %.3f seconds outside startup limit %.3f",
                     observed_skew,
-                    _RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS,
+                    RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS,
                 )
             else:
                 with _relay_rx_time_clock_skew_lock:
@@ -4171,7 +4177,7 @@ def connect_meshtastic(
                             _relay_startup_drain_deadline_monotonic_secs = None
                             _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
                                 _relay_connection_started_monotonic_secs
-                                + _RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS
+                                + RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS
                             )
                             reconnect_bootstrap_armed_for_this_connect = True
                             timing_mode = "reconnect"
@@ -4217,7 +4223,7 @@ def connect_meshtastic(
                     with _relay_rx_time_clock_skew_lock:
                         if not _startup_packet_drain_applied:
                             _relay_startup_drain_deadline_monotonic_secs = (
-                                time.monotonic() + _STARTUP_PACKET_DRAIN_SECS
+                                time.monotonic() + STARTUP_PACKET_DRAIN_SECS
                             )
                             _startup_packet_drain_applied = True
                             startup_drain_applied_for_this_connect = True

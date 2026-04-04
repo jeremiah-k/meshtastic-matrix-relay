@@ -127,11 +127,16 @@ from mmrelay.constants.messages import (
     SHORTNAME_FALLBACK_LENGTH,
 )
 from mmrelay.constants.network import (
+    MATRIX_CLOCK_ROLLBACK_DISABLE_MS,
     MATRIX_EARLY_SYNC_TIMEOUT,
+    MATRIX_EVENT_EPOCH_FLOOR_MS,
     MATRIX_INITIAL_SYNC_MAX_ATTEMPTS,
     MATRIX_INITIAL_SYNC_RETRY_MAX_DELAY_SECS,
     MATRIX_LOGIN_TIMEOUT,
     MATRIX_ROOM_SEND_TIMEOUT,
+    MATRIX_STALE_STARTUP_EVENT_DROP_MS,
+    MATRIX_STARTUP_STALE_FILTER_WINDOW_MS,
+    MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS,
     MATRIX_SYNC_OPERATION_TIMEOUT,
     MATRIX_SYNC_RETRY_DELAY_SECS,
     MATRIX_TO_DEVICE_TIMEOUT,
@@ -1195,17 +1200,6 @@ bot_start_time = int(
     time.time() * MILLISECONDS_PER_SECOND
 )  # Timestamp when the bot starts, used to filter out old messages
 bot_start_monotonic_secs = time.monotonic()
-
-# Matrix server timestamps are epoch milliseconds. Ignore startup stale-event
-# filtering when values are not epoch-like (common in tests) or when local wall
-# time has stepped backwards since startup.
-_MATRIX_EVENT_EPOCH_FLOOR_MS = 946684800000  # 2000-01-01T00:00:00Z
-_MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS = 5 * MILLISECONDS_PER_SECOND
-# Only apply stale pre-start timestamp filtering during a short startup phase.
-_MATRIX_STARTUP_STALE_FILTER_WINDOW_MS = 2 * 60 * MILLISECONDS_PER_SECOND
-# Treat messages much older than startup as backlog during startup.
-_MATRIX_STALE_STARTUP_EVENT_DROP_MS = 5 * 60 * MILLISECONDS_PER_SECOND
-_MATRIX_CLOCK_ROLLBACK_DISABLE_MS = 60 * MILLISECONDS_PER_SECOND
 
 
 def _estimate_clock_rollback_ms(
@@ -4305,19 +4299,19 @@ async def on_room_message(
             ),
         )
         baseline_plausible = (
-            message_timestamp >= _MATRIX_EVENT_EPOCH_FLOOR_MS
-            and bot_start_time >= _MATRIX_EVENT_EPOCH_FLOOR_MS
+            message_timestamp >= MATRIX_EVENT_EPOCH_FLOOR_MS
+            and bot_start_time >= MATRIX_EVENT_EPOCH_FLOOR_MS
         )
-        rollback_detected = rollback_ms > _MATRIX_CLOCK_ROLLBACK_DISABLE_MS
+        rollback_detected = rollback_ms > MATRIX_CLOCK_ROLLBACK_DISABLE_MS
         startup_window_active = (
-            elapsed_since_start_ms <= _MATRIX_STARTUP_STALE_FILTER_WINDOW_MS
+            elapsed_since_start_ms <= MATRIX_STARTUP_STALE_FILTER_WINDOW_MS
         )
 
         if (
             baseline_plausible
             and startup_window_active
             and not rollback_detected
-            and skew_ms > _MATRIX_STALE_STARTUP_EVENT_DROP_MS
+            and skew_ms > MATRIX_STALE_STARTUP_EVENT_DROP_MS
         ):
             logger.debug(
                 "Dropping stale Matrix event predating startup baseline "
@@ -4330,7 +4324,7 @@ async def on_room_message(
             )
             return
 
-        if skew_ms > _MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS:
+        if skew_ms > MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS:
             reason = (
                 "clock rollback detected"
                 if rollback_detected

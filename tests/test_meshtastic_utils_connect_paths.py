@@ -16,6 +16,8 @@ from mmrelay.constants.network import (
     DEFAULT_MESHTASTIC_TIMEOUT,
     DEFAULT_TCP_PORT,
     ERRNO_BAD_FILE_DESCRIPTOR,
+    RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS,
+    STARTUP_PACKET_DRAIN_SECS,
 )
 from mmrelay.meshtastic_utils import connect_meshtastic, on_lost_meshtastic_connection
 
@@ -408,7 +410,7 @@ def test_connect_meshtastic_bootstraps_skew_for_fast_receive_during_subscribe():
     assert result is mock_client
     assert mu._relay_rx_time_clock_skew_secs == 5_100.0
     assert mu._relay_startup_drain_deadline_monotonic_secs == (
-        1_000.0 + mu._STARTUP_PACKET_DRAIN_SECS
+        1_000.0 + STARTUP_PACKET_DRAIN_SECS
     )
     mock_submit_coro.assert_not_called()
 
@@ -474,11 +476,9 @@ def test_connect_meshtastic_arms_startup_drain_after_setup_completes():
 
     assert result is mock_client
     assert startup_deadline_seen_during_metadata is None
-    assert startup_deadline_seen_at_subscribe == (
-        1_030.0 + mu._STARTUP_PACKET_DRAIN_SECS
-    )
+    assert startup_deadline_seen_at_subscribe == (1_030.0 + STARTUP_PACKET_DRAIN_SECS)
     assert mu._relay_startup_drain_deadline_monotonic_secs == (
-        1_030.0 + mu._STARTUP_PACKET_DRAIN_SECS
+        1_030.0 + STARTUP_PACKET_DRAIN_SECS
     )
     mock_submit_coro.assert_not_called()
 
@@ -570,7 +570,7 @@ def test_connect_meshtastic_resets_timing_before_get_my_node_info_on_reconnect()
             and mu._relay_rx_time_clock_skew_secs is None
             and mu._relay_startup_drain_deadline_monotonic_secs is None
             and mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs
-            == 1_000.0 + mu._RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS
+            == 1_000.0 + RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS
             and not mu._health_probe_request_deadlines
         ):
             saw_reset_state_during_get_node_info = True

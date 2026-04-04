@@ -38,7 +38,10 @@ from mmrelay.constants.network import (
     DEFAULT_TCP_PORT,
     MAX_TIMEOUT_RETRIES_INFINITE,
     METADATA_WATCHDOG_SECS,
+    RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS,
+    RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS,
     STALE_DISCONNECT_TIMEOUT_SECS,
+    STARTUP_PACKET_DRAIN_SECS,
 )
 from mmrelay.meshtastic_utils import (
     _get_device_metadata,
@@ -217,8 +220,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         mmrelay.meshtastic_utils.shutting_down = False
         mmrelay.meshtastic_utils.reconnect_task = None
         mmrelay.meshtastic_utils._relay_connection_started_monotonic_secs = (
-            time.monotonic()
-            - (mmrelay.meshtastic_utils._RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS + 1.0)
+            time.monotonic() - (RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS + 1.0)
         )
         mmrelay.meshtastic_utils._relay_rx_time_clock_skew_secs = None
         mmrelay.meshtastic_utils._relay_startup_drain_deadline_monotonic_secs = None
@@ -848,7 +850,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         assert result_first is first_client
         assert mu._startup_packet_drain_applied is True
         assert mu._relay_startup_drain_deadline_monotonic_secs == pytest.approx(
-            1_000.0 + mu._STARTUP_PACKET_DRAIN_SECS
+            1_000.0 + STARTUP_PACKET_DRAIN_SECS
         )
 
         with (
@@ -1969,7 +1971,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         mu.reconnect_task = None
         mu._relay_active_client_id = None
         mu._relay_connection_started_monotonic_secs = time.monotonic() - (
-            mu._RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS + 1.0
+            RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS + 1.0
         )
         mu._relay_rx_time_clock_skew_secs = None
         mu._relay_startup_drain_deadline_monotonic_secs = None

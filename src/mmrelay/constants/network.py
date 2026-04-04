@@ -156,3 +156,25 @@ MAX_HOSTNAME_LABEL_LENGTH: Final[int] = 63
 # Meshtastic channel limits
 MESHTASTIC_CHANNEL_MIN: Final[int] = 0
 MESHTASTIC_CHANNEL_MAX: Final[int] = 7
+
+# RxTime clock skew bootstrap windows
+RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS: Final[float] = 180.0
+RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS: Final[float] = (
+    24 * 60 * 60
+)  # 24 hours - handles multi-hour host clock jumps
+STARTUP_PACKET_DRAIN_SECS: Final[float] = 15.0
+RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS: Final[float] = 5.0
+
+# BLE duplicate-connect suppression detection
+MESHTASTIC_BLE_GATING_MODULE_PATH: Final[str] = "meshtastic.interfaces.ble.gating"
+MESHTASTIC_BLE_GATE_RESET_FUNC: Final[str] = "_clear_all_registries"
+BLE_DUP_CONNECT_SUPPRESSED_TOKEN: Final[str] = "recently connected elsewhere"
+BLE_CONN_SUPPRESSED_TOKEN: Final[str] = "connection suppressed"
+BLE_CONNECTED_ELSEWHERE_TOKEN: Final[str] = "connected elsewhere"
+
+# Matrix startup stale-event filtering
+MATRIX_EVENT_EPOCH_FLOOR_MS: Final[int] = 946684800000  # 2000-01-01T00:00:00Z
+MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS: Final[int] = 5 * MILLISECONDS_PER_SECOND
+MATRIX_STARTUP_STALE_FILTER_WINDOW_MS: Final[int] = 2 * 60 * MILLISECONDS_PER_SECOND
+MATRIX_STALE_STARTUP_EVENT_DROP_MS: Final[int] = 5 * 60 * MILLISECONDS_PER_SECOND
+MATRIX_CLOCK_ROLLBACK_DISABLE_MS: Final[int] = 60 * MILLISECONDS_PER_SECOND
