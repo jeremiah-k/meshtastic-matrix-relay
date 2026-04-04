@@ -950,10 +950,17 @@ def reset_meshtastic_globals():
         "reconnecting": getattr(mu, "reconnecting", False),
         "shutting_down": getattr(mu, "shutting_down", False),
         "reconnect_task": getattr(mu, "reconnect_task", None),
+        "reconnect_task_future": getattr(mu, "reconnect_task_future", None),
+        "_connect_attempt_lock": getattr(mu, "_connect_attempt_lock", None),
+        "_connect_attempt_condition": getattr(mu, "_connect_attempt_condition", None),
+        "_connect_attempt_in_progress": getattr(
+            mu, "_connect_attempt_in_progress", False
+        ),
         "subscribed_to_messages": getattr(mu, "subscribed_to_messages", False),
         "subscribed_to_connection_lost": getattr(
             mu, "subscribed_to_connection_lost", False
         ),
+        "_callbacks_tearing_down": getattr(mu, "_callbacks_tearing_down", False),
         "_metadata_future": getattr(mu, "_metadata_future", None),
         "_metadata_future_started_at": getattr(mu, "_metadata_future_started_at", None),
         "_ble_future": getattr(mu, "_ble_future", None),
@@ -1015,8 +1022,10 @@ def reset_meshtastic_globals():
     mu.reconnecting = False
     mu.shutting_down = False
     mu.reconnect_task = None
+    mu.reconnect_task_future = None
     mu.subscribed_to_messages = False
     mu.subscribed_to_connection_lost = False
+    mu._callbacks_tearing_down = False
     mu._metadata_future = None
     mu._metadata_future_started_at = None
     cleanup_ble_future_state(mu)
@@ -1058,6 +1067,11 @@ def reset_meshtastic_globals():
     mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = None
     mu._startup_packet_drain_applied = False
     mu._health_probe_request_deadlines = {}
+    connect_condition = getattr(mu, "_connect_attempt_condition", None)
+    if connect_condition is not None:
+        with connect_condition:
+            mu._connect_attempt_in_progress = False
+            connect_condition.notify_all()
 
     yield
     try:
@@ -1089,9 +1103,13 @@ def reset_meshtastic_globals():
 
         _cancel_and_drain_future_like(getattr(mu, "reconnect_task", None), timeout=0.2)
         _cancel_and_drain_future_like(
+            getattr(mu, "reconnect_task_future", None), timeout=0.2
+        )
+        _cancel_and_drain_future_like(
             getattr(mu, "_metadata_future", None), timeout=0.2
         )
         mu.reconnect_task = None
+        mu.reconnect_task_future = None
         mu._metadata_future = None
         mu._metadata_future_started_at = None
         if mu.subscribed_to_messages:
@@ -1104,10 +1122,16 @@ def reset_meshtastic_globals():
                 )
         mu.subscribed_to_messages = False
         mu.subscribed_to_connection_lost = False
+        mu._callbacks_tearing_down = False
         cleanup_ble_future_state(mu)
         mu.shutdown_shared_executors()
         mu.meshtastic_iface = None
         mu.meshtastic_client = None
+        connect_condition = getattr(mu, "_connect_attempt_condition", None)
+        if connect_condition is not None:
+            with connect_condition:
+                mu._connect_attempt_in_progress = False
+                connect_condition.notify_all()
     finally:
         for attr_name, original_value in original_values.items():
             setattr(mu, attr_name, original_value)

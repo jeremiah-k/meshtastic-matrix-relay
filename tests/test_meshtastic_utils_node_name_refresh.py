@@ -123,6 +123,56 @@ def test_refresh_node_name_tables_handles_timeout_then_retries(
     assert mock_sync.call_args_list[1].args[1] is state_after_first_refresh
 
 
+def test_refresh_node_name_tables_logs_unavailable_only_once_per_state(
+    reset_meshtastic_globals,
+) -> None:
+    """Unavailable-client debug noise should be deduplicated across loop iterations."""
+    _ = reset_meshtastic_globals
+    event = _TimeoutThenSetEvent()
+    with (
+        patch.object(mu, "meshtastic_client", None),
+        patch.object(mu, "logger") as mock_logger,
+    ):
+        asyncio.run(
+            mu.refresh_node_name_tables(
+                event,  # type: ignore[arg-type]
+                refresh_interval_seconds=0.01,
+            )
+        )
+
+    unavailable_calls = [
+        c
+        for c in mock_logger.debug.call_args_list
+        if c.args
+        and c.args[0]
+        == "Skipping name-cache refresh from NodeDB because Meshtastic client is unavailable"
+    ]
+    assert len(unavailable_calls) == 1
+
+
+def test_refresh_node_name_tables_uses_reconnecting_unavailable_message(
+    reset_meshtastic_globals,
+) -> None:
+    """When reconnecting, refresh logs reconnect-specific unavailability reason."""
+    _ = reset_meshtastic_globals
+    event = _OnePassEvent()
+    with (
+        patch.object(mu, "meshtastic_client", None),
+        patch.object(mu, "reconnecting", True),
+        patch.object(mu, "logger") as mock_logger,
+    ):
+        asyncio.run(
+            mu.refresh_node_name_tables(
+                event,  # type: ignore[arg-type]
+                refresh_interval_seconds=0.01,
+            )
+        )
+
+    mock_logger.debug.assert_any_call(
+        "Skipping name-cache refresh from NodeDB while reconnection is in progress"
+    )
+
+
 def test_refresh_node_name_tables_non_positive_interval_exits_after_one_pass(
     reset_meshtastic_globals,
 ) -> None:

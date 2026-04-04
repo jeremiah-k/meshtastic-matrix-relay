@@ -1,3 +1,4 @@
+import threading
 import time
 from collections.abc import Callable
 from typing import Any
@@ -37,6 +38,89 @@ def test_connect_meshtastic_returns_existing_client(reset_meshtastic_globals):
 
     assert result is mock_client
     mock_tcp.assert_not_called()
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_meshtastic_serializes_concurrent_connect_attempts():
+    config = {
+        "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "127.0.0.1"}
+    }
+    created_client = MagicMock()
+    created_client.getMyNodeInfo.return_value = {
+        "user": {"shortName": "Node", "hwModel": "HW"}
+    }
+
+    constructor_entered = threading.Event()
+    allow_constructor_return = threading.Event()
+    second_ready_to_connect = threading.Event()
+    worker_errors: list[Exception] = []
+    worker_results: list[Any | None] = [None, None]
+
+    def _tcp_constructor(*_args: Any, **_kwargs: Any) -> Any:
+        constructor_entered.set()
+        assert allow_constructor_return.wait(timeout=1.0)
+        return created_client
+
+    def _run_connect(index: int) -> None:
+        try:
+            if index == 1:
+                second_ready_to_connect.set()
+            worker_results[index] = connect_meshtastic(passed_config=config)
+        except Exception as exc:  # pragma: no cover - exercised only on failure
+            worker_errors.append(exc)
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+            side_effect=_tcp_constructor,
+        ) as mock_tcp,
+        patch(
+            "mmrelay.meshtastic_utils._get_device_metadata",
+            return_value={"firmware_version": "unknown", "success": False},
+        ),
+    ):
+        first = threading.Thread(target=_run_connect, args=(0,))
+        second = threading.Thread(target=_run_connect, args=(1,))
+        first.start()
+        assert constructor_entered.wait(timeout=1.0)
+        second.start()
+        assert second_ready_to_connect.wait(timeout=1.0)
+        assert mock_tcp.call_count == 1
+        allow_constructor_return.set()
+        first.join(timeout=1.0)
+        second.join(timeout=1.0)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert worker_errors == []
+    assert worker_results[0] is created_client
+    assert worker_results[1] is created_client
+    assert mock_tcp.call_count == 1
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_meshtastic_waiter_times_out_when_attempt_stuck():
+    """Waiting callers should return quickly when a connect attempt is stuck."""
+    with mu._connect_attempt_condition:
+        mu._connect_attempt_in_progress = True
+
+    start = time.monotonic()
+    with (
+        patch.object(mu, "_CONNECT_ATTEMPT_WAIT_MAX_SECS", 0.02),
+        patch.object(mu, "_CONNECT_ATTEMPT_WAIT_POLL_SECS", 0.005),
+        patch("mmrelay.meshtastic_utils._connect_meshtastic_impl") as mock_impl,
+    ):
+        result = connect_meshtastic()
+    elapsed = time.monotonic() - start
+
+    with mu._connect_attempt_condition:
+        mu._connect_attempt_in_progress = False
+        mu._connect_attempt_condition.notify_all()
+
+    assert result is None
+    assert elapsed >= 0.015
+    mock_impl.assert_not_called()
+    assert elapsed < 0.2
 
 
 def test_connect_meshtastic_network_alias_warns_and_uses_tcp(reset_meshtastic_globals):

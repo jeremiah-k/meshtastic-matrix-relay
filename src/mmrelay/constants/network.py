@@ -160,8 +160,8 @@ MESHTASTIC_CHANNEL_MAX: Final[int] = 7
 # RxTime clock skew bootstrap windows
 RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS: Final[float] = 180.0
 RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS: Final[float] = (
-    24 * 60 * 60
-)  # 24 hours - handles multi-hour host clock jumps
+    48 * 60 * 60
+)  # 48 hours - handles day-scale node/host clock jumps after reboot
 STARTUP_PACKET_DRAIN_SECS: Final[float] = 15.0
 RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS: Final[float] = 5.0
 
