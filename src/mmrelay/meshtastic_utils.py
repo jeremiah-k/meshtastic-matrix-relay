@@ -4729,7 +4729,7 @@ async def reconnect() -> None:
 
     Retries connect_meshtastic(force_connect=True) until a connection is obtained, the application begins shutting down, or the task is cancelled. Starts with DEFAULT_BACKOFF_TIME and doubles the wait after each failed attempt, capped at 300 seconds. Stops promptly on cancellation or when shutting_down is set, and ensures the module-level `reconnecting` flag is cleared before returning.
     """
-    global reconnecting, shutting_down, reconnect_task_future
+    global meshtastic_client, reconnecting, shutting_down, reconnect_task_future
     backoff_time = DEFAULT_BACKOFF_TIME
     try:
         while not shutting_down:
@@ -4782,6 +4782,7 @@ async def reconnect() -> None:
                 reconnect_task_future = connect_future
                 connected_client = await connect_future
                 if connected_client is not None:
+                    meshtastic_client = connected_client
                     logger.info("Reconnected successfully.")
                     break
             except Exception:
