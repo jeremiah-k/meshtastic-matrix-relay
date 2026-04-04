@@ -3459,9 +3459,11 @@ def _rollback_connect_attempt_state(
     global _relay_startup_drain_deadline_monotonic_secs, _startup_packet_drain_applied
     global _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs
 
-    if client_assigned_for_this_connect and client is not None:
+    if client is not None and (
+        client_assigned_for_this_connect or client is meshtastic_iface
+    ):
         with meshtastic_lock:
-            if meshtastic_client is client:
+            if meshtastic_client is client or client is meshtastic_iface:
                 try:
                     if client is meshtastic_iface:
                         _disconnect_ble_interface(
@@ -3476,8 +3478,9 @@ def _rollback_connect_attempt_state(
                         cleanup_error,
                     )
                 finally:
-                    meshtastic_client = None
-                    _relay_active_client_id = None
+                    if meshtastic_client is client:
+                        meshtastic_client = None
+                        _relay_active_client_id = None
 
     if (
         startup_drain_armed_for_this_connect
@@ -4193,10 +4196,10 @@ def connect_meshtastic(
                 _relay_active_client_id = id(client)
                 client_assigned_for_this_connect = True
 
-                nodeInfo = client.getMyNodeInfo()
+                node_info = client.getMyNodeInfo()
 
                 # Safely access node info fields
-                user_info = nodeInfo.get("user", {}) if nodeInfo else {}
+                user_info = node_info.get("user", {}) if node_info else {}
                 short_name = user_info.get("shortName", "unknown")
                 hw_model = user_info.get("hwModel", "unknown")
 

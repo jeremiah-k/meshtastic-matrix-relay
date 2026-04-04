@@ -13,6 +13,7 @@ from mmrelay.meshtastic_utils import connect_meshtastic
 class _FakeBLEInterfaceCompat:
     def __init__(self, **kwargs: object) -> None:
         self.address = kwargs.get("address")
+        self.close = MagicMock()
 
     def getMyNodeInfo(self) -> dict[str, dict[str, str]]:
         return {"user": {"shortName": "Node", "hwModel": "HW"}}
@@ -121,8 +122,11 @@ class TestBleValidationFailure:
 
     def test_ble_validation_failure_client_not_iface_uses_close(self):
         config = _ble_config()
+        captured_client = None
 
         def _validate_and_clear_iface(_client: object, _addr: str) -> bool:
+            nonlocal captured_client
+            captured_client = _client
             mu.meshtastic_iface = None
             return False
 
@@ -136,12 +140,17 @@ class TestBleValidationFailure:
                 "mmrelay.meshtastic_utils._validate_ble_connection_address",
                 side_effect=_validate_and_clear_iface,
             ),
-            patch("mmrelay.meshtastic_utils._disconnect_ble_interface"),
+            patch(
+                "mmrelay.meshtastic_utils._disconnect_ble_interface"
+            ) as mock_disconnect_iface,
             patch("mmrelay.meshtastic_utils.logger"),
         ):
             result = connect_meshtastic(passed_config=config)
 
         assert result is None
+        mock_disconnect_iface.assert_not_called()
+        assert captured_client is not None
+        captured_client.close.assert_called_once()
 
     def test_ble_validation_disconnect_exception_handled(self):
         config = _ble_config()
