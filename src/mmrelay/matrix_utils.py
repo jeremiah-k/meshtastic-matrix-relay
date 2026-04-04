@@ -1201,9 +1201,10 @@ bot_start_monotonic_secs = time.monotonic()
 # time has stepped backwards since startup.
 _MATRIX_EVENT_EPOCH_FLOOR_MS = 946684800000  # 2000-01-01T00:00:00Z
 _MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS = 5 * MILLISECONDS_PER_SECOND
-# Drop pre-start events beyond a small startup tolerance when local startup
-# clock appears stable.
-_MATRIX_STALE_STARTUP_EVENT_DROP_MS = _MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS
+# Only apply stale pre-start timestamp filtering during a short startup phase.
+_MATRIX_STARTUP_STALE_FILTER_WINDOW_MS = 2 * 60 * MILLISECONDS_PER_SECOND
+# Treat messages much older than startup as backlog during startup.
+_MATRIX_STALE_STARTUP_EVENT_DROP_MS = 5 * 60 * MILLISECONDS_PER_SECOND
 _MATRIX_CLOCK_ROLLBACK_DISABLE_MS = 60 * MILLISECONDS_PER_SECOND
 
 
@@ -4297,14 +4298,24 @@ async def on_room_message(
         rollback_ms = _estimate_clock_rollback_ms(
             bot_start_time, bot_start_monotonic_secs
         )
+        elapsed_since_start_ms = max(
+            0,
+            int(
+                (time.monotonic() - bot_start_monotonic_secs) * MILLISECONDS_PER_SECOND
+            ),
+        )
         baseline_plausible = (
             message_timestamp >= _MATRIX_EVENT_EPOCH_FLOOR_MS
             and bot_start_time >= _MATRIX_EVENT_EPOCH_FLOOR_MS
         )
         rollback_detected = rollback_ms > _MATRIX_CLOCK_ROLLBACK_DISABLE_MS
+        startup_window_active = (
+            elapsed_since_start_ms <= _MATRIX_STARTUP_STALE_FILTER_WINDOW_MS
+        )
 
         if (
             baseline_plausible
+            and startup_window_active
             and not rollback_detected
             and skew_ms > _MATRIX_STALE_STARTUP_EVENT_DROP_MS
         ):
@@ -4323,7 +4334,11 @@ async def on_room_message(
             reason = (
                 "clock rollback detected"
                 if rollback_detected
-                else "startup skew within tolerance window"
+                else (
+                    "startup skew within tolerance window"
+                    if startup_window_active
+                    else "startup stale filter window elapsed"
+                )
             )
             logger.debug(
                 "Processing Matrix event despite startup timestamp skew "

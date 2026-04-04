@@ -892,6 +892,24 @@ async def test_on_room_message_allows_old_timestamp_after_clock_rollback(
     mock_queue_message.assert_called_once()
 
 
+async def test_on_room_message_allows_stale_timestamp_after_startup_window(
+    mock_room, mock_event, test_config
+):
+    """Stale startup filtering should not drop old events after startup window elapses."""
+    mock_event.server_timestamp = 1_700_000_000_000
+
+    with _patch_on_room_message_time_context(
+        test_config=test_config,
+        bot_start_time=1_700_000_400_000,
+        bot_start_monotonic_secs=10_000.0,
+        current_time=1_700_000_900.0,
+        current_monotonic=10_500.0,
+    ) as mock_queue_message:
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_called_once()
+
+
 async def test_on_room_message_config_none_logs_and_returns(
     monkeypatch, mock_room, mock_event
 ):
