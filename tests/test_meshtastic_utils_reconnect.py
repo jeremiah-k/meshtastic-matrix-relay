@@ -139,6 +139,16 @@ class TestReconnectFailureBackoff:
                 mu.shutting_down = True
             raise ConnectionError("connection refused")
 
+        class _NoOpProgress:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def update(self, *args, **kwargs):
+                pass
+
         async def _sleep_side_effect(seconds):
             await asyncio.sleep(0)
 
@@ -155,6 +165,7 @@ class TestReconnectFailureBackoff:
                 "mmrelay.meshtastic_utils.asyncio.sleep", side_effect=_sleep_side_effect
             ),
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+            patch("mmrelay.meshtastic_utils.time.sleep"),
         ):
             asyncio.run(_run())
 
@@ -197,6 +208,7 @@ class TestReconnectFailureBackoff:
                 "mmrelay.meshtastic_utils.asyncio.sleep", side_effect=_sleep_side_effect
             ),
             patch("mmrelay.meshtastic_utils.logger"),
+            patch("mmrelay.meshtastic_utils.time.sleep"),
         ):
             asyncio.run(_run())
 
@@ -233,6 +245,7 @@ class TestReconnectFailureBackoff:
                 "mmrelay.meshtastic_utils.asyncio.sleep", side_effect=_sleep_side_effect
             ),
             patch("mmrelay.meshtastic_utils.logger"),
+            patch("mmrelay.meshtastic_utils.time.sleep"),
         ):
             asyncio.run(_run())
 
