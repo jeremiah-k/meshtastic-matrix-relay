@@ -4345,7 +4345,7 @@ async def on_room_message(
                 "clock rollback detected"
                 if rollback_detected
                 else (
-                    "startup skew within tolerance window"
+                    "within startup window, tolerating skew"
                     if startup_window_active
                     else "startup stale filter window elapsed"
                 )

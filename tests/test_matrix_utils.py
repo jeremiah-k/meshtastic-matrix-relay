@@ -874,8 +874,9 @@ async def test_on_room_message_drops_clearly_stale_startup_backlog(
         test_config=test_config,
         bot_start_time=bot_start_time,
         bot_start_monotonic_secs=10_000.0,
-        current_time=bot_start_time / 1000 + 5.0,
-        current_monotonic=10_005.0,
+        current_time=bot_start_time / 1000
+        + MATRIX_STARTUP_STALE_FILTER_WINDOW_MS / 1000 / 4,
+        current_monotonic=10_000.0 + MATRIX_STARTUP_STALE_FILTER_WINDOW_MS / 1000 / 4,
     ) as mock_queue_message:
         await on_room_message(mock_room, mock_event)
 
@@ -896,7 +897,7 @@ async def test_on_room_message_allows_old_timestamp_after_clock_rollback(
         bot_start_time=startup_ts,
         bot_start_monotonic_secs=10_000.0,
         current_time=message_ts / 1000,
-        current_monotonic=10_060.0,
+        current_monotonic=10_000.0 + MATRIX_STARTUP_STALE_FILTER_WINDOW_MS / 1000 / 2,
     ) as mock_queue_message:
         await on_room_message(mock_room, mock_event)
 

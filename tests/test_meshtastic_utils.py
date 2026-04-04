@@ -14,7 +14,6 @@ import asyncio
 import contextlib
 import os
 import sys
-import time
 import unittest
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from types import SimpleNamespace
@@ -38,8 +37,6 @@ from mmrelay.constants.network import (
     DEFAULT_TCP_PORT,
     MAX_TIMEOUT_RETRIES_INFINITE,
     METADATA_WATCHDOG_SECS,
-    RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS,
-    RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS,
     STALE_DISCONNECT_TIMEOUT_SECS,
     STARTUP_PACKET_DRAIN_SECS,
 )
@@ -109,6 +106,11 @@ def reset_meshtastic_relay_state(monkeypatch):
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils.subscribed_to_connection_lost",
         False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._health_probe_request_deadlines",
+        {},
         raising=False,
     )
 

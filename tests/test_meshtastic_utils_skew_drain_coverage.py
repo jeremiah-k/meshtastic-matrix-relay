@@ -89,6 +89,9 @@ class TestConnectionRefusedExceptionHandler:
                 "mmrelay.meshtastic_utils._get_device_metadata",
                 return_value={"firmware_version": "unknown", "success": False},
             ),
+            # Defensive coverage: _schedule_connect_time_calibration_probe catches exceptions
+            # internally, so ConnectionRefusedError cannot propagate from it in production.
+            # This exercises connect_meshtastic's outer exception handler directly.
             patch(
                 "mmrelay.meshtastic_utils._schedule_connect_time_calibration_probe",
                 side_effect=ConnectionRefusedError("test refused"),
@@ -256,6 +259,9 @@ class TestGenericExceptionHandler:
                 "mmrelay.meshtastic_utils._get_device_metadata",
                 return_value={"firmware_version": "unknown", "success": False},
             ),
+            # Defensive coverage: _schedule_connect_time_calibration_probe catches RuntimeError
+            # internally and returns normally. The patch exercises connect_meshtastic's outer
+            # generic exception handler and retry logic directly.
             patch(
                 "mmrelay.meshtastic_utils._schedule_connect_time_calibration_probe",
                 side_effect=RuntimeError("probe boom"),
