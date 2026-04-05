@@ -86,7 +86,7 @@ def _track_health_probe_request_id(
         + facade.HEALTH_PROBE_TRACK_GRACE_SECS
     )
     with facade._health_probe_request_lock:
-        _prune_health_probe_tracking()
+        facade._prune_health_probe_tracking()
         facade._health_probe_request_deadlines[request_id] = expires_at
     return request_id
 
@@ -97,9 +97,6 @@ def _seed_connect_time_skew(rx_time: float) -> bool:
     Returns:
         bool: True when a new skew value was calibrated for this packet.
     """
-    global _relay_rx_time_clock_skew_secs
-    global _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs
-
     if rx_time <= 0:
         return False
 
@@ -187,7 +184,7 @@ def _is_health_probe_response_packet(packet: dict[str, Any], interface: Any) -> 
     """
     Determine if an inbound packet is a tracked health-probe response.
     """
-    request_id = _extract_packet_request_id(packet)
+    request_id = facade._extract_packet_request_id(packet)
     if request_id is None:
         return False
 
@@ -200,7 +197,7 @@ def _is_health_probe_response_packet(packet: dict[str, Any], interface: Any) -> 
         return False
 
     with facade._health_probe_request_lock:
-        _prune_health_probe_tracking()
+        facade._prune_health_probe_tracking()
         return request_id in facade._health_probe_request_deadlines
 
 
@@ -213,9 +210,7 @@ def _claim_health_probe_response_and_maybe_calibrate(
     Lock order intentionally matches connect_meshtastic():
     _health_probe_request_lock -> _relay_rx_time_clock_skew_lock.
     """
-    global _relay_rx_time_clock_skew_secs
-
-    request_id = _extract_packet_request_id(packet)
+    request_id = facade._extract_packet_request_id(packet)
     if request_id is None:
         return False
 
@@ -230,7 +225,7 @@ def _claim_health_probe_response_and_maybe_calibrate(
     observed_skew: float | None = None
     calibrated_now = False
     with facade._health_probe_request_lock:
-        _prune_health_probe_tracking()
+        facade._prune_health_probe_tracking()
         if request_id not in facade._health_probe_request_deadlines:
             return False
 
@@ -385,7 +380,7 @@ def _handle_probe_ack_callback(local_node: Any, packet: Any) -> None:
     iface = getattr(local_node, "iface", None)
     ack_state = getattr(iface, "_acknowledgment", None)
     if ack_state is None:
-        raise _missing_local_node_ack_state_error()
+        raise facade._missing_local_node_ack_state_error()
 
     decoded = packet.get("decoded") if isinstance(packet, dict) else None
     routing = decoded.get("routing") if isinstance(decoded, dict) else None
@@ -395,12 +390,12 @@ def _handle_probe_ack_callback(local_node: Any, packet: Any) -> None:
             if hasattr(ack_state, "receivedNak"):
                 ack_state.receivedNak = True
                 return
-            raise _missing_received_nak_error()
+            raise facade._missing_received_nak_error()
 
-    if _set_probe_ack_flag_from_packet(local_node, packet):
+    if facade._set_probe_ack_flag_from_packet(local_node, packet):
         return
 
-    raise _failed_probe_ack_state_error()
+    raise facade._failed_probe_ack_state_error()
 
 
 def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
@@ -412,14 +407,14 @@ def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
     """
     ack_state = getattr(client, "_acknowledgment", None)
     if ack_state is None:
-        raise _missing_ack_state_error()
+        raise facade._missing_ack_state_error()
 
     ack_attrs = ("receivedAck", "receivedNak", "receivedImplAck")
 
     deadline = time.monotonic() + timeout_secs
     while time.monotonic() < deadline:
         if any(bool(getattr(ack_state, attr, False)) for attr in ack_attrs):
-            _reset_probe_ack_state(ack_state)
+            facade._reset_probe_ack_state(ack_state)
             return
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -428,10 +423,10 @@ def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
 
     # Final check catches ACK/NAK updates that may land near the deadline.
     if any(bool(getattr(ack_state, attr, False)) for attr in ack_attrs):
-        _reset_probe_ack_state(ack_state)
+        facade._reset_probe_ack_state(ack_state)
         return
 
-    raise _metadata_probe_ack_timeout_error(timeout_secs)
+    raise facade._metadata_probe_ack_timeout_error(timeout_secs)
 
 
 def _probe_device_connection(
@@ -456,14 +451,14 @@ def _probe_device_connection(
     """
     local_node = getattr(client, "localNode", None)
     if local_node is None or not callable(getattr(client, "sendData", None)):
-        raise _missing_probe_transport_error()
+        raise facade._missing_probe_transport_error()
 
     # Clear stale ACK/NAK flags so this probe cannot "pass" on prior traffic.
     ack_state = getattr(client, "_acknowledgment", None)
     if ack_state is None:
         ack_state = getattr(getattr(local_node, "iface", None), "_acknowledgment", None)
     if ack_state is not None:
-        _reset_probe_ack_state(ack_state)
+        facade._reset_probe_ack_state(ack_state)
 
     request = admin_pb2.AdminMessage()
     request.get_device_metadata_request = True
@@ -511,7 +506,7 @@ def _probe_device_connection(
         )
         return
 
-    raise _missing_probe_wait_error()
+    raise facade._missing_probe_wait_error()
 
 
 def requires_continuous_health_monitor(config: dict) -> bool:
