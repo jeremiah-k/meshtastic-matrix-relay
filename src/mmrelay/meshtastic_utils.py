@@ -128,6 +128,17 @@ from mmrelay.meshtastic.async_utils import (
     _wait_for_future_result_with_shutdown,
     _wait_for_result,
 )
+from mmrelay.meshtastic.ble import (
+    _attach_late_ble_interface_disposer,
+    _disconnect_ble_by_address,
+    _disconnect_ble_interface,
+    _is_ble_discovery_error,
+    _is_ble_duplicate_connect_suppressed_error,
+    _reset_ble_connection_gate_state,
+    _sanitize_ble_address,
+    _scan_for_ble_address,
+    _validate_ble_connection_address,
+)
 from mmrelay.meshtastic.executors import (
     _clear_ble_future,
     _clear_metadata_future_if_current,
@@ -373,51 +384,6 @@ def _coerce_positive_int(value: Any, default: int) -> int:
         return default
 
 
-def _is_ble_duplicate_connect_suppressed_error(exc: BaseException) -> bool:
-    """
-    Return whether an exception message matches Meshtastic duplicate-connect suppression.
-
-    This targets forked meshtastic BLE gate errors such as:
-    "Connection suppressed: recently connected elsewhere".
-    """
-    message = str(exc).strip().lower()
-    if not message:
-        return False
-    return BLE_DUP_CONNECT_SUPPRESSED_TOKEN in message or (
-        BLE_CONN_SUPPRESSED_TOKEN in message
-        and BLE_CONNECTED_ELSEWHERE_TOKEN in message
-    )
-
-
-def _reset_ble_connection_gate_state(ble_address: str, *, reason: str) -> bool:
-    """
-    Best-effort reset of process-local BLE connection gate state.
-
-    This recovery hook is only active when the installed Meshtastic library
-    exposes a connection-gate reset API. Otherwise this function is a no-op.
-    """
-    if _ble_gate_reset_callable is None:
-        return False
-
-    try:
-        _ble_gate_reset_callable()
-    except Exception:
-        logger.debug(
-            "BLE connection-state reset failed for %s (%s)",
-            ble_address,
-            reason,
-            exc_info=True,
-        )
-        return False
-
-    logger.warning(
-        "Reset BLE connection state for %s (%s)",
-        ble_address,
-        reason,
-    )
-    return True
-
-
 def _normalize_room_channel(room: dict[str, Any]) -> int | None:
     """
     Normalize a room's configured `meshtastic_channel` value to an integer.
@@ -624,191 +590,12 @@ def _submit_coro(
             return error_future
 
 
-def _attach_late_ble_interface_disposer(
-    future: Future[Any],
-    ble_address: str,
-    reason: str,
-    *,
-    fallback_iface: Any | None = None,
-) -> None:
-    """
-    Dispose interfaces created by abandoned BLE futures that complete late.
-
-    Timeout paths can drop `_ble_future` while a worker thread is still running.
-    If that worker later succeeds, this callback prevents orphaned interfaces
-    from remaining connected outside normal ownership.
-    """
-
-    def _dispose(done_future: Future[Any]) -> None:
-        if done_future.cancelled():
-            return
-
-        late_iface = fallback_iface
-        try:
-            result = done_future.result()
-            if result is not None:
-                late_iface = result
-        except Exception:  # noqa: BLE001 - futures can raise backend-specific errors
-            late_iface = fallback_iface
-
-        if late_iface is None:
-            return
-
-        if not (hasattr(late_iface, "disconnect") or hasattr(late_iface, "close")):
-            return
-
-        with meshtastic_iface_lock:
-            active_iface = meshtastic_iface
-        if active_iface is late_iface:
-            return
-
-        logger.warning(
-            "Cleaning up late BLE interface completion for %s (%s)",
-            ble_address,
-            reason,
-        )
-        try:
-            _disconnect_ble_interface(
-                late_iface,
-                reason=f"late completion after {reason}",
-            )
-        except Exception:  # noqa: BLE001 - cleanup must not propagate
-            logger.debug(
-                "Late BLE interface cleanup failed for %s (%s)",
-                ble_address,
-                reason,
-                exc_info=True,
-            )
-
-    future.add_done_callback(_dispose)
-
-
-# BLE executor helpers — implemented in meshtastic.executors, re-exported here
+# BLE internals — implemented in meshtastic.ble, re-exported here
 # for backward-compatible patch targets (tests patch mmrelay.meshtastic_utils.*).
 
 
-def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
-    """
-    Performs a best-effort BLE scan to check whether a device with the given address is discoverable.
-
-    If the Bleak library is unavailable or an active asyncio event loop is running, the function does not perform a scan and returns `false`.
-
-    Returns:
-        `true` if the device address was observed in a scan within the given timeout; `false` if the device was not observed, the scan failed, Bleak is unavailable, or scanning was skipped due to an active event loop.
-    """
-    if not BLE_AVAILABLE:
-        return False
-
-    try:
-        from bleak import BleakScanner
-    except ImportError:
-        return False
-
-    async def _scan() -> bool:
-        """
-        Determine whether the target BLE device is discoverable within the scan timeout.
-
-        Returns:
-            bool: `True` if a device with the target BLE address is discovered within the timeout, `False` otherwise (including when BLE discovery errors occur).
-        """
-        try:
-            find_device = getattr(BleakScanner, "find_device_by_address", None)
-            if callable(find_device):
-                try:
-                    coro: Coroutine[Any, Any, Any] = cast(
-                        Coroutine[Any, Any, Any],
-                        find_device(ble_address, timeout=timeout),
-                    )
-                    result = await coro
-                    return result is not None
-                except TypeError:
-                    return False
-
-            devices = await BleakScanner.discover(timeout=timeout)
-            return any(
-                getattr(device, "address", None) == ble_address for device in devices
-            )
-        except (
-            BleakError,
-            BleakDBusError,
-            OSError,
-            RuntimeError,
-            asyncio.TimeoutError,
-        ) as exc:
-            logger.debug("BLE scan failed for %s: %s", ble_address, exc)
-            return False
-
-    try:
-        running_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        running_loop = None
-
-    if running_loop and running_loop.is_running():
-        logger.debug(
-            "Skipping BLE scan for %s; running event loop is active",
-            ble_address,
-        )
-        return False
-
-    try:
-        return asyncio.run(_scan())
-    except (
-        BleakError,
-        BleakDBusError,
-        OSError,
-        RuntimeError,
-        asyncio.TimeoutError,
-    ) as exc:
-        logger.debug("BLE scan failed for %s: %s", ble_address, exc)
-        return False
-
-
-def _is_ble_discovery_error(error: Exception) -> bool:
-    """
-    Determine whether an exception represents a BLE discovery or connection completion failure.
-
-    Returns:
-        True if the exception indicates a BLE discovery or connection completion failure, False otherwise.
-    """
-    message = str(error)
-    if "No Meshtastic BLE peripheral" in message:
-        return True
-    if "Timed out waiting for connection completion" in message:
-        return True
-    if isinstance(error, KeyError):
-        normalized_keys = {
-            str(item).strip().strip("'").strip('"') for item in error.args
-        }
-        if "path" in normalized_keys:
-            return True
-
-    def _is_type_or_tuple(candidate: object) -> bool:
-        if isinstance(candidate, type):
-            return True
-        if isinstance(candidate, tuple):
-            return all(isinstance(item, type) for item in candidate)
-        return False
-
-    ble_interface = getattr(meshtastic.ble_interface, "BLEInterface", None)
-    ble_error_type = getattr(ble_interface, "BLEError", None)
-    if (
-        ble_error_type
-        and _is_type_or_tuple(ble_error_type)
-        and isinstance(error, ble_error_type)
-    ):
-        return True
-
-    mesh_interface = getattr(meshtastic, "mesh_interface", None)
-    mesh_interface_class = getattr(mesh_interface, "MeshInterface", None)
-    mesh_error_type = getattr(mesh_interface_class, "MeshInterfaceError", None)
-    if (
-        mesh_error_type
-        and _is_type_or_tuple(mesh_error_type)
-        and isinstance(error, mesh_error_type)
-    ):
-        return True
-
-    return False
+# BLE internals — implemented in meshtastic.ble, re-exported here
+# for backward-compatible patch targets (tests patch mmrelay.meshtastic_utils.*).
 
 
 def _fire_and_forget(
