@@ -4999,7 +4999,11 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             connect_timeout_calls = [
                 call
                 for call in mock_logger.exception.call_args_list
-                if "connect() call timed out after" in str(call)
+                if call.args
+                and call.args[0]
+                == "BLE connect() call timed out after %s seconds for %s."
+                and call.args[1] == BLE_CONNECT_TIMEOUT_SECS
+                and call.args[2] == TEST_BLE_MAC
             ]
             self.assertEqual(
                 len(connect_timeout_calls), MAX_TIMEOUT_RETRIES_INFINITE + 1

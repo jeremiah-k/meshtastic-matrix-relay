@@ -169,7 +169,12 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
                     result = await coro
                     return result is not None
                 except TypeError:
-                    return False
+                    coro = cast(
+                        Coroutine[Any, Any, Any],
+                        find_device(ble_address),
+                    )
+                    result = await facade.asyncio.wait_for(coro, timeout=timeout)
+                    return result is not None
 
             devices = await BleakScanner.discover(timeout=timeout)
             return any(

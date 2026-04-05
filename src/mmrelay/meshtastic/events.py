@@ -565,9 +565,12 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     # Get interaction settings
     interactions = get_interaction_settings(facade.config)
 
+    decoded = packet.get("decoded")
+    if not isinstance(decoded, dict):
+        decoded = {}
+
     # Filter packets based on interaction settings
-    if packet.get("decoded", {}).get("portnum") == TEXT_MESSAGE_APP:
-        decoded = packet.get("decoded", {})
+    if decoded.get("portnum") == TEXT_MESSAGE_APP:
         # Filter out reactions if reactions are disabled
         if (
             not interactions["reactions"]
@@ -595,7 +598,6 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     sender = packet.get("fromId") or packet.get("from")
     toId = packet.get("to")
 
-    decoded = packet.get("decoded", {})
     text = decoded.get("text")
     replyId = decoded.get("replyId")
     emoji_flag = "emoji" in decoded and decoded["emoji"] == EMOJI_FLAG_VALUE

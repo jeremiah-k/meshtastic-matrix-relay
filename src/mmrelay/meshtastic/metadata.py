@@ -215,12 +215,12 @@ def _get_device_metadata(
             is set and is cleared on completion to signal the redirect state.
             """
             try:
-                with contextlib.redirect_stdout(output_capture):
-                    redirect_active.set()
-                    try:
+                redirect_active.set()
+                try:
+                    with contextlib.redirect_stdout(output_capture):
                         client.localNode.getMetadata()
-                    finally:
-                        redirect_active.clear()
+                finally:
+                    redirect_active.clear()
             except ValueError as exc:
                 if output_capture.closed or "I/O operation on closed file" in str(exc):
                     return
