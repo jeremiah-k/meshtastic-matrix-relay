@@ -1,4 +1,3 @@
-import asyncio
 import math
 from typing import Any
 
@@ -115,7 +114,7 @@ def _snapshot_node_name_rows() -> tuple[dict[str, Any] | None, bool]:
 
 
 async def refresh_node_name_tables(
-    shutdown_event: asyncio.Event,
+    shutdown_event: facade.asyncio.Event,
     *,
     refresh_interval_seconds: float | None = None,
 ) -> None:
@@ -154,7 +153,7 @@ async def refresh_node_name_tables(
     client_unavailable_reason: str | None = None
     while not shutdown_event.is_set():
         try:
-            nodes_snapshot, client_missing = await asyncio.to_thread(
+            nodes_snapshot, client_missing = await facade.asyncio.to_thread(
                 facade._snapshot_node_name_rows
             )
 
@@ -181,7 +180,7 @@ async def refresh_node_name_tables(
                     )
             else:
                 client_unavailable_reason = None
-                previous_state = await asyncio.to_thread(
+                previous_state = await facade.asyncio.to_thread(
                     facade.sync_name_tables_if_changed,
                     nodes_snapshot,
                     previous_state,
@@ -200,6 +199,8 @@ async def refresh_node_name_tables(
             return
 
         try:
-            await asyncio.wait_for(shutdown_event.wait(), timeout=float(interval))
-        except asyncio.TimeoutError:
+            await facade.asyncio.wait_for(
+                shutdown_event.wait(), timeout=float(interval)
+            )
+        except facade.asyncio.TimeoutError:
             continue

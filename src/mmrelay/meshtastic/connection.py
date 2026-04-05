@@ -71,7 +71,7 @@ def serial_port_exists(port_name: str) -> bool:
     Returns:
         `True` if a matching port device name is present, `False` otherwise.
     """
-    ports = [p.device for p in serial.tools.list_ports.comports()]
+    ports = [p.device for p in facade.serial.tools.list_ports.comports()]
     return port_name in ports
 
 
@@ -272,7 +272,7 @@ def connect_meshtastic(
                     facade._CONNECT_ATTEMPT_BLE_WAIT_MAX_SECS,
                 )
 
-    wait_deadline = time.monotonic() + wait_budget_secs
+    wait_deadline = facade.time.monotonic() + wait_budget_secs
 
     while True:
         with facade._connect_attempt_condition:
@@ -280,7 +280,7 @@ def connect_meshtastic(
                 facade._connect_attempt_in_progress = True
                 break
 
-            remaining_wait = wait_deadline - time.monotonic()
+            remaining_wait = wait_deadline - facade.time.monotonic()
             if remaining_wait <= 0:
                 facade.logger.debug(
                     "Timed out waiting for active connect attempt; returning no client"
@@ -292,7 +292,7 @@ def connect_meshtastic(
             )
 
             while facade._connect_attempt_in_progress and not facade.shutting_down:
-                remaining_wait = wait_deadline - time.monotonic()
+                remaining_wait = wait_deadline - facade.time.monotonic()
                 if remaining_wait <= 0:
                     break
                 facade._connect_attempt_condition.wait(
@@ -303,7 +303,7 @@ def connect_meshtastic(
                 return None
             if (
                 facade._connect_attempt_in_progress
-                and time.monotonic() >= wait_deadline
+                and facade.time.monotonic() >= wait_deadline
             ):
                 facade.logger.debug(
                     "Timed out waiting for active connect attempt; returning no client"
@@ -501,11 +501,11 @@ def _connect_meshtastic_impl(
 
                 # Check if serial port exists before connecting
                 if not serial_port_exists(serial_port):
-                    raise serial.SerialException(
+                    raise facade.serial.SerialException(
                         f"Serial port {serial_port} does not exist."
                     )
 
-                client = meshtastic.serial_interface.SerialInterface(
+                client = facade.meshtastic.serial_interface.SerialInterface(
                     serial_port, timeout=configured_timeout_arg
                 )
 
@@ -552,7 +552,7 @@ def _connect_meshtastic_impl(
                             # Detect whether this BLEInterface implementation supports
                             # explicit auto_reconnect control.
                             ble_init_sig = inspect.signature(
-                                meshtastic.ble_interface.BLEInterface.__init__
+                                facade.meshtastic.ble_interface.BLEInterface.__init__
                             )
                             ble_kwargs = {
                                 "address": ble_address,
@@ -613,7 +613,9 @@ def _connect_meshtastic_impl(
                                 Returns:
                                     BLEInterface: A newly constructed Meshtastic BLEInterface instance.
                                 """
-                                return meshtastic.ble_interface.BLEInterface(**kwargs)
+                                return facade.meshtastic.ble_interface.BLEInterface(
+                                    **kwargs
+                                )
 
                             # Use the larger of configured connect timeout and the safety floor.
                             # This keeps stale-worker detection and future.result() budget aligned
@@ -679,7 +681,9 @@ def _connect_meshtastic_impl(
                                         ) from exc
                                     facade._ble_future = future
                                     facade._ble_future_address = ble_address
-                                    facade._ble_future_started_at = time.monotonic()
+                                    facade._ble_future_started_at = (
+                                        facade.time.monotonic()
+                                    )
                                     facade._ble_future_timeout_secs = (
                                         create_timeout_secs
                                     )
@@ -874,7 +878,7 @@ def _connect_meshtastic_impl(
                                 ) from exc
                             facade._ble_future = connect_future
                             facade._ble_future_address = ble_address
-                            facade._ble_future_started_at = time.monotonic()
+                            facade._ble_future_started_at = facade.time.monotonic()
                             facade._ble_future_timeout_secs = BLE_CONNECT_TIMEOUT_SECS
                         connect_future.add_done_callback(facade._clear_ble_future)
                         try:
@@ -1002,7 +1006,7 @@ def _connect_meshtastic_impl(
                 facade.logger.info(f"Connecting to host {target_host}:{target_port}")
 
                 # Connect without progress indicator
-                client = meshtastic.tcp_interface.TCPInterface(
+                client = facade.meshtastic.tcp_interface.TCPInterface(
                     hostname=target_host,
                     portNumber=target_port,
                     timeout=configured_timeout_arg,
@@ -1075,9 +1079,9 @@ def _connect_meshtastic_impl(
                 with facade._health_probe_request_lock:
                     facade._health_probe_request_deadlines.clear()
                     with facade._relay_rx_time_clock_skew_lock:
-                        facade.RELAY_START_TIME = time.time()
+                        facade.RELAY_START_TIME = facade.time.time()
                         facade._relay_connection_started_monotonic_secs = (
-                            time.monotonic()
+                            facade.time.monotonic()
                         )
                         facade._relay_rx_time_clock_skew_secs = None
                         if not facade._startup_packet_drain_applied:
@@ -1193,7 +1197,7 @@ def _connect_meshtastic_impl(
                     with facade._relay_rx_time_clock_skew_lock:
                         if not facade._startup_packet_drain_applied:
                             facade._relay_startup_drain_deadline_monotonic_secs = (
-                                time.monotonic() + STARTUP_PACKET_DRAIN_SECS
+                                facade.time.monotonic() + STARTUP_PACKET_DRAIN_SECS
                             )
                             facade._startup_packet_drain_applied = True
                             startup_drain_applied_for_this_connect = True
@@ -1296,7 +1300,7 @@ def _connect_meshtastic_impl(
                 e,
                 wait_time,
             )
-            time.sleep(wait_time)
+            facade.time.sleep(wait_time)
         except Exception as e:
             successful = False
             client_assigned_for_this_connect = _rollback_connect_attempt_state(
@@ -1348,7 +1352,7 @@ def _connect_meshtastic_impl(
                     e,
                     wait_time,
                 )
-                time.sleep(wait_time)
+                facade.time.sleep(wait_time)
             else:
                 facade.logger.exception("Connection failed after %s attempts", attempts)
                 return None

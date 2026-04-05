@@ -95,7 +95,7 @@ __all__ = [
 def on_lost_meshtastic_connection(
     interface: Any = None,
     detection_source: str = "unknown",
-    topic: Any = pub.AUTO_TOPIC,
+    topic: Any = facade.pub.AUTO_TOPIC,
 ) -> None:
     """
     Mark the Meshtastic connection as lost, close the current client, and start an asynchronous reconnect.
@@ -157,7 +157,7 @@ def on_lost_meshtastic_connection(
                     )
 
             if detection_source == "unknown":
-                if topic is not None and topic is not pub.AUTO_TOPIC:
+                if topic is not None and topic is not facade.pub.AUTO_TOPIC:
                     # Real topic object from pypubsub - extract its name
                     detection_source = getattr(topic, "getName", lambda: str(topic))()
                     facade.logger.debug(
@@ -219,7 +219,7 @@ def on_lost_meshtastic_connection(
                 facade._ble_future_timeout_secs = None
                 if facade._ble_executor is not None:
                     stale_executor = facade._ble_executor
-                    facade._ble_executor = ThreadPoolExecutor(max_workers=1)
+                    facade._ble_executor = facade.ThreadPoolExecutor(max_workers=1)
 
         if ble_future_to_cancel is not None:
             if stale_ble_address:
@@ -280,7 +280,7 @@ async def reconnect() -> None:
                         facade.logger.debug(
                             "Rich not available; falling back to simple reconnection delay"
                         )
-                        await asyncio.sleep(backoff_time)
+                        await facade.asyncio.sleep(backoff_time)
                     else:
                         with Progress(
                             TextColumn("[cyan]Meshtastic: Reconnecting in"),
@@ -293,16 +293,16 @@ async def reconnect() -> None:
                             for _ in range(backoff_time):
                                 if facade.shutting_down:
                                     break
-                                await asyncio.sleep(1)
+                                await facade.asyncio.sleep(1)
                                 progress.update(task, advance=1)
                 else:
-                    await asyncio.sleep(backoff_time)
+                    await facade.asyncio.sleep(backoff_time)
                 if facade.shutting_down:
                     facade.logger.debug(
                         "Shutdown in progress. Aborting reconnection attempts."
                     )
                     break
-                loop = asyncio.get_running_loop()
+                loop = facade.asyncio.get_running_loop()
                 # Pass the current config during reconnection to ensure matrix_rooms is populated
                 # Using None for passed_config would skip matrix_rooms initialization
                 connect_future = asyncio.ensure_future(
@@ -414,7 +414,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         )
         return
 
-    now_monotonic = time.monotonic()
+    now_monotonic = facade.time.monotonic()
     with facade._relay_rx_time_clock_skew_lock:
         relay_start_time = facade.RELAY_START_TIME
         startup_drain_deadline = facade._relay_startup_drain_deadline_monotonic_secs

@@ -199,11 +199,11 @@ def _get_device_metadata(
     try:
         # Capture getMetadata() output to extract firmware version.
         # Use a shared executor to prevent thread leaks if getMetadata() hangs.
-        output_capture = io.StringIO()
+        output_capture = facade.io.StringIO()
         # Track redirect state so a timeout cannot leave sys.stdout pointing at
         # a closed StringIO (which can trigger "I/O operation on closed file").
-        redirect_active = threading.Event()
-        orig_stdout = sys.stdout
+        redirect_active = facade.threading.Event()
+        orig_stdout = facade.sys.stdout
 
         def call_get_metadata() -> None:
             # Capture stdout only; stderr is left intact to avoid losing
@@ -267,8 +267,8 @@ def _get_device_metadata(
             # If the worker is still running, restore stdio immediately so the
             # main process does not keep writing to the captured buffer.
             if redirect_active.is_set():
-                if sys.stdout is output_capture:
-                    sys.stdout = orig_stdout
+                if facade.sys.stdout is output_capture:
+                    facade.sys.stdout = orig_stdout
         except Exception as e:  # noqa: BLE001 - getMetadata errors vary by backend
             future_error = e
 

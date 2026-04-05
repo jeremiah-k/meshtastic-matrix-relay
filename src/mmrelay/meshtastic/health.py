@@ -60,7 +60,7 @@ def _prune_health_probe_tracking(now: float | None = None) -> None:
     """
     Remove expired health-probe request IDs from the in-memory tracking map.
     """
-    current = now if now is not None else time.monotonic()
+    current = now if now is not None else facade.time.monotonic()
     expired_ids = [
         request_id
         for request_id, deadline in facade._health_probe_request_deadlines.items()
@@ -83,7 +83,7 @@ def _track_health_probe_request_id(
         return None
 
     expires_at = (
-        time.monotonic()
+        facade.time.monotonic()
         + max(float(timeout_secs), 1.0)
         + facade.HEALTH_PROBE_TRACK_GRACE_SECS
     )
@@ -106,8 +106,8 @@ def _seed_connect_time_skew(rx_time: float) -> bool:
     startup_age: float = 0.0
     calibrated_from_reconnect_prestart: bool = False
 
-    now_wall = time.time()
-    now_monotonic = time.monotonic()
+    now_wall = facade.time.time()
+    now_monotonic = facade.time.monotonic()
     observed_skew = now_wall - rx_time
 
     with facade._relay_rx_time_clock_skew_lock:
@@ -235,7 +235,7 @@ def _claim_health_probe_response_and_maybe_calibrate(
         facade._health_probe_request_deadlines.pop(request_id, None)
 
         if rx_time > 0:
-            observed_skew = time.time() - rx_time
+            observed_skew = facade.time.time() - rx_time
             if abs(observed_skew) > facade.RX_TIME_SKEW_BOOTSTRAP_MAX_SKEW_SECS:
                 facade.logger.debug(
                     "[HEALTH_CHECK] Skipping rxTime clock skew calibration %.3f seconds outside startup limit %.3f",
@@ -413,15 +413,15 @@ def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
 
     ack_attrs = ("receivedAck", "receivedNak", "receivedImplAck")
 
-    deadline = time.monotonic() + timeout_secs
-    while time.monotonic() < deadline:
+    deadline = facade.time.monotonic() + timeout_secs
+    while facade.time.monotonic() < deadline:
         if any(bool(getattr(ack_state, attr, False)) for attr in ack_attrs):
             facade._reset_probe_ack_state(ack_state)
             return
-        remaining = deadline - time.monotonic()
+        remaining = deadline - facade.time.monotonic()
         if remaining <= 0:
             break
-        time.sleep(min(facade.ACK_POLL_INTERVAL_SECS, remaining))
+        facade.time.sleep(min(facade.ACK_POLL_INTERVAL_SECS, remaining))
 
     # Final check catches ACK/NAK updates that may land near the deadline.
     if any(bool(getattr(ack_state, attr, False)) for attr in ack_attrs):
@@ -470,7 +470,7 @@ def _probe_device_connection(
     sent_packet = client.sendData(
         request.SerializeToString(),
         destinationId=destination_id,
-        portNum=portnums_pb2.PortNum.ADMIN_APP,
+        portNum=facade.portnums_pb2.PortNum.ADMIN_APP,
         wantAck=True,
         wantResponse=True,
         onResponse=functools.partial(_handle_probe_ack_callback, local_node),
@@ -655,7 +655,7 @@ async def check_connection() -> None:
     facade.logger.debug(
         "Waiting before starting connection health checks to allow connection to settle"
     )
-    await asyncio.sleep(initial_delay)
+    await facade.asyncio.sleep(initial_delay)
 
     while not facade.shutting_down:
         if facade.meshtastic_client and not facade.reconnecting:
@@ -703,8 +703,8 @@ async def check_connection() -> None:
                     # NOTE: Use the metadata admin request for keepalive/liveness.
                     # `getMyNodeInfo()` is local cached state in Meshtastic Python,
                     # so it can succeed even when the transport is unhealthy.
-                    await asyncio.wait_for(
-                        asyncio.wrap_future(probe_future),
+                    await facade.asyncio.wait_for(
+                        facade.asyncio.wrap_future(probe_future),
                         timeout=probe_timeout,
                     )
 
@@ -734,4 +734,4 @@ async def check_connection() -> None:
         elif not facade.meshtastic_client:
             facade.logger.debug("Skipping connection check - no client available")
 
-        await asyncio.sleep(heartbeat_interval)
+        await facade.asyncio.sleep(heartbeat_interval)

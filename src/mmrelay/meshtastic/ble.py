@@ -1,14 +1,9 @@
-import asyncio
 import atexit
 import contextlib
 import inspect
 import logging
-import time
 from concurrent.futures import Future
 from typing import Any, Awaitable, Callable, Coroutine, cast
-
-import meshtastic
-import meshtastic.ble_interface
 
 import mmrelay.meshtastic_utils as facade
 from mmrelay.constants.network import (
@@ -185,13 +180,13 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
             facade.BleakDBusError,
             OSError,
             RuntimeError,
-            asyncio.TimeoutError,
+            facade.asyncio.TimeoutError,
         ) as exc:
             facade.logger.debug("BLE scan failed for %s: %s", ble_address, exc)
             return False
 
     try:
-        running_loop = asyncio.get_running_loop()
+        running_loop = facade.asyncio.get_running_loop()
     except RuntimeError:
         running_loop = None
 
@@ -203,13 +198,13 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
         return False
 
     try:
-        return asyncio.run(_scan())
+        return facade.asyncio.run(_scan())
     except (
         facade.BleakError,
         facade.BleakDBusError,
         OSError,
         RuntimeError,
-        asyncio.TimeoutError,
+        facade.asyncio.TimeoutError,
     ) as exc:
         facade.logger.debug("BLE scan failed for %s: %s", ble_address, exc)
         return False
@@ -241,7 +236,7 @@ def _is_ble_discovery_error(error: Exception) -> bool:
             return all(isinstance(item, type) for item in candidate)
         return False
 
-    ble_interface = getattr(meshtastic.ble_interface, "BLEInterface", None)
+    ble_interface = getattr(facade.meshtastic.ble_interface, "BLEInterface", None)
     ble_error_type = getattr(ble_interface, "BLEError", None)
     if (
         ble_error_type
@@ -250,9 +245,8 @@ def _is_ble_discovery_error(error: Exception) -> bool:
     ):
         return True
 
-    mesh_interface = getattr(meshtastic, "mesh_interface", None)
-    mesh_interface_class = getattr(mesh_interface, "MeshInterface", None)
-    mesh_error_type = getattr(mesh_interface_class, "MeshInterfaceError", None)
+    mesh_interface = getattr(facade.meshtastic.mesh_interface, "MeshInterface", None)
+    mesh_error_type = getattr(mesh_interface, "MeshInterfaceError", None)
     if (
         mesh_error_type
         and _is_type_or_tuple(mesh_error_type)
@@ -438,11 +432,11 @@ def _disconnect_ble_by_address(address: str) -> None:
                             # from disconnect(); only await when needed.
                             disconnect_result = client.disconnect()
                             if inspect.isawaitable(disconnect_result):
-                                await asyncio.wait_for(
+                                await facade.asyncio.wait_for(
                                     disconnect_result,
                                     timeout=BLE_DISCONNECT_TIMEOUT_SECS,
                                 )
-                            await asyncio.sleep(BLE_DISCONNECT_SETTLE_SECS)
+                            await facade.asyncio.sleep(BLE_DISCONNECT_SETTLE_SECS)
                             facade.logger.debug(
                                 "Successfully disconnected stale connection to %s on attempt %s, "
                                 "waiting %.1fs for BlueZ to settle",
@@ -451,12 +445,12 @@ def _disconnect_ble_by_address(address: str) -> None:
                                 BLE_DISCONNECT_SETTLE_SECS,
                             )
                             break
-                        except asyncio.TimeoutError:
+                        except facade.asyncio.TimeoutError:
                             if attempt < max_retries - 1:
                                 facade.logger.warning(
                                     f"Disconnect attempt {attempt + 1} for {address} timed out, retrying..."
                                 )
-                                await asyncio.sleep(BLE_RETRY_DELAY_SECS)
+                                await facade.asyncio.sleep(BLE_RETRY_DELAY_SECS)
                             else:
                                 facade.logger.warning(
                                     f"Disconnect for {address} timed out after {max_retries} attempts"
@@ -472,7 +466,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                                     e,
                                     exc_info=True,
                                 )
-                                await asyncio.sleep(BLE_RETRY_DELAY_SECS)
+                                await facade.asyncio.sleep(BLE_RETRY_DELAY_SECS)
                             else:
                                 facade.logger.warning(
                                     "Disconnect for %s failed after %s attempts: %s",
@@ -502,11 +496,11 @@ def _disconnect_ble_by_address(address: str) -> None:
                         # from disconnect(); only await when needed.
                         disconnect_result = client.disconnect()
                         if inspect.isawaitable(disconnect_result):
-                            await asyncio.wait_for(
+                            await facade.asyncio.wait_for(
                                 disconnect_result, timeout=BLE_DISCONNECT_TIMEOUT_SECS
                             )
-                        await asyncio.sleep(BLE_DISCONNECT_SETTLE_SECS)
-                except asyncio.TimeoutError:
+                        await facade.asyncio.sleep(BLE_DISCONNECT_SETTLE_SECS)
+                except facade.asyncio.TimeoutError:
                     facade.logger.debug(
                         f"Final disconnect for {address} timed out (cleanup)"
                     )
@@ -520,7 +514,7 @@ def _disconnect_ble_by_address(address: str) -> None:
 
         runtime_error: RuntimeError | None = None
         try:
-            loop = asyncio.get_running_loop()
+            loop = facade.asyncio.get_running_loop()
         except RuntimeError as e:
             loop = None
             runtime_error = e
@@ -541,7 +535,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                 "Using global event loop, waiting for disconnect task for %s",
                 address,
             )
-            future = asyncio.run_coroutine_threadsafe(
+            future = facade.asyncio.run_coroutine_threadsafe(
                 disconnect_stale_connection(), facade.event_loop
             )
             try:
@@ -566,7 +560,7 @@ def _disconnect_ble_by_address(address: str) -> None:
             runtime_error,
             address,
         )
-        asyncio.run(disconnect_stale_connection())
+        facade.asyncio.run(disconnect_stale_connection())
         facade.logger.debug(f"Stale connection disconnect completed for {address}")
     except ImportError:
         # Bleak is optional in some deployments; skip stale cleanup rather than
@@ -599,7 +593,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
     # Pre-disconnect delay to allow pending notifications to complete
     # This helps prevent "Unexpected EOF on notification file handle" errors
     facade.logger.debug(f"Waiting before disconnecting BLE interface ({reason})")
-    time.sleep(0.5)
+    facade.time.sleep(0.5)
     timeout_log_level = logging.DEBUG if reason == "shutdown" else logging.WARNING
     retry_log = facade.logger.debug if reason == "shutdown" else facade.logger.warning
     final_log = facade.logger.debug if reason == "shutdown" else facade.logger.error
@@ -647,7 +641,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                             timeout_log_level=timeout_log_level,
                         )
                     # Give the adapter time to complete the disconnect
-                    time.sleep(1.0)
+                    facade.time.sleep(1.0)
                     facade.logger.debug(
                         f"BLE interface disconnect succeeded on attempt {attempt + 1} ({reason})"
                     )
@@ -657,7 +651,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                         retry_log(
                             f"BLE interface disconnect attempt {attempt + 1} failed ({reason}): {e}, retrying..."
                         )
-                        time.sleep(0.5)
+                        facade.time.sleep(0.5)
                     else:
                         final_log(
                             f"BLE interface disconnect failed after {max_disconnect_retries} attempts ({reason}): {e}"
@@ -722,7 +716,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                             label=f"ble-client-disconnect-{reason}",
                             timeout_log_level=timeout_log_level,
                         )
-                    time.sleep(1.0)
+                    facade.time.sleep(1.0)
                     facade.logger.debug(
                         f"BLE client disconnect succeeded on attempt {attempt + 1} ({reason})"
                     )
@@ -732,7 +726,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                         retry_log(
                             f"BLE client disconnect attempt {attempt + 1} failed ({reason}): {e}, retrying..."
                         )
-                        time.sleep(0.3)
+                        facade.time.sleep(0.3)
                     else:
                         # Ignore disconnect errors on final attempt - connection may already be closed
                         facade.logger.debug(
@@ -770,4 +764,4 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
         facade.logger.debug(f"Error during BLE interface {reason}", exc_info=e)
     finally:
         # Small delay to ensure the adapter has fully released the connection
-        time.sleep(0.5)
+        facade.time.sleep(0.5)

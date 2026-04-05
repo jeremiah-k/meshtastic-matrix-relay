@@ -1,9 +1,7 @@
-import asyncio
 import inspect
 import logging
 import math
 import threading
-import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any, Awaitable, Callable, Coroutine, cast
@@ -140,7 +138,7 @@ def _coerce_bool(value: Any, default: bool, setting_name: str) -> bool:
 
 def _submit_coro(
     coro: Any,
-    loop: asyncio.AbstractEventLoop | None = None,
+    loop: facade.asyncio.AbstractEventLoop | None = None,
 ) -> Future[Any] | None:
     """
     Schedule a coroutine or awaitable on an available asyncio event loop and return a Future for its result.
@@ -174,26 +172,26 @@ def _submit_coro(
     loop = loop or facade.event_loop
     if (
         loop
-        and isinstance(loop, asyncio.AbstractEventLoop)
+        and isinstance(loop, facade.asyncio.AbstractEventLoop)
         and not loop.is_closed()
         and loop.is_running()
     ):
-        return asyncio.run_coroutine_threadsafe(coro, loop)
+        return facade.asyncio.run_coroutine_threadsafe(coro, loop)
     # Fallback: schedule on a real loop if present; tests can override this.
     try:
-        running = asyncio.get_running_loop()
+        running = facade.asyncio.get_running_loop()
         return cast(Future[Any], running.create_task(coro))
     except RuntimeError:
         # No running loop: check if we can safely create a new loop
         try:
             # Try to get the current event loop policy and create a new loop
             # This is safer than asyncio.run() which can cause deadlocks
-            policy = asyncio.get_event_loop_policy()
+            policy = facade.asyncio.get_event_loop_policy()
             facade.logger.debug(
                 "No running event loop detected; creating a temporary loop to execute coroutine"
             )
             new_loop = policy.new_event_loop()
-            asyncio.set_event_loop(new_loop)
+            facade.asyncio.set_event_loop(new_loop)
             try:
                 result = new_loop.run_until_complete(coro)
                 result_future: Future[Any] = Future()
@@ -201,7 +199,7 @@ def _submit_coro(
                 return result_future
             finally:
                 new_loop.close()
-                asyncio.set_event_loop(None)
+                facade.asyncio.set_event_loop(None)
         except Exception as e:
             # Final fallback: always return a Future so _fire_and_forget can log
             # exceptions instead of crashing a background thread when no loop is
@@ -218,7 +216,7 @@ def _submit_coro(
 
 
 def _fire_and_forget(
-    coro: Coroutine[Any, Any, Any], loop: asyncio.AbstractEventLoop | None = None
+    coro: Coroutine[Any, Any, Any], loop: facade.asyncio.AbstractEventLoop | None = None
 ) -> None:
     """
     Schedule a coroutine to run in the background and log any non-cancellation exceptions.
@@ -236,13 +234,13 @@ def _fire_and_forget(
     if task is None:
         return
 
-    def _handle_exception(t: asyncio.Future[Any] | Future[Any]) -> None:
+    def _handle_exception(t: facade.asyncio.Future[Any] | Future[Any]) -> None:
         """
         Log non-cancellation exceptions raised by a fire-and-forget task.
 
         If the provided task or future has an exception and it is not an
-        asyncio.CancelledError, logs the exception at error level including the
-        traceback. If retrieving the exception raises asyncio.CancelledError it is
+        facade.asyncio.CancelledError, logs the exception at error level including the
+        traceback. If retrieving the exception raises facade.asyncio.CancelledError it is
         ignored; other errors encountered while inspecting the future are logged at
         debug level.
 
@@ -250,9 +248,11 @@ def _fire_and_forget(
             t (asyncio.Future | concurrent.futures.Future): Task or future to inspect.
         """
         try:
-            if (exc := t.exception()) and not isinstance(exc, asyncio.CancelledError):
+            if (exc := t.exception()) and not isinstance(
+                exc, facade.asyncio.CancelledError
+            ):
                 facade.logger.error("Exception in fire-and-forget task", exc_info=exc)
-        except asyncio.CancelledError:
+        except facade.asyncio.CancelledError:
             pass
         except Exception as e:
             facade.logger.debug(
@@ -263,7 +263,7 @@ def _fire_and_forget(
 
 
 def _make_awaitable(
-    future: Any, loop: asyncio.AbstractEventLoop | None = None
+    future: Any, loop: facade.asyncio.AbstractEventLoop | None = None
 ) -> Awaitable[Any] | Any:
     """
     Convert a future-like object into an awaitable, optionally binding it to a given event loop.
@@ -272,15 +272,15 @@ def _make_awaitable(
 
     Parameters:
         future: A future-like object or an awaitable.
-        loop (asyncio.AbstractEventLoop | None): Event loop to bind non-awaitable futures to; if `None`, no explicit loop binding is applied.
+        loop (facade.asyncio.AbstractEventLoop | None): Event loop to bind non-awaitable futures to; if `None`, no explicit loop binding is applied.
 
     Returns:
         An awaitable that yields the resolved value of `future`, or `future` itself if it already supports awaiting.
     """
     if hasattr(future, "__await__"):
         return future
-    target_loop = loop if isinstance(loop, asyncio.AbstractEventLoop) else None
-    return asyncio.wrap_future(future, loop=target_loop)
+    target_loop = loop if isinstance(loop, facade.asyncio.AbstractEventLoop) else None
+    return facade.asyncio.wrap_future(future, loop=target_loop)
 
 
 def _run_blocking_with_timeout(
@@ -343,7 +343,7 @@ def _run_blocking_with_timeout(
 def _wait_for_result(
     result_future: Any,
     timeout: float,
-    loop: asyncio.AbstractEventLoop | None = None,
+    loop: facade.asyncio.AbstractEventLoop | None = None,
 ) -> Any:
     """
     Wait for and return the resolved value of a future-like or awaitable object, enforcing a timeout.
@@ -364,14 +364,14 @@ def _wait_for_result(
     if result_future is None:
         return False
 
-    target_loop = loop if isinstance(loop, asyncio.AbstractEventLoop) else None
+    target_loop = loop if isinstance(loop, facade.asyncio.AbstractEventLoop) else None
 
     # Handle concurrent.futures.Future directly
     if isinstance(result_future, Future):
         return result_future.result(timeout=timeout)
 
     # Handle asyncio Future/Task instances
-    if isinstance(result_future, asyncio.Future):
+    if isinstance(result_future, facade.asyncio.Future):
         awaitable: Awaitable[Any] = result_future
     elif hasattr(result_future, "result") and callable(result_future.result):
         # Generic future-like object with .result API (used by some tests)
@@ -392,10 +392,10 @@ def _wait_for_result(
         Raises:
             asyncio.TimeoutError: If the awaitable does not complete before the timeout expires.
         """
-        return await asyncio.wait_for(awaitable, timeout=timeout)
+        return await facade.asyncio.wait_for(awaitable, timeout=timeout)
 
     try:
-        running_loop = asyncio.get_running_loop()
+        running_loop = facade.asyncio.get_running_loop()
     except RuntimeError:
         running_loop = None
 
@@ -408,9 +408,9 @@ def _wait_for_result(
                 )
                 facade._fire_and_forget(_runner(), loop=target_loop)
                 return False
-            return asyncio.run_coroutine_threadsafe(_runner(), target_loop).result(
-                timeout=timeout
-            )
+            return facade.asyncio.run_coroutine_threadsafe(
+                _runner(), target_loop
+            ).result(timeout=timeout)
         return target_loop.run_until_complete(_runner())
 
     if running_loop and not running_loop.is_closed():
@@ -422,13 +422,13 @@ def _wait_for_result(
             return False
         return running_loop.run_until_complete(_runner())
 
-    new_loop = asyncio.new_event_loop()
+    new_loop = facade.asyncio.new_event_loop()
     try:
-        asyncio.set_event_loop(new_loop)
+        facade.asyncio.set_event_loop(new_loop)
         return new_loop.run_until_complete(_runner())
     finally:
         new_loop.close()
-        asyncio.set_event_loop(None)
+        facade.asyncio.set_event_loop(None)
 
 
 def _wait_for_future_result_with_shutdown(
@@ -444,7 +444,7 @@ def _wait_for_future_result_with_shutdown(
     timeout budget in one blocking call.
     """
 
-    deadline = time.monotonic() + float(timeout_seconds)
+    deadline = facade.time.monotonic() + float(timeout_seconds)
     poll_budget = max(0.05, float(poll_seconds))
     immediate_timeout_count = 0
 
@@ -452,16 +452,16 @@ def _wait_for_future_result_with_shutdown(
         if facade.shutting_down:
             raise TimeoutError("Shutdown in progress")
 
-        remaining = deadline - time.monotonic()
+        remaining = deadline - facade.time.monotonic()
         if remaining <= 0:
             raise FuturesTimeoutError()
 
         wait_budget = min(remaining, poll_budget)
-        call_started = time.monotonic()
+        call_started = facade.time.monotonic()
         try:
             return result_future.result(timeout=wait_budget)
         except FuturesTimeoutError:
-            call_elapsed = time.monotonic() - call_started
+            call_elapsed = facade.time.monotonic() - call_started
             # Some mocked futures raise timeout immediately instead of blocking for
             # the timeout duration. Avoid a busy-loop that can run until the full
             # deadline in that scenario.

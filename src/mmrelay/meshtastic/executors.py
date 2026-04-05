@@ -1,5 +1,4 @@
 import threading
-import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any, Callable
@@ -389,7 +388,7 @@ def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
     with facade._metadata_future_lock:
         if facade._metadata_future is not None and not facade._metadata_future.done():
             if facade._metadata_future_started_at is None or (
-                time.monotonic() - facade._metadata_future_started_at
+                facade.time.monotonic() - facade._metadata_future_started_at
                 < METADATA_WATCHDOG_SECS
             ):
                 return None
@@ -422,7 +421,7 @@ def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
             future = None
         if future is not None:
             facade._metadata_future = future
-            facade._metadata_future_started_at = time.monotonic()
+            facade._metadata_future_started_at = facade.time.monotonic()
 
     if submission_error is not None:
         facade.logger.debug(
@@ -551,7 +550,7 @@ def _ensure_ble_worker_available(ble_address: str, *, operation: str) -> None:
             facade._ble_future_started_at is not None
             and facade._ble_future_timeout_secs is not None
         ):
-            elapsed = time.monotonic() - facade._ble_future_started_at
+            elapsed = facade.time.monotonic() - facade._ble_future_started_at
             stale_after = facade._ble_future_timeout_secs + stale_grace_secs
             if elapsed >= stale_after:
                 stale_elapsed_secs = elapsed
