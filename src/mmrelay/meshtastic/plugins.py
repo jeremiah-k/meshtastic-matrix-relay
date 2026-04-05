@@ -4,7 +4,7 @@ import math
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any
 
-import mmrelay.meshtastic_utils as _facade
+import mmrelay.meshtastic_utils as facade
 from mmrelay.constants.network import DEFAULT_PLUGIN_TIMEOUT_SECS
 
 __all__ = [
@@ -43,13 +43,13 @@ def _resolve_plugin_timeout(
         timeout = float(raw_value)
         if timeout > 0 and math.isfinite(timeout):
             return timeout
-        _facade.logger.warning(
+        facade.logger.warning(
             "Invalid meshtastic.plugin_timeout value %r; using %.1fs fallback.",
             raw_value,
             default,
         )
     except (TypeError, ValueError, OverflowError):
-        _facade.logger.warning(
+        facade.logger.warning(
             "Invalid meshtastic.plugin_timeout value %r; using %.1fs fallback.",
             raw_value,
             default,
@@ -74,16 +74,16 @@ def _resolve_plugin_result(
     ):
         return bool(handler_result)
 
-    result_future = _facade._submit_coro(handler_result, loop=loop)
+    result_future = facade._submit_coro(handler_result, loop=loop)
     if result_future is None:
-        _facade.logger.warning(
+        facade.logger.warning(
             "Plugin %s returned no awaitable; skipping.", plugin.plugin_name
         )
         return False
     try:
-        return bool(_facade._wait_for_result(result_future, plugin_timeout, loop=loop))
+        return bool(facade._wait_for_result(result_future, plugin_timeout, loop=loop))
     except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
-        _facade.logger.warning(
+        facade.logger.warning(
             "Plugin %s did not respond within %ss: %s",
             plugin.plugin_name,
             plugin_timeout,
@@ -110,7 +110,9 @@ def _run_meshtastic_plugins(
     from mmrelay.plugin_loader import load_plugins
 
     plugins = load_plugins()
-    plugin_timeout = _resolve_plugin_timeout(cfg, default=DEFAULT_PLUGIN_TIMEOUT_SECS)
+    plugin_timeout = facade._resolve_plugin_timeout(
+        cfg, default=DEFAULT_PLUGIN_TIMEOUT_SECS
+    )
 
     found_matching_plugin = False
     for plugin in plugins:
@@ -131,7 +133,7 @@ def _run_meshtastic_plugins(
                         meshnet_name,
                     )
 
-                found_matching_plugin = _resolve_plugin_result(
+                found_matching_plugin = facade._resolve_plugin_result(
                     handler_result,
                     plugin,
                     plugin_timeout,
@@ -140,15 +142,13 @@ def _run_meshtastic_plugins(
 
                 if found_matching_plugin:
                     if log_with_portnum:
-                        _facade.logger.debug(
+                        facade.logger.debug(
                             f"Processed {portnum} with plugin {plugin.plugin_name}"
                         )
                     else:
-                        _facade.logger.debug(
-                            f"Processed by plugin {plugin.plugin_name}"
-                        )
+                        facade.logger.debug(f"Processed by plugin {plugin.plugin_name}")
             except Exception:
-                _facade.logger.exception(f"Plugin {plugin.plugin_name} failed")
+                facade.logger.exception(f"Plugin {plugin.plugin_name} failed")
                 # Continue processing other plugins
 
     return found_matching_plugin

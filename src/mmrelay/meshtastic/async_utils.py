@@ -8,7 +8,7 @@ from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any, Awaitable, Callable, Coroutine, cast
 
-import mmrelay.meshtastic_utils as _facade
+import mmrelay.meshtastic_utils as facade
 
 __all__ = [
     "_coerce_bool",
@@ -97,7 +97,7 @@ def _coerce_positive_float(value: Any, default: float, setting_name: str) -> flo
     except (TypeError, ValueError, OverflowError):
         pass
 
-    _facade.logger.warning(
+    facade.logger.warning(
         "Invalid %s value %r; using default %.1f",
         setting_name,
         value,
@@ -129,7 +129,7 @@ def _coerce_bool(value: Any, default: bool, setting_name: str) -> bool:
         # For numeric types, use standard bool conversion
         return bool(value)
 
-    _facade.logger.warning(
+    facade.logger.warning(
         "Invalid %s value %r; using default %s",
         setting_name,
         value,
@@ -171,7 +171,7 @@ def _submit_coro(
             return await awaitable
 
         coro = _await_wrapper(coro)
-    loop = loop or _facade.event_loop
+    loop = loop or facade.event_loop
     if (
         loop
         and isinstance(loop, asyncio.AbstractEventLoop)
@@ -189,7 +189,7 @@ def _submit_coro(
             # Try to get the current event loop policy and create a new loop
             # This is safer than asyncio.run() which can cause deadlocks
             policy = asyncio.get_event_loop_policy()
-            _facade.logger.debug(
+            facade.logger.debug(
                 "No running event loop detected; creating a temporary loop to execute coroutine"
             )
             new_loop = policy.new_event_loop()
@@ -207,7 +207,7 @@ def _submit_coro(
             # exceptions instead of crashing a background thread when no loop is
             # available. We intentionally catch broad exceptions here because the
             # coroutine itself may raise, and we still need a Future wrapper.
-            _facade.logger.debug(
+            facade.logger.debug(
                 "Ultimate fallback triggered for _submit_coro: %s: %s",
                 type(e).__name__,
                 e,
@@ -232,7 +232,7 @@ def _fire_and_forget(
     if not inspect.iscoroutine(coro):
         return
 
-    task = _submit_coro(coro, loop=loop)
+    task = facade._submit_coro(coro, loop=loop)
     if task is None:
         return
 
@@ -251,11 +251,11 @@ def _fire_and_forget(
         """
         try:
             if (exc := t.exception()) and not isinstance(exc, asyncio.CancelledError):
-                _facade.logger.error("Exception in fire-and-forget task", exc_info=exc)
+                facade.logger.error("Exception in fire-and-forget task", exc_info=exc)
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            _facade.logger.debug(
+            facade.logger.debug(
                 f"Error retrieving exception from fire-and-forget task: {e}"
             )
 
@@ -331,12 +331,12 @@ def _run_blocking_with_timeout(
     thread.start()
     if not done_event.wait(timeout=timeout):
         if timeout_log_level is not None:
-            _facade.logger.log(
+            facade.logger.log(
                 timeout_log_level, "%s timed out after %.1fs", label, timeout
             )
         raise TimeoutError(f"{label} timed out after {timeout:.1f}s")
     if action_error is not None:
-        _facade.logger.debug("%s failed: %s", label, action_error)
+        facade.logger.debug("%s failed: %s", label, action_error)
         raise action_error
 
 
@@ -380,7 +380,7 @@ def _wait_for_result(
         except TypeError:
             return result_future.result()
     else:
-        awaitable = _make_awaitable(result_future, loop=target_loop)
+        awaitable = facade._make_awaitable(result_future, loop=target_loop)
 
     async def _runner() -> Any:
         """
@@ -403,10 +403,10 @@ def _wait_for_result(
         if target_loop.is_running():
             if running_loop is target_loop:
                 # Avoid deadlocking the loop thread; schedule and return.
-                _facade.logger.warning(
+                facade.logger.warning(
                     "Refusing to block running event loop while waiting for result"
                 )
-                _fire_and_forget(_runner(), loop=target_loop)
+                facade._fire_and_forget(_runner(), loop=target_loop)
                 return False
             return asyncio.run_coroutine_threadsafe(_runner(), target_loop).result(
                 timeout=timeout
@@ -415,10 +415,10 @@ def _wait_for_result(
 
     if running_loop and not running_loop.is_closed():
         if running_loop.is_running():
-            _facade.logger.warning(
+            facade.logger.warning(
                 "Refusing to block running event loop while waiting for result"
             )
-            _fire_and_forget(_runner(), loop=running_loop)
+            facade._fire_and_forget(_runner(), loop=running_loop)
             return False
         return running_loop.run_until_complete(_runner())
 
@@ -449,7 +449,7 @@ def _wait_for_future_result_with_shutdown(
     immediate_timeout_count = 0
 
     while True:
-        if _facade.shutting_down:
+        if facade.shutting_down:
             raise TimeoutError("Shutdown in progress")
 
         remaining = deadline - time.monotonic()

@@ -1,6 +1,6 @@
 from typing import Any, cast
 
-import mmrelay.meshtastic_utils as _facade
+import mmrelay.meshtastic_utils as facade
 
 __all__ = [
     "_get_node_display_name",
@@ -34,7 +34,7 @@ def _normalize_room_channel(room: dict[str, Any]) -> int | None:
     try:
         return int(room_channel)
     except (ValueError, TypeError):
-        _facade.logger.warning(
+        facade.logger.warning(
             "Invalid meshtastic_channel value %r in room config "
             "for room %s, skipping this room",
             room_channel,
@@ -119,7 +119,7 @@ def _get_portnum_name(portnum: Any) -> str:
 
     if isinstance(portnum, int) and not isinstance(portnum, bool):
         try:
-            return _facade.portnums_pb2.PortNum.Name(portnum)  # type: ignore[arg-type]
+            return facade.portnums_pb2.PortNum.Name(portnum)  # type: ignore[arg-type]
         except ValueError:
             return f"UNKNOWN (portnum={portnum})"
 
@@ -171,7 +171,7 @@ def send_text_reply(
     interface: Any,
     text: str,
     reply_id: int,
-    destinationId: Any = _facade.meshtastic.BROADCAST_ADDR,
+    destinationId: Any = facade.meshtastic.BROADCAST_ADDR,
     wantAck: bool = False,
     channelIndex: int = 0,
 ) -> Any:
@@ -190,23 +190,23 @@ def send_text_reply(
         The result returned by the interface's _sendPacket call (typically the sent MeshPacket), or
         `None` if the interface is unavailable or sending fails.
     """
-    _facade.logger.debug(
+    facade.logger.debug(
         f"Sending text reply: '{text}' replying to message ID {reply_id}"
     )
 
     # Check if interface is available
     if interface is None:
-        _facade.logger.error("No Meshtastic interface available for sending reply")
+        facade.logger.error("No Meshtastic interface available for sending reply")
         return None
 
     # Create the Data protobuf message with reply_id set
-    data_msg = _facade.mesh_pb2.Data()
-    data_msg.portnum = _facade.portnums_pb2.PortNum.TEXT_MESSAGE_APP
-    data_msg.payload = text.encode(_facade.MESHTASTIC_TEXT_ENCODING)
+    data_msg = facade.mesh_pb2.Data()
+    data_msg.portnum = facade.portnums_pb2.PortNum.TEXT_MESSAGE_APP
+    data_msg.payload = text.encode(facade.MESHTASTIC_TEXT_ENCODING)
     data_msg.reply_id = reply_id
 
     # Create the MeshPacket
-    mesh_packet = _facade.mesh_pb2.MeshPacket()
+    mesh_packet = facade.mesh_pb2.MeshPacket()
     mesh_packet.channel = channelIndex
     mesh_packet.decoded.CopyFrom(data_msg)
     mesh_packet.id = interface._generatePacketId()
@@ -223,10 +223,10 @@ def send_text_reply(
         TypeError,
         ValueError,
     ):
-        _facade.logger.exception("Failed to send text reply")
+        facade.logger.exception("Failed to send text reply")
         return None
     except SystemExit:
-        _facade.logger.debug("SystemExit encountered, preserving for graceful shutdown")
+        facade.logger.debug("SystemExit encountered, preserving for graceful shutdown")
         raise
 
 
