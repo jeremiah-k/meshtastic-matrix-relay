@@ -1320,6 +1320,19 @@ class TestConnectionLossHandling(unittest.TestCase):
         mmrelay.meshtastic_utils.shutting_down = False
         mmrelay.meshtastic_utils.reconnect_task = None
 
+    def tearDown(self):
+        """Drain any coroutines submitted via run_coroutine_threadsafe."""
+        import asyncio
+
+        import mmrelay.meshtastic_utils as mu
+
+        loop = mu.event_loop
+        if loop and not loop.is_closed():
+            try:
+                loop.run_until_complete(asyncio.sleep(0))
+            except RuntimeError:
+                pass
+
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("mmrelay.meshtastic_utils.reconnect", new_callable=AsyncMock)
     def test_on_lost_meshtastic_connection_normal(self, mock_reconnect, mock_logger):

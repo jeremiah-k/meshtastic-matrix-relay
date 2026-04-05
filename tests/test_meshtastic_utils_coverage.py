@@ -479,11 +479,8 @@ class TestProbeAckHandling:
 
     def test_wait_for_probe_ack_no_ack_state(self):
         """Test waiting for probe ACK with no ack state."""
-        client = Mock()
-        client._acknowledgment = None
-
         with pytest.raises(RuntimeError, match="missing acknowledgment state"):
-            mu._wait_for_probe_ack(client, 1.0)
+            mu._wait_for_probe_ack(None, 1.0)
 
     def test_wait_for_probe_ack_with_reset(self):
         """Test waiting for probe ACK calls reset when available."""
@@ -493,10 +490,7 @@ class TestProbeAckHandling:
         ack_state.receivedImplAck = False
         ack_state.reset = Mock()
 
-        client = Mock()
-        client._acknowledgment = ack_state
-
-        mu._wait_for_probe_ack(client, 1.0)
+        mu._wait_for_probe_ack(ack_state, 1.0)
 
         ack_state.reset.assert_called_once()
 
@@ -526,6 +520,7 @@ class TestProbeAckHandling:
         """Test probe connection when client cannot wait for ACK."""
         client = Mock()
         client.localNode = Mock()
+        client.localNode.iface._acknowledgment = None
         client.localNode.nodeNum = 12345
         client.sendData = Mock(return_value=Mock(id=999))
         client._acknowledgment = None
@@ -1108,10 +1103,7 @@ class TestWaitForProbeAckManualReset:
         # Make reset a non-callable attribute
         ack_state.reset = "not_callable"
 
-        client = Mock()
-        client._acknowledgment = ack_state
-
-        mu._wait_for_probe_ack(client, 0.1)
+        mu._wait_for_probe_ack(ack_state, 0.1)
 
         # Verify flags were manually reset
         assert ack_state.receivedAck is False
