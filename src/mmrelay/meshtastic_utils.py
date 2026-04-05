@@ -114,116 +114,13 @@ from mmrelay.db_utils import (
     sync_name_tables_if_changed,
 )
 from mmrelay.log_utils import get_logger
-from mmrelay.meshtastic.async_utils import (
-    _coerce_bool,
-    _coerce_int_id,
-    _coerce_nonnegative_float,
-    _coerce_positive_float,
-    _coerce_positive_int,
-    _coerce_positive_int_id,
-    _fire_and_forget,
-    _make_awaitable,
-    _run_blocking_with_timeout,
-    _submit_coro,
-    _wait_for_future_result_with_shutdown,
-    _wait_for_result,
-)
-from mmrelay.meshtastic.ble import (
-    _attach_late_ble_interface_disposer,
-    _disconnect_ble_by_address,
-    _disconnect_ble_interface,
-    _is_ble_discovery_error,
-    _is_ble_duplicate_connect_suppressed_error,
-    _reset_ble_connection_gate_state,
-    _sanitize_ble_address,
-    _scan_for_ble_address,
-    _validate_ble_connection_address,
-)
-from mmrelay.meshtastic.connection import (
-    _connect_meshtastic_impl,
-    _get_connect_time_probe_settings,
-    _get_connection_retry_wait_time,
-    _rollback_connect_attempt_state,
-    _schedule_connect_time_calibration_probe,
-    connect_meshtastic,
-    serial_port_exists,
-)
-from mmrelay.meshtastic.events import (
-    on_lost_meshtastic_connection,
-    on_meshtastic_message,
-    reconnect,
-)
-from mmrelay.meshtastic.executors import (
-    _clear_ble_future,
-    _clear_metadata_future_if_current,
-    _ensure_ble_worker_available,
-    _get_ble_executor,
-    _get_metadata_executor,
-    _maybe_reset_ble_executor,
-    _record_ble_timeout,
-    _reset_metadata_executor_for_stale_probe,
-    _schedule_ble_future_cleanup,
-    _schedule_metadata_future_cleanup,
-    _shutdown_shared_executors,
-    _submit_metadata_probe,
-    reset_executor_degraded_state,
-    shutdown_shared_executors,
-)
-from mmrelay.meshtastic.health import (
-    _claim_health_probe_response_and_maybe_calibrate,
-    _extract_packet_request_id,
-    _failed_probe_ack_state_error,
-    _handle_probe_ack_callback,
-    _is_health_probe_response_packet,
-    _metadata_probe_ack_timeout_error,
-    _missing_ack_state_error,
-    _missing_local_node_ack_state_error,
-    _missing_probe_transport_error,
-    _missing_probe_wait_error,
-    _missing_received_nak_error,
-    _probe_device_connection,
-    _prune_health_probe_tracking,
-    _reset_probe_ack_state,
-    _seed_connect_time_skew,
-    _set_probe_ack_flag_from_packet,
-    _track_health_probe_request_id,
-    _wait_for_probe_ack,
-    check_connection,
-    requires_continuous_health_monitor,
-)
-from mmrelay.meshtastic.messaging import (
-    _get_node_display_name,
-    _get_packet_details,
-    _get_portnum_name,
-    _normalize_room_channel,
-    send_text_reply,
-    sendTextReply,
-)
-from mmrelay.meshtastic.metadata import (
-    _extract_firmware_version_from_client,
-    _extract_firmware_version_from_metadata,
-    _get_device_metadata,
-    _get_name_or_none,
-    _get_name_safely,
-    _missing_metadata_probe_error,
-    _normalize_firmware_version,
-)
-from mmrelay.meshtastic.node_refresh import (
-    _parse_refresh_interval_seconds,
-    _snapshot_node_name_rows,
-    get_nodedb_refresh_interval_seconds,
-    refresh_node_name_tables,
-)
-from mmrelay.meshtastic.plugins import (
-    _resolve_plugin_result,
-    _resolve_plugin_timeout,
-    _run_meshtastic_plugins,
-)
-from mmrelay.meshtastic.subscriptions import (
-    ensure_meshtastic_callbacks_subscribed,
-    unsubscribe_meshtastic_callbacks,
-)
 from mmrelay.runtime_utils import is_running_as_service
+
+# ---------------------------------------------------------------------------
+# Facade-owned globals — defined BEFORE submodule imports so that submodules
+# can reference facade.<name> at function-call time even during circular
+# import resolution.
+# ---------------------------------------------------------------------------
 
 try:
     BLE_AVAILABLE = importlib.util.find_spec("bleak") is not None
@@ -380,6 +277,121 @@ class MetadataExecutorDegradedError(RuntimeError):
 
 # Executor infrastructure — implemented in meshtastic.executors, re-exported here
 # for backward-compatible patch targets (tests patch mmrelay.meshtastic_utils.*).
+
+# ---------------------------------------------------------------------------
+# Submodule imports — after all facade-owned globals so circular-import
+# resolution never sees a partially-initialized module.
+# ---------------------------------------------------------------------------
+
+from mmrelay.meshtastic.async_utils import (
+    _coerce_bool,
+    _coerce_int_id,
+    _coerce_nonnegative_float,
+    _coerce_positive_float,
+    _coerce_positive_int,
+    _coerce_positive_int_id,
+    _fire_and_forget,
+    _make_awaitable,
+    _run_blocking_with_timeout,
+    _submit_coro,
+    _wait_for_future_result_with_shutdown,
+    _wait_for_result,
+)
+from mmrelay.meshtastic.ble import (
+    _attach_late_ble_interface_disposer,
+    _disconnect_ble_by_address,
+    _disconnect_ble_interface,
+    _is_ble_discovery_error,
+    _is_ble_duplicate_connect_suppressed_error,
+    _reset_ble_connection_gate_state,
+    _sanitize_ble_address,
+    _scan_for_ble_address,
+    _validate_ble_connection_address,
+)
+from mmrelay.meshtastic.connection import (
+    _connect_meshtastic_impl,
+    _get_connect_time_probe_settings,
+    _get_connection_retry_wait_time,
+    _rollback_connect_attempt_state,
+    _schedule_connect_time_calibration_probe,
+    connect_meshtastic,
+    serial_port_exists,
+)
+from mmrelay.meshtastic.events import (
+    on_lost_meshtastic_connection,
+    on_meshtastic_message,
+    reconnect,
+)
+from mmrelay.meshtastic.executors import (
+    _clear_ble_future,
+    _clear_metadata_future_if_current,
+    _ensure_ble_worker_available,
+    _get_ble_executor,
+    _get_metadata_executor,
+    _maybe_reset_ble_executor,
+    _record_ble_timeout,
+    _reset_metadata_executor_for_stale_probe,
+    _schedule_ble_future_cleanup,
+    _schedule_metadata_future_cleanup,
+    _shutdown_shared_executors,
+    _submit_metadata_probe,
+    reset_executor_degraded_state,
+    shutdown_shared_executors,
+)
+from mmrelay.meshtastic.health import (
+    _claim_health_probe_response_and_maybe_calibrate,
+    _extract_packet_request_id,
+    _failed_probe_ack_state_error,
+    _handle_probe_ack_callback,
+    _is_health_probe_response_packet,
+    _metadata_probe_ack_timeout_error,
+    _missing_ack_state_error,
+    _missing_local_node_ack_state_error,
+    _missing_probe_transport_error,
+    _missing_probe_wait_error,
+    _missing_received_nak_error,
+    _probe_device_connection,
+    _prune_health_probe_tracking,
+    _reset_probe_ack_state,
+    _seed_connect_time_skew,
+    _set_probe_ack_flag_from_packet,
+    _track_health_probe_request_id,
+    _wait_for_probe_ack,
+    check_connection,
+    requires_continuous_health_monitor,
+)
+from mmrelay.meshtastic.messaging import (
+    _get_node_display_name,
+    _get_packet_details,
+    _get_portnum_name,
+    _normalize_room_channel,
+    send_text_reply,
+    sendTextReply,
+)
+from mmrelay.meshtastic.metadata import (
+    _extract_firmware_version_from_client,
+    _extract_firmware_version_from_metadata,
+    _get_device_metadata,
+    _get_name_or_none,
+    _get_name_safely,
+    _missing_metadata_probe_error,
+    _normalize_firmware_version,
+)
+from mmrelay.meshtastic.node_refresh import (
+    _parse_refresh_interval_seconds,
+    _snapshot_node_name_rows,
+    get_nodedb_refresh_interval_seconds,
+    refresh_node_name_tables,
+)
+from mmrelay.meshtastic.plugins import (
+    _resolve_plugin_result,
+    _resolve_plugin_timeout,
+    _run_meshtastic_plugins,
+)
+from mmrelay.meshtastic.subscriptions import (
+    ensure_meshtastic_callbacks_subscribed,
+    unsubscribe_meshtastic_callbacks,
+)
 
 atexit.register(shutdown_shared_executors)
 

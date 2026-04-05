@@ -248,7 +248,7 @@ def on_lost_meshtastic_connection(
                 facade.reset_executor_degraded_state(reset_all=True)
 
         if facade.event_loop and not facade.event_loop.is_closed():
-            facade.reconnect_task = facade.event_loop.create_task(reconnect())
+            facade.reconnect_task = facade.event_loop.create_task(facade.reconnect())
 
 
 async def reconnect() -> None:

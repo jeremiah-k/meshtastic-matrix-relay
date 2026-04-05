@@ -102,7 +102,7 @@ def shutdown_shared_executors() -> None:
 
     This is primarily intended for test teardown and explicit cleanup paths.
     """
-    _shutdown_shared_executors()
+    facade._shutdown_shared_executors()
 
 
 def reset_executor_degraded_state(
@@ -573,7 +573,7 @@ def _ensure_ble_worker_available(ble_address: str, *, operation: str) -> None:
             stale_address,
             reason=f"stale worker during {operation}",
         )
-        timeout_count = _record_ble_timeout(stale_address)
+        timeout_count = facade._record_ble_timeout(stale_address)
         facade._maybe_reset_ble_executor(
             stale_address,
             max(timeout_count, reset_threshold),

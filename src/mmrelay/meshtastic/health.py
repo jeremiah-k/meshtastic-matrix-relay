@@ -471,7 +471,7 @@ def _probe_device_connection(
         portNum=facade.portnums_pb2.PortNum.ADMIN_APP,
         wantAck=True,
         wantResponse=True,
-        onResponse=functools.partial(_handle_probe_ack_callback, local_node),
+        onResponse=functools.partial(facade._handle_probe_ack_callback, local_node),
     )
     request_id = facade._track_health_probe_request_id(
         (

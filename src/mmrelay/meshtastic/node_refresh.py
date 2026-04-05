@@ -61,7 +61,7 @@ def get_nodedb_refresh_interval_seconds(
         CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
         DEFAULT_NODEDB_REFRESH_INTERVAL,
     )
-    interval = _parse_refresh_interval_seconds(raw_interval)
+    interval = facade._parse_refresh_interval_seconds(raw_interval)
     if interval is not None:
         return interval
 
