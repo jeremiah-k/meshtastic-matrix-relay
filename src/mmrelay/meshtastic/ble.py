@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import contextlib
 import inspect
 import logging
