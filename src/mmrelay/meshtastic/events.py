@@ -26,6 +26,14 @@ __all__ = [
 ]
 
 
+def _get_iterable_matrix_rooms():
+    return (
+        facade.matrix_rooms.values()
+        if isinstance(facade.matrix_rooms, dict)
+        else (facade.matrix_rooms or ())
+    )
+
+
 def _derive_disconnect_detection_source(
     interface: Any, detection_source: str, topic: Any
 ) -> str:
@@ -740,11 +748,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         # Check if channel is mapped to a Matrix room
         channel_mapped = False
         matrix_rooms_configured = bool(facade.matrix_rooms)
-        iterable_rooms = (
-            facade.matrix_rooms.values()
-            if isinstance(facade.matrix_rooms, dict)
-            else (facade.matrix_rooms or ())
-        )
+        iterable_rooms = _get_iterable_matrix_rooms()
         for room in iterable_rooms:
             if not isinstance(room, dict):
                 continue
@@ -872,11 +876,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         # Relay the message to all Matrix rooms mapped to this channel
         facade.logger.info(f"Relaying Meshtastic message from {longname} to Matrix")
 
-        iterable_rooms = (
-            facade.matrix_rooms.values()
-            if isinstance(facade.matrix_rooms, dict)
-            else (facade.matrix_rooms or ())
-        )
+        iterable_rooms = _get_iterable_matrix_rooms()
         for room in iterable_rooms:
             if not isinstance(room, dict):
                 continue
