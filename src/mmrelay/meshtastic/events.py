@@ -188,7 +188,7 @@ def on_lost_meshtastic_connection(
                 try:
                     facade.meshtastic_client.close()
                 except OSError as e:
-                    if e.errno == ERRNO_BAD_FILE_DESCRIPTOR:
+                    if e.errno == facade.ERRNO_BAD_FILE_DESCRIPTOR:
                         # Bad file descriptor, already closed
                         pass
                     else:
@@ -257,7 +257,7 @@ async def reconnect() -> None:
 
     Retries connect_meshtastic(force_connect=True) until a connection is obtained, the application begins shutting down, or the task is cancelled. Starts with DEFAULT_BACKOFF_TIME and doubles the wait after each failed attempt, capped at 300 seconds. Stops promptly on cancellation or when shutting_down is set, and ensures the module-level `reconnecting` flag is cleared before returning.
     """
-    backoff_time = _DEFAULT_BACKOFF_TIME
+    backoff_time = facade.DEFAULT_BACKOFF_TIME
     try:
         while not facade.shutting_down:
             try:

@@ -40,9 +40,9 @@ def _is_ble_duplicate_connect_suppressed_error(exc: BaseException) -> bool:
     message = str(exc).strip().lower()
     if not message:
         return False
-    return BLE_DUP_CONNECT_SUPPRESSED_TOKEN in message or (
-        BLE_CONN_SUPPRESSED_TOKEN in message
-        and BLE_CONNECTED_ELSEWHERE_TOKEN in message
+    return facade.BLE_DUP_CONNECT_SUPPRESSED_TOKEN in message or (
+        facade.BLE_CONN_SUPPRESSED_TOKEN in message
+        and facade.BLE_CONNECTED_ELSEWHERE_TOKEN in message
     )
 
 
@@ -425,7 +425,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                         f"Device {address} is already connected in BlueZ. Disconnecting..."
                     )
                     # Retry logic for disconnect with timeout
-                    max_retries = BLE_DISCONNECT_MAX_RETRIES
+                    max_retries = facade.BLE_DISCONNECT_MAX_RETRIES
                     for attempt in range(max_retries):
                         try:
                             # Some backends or test doubles return a sync result
@@ -434,15 +434,17 @@ def _disconnect_ble_by_address(address: str) -> None:
                             if inspect.isawaitable(disconnect_result):
                                 await facade.asyncio.wait_for(
                                     disconnect_result,
-                                    timeout=BLE_DISCONNECT_TIMEOUT_SECS,
+                                    timeout=facade.BLE_DISCONNECT_TIMEOUT_SECS,
                                 )
-                            await facade.asyncio.sleep(BLE_DISCONNECT_SETTLE_SECS)
+                            await facade.asyncio.sleep(
+                                facade.BLE_DISCONNECT_SETTLE_SECS
+                            )
                             facade.logger.debug(
                                 "Successfully disconnected stale connection to %s on attempt %s, "
                                 "waiting %.1fs for BlueZ to settle",
                                 address,
                                 attempt + 1,
-                                BLE_DISCONNECT_SETTLE_SECS,
+                                facade.BLE_DISCONNECT_SETTLE_SECS,
                             )
                             break
                         except facade.asyncio.TimeoutError:
@@ -450,7 +452,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                                 facade.logger.warning(
                                     f"Disconnect attempt {attempt + 1} for {address} timed out, retrying..."
                                 )
-                                await facade.asyncio.sleep(BLE_RETRY_DELAY_SECS)
+                                await facade.asyncio.sleep(facade.BLE_RETRY_DELAY_SECS)
                             else:
                                 facade.logger.warning(
                                     f"Disconnect for {address} timed out after {max_retries} attempts"
@@ -466,7 +468,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                                     e,
                                     exc_info=True,
                                 )
-                                await facade.asyncio.sleep(BLE_RETRY_DELAY_SECS)
+                                await facade.asyncio.sleep(facade.BLE_RETRY_DELAY_SECS)
                             else:
                                 facade.logger.warning(
                                     "Disconnect for %s failed after %s attempts: %s",
@@ -497,9 +499,10 @@ def _disconnect_ble_by_address(address: str) -> None:
                         disconnect_result = client.disconnect()
                         if inspect.isawaitable(disconnect_result):
                             await facade.asyncio.wait_for(
-                                disconnect_result, timeout=BLE_DISCONNECT_TIMEOUT_SECS
+                                disconnect_result,
+                                timeout=facade.BLE_DISCONNECT_TIMEOUT_SECS,
                             )
-                        await facade.asyncio.sleep(BLE_DISCONNECT_SETTLE_SECS)
+                        await facade.asyncio.sleep(facade.BLE_DISCONNECT_SETTLE_SECS)
                 except facade.asyncio.TimeoutError:
                     facade.logger.debug(
                         f"Final disconnect for {address} timed out (cleanup)"
@@ -539,13 +542,13 @@ def _disconnect_ble_by_address(address: str) -> None:
                 disconnect_stale_connection(), facade.event_loop
             )
             try:
-                future.result(timeout=STALE_DISCONNECT_TIMEOUT_SECS)
+                future.result(timeout=facade.STALE_DISCONNECT_TIMEOUT_SECS)
                 facade.logger.debug(
                     f"Stale connection disconnect completed for {address}"
                 )
             except facade.FuturesTimeoutError:
                 facade.logger.warning(
-                    f"Stale connection disconnect timed out after {STALE_DISCONNECT_TIMEOUT_SECS:.0f}s for {address}"
+                    f"Stale connection disconnect timed out after {facade.STALE_DISCONNECT_TIMEOUT_SECS:.0f}s for {address}"
                 )
                 if not future.done():
                     # Cancel the cleanup task so we do not block a new connect

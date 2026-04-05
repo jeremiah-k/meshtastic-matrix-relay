@@ -256,13 +256,13 @@ def _get_device_metadata(
         timed_out = False
         future_error: Exception | None = None
         try:
-            future.result(timeout=METADATA_WATCHDOG_SECS)
+            future.result(timeout=facade.METADATA_WATCHDOG_SECS)
         except FuturesTimeoutError as e:
             timed_out = True
             if raise_on_error:
                 future_error = e
             facade.logger.debug(
-                f"getMetadata() timed out after {METADATA_WATCHDOG_SECS} seconds"
+                f"getMetadata() timed out after {facade.METADATA_WATCHDOG_SECS} seconds"
             )
             # If the worker is still running, restore stdio immediately so the
             # main process does not keep writing to the captured buffer.

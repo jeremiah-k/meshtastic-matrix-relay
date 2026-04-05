@@ -283,7 +283,7 @@ def _reset_metadata_executor_for_stale_probe() -> None:
             return
 
         projected_orphans = facade._metadata_executor_orphaned_workers + 1
-        if projected_orphans >= EXECUTOR_ORPHAN_THRESHOLD:
+        if projected_orphans >= facade.EXECUTOR_ORPHAN_THRESHOLD:
             facade._metadata_executor_degraded = True
             facade._metadata_executor_orphaned_workers = projected_orphans
             facade.logger.error(
@@ -319,7 +319,7 @@ def _reset_metadata_executor_for_stale_probe() -> None:
             "Replacing stale metadata executor after probe timeout; "
             "orphaned metadata workers=%s (threshold=%s)",
             orphaned_workers,
-            EXECUTOR_ORPHAN_THRESHOLD,
+            facade.EXECUTOR_ORPHAN_THRESHOLD,
         )
         try:
             stale_executor.shutdown(wait=False, cancel_futures=True)
@@ -360,13 +360,13 @@ def _schedule_metadata_future_cleanup(
 
         facade.logger.warning(
             "Metadata worker still running after %.0fs; clearing stale future (%s)",
-            METADATA_WATCHDOG_SECS,
+            facade.METADATA_WATCHDOG_SECS,
             reason,
         )
         facade._reset_metadata_executor_for_stale_probe()
 
     try:
-        timer = threading.Timer(METADATA_WATCHDOG_SECS, _cleanup)
+        timer = threading.Timer(facade.METADATA_WATCHDOG_SECS, _cleanup)
         timer.daemon = True
         future.add_done_callback(lambda _f: timer.cancel())
         timer.start()
@@ -389,7 +389,7 @@ def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
         if facade._metadata_future is not None and not facade._metadata_future.done():
             if facade._metadata_future_started_at is None or (
                 facade.time.monotonic() - facade._metadata_future_started_at
-                < METADATA_WATCHDOG_SECS
+                < facade.METADATA_WATCHDOG_SECS
             ):
                 return None
             stale_detected = True
@@ -397,7 +397,7 @@ def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
     if stale_detected:
         facade.logger.warning(
             "Metadata worker still running after %.0fs; clearing stale future (%s)",
-            METADATA_WATCHDOG_SECS,
+            facade.METADATA_WATCHDOG_SECS,
             "submit-retry",
         )
         facade._reset_metadata_executor_for_stale_probe()
@@ -491,7 +491,7 @@ def _schedule_ble_future_cleanup(
     """
     watchdog_secs = facade._coerce_positive_float(
         facade._ble_future_watchdog_secs,
-        BLE_FUTURE_WATCHDOG_SECS,
+        facade.BLE_FUTURE_WATCHDOG_SECS,
         "_ble_future_watchdog_secs",
     )
 
@@ -514,7 +514,7 @@ def _schedule_ble_future_cleanup(
         )
         reset_threshold = facade._coerce_positive_int(
             facade._ble_timeout_reset_threshold,
-            BLE_TIMEOUT_RESET_THRESHOLD,
+            facade.BLE_TIMEOUT_RESET_THRESHOLD,
         )
         facade._maybe_reset_ble_executor(ble_address, reset_threshold)
 
@@ -535,10 +535,10 @@ def _ensure_ble_worker_available(ble_address: str, *, operation: str) -> None:
     stale_timeout_secs: float | None = None
     stale_address: str | None = None
     stale_grace_secs = facade._coerce_nonnegative_float(
-        facade._ble_future_stale_grace_secs, BLE_FUTURE_STALE_GRACE_SECS
+        facade._ble_future_stale_grace_secs, facade.BLE_FUTURE_STALE_GRACE_SECS
     )
     reset_threshold = facade._coerce_positive_int(
-        facade._ble_timeout_reset_threshold, BLE_TIMEOUT_RESET_THRESHOLD
+        facade._ble_timeout_reset_threshold, facade.BLE_TIMEOUT_RESET_THRESHOLD
     )
 
     with facade._ble_executor_lock:
@@ -615,7 +615,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
         return
 
     reset_threshold = facade._coerce_positive_int(
-        facade._ble_timeout_reset_threshold, BLE_TIMEOUT_RESET_THRESHOLD
+        facade._ble_timeout_reset_threshold, facade.BLE_TIMEOUT_RESET_THRESHOLD
     )
     # Capture future ref inside lock, cancel outside to avoid deadlock with done callbacks
     ble_future_to_cancel = None
@@ -628,7 +628,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
         current_orphans = facade._ble_executor_orphaned_workers_by_address.get(
             ble_address, 0
         )
-        if current_orphans + 1 >= EXECUTOR_ORPHAN_THRESHOLD:
+        if current_orphans + 1 >= facade.EXECUTOR_ORPHAN_THRESHOLD:
             facade._ble_executor_degraded_addresses.add(ble_address)
             facade.logger.error(
                 "BLE EXECUTOR DEGRADED for %s: %s workers have been orphaned due to "
@@ -667,7 +667,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
                 timeout_count,
                 ble_address,
                 orphaned_workers,
-                EXECUTOR_ORPHAN_THRESHOLD,
+                facade.EXECUTOR_ORPHAN_THRESHOLD,
             )
             facade._ble_executor = facade.ThreadPoolExecutor(max_workers=1)
             facade._ble_future = None
@@ -679,7 +679,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
         if ble_future_to_cancel is not None:
             ble_future_to_cancel.cancel()
             try:
-                ble_future_to_cancel.result(timeout=FUTURE_CANCEL_TIMEOUT_SECS)
+                ble_future_to_cancel.result(timeout=facade.FUTURE_CANCEL_TIMEOUT_SECS)
             except Exception as exc:  # noqa: BLE001 - best-effort degraded cleanup
                 facade.logger.debug(
                     "BLE future cancellation raised error for %s: %s",
@@ -698,7 +698,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     if ble_future_to_cancel is not None:
         ble_future_to_cancel.cancel()
         try:
-            ble_future_to_cancel.result(timeout=FUTURE_CANCEL_TIMEOUT_SECS)
+            ble_future_to_cancel.result(timeout=facade.FUTURE_CANCEL_TIMEOUT_SECS)
         except FuturesTimeoutError:
             pass
         except Exception as exc:  # noqa: BLE001 - best-effort reset cleanup

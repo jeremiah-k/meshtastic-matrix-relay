@@ -76,25 +76,25 @@ def serial_port_exists(port_name: str) -> bool:
 
 def _get_connection_retry_wait_time(attempts: int) -> float:
     """Return capped exponential retry backoff without exponentiating past the cap."""
-    if attempts <= 0 or CONNECTION_RETRY_BACKOFF_MAX_SECS <= 0:
+    if attempts <= 0 or facade.CONNECTION_RETRY_BACKOFF_MAX_SECS <= 0:
         return 0.0
 
-    if CONNECTION_RETRY_BACKOFF_BASE <= 1:
+    if facade.CONNECTION_RETRY_BACKOFF_BASE <= 1:
         return min(
-            float(CONNECTION_RETRY_BACKOFF_BASE**attempts),
-            float(CONNECTION_RETRY_BACKOFF_MAX_SECS),
+            float(facade.CONNECTION_RETRY_BACKOFF_BASE**attempts),
+            float(facade.CONNECTION_RETRY_BACKOFF_MAX_SECS),
         )
 
     max_capped_attempt = math.ceil(
         math.log(
-            CONNECTION_RETRY_BACKOFF_MAX_SECS,
-            CONNECTION_RETRY_BACKOFF_BASE,
+            facade.CONNECTION_RETRY_BACKOFF_MAX_SECS,
+            facade.CONNECTION_RETRY_BACKOFF_BASE,
         )
     )
     exponent = min(attempts, max_capped_attempt)
     return min(
-        float(CONNECTION_RETRY_BACKOFF_BASE**exponent),
-        float(CONNECTION_RETRY_BACKOFF_MAX_SECS),
+        float(facade.CONNECTION_RETRY_BACKOFF_BASE**exponent),
+        float(facade.CONNECTION_RETRY_BACKOFF_MAX_SECS),
     )
 
 
@@ -880,12 +880,14 @@ def _connect_meshtastic_impl(
                             facade._ble_future = connect_future
                             facade._ble_future_address = ble_address
                             facade._ble_future_started_at = facade.time.monotonic()
-                            facade._ble_future_timeout_secs = BLE_CONNECT_TIMEOUT_SECS
+                            facade._ble_future_timeout_secs = (
+                                facade.BLE_CONNECT_TIMEOUT_SECS
+                            )
                         connect_future.add_done_callback(facade._clear_ble_future)
                         try:
                             facade._wait_for_future_result_with_shutdown(
                                 connect_future,
-                                timeout_seconds=BLE_CONNECT_TIMEOUT_SECS,
+                                timeout_seconds=facade.BLE_CONNECT_TIMEOUT_SECS,
                             )
                             facade.logger.info(
                                 f"BLE connection established to {ble_address}"
@@ -924,14 +926,14 @@ def _connect_meshtastic_impl(
                                 # but raise a short error and keep operator guidance in logs (TRY003).
                                 ble_connect_timeout_logged_for_attempt = True
                                 facade.logger.exception(
-                                    f"BLE connect() call timed out after {BLE_CONNECT_TIMEOUT_SECS} seconds for %s.",
+                                    f"BLE connect() call timed out after {facade.BLE_CONNECT_TIMEOUT_SECS} seconds for %s.",
                                     ble_address,
                                 )
                                 facade.logger.warning(
                                     "This may indicate a BlueZ or adapter issue."
                                 )
                                 facade.logger.warning(
-                                    f"BlueZ may be in a bad state. {BLE_TROUBLESHOOTING_GUIDANCE.format(ble_address=ble_address)}"
+                                    f"BlueZ may be in a bad state. {facade.BLE_TROUBLESHOOTING_GUIDANCE.format(ble_address=ble_address)}"
                                 )
                                 # Best-effort cancellation: a hung BLE connect blocks the worker
                                 # thread, so we cancel to allow retries only if it completes.
@@ -1096,7 +1098,7 @@ def _connect_meshtastic_impl(
                             facade._relay_startup_drain_deadline_monotonic_secs = None
                             facade._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
                                 facade._relay_connection_started_monotonic_secs
-                                + RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS
+                                + facade.RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS
                             )
                             reconnect_bootstrap_armed_for_this_connect = True
                             timing_mode = "reconnect"
@@ -1198,7 +1200,8 @@ def _connect_meshtastic_impl(
                     with facade._relay_rx_time_clock_skew_lock:
                         if not facade._startup_packet_drain_applied:
                             facade._relay_startup_drain_deadline_monotonic_secs = (
-                                facade.time.monotonic() + STARTUP_PACKET_DRAIN_SECS
+                                facade.time.monotonic()
+                                + facade.STARTUP_PACKET_DRAIN_SECS
                             )
                             facade._startup_packet_drain_applied = True
                             startup_drain_applied_for_this_connect = True
@@ -1274,12 +1277,12 @@ def _connect_meshtastic_impl(
                 and str(e).startswith("BLE connect() timed out for ")
             ):
                 facade.logger.exception(
-                    f"BLE connect() call timed out after {BLE_CONNECT_TIMEOUT_SECS} seconds for %s.",
+                    f"BLE connect() call timed out after {facade.BLE_CONNECT_TIMEOUT_SECS} seconds for %s.",
                     ble_address,
                 )
                 facade.logger.warning("This may indicate a BlueZ or adapter issue.")
                 facade.logger.warning(
-                    f"BlueZ may be in a bad state. {BLE_TROUBLESHOOTING_GUIDANCE.format(ble_address=ble_address)}"
+                    f"BlueZ may be in a bad state. {facade.BLE_TROUBLESHOOTING_GUIDANCE.format(ble_address=ble_address)}"
                 )
             attempts += 1
             if retry_limit == facade.INFINITE_RETRIES:
