@@ -164,7 +164,6 @@ def on_lost_meshtastic_connection(
                     )
                     detection_source = "meshtastic.connection.lost"
 
-        facade.reconnecting = True
         facade.logger.error(f"Lost connection ({detection_source}). Reconnecting...")
 
         if facade.meshtastic_client:
@@ -244,6 +243,12 @@ def on_lost_meshtastic_connection(
 
         if facade.event_loop and not facade.event_loop.is_closed():
             facade.reconnect_task = facade.event_loop.create_task(facade.reconnect())
+            facade.reconnecting = True
+        else:
+            facade.reconnecting = False
+            facade.logger.error(
+                "Cannot schedule reconnect because the event loop is unavailable"
+            )
 
 
 async def reconnect() -> None:
@@ -308,6 +313,12 @@ async def reconnect() -> None:
                 if connected_client is not None:
                     facade.logger.info("Reconnected successfully.")
                     break
+                if facade.shutting_down:
+                    break
+                facade.logger.warning(
+                    "Reconnection attempt did not produce a client; backing off"
+                )
+                backoff_time = min(backoff_time * 2, 300)
             except Exception:
                 if facade.shutting_down:
                     break
@@ -628,7 +639,9 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             from mmrelay.matrix_utils import get_matrix_prefix
 
             # Get the formatted prefix for the reaction
-            prefix = get_matrix_prefix(facade.config, longname, shortname, meshnet_name)
+            prefix = get_matrix_prefix(
+                facade.config, longname, shortname, meshtastic_meshnet or meshnet_name
+            )
 
             reaction_symbol = text.strip() if (text and text.strip()) else "⚠️"
             reaction_message = (
@@ -642,7 +655,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                     reaction_message,
                     longname,
                     shortname,
-                    meshnet_name,
+                    meshtastic_meshnet or meshnet_name,
                     decoded.get("portnum"),
                     meshtastic_id=packet.get("id"),
                     meshtastic_replyId=replyId,
@@ -679,7 +692,9 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             from mmrelay.matrix_utils import get_matrix_prefix
 
             # Get the formatted prefix for the reply
-            prefix = get_matrix_prefix(facade.config, longname, shortname, meshnet_name)
+            prefix = get_matrix_prefix(
+                facade.config, longname, shortname, meshtastic_meshnet or meshnet_name
+            )
             formatted_message = f"{prefix}{text}"
 
             facade.logger.info(f"Relaying Meshtastic reply from {longname} to Matrix")
@@ -691,7 +706,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                     formatted_message,
                     longname,
                     shortname,
-                    meshnet_name,
+                    meshtastic_meshnet or meshnet_name,
                     decoded.get("portnum"),
                     meshtastic_id=packet.get("id"),
                     meshtastic_replyId=replyId,
@@ -765,23 +780,6 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                     f"Channel {channel} mapped to Matrix room {room.get('id', 'unknown')}"
                 )
                 break
-
-        if not channel_mapped:
-            # Use WARNING level so this is visible without debug logging enabled
-            # This helps users diagnose configuration issues
-            available_channels = []
-            for room in iterable_rooms:
-                if isinstance(room, dict):
-                    ch = facade._normalize_room_channel(room)
-                    if ch is not None:
-                        available_channels.append(ch)
-
-            facade.logger.warning(
-                f"Skipping message from unmapped channel {channel}. "
-                f"Available channels in config: {available_channels}. "
-                f"Check your matrix_rooms configuration to ensure this channel is mapped."
-            )
-            return
 
         # If detection_sensor is disabled and this is a detection sensor packet, skip it
         portnum = decoded.get("portnum")
@@ -860,6 +858,24 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         if found_matching_plugin:
             facade.logger.debug(
                 "Message was handled by a plugin. Not relaying to Matrix."
+            )
+            return
+
+        # Check if channel is mapped to a Matrix room (only matters for messages
+        # that actually need Matrix delivery - DMs and plugin-handled packets
+        # have already returned above)
+        if not channel_mapped:
+            available_channels = []
+            for room in iterable_rooms:
+                if isinstance(room, dict):
+                    ch = facade._normalize_room_channel(room)
+                    if ch is not None:
+                        available_channels.append(ch)
+
+            facade.logger.warning(
+                f"Skipping message from unmapped channel {channel}. "
+                f"Available channels in config: {available_channels}. "
+                f"Check your matrix_rooms configuration to ensure this channel is mapped."
             )
             return
 

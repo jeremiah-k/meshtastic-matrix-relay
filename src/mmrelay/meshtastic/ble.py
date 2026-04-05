@@ -622,7 +622,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                         facade._wait_for_result(disconnect_method(), timeout=3.0)
                     else:
                         # Run sync disconnect in a daemon thread to avoid hangs.
-                        def _disconnect_sync(
+                        def _disconnect_interface_sync(
                             method: Callable[[], Any] = disconnect_method,
                         ) -> None:
                             """
@@ -638,7 +638,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                                 facade._wait_for_result(result, timeout=3.0)
 
                         facade._run_blocking_with_timeout(
-                            _disconnect_sync,
+                            _disconnect_interface_sync,
                             timeout=3.0,
                             label=f"ble-interface-disconnect-{reason}",
                             timeout_log_level=timeout_log_level,
@@ -700,7 +700,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                     else:
                         # Run sync disconnect in a daemon thread so it cannot
                         # block shutdown if BlueZ/DBus is hung.
-                        def _disconnect_sync(
+                        def _disconnect_client_sync(
                             method: Callable[[], Any] = disconnect_method,
                         ) -> None:
                             """
@@ -714,7 +714,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                                 facade._wait_for_result(result, timeout=2.0)
 
                         facade._run_blocking_with_timeout(
-                            _disconnect_sync,
+                            _disconnect_client_sync,
                             timeout=2.0,
                             label=f"ble-client-disconnect-{reason}",
                             timeout_log_level=timeout_log_level,

@@ -42,18 +42,14 @@ def _resolve_plugin_timeout(
         timeout = float(raw_value)
         if timeout > 0 and math.isfinite(timeout):
             return timeout
-        facade.logger.warning(
-            "Invalid meshtastic.plugin_timeout value %r; using %.1fs fallback.",
-            raw_value,
-            default,
-        )
     except (TypeError, ValueError, OverflowError):
-        facade.logger.warning(
-            "Invalid meshtastic.plugin_timeout value %r; using %.1fs fallback.",
-            raw_value,
-            default,
-        )
+        pass
 
+    facade.logger.warning(
+        "Invalid meshtastic.plugin_timeout value %r; using %.1fs fallback.",
+        raw_value,
+        default,
+    )
     return default
 
 
@@ -142,12 +138,16 @@ def _run_meshtastic_plugins(
                 if found_matching_plugin:
                     if log_with_portnum:
                         facade.logger.debug(
-                            f"Processed {portnum} with plugin {plugin.plugin_name}"
+                            "Processed %s with plugin %s",
+                            portnum,
+                            plugin.plugin_name,
                         )
                     else:
-                        facade.logger.debug(f"Processed by plugin {plugin.plugin_name}")
+                        facade.logger.debug(
+                            "Processed by plugin %s", plugin.plugin_name
+                        )
             except Exception:
-                facade.logger.exception(f"Plugin {plugin.plugin_name} failed")
+                facade.logger.exception("Plugin %s failed", plugin.plugin_name)
                 # Continue processing other plugins
 
     return found_matching_plugin

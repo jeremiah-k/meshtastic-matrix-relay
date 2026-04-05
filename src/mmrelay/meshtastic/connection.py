@@ -641,6 +641,7 @@ def _connect_meshtastic_impl(
                                 operation="interface creation",
                             )
 
+                            future: Future[Any] | None = None
                             try:
                                 with facade._ble_executor_lock:
                                     if (
@@ -730,9 +731,9 @@ def _connect_meshtastic_impl(
                                     # Best-effort cancellation: if the worker is hung we cannot force
                                     # it to stop, but this signals intent and lets retries proceed
                                     # only if the future transitions to done/cancelled.
-                                    if future.cancel():
+                                    if future is not None and future.cancel():
                                         facade._clear_ble_future(future)
-                                    else:
+                                    elif future is not None:
                                         facade._schedule_ble_future_cleanup(
                                             future,
                                             ble_address,
@@ -754,9 +755,9 @@ def _connect_meshtastic_impl(
                                     facade.shutting_down
                                     or str(err) == "Shutdown in progress"
                                 ):
-                                    if future.cancel():
+                                    if future is not None and future.cancel():
                                         facade._clear_ble_future(future)
-                                    else:
+                                    elif future is not None:
                                         facade._schedule_ble_future_cleanup(
                                             future,
                                             ble_address,

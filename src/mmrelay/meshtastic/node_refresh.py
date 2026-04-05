@@ -1,3 +1,4 @@
+import asyncio
 import math
 from typing import Any
 
@@ -11,8 +12,8 @@ from mmrelay.db_utils import NodeNameState
 
 __all__ = [
     "_parse_refresh_interval_seconds",
-    "get_nodedb_refresh_interval_seconds",
     "_snapshot_node_name_rows",
+    "get_nodedb_refresh_interval_seconds",
     "refresh_node_name_tables",
 ]
 
@@ -61,7 +62,7 @@ def get_nodedb_refresh_interval_seconds(
         CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
         DEFAULT_NODEDB_REFRESH_INTERVAL,
     )
-    interval = facade._parse_refresh_interval_seconds(raw_interval)
+    interval = _parse_refresh_interval_seconds(raw_interval)
     if interval is not None:
         return interval
 
@@ -114,7 +115,7 @@ def _snapshot_node_name_rows() -> tuple[dict[str, Any] | None, bool]:
 
 
 async def refresh_node_name_tables(
-    shutdown_event: facade.asyncio.Event,
+    shutdown_event: asyncio.Event,
     *,
     refresh_interval_seconds: float | None = None,
 ) -> None:

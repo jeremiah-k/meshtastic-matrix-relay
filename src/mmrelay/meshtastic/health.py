@@ -536,7 +536,7 @@ def requires_continuous_health_monitor(config: dict) -> bool:
     if health_config is None:
         return facade.DEFAULT_HEALTH_CHECK_ENABLED
     if not isinstance(health_config, dict):
-        return True
+        return facade.DEFAULT_HEALTH_CHECK_ENABLED
     raw_enabled = health_config.get("enabled", facade.DEFAULT_HEALTH_CHECK_ENABLED)
     return facade._coerce_bool(
         raw_enabled, facade.DEFAULT_HEALTH_CHECK_ENABLED, "health_check.enabled"
@@ -577,9 +577,12 @@ async def check_connection() -> None:
 
     # Exit early if health monitoring is not required for this connection type/config
     if not facade.requires_continuous_health_monitor(facade.config):
-        connection_type = facade.config[facade.CONFIG_SECTION_MESHTASTIC][
-            facade.CONFIG_KEY_CONNECTION_TYPE
-        ]
+        meshtastic_config = facade.config.get(facade.CONFIG_SECTION_MESHTASTIC)
+        connection_type = (
+            meshtastic_config.get(facade.CONFIG_KEY_CONNECTION_TYPE)
+            if isinstance(meshtastic_config, dict)
+            else None
+        )
         if connection_type == facade.CONNECTION_TYPE_BLE:
             facade.logger.debug(
                 "BLE connection uses real-time disconnection detection; periodic health checks disabled"
@@ -588,9 +591,13 @@ async def check_connection() -> None:
             facade.logger.info("Connection health checks are disabled in configuration")
         return
 
-    connection_type = facade.config[facade.CONFIG_SECTION_MESHTASTIC][
-        facade.CONFIG_KEY_CONNECTION_TYPE
-    ]
+    meshtastic_config = facade.config.get(facade.CONFIG_SECTION_MESHTASTIC)
+    if not isinstance(meshtastic_config, dict):
+        facade.logger.warning(
+            "meshtastic config section is not a dictionary; using defaults"
+        )
+        meshtastic_config = {}
+    connection_type = meshtastic_config.get(facade.CONFIG_KEY_CONNECTION_TYPE)
 
     # Get health check configuration
     health_config = facade.config["meshtastic"].get("health_check", {})
@@ -625,8 +632,11 @@ async def check_connection() -> None:
     )
 
     # Support legacy heartbeat_interval configuration for backward compatibility
-    if "heartbeat_interval" in facade.config["meshtastic"]:
-        heartbeat_interval = facade.config["meshtastic"]["heartbeat_interval"]
+    if (
+        isinstance(meshtastic_config, dict)
+        and "heartbeat_interval" in meshtastic_config
+    ):
+        heartbeat_interval = meshtastic_config["heartbeat_interval"]
 
     heartbeat_interval = facade._coerce_positive_float(
         heartbeat_interval,
@@ -713,7 +723,7 @@ async def check_connection() -> None:
                     ):
                         facade.logger.error(
                             "%s connection health check failed: %s",
-                            connection_type.capitalize(),
+                            (connection_type or "unknown").capitalize(),
                             error_detail,
                             exc_info=True,
                         )
