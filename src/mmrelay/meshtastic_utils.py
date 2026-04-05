@@ -1,5 +1,6 @@
 import asyncio
 import atexit
+import concurrent.futures
 import contextlib
 import functools
 import importlib
@@ -217,7 +218,9 @@ _CONNECT_ATTEMPT_BLE_WAIT_MAX_SECS = (
 reconnecting = False
 shutting_down = False
 
-reconnect_task = None  # To keep track of the reconnect task
+reconnect_task: "asyncio.Task[Any] | Future[Any] | None" = (
+    None  # asyncio.Task when scheduled from async, concurrent.futures.Future when scheduled via run_coroutine_threadsafe
+)
 reconnect_task_future: asyncio.Future[Any] | None = None
 meshtastic_iface_lock = (
     threading.Lock()

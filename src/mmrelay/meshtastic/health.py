@@ -400,8 +400,10 @@ def _wait_for_probe_ack(ack_state: Any, timeout_secs: float) -> None:
     """
     Wait for ACK/NAK flags with a bounded timeout for health probes.
 
-    Uses the interface acknowledgment object directly so probe duration is
-    capped independently of the interface-wide timeout setting.
+    Takes the resolved ACK state object directly (not the client) because
+    callers may resolve it from either ``client._acknowledgment`` or
+    ``localNode.iface._acknowledgment``.  Uses the object directly so probe
+    duration is capped independently of the interface-wide timeout setting.
     """
     if ack_state is None:
         raise facade._missing_ack_state_error()
