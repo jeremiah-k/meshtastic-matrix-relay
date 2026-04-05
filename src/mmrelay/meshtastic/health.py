@@ -1,3 +1,4 @@
+import asyncio
 import functools
 import threading
 import time
@@ -26,6 +27,7 @@ __all__ = [
     "_set_probe_ack_flag_from_packet",
     "_track_health_probe_request_id",
     "_wait_for_probe_ack",
+    "check_connection",
     "requires_continuous_health_monitor",
 ]
 
@@ -543,3 +545,193 @@ def requires_continuous_health_monitor(config: dict) -> bool:
     return facade._coerce_bool(
         raw_enabled, facade.DEFAULT_HEALTH_CHECK_ENABLED, "health_check.enabled"
     )
+
+
+async def check_connection() -> None:
+    """
+    Periodically verify the Meshtastic connection and trigger a reconnect when the device appears unresponsive.
+
+    Checks run until the module-level `shutting_down` flag is True. Behavior:
+    - Controlled by config["meshtastic"]["health_check"]:
+      - `enabled` (bool, default DEFAULT_HEALTH_CHECK_ENABLED) — enable or disable checks.
+      - `heartbeat_interval` (int, seconds, default 60) — interval between checks. For backward compatibility, a top-level `heartbeat_interval` under `config["meshtastic"]` is supported.
+      - `initial_delay` (float, seconds, default INITIAL_HEALTH_CHECK_DELAY) — delay before first probe.
+      - `probe_timeout` (float, seconds, default DEFAULT_MESHTASTIC_OPERATION_TIMEOUT) — timeout per probe cycle.
+    - BLE connections are excluded from periodic checks because BLE libraries provide real-time disconnect detection; this function returns early for BLE.
+    - Waits one `initial_delay` period before the first check to allow the connection to settle,
+      particularly important for fast-responding systems like MeshMonitor where ACK handling
+      may not be fully initialized immediately after connection.
+    - For non-BLE connections, performs a low-level metadata admin probe using
+      the same `get_device_metadata_request` packet as `localNode.getMetadata()`
+      but without stdout capture. If the probe fails and no reconnection is
+      already in progress, calls on_lost_meshtastic_connection(...) to
+      initiate reconnection.
+    - If another metadata probe is already in flight, skips the current cycle
+      instead of treating the overlap as a transport failure.
+    - IMPORTANT: Do not use `getMyNodeInfo()` as the primary liveness probe here.
+      In current Meshtastic Python it reads cached local node data and does not
+      guarantee a fresh on-wire round trip.
+
+    No return value; side effects are logging and scheduling/triggering reconnection when the device is unresponsive.
+    """
+    # Check if config is available
+    if facade.config is None:
+        facade.logger.error("No configuration available. Cannot check connection.")
+        return
+
+    # Exit early if health monitoring is not required for this connection type/config
+    if not requires_continuous_health_monitor(facade.config):
+        connection_type = facade.config[facade.CONFIG_SECTION_MESHTASTIC][
+            facade.CONFIG_KEY_CONNECTION_TYPE
+        ]
+        if connection_type == facade.CONNECTION_TYPE_BLE:
+            facade.logger.debug(
+                "BLE connection uses real-time disconnection detection; periodic health checks disabled"
+            )
+        else:
+            facade.logger.info("Connection health checks are disabled in configuration")
+        return
+
+    connection_type = facade.config[facade.CONFIG_SECTION_MESHTASTIC][
+        facade.CONFIG_KEY_CONNECTION_TYPE
+    ]
+
+    # Get health check configuration
+    health_config = facade.config["meshtastic"].get("health_check", {})
+    if not isinstance(health_config, dict):
+        facade.logger.warning(
+            "meshtastic.health_check config is not a dictionary (got %r); using defaults",
+            health_config,
+        )
+        health_config = {}
+
+    raw_health_check_enabled = health_config.get(
+        "enabled", facade.DEFAULT_HEALTH_CHECK_ENABLED
+    )
+    health_check_enabled = facade._coerce_bool(
+        raw_health_check_enabled,
+        facade.DEFAULT_HEALTH_CHECK_ENABLED,
+        "meshtastic.health_check.enabled",
+    )
+
+    if not health_check_enabled:
+        facade.logger.info("Connection health checks are disabled in configuration")
+        return
+
+    heartbeat_interval = health_config.get(
+        "heartbeat_interval", facade.DEFAULT_HEARTBEAT_INTERVAL_SECS
+    )
+    initial_delay = health_config.get(
+        "initial_delay", facade.INITIAL_HEALTH_CHECK_DELAY
+    )
+    probe_timeout = health_config.get(
+        "probe_timeout", facade.DEFAULT_MESHTASTIC_OPERATION_TIMEOUT
+    )
+
+    # Support legacy heartbeat_interval configuration for backward compatibility
+    if "heartbeat_interval" in facade.config["meshtastic"]:
+        heartbeat_interval = facade.config["meshtastic"]["heartbeat_interval"]
+
+    heartbeat_interval = facade._coerce_positive_float(
+        heartbeat_interval,
+        float(facade.DEFAULT_HEARTBEAT_INTERVAL_SECS),
+        "meshtastic.health_check.heartbeat_interval",
+    )
+    initial_delay = facade._coerce_positive_float(
+        initial_delay,
+        float(facade.INITIAL_HEALTH_CHECK_DELAY),
+        "meshtastic.health_check.initial_delay",
+    )
+    probe_timeout = facade._coerce_positive_float(
+        probe_timeout,
+        float(facade.DEFAULT_MESHTASTIC_OPERATION_TIMEOUT),
+        "meshtastic.health_check.probe_timeout",
+    )
+
+    # Initial delay before first health check to allow connection to settle.
+    # This is particularly important for fast-responding systems like MeshMonitor
+    # where the connection may be established quickly but ACK handling may not be
+    # fully initialized yet.
+    facade.logger.debug(
+        "Waiting before starting connection health checks to allow connection to settle"
+    )
+    await asyncio.sleep(initial_delay)
+
+    while not facade.shutting_down:
+        if facade.meshtastic_client and not facade.reconnecting:
+            submitted_client = facade.meshtastic_client
+            probe_submission_failed = False
+            degraded_error = False
+            try:
+                probe_future = facade._submit_metadata_probe(
+                    functools.partial(
+                        _probe_device_connection,
+                        submitted_client,
+                        probe_timeout,
+                    )
+                )
+            except facade.MetadataExecutorDegradedError:
+                facade.logger.error(
+                    "Metadata executor degraded; triggering reconnection"
+                )
+                probe_future = None
+                degraded_error = True
+            except RuntimeError as exc:
+                facade.logger.debug(
+                    "Skipping connection check - metadata probe submission failed",
+                    exc_info=exc,
+                )
+                probe_future = None
+                probe_submission_failed = True
+
+            if degraded_error:
+                if (
+                    not facade.reconnecting
+                    and facade.meshtastic_client is submitted_client
+                ):
+                    facade.on_lost_meshtastic_connection(
+                        interface=submitted_client,
+                        detection_source="metadata executor degraded",
+                    )
+            elif probe_future is None:
+                if not probe_submission_failed:
+                    facade.logger.debug(
+                        "Skipping connection check - metadata probe already in progress"
+                    )
+            else:
+                try:
+                    # NOTE: Use the metadata admin request for keepalive/liveness.
+                    # `getMyNodeInfo()` is local cached state in Meshtastic Python,
+                    # so it can succeed even when the transport is unhealthy.
+                    await asyncio.wait_for(
+                        asyncio.wrap_future(probe_future),
+                        timeout=probe_timeout,
+                    )
+
+                except Exception as exc:
+                    error_detail = str(exc).strip() or exc.__class__.__name__
+                    # Only trigger reconnection if we're not already reconnecting
+                    if (
+                        not facade.reconnecting
+                        and facade.meshtastic_client is submitted_client
+                    ):
+                        facade.logger.error(
+                            "%s connection health check failed: %s",
+                            connection_type.capitalize(),
+                            error_detail,
+                            exc_info=True,
+                        )
+                        facade.on_lost_meshtastic_connection(
+                            interface=submitted_client,
+                            detection_source=f"health check failed: {error_detail}",
+                        )
+                    else:
+                        facade.logger.debug(
+                            "Skipping reconnection trigger - already reconnecting or client changed"
+                        )
+        elif facade.reconnecting:
+            facade.logger.debug("Skipping connection check - reconnection in progress")
+        elif not facade.meshtastic_client:
+            facade.logger.debug("Skipping connection check - no client available")
+
+        await asyncio.sleep(heartbeat_interval)
