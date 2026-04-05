@@ -182,6 +182,7 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
             facade.BleakDBusError,
             OSError,
             RuntimeError,
+            TypeError,
             facade.asyncio.TimeoutError,
         ) as exc:
             facade.logger.debug("BLE scan failed for %s: %s", ble_address, exc)
@@ -206,6 +207,7 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
         facade.BleakDBusError,
         OSError,
         RuntimeError,
+        TypeError,
         facade.asyncio.TimeoutError,
     ) as exc:
         facade.logger.debug("BLE scan failed for %s: %s", ble_address, exc)

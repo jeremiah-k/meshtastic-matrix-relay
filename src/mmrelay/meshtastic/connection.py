@@ -507,8 +507,9 @@ def _connect_meshtastic_impl(
                         # If BLE address has changed, re-create the interface
                         if (
                             facade.meshtastic_iface
-                            and getattr(facade.meshtastic_iface, "address", None)
-                            != ble_address
+                            and not facade._validate_ble_connection_address(
+                                facade.meshtastic_iface, ble_address
+                            )
                         ):
                             old_address = getattr(
                                 facade.meshtastic_iface, "address", "unknown"

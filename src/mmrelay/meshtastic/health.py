@@ -15,6 +15,7 @@ __all__ = [
     "_missing_probe_transport_error",
     "_missing_probe_wait_error",
     "_missing_received_nak_error",
+    "_parse_health_check_config",
     "_prune_health_probe_tracking",
     "_probe_device_connection",
     "_reset_probe_ack_state",
@@ -543,6 +544,79 @@ def requires_continuous_health_monitor(config: dict) -> bool:
     )
 
 
+def _parse_health_check_config(
+    config: dict[str, Any],
+) -> tuple[str | None, float, float, float] | None:
+    """
+    Parse and validate health-check configuration from the full config dict.
+
+    Returns ``(connection_type, heartbeat_interval, initial_delay, probe_timeout)``
+    when health checks are enabled, or ``None`` when they are disabled.
+    """
+    meshtastic_config = config.get(facade.CONFIG_SECTION_MESHTASTIC)
+    if not isinstance(meshtastic_config, dict):
+        facade.logger.warning(
+            "meshtastic config section is not a dictionary; using defaults"
+        )
+        meshtastic_config = {}
+    connection_type = meshtastic_config.get(facade.CONFIG_KEY_CONNECTION_TYPE)
+
+    health_config = meshtastic_config.get("health_check", {})
+    if not isinstance(health_config, dict):
+        facade.logger.warning(
+            "meshtastic.health_check config is not a dictionary (got %r); using defaults",
+            health_config,
+        )
+        health_config = {}
+
+    raw_health_check_enabled = health_config.get(
+        "enabled", facade.DEFAULT_HEALTH_CHECK_ENABLED
+    )
+    health_check_enabled = facade._coerce_bool(
+        raw_health_check_enabled,
+        facade.DEFAULT_HEALTH_CHECK_ENABLED,
+        "meshtastic.health_check.enabled",
+    )
+
+    if not health_check_enabled:
+        return None
+
+    heartbeat_interval = health_config.get(
+        "heartbeat_interval", facade.DEFAULT_HEARTBEAT_INTERVAL_SECS
+    )
+    initial_delay = health_config.get(
+        "initial_delay", facade.INITIAL_HEALTH_CHECK_DELAY
+    )
+    probe_timeout = health_config.get(
+        "probe_timeout", facade.DEFAULT_MESHTASTIC_OPERATION_TIMEOUT
+    )
+
+    if (
+        isinstance(meshtastic_config, dict)
+        and "heartbeat_interval" in meshtastic_config
+        and "heartbeat_interval" not in health_config
+    ):
+        heartbeat_interval = meshtastic_config["heartbeat_interval"]
+
+    heartbeat_interval = facade._coerce_positive_float(
+        heartbeat_interval,
+        float(facade.DEFAULT_HEARTBEAT_INTERVAL_SECS),
+        "meshtastic.health_check.heartbeat_interval",
+    )
+    initial_delay = facade._coerce_positive_float(
+        initial_delay,
+        float(facade.INITIAL_HEALTH_CHECK_DELAY),
+        "meshtastic.health_check.initial_delay",
+    )
+    probe_timeout = facade._coerce_positive_float(
+        probe_timeout,
+        float(facade.DEFAULT_MESHTASTIC_OPERATION_TIMEOUT),
+        "meshtastic.health_check.probe_timeout",
+    )
+
+    return connection_type, heartbeat_interval, initial_delay, probe_timeout
+
+
 async def check_connection() -> None:
     """
     Periodically verify the Meshtastic connection and trigger a reconnect when the device appears unresponsive.
@@ -591,69 +665,11 @@ async def check_connection() -> None:
             facade.logger.info("Connection health checks are disabled in configuration")
         return
 
-    meshtastic_config = facade.config.get(facade.CONFIG_SECTION_MESHTASTIC)
-    if not isinstance(meshtastic_config, dict):
-        facade.logger.warning(
-            "meshtastic config section is not a dictionary; using defaults"
-        )
-        meshtastic_config = {}
-    connection_type = meshtastic_config.get(facade.CONFIG_KEY_CONNECTION_TYPE)
-
-    # Get health check configuration
-    health_config = meshtastic_config.get("health_check", {})
-    if not isinstance(health_config, dict):
-        facade.logger.warning(
-            "meshtastic.health_check config is not a dictionary (got %r); using defaults",
-            health_config,
-        )
-        health_config = {}
-
-    raw_health_check_enabled = health_config.get(
-        "enabled", facade.DEFAULT_HEALTH_CHECK_ENABLED
-    )
-    health_check_enabled = facade._coerce_bool(
-        raw_health_check_enabled,
-        facade.DEFAULT_HEALTH_CHECK_ENABLED,
-        "meshtastic.health_check.enabled",
-    )
-
-    if not health_check_enabled:
+    parsed = _parse_health_check_config(facade.config)
+    if parsed is None:
         facade.logger.info("Connection health checks are disabled in configuration")
         return
-
-    heartbeat_interval = health_config.get(
-        "heartbeat_interval", facade.DEFAULT_HEARTBEAT_INTERVAL_SECS
-    )
-    initial_delay = health_config.get(
-        "initial_delay", facade.INITIAL_HEALTH_CHECK_DELAY
-    )
-    probe_timeout = health_config.get(
-        "probe_timeout", facade.DEFAULT_MESHTASTIC_OPERATION_TIMEOUT
-    )
-
-    # Support legacy heartbeat_interval configuration for backward compatibility
-    if (
-        isinstance(meshtastic_config, dict)
-        and "heartbeat_interval" in meshtastic_config
-        and "heartbeat_interval" not in health_config
-    ):
-        heartbeat_interval = meshtastic_config["heartbeat_interval"]
-
-    heartbeat_interval = facade._coerce_positive_float(
-        heartbeat_interval,
-        float(facade.DEFAULT_HEARTBEAT_INTERVAL_SECS),
-        "meshtastic.health_check.heartbeat_interval",
-    )
-    initial_delay = facade._coerce_positive_float(
-        initial_delay,
-        float(facade.INITIAL_HEALTH_CHECK_DELAY),
-        "meshtastic.health_check.initial_delay",
-    )
-    probe_timeout = facade._coerce_positive_float(
-        probe_timeout,
-        float(facade.DEFAULT_MESHTASTIC_OPERATION_TIMEOUT),
-        "meshtastic.health_check.probe_timeout",
-    )
+    connection_type, heartbeat_interval, initial_delay, probe_timeout = parsed
 
     # Initial delay before first health check to allow connection to settle.
     # This is particularly important for fast-responding systems like MeshMonitor
@@ -717,6 +733,10 @@ async def check_connection() -> None:
                     )
 
                 except Exception as exc:
+                    # Broad catch is intentional: any probe failure (timeout,
+                    # transport error, unexpected packet shape, etc.) must
+                    # trigger connection recovery rather than crash the health
+                    # loop.
                     error_detail = str(exc).strip() or exc.__class__.__name__
                     # Only trigger reconnection if we're not already reconnecting
                     if (

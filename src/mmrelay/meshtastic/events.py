@@ -153,10 +153,16 @@ def _reset_ble_degraded_state_after_disconnect(
 
 def _schedule_reconnect_after_disconnect() -> None:
     if facade.event_loop and not facade.event_loop.is_closed():
-        facade.reconnect_task = facade.asyncio.run_coroutine_threadsafe(
-            facade.reconnect(), facade.event_loop
-        )
         facade.reconnecting = True
+        try:
+            facade.reconnect_task = facade.asyncio.run_coroutine_threadsafe(
+                facade.reconnect(), facade.event_loop
+            )
+        except RuntimeError:
+            facade.reconnecting = False
+            facade.logger.error(
+                "Failed to schedule reconnect; event loop became unavailable"
+            )
     else:
         facade.reconnecting = False
         facade.logger.error(
