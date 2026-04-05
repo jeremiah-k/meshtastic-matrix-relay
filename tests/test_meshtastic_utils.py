@@ -1328,10 +1328,8 @@ class TestConnectionLossHandling(unittest.TestCase):
 
         loop = mu.event_loop
         if loop and not loop.is_closed():
-            try:
+            with contextlib.suppress(RuntimeError):
                 loop.run_until_complete(asyncio.sleep(0))
-            except RuntimeError:
-                pass
 
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("mmrelay.meshtastic_utils.reconnect", new_callable=AsyncMock)

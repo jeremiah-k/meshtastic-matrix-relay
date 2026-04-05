@@ -180,9 +180,12 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
                     result = await coro
                 return result is not None
 
+            expected_address = _sanitize_ble_address(ble_address)
             devices = await BleakScanner.discover(timeout=timeout)
             return any(
-                getattr(device, "address", None) == ble_address for device in devices
+                _sanitize_ble_address(str(getattr(device, "address", "") or ""))
+                == expected_address
+                for device in devices
             )
         except (
             facade.BleakError,

@@ -85,6 +85,136 @@ __all__ = [
 ]
 
 
+def _derive_disconnect_detection_source(
+    interface: Any, detection_source: str, topic: Any
+) -> str:
+    if detection_source != "unknown":
+        return detection_source
+
+    interface_source = getattr(interface, "_last_disconnect_source", None)
+    if isinstance(interface_source, str) and (stripped := interface_source.strip()):
+        res = stripped[4:].strip() if stripped.startswith("ble.") else stripped
+        if res:
+            facade.logger.debug(
+                "Using interface-provided detection source: %s",
+                res,
+            )
+            return res
+
+    if topic is not None and topic is not facade.pub.AUTO_TOPIC:
+        name = getattr(topic, "getName", lambda: str(topic))()
+        facade.logger.debug(
+            "Using pubsub topic-derived detection source: %s",
+            name,
+        )
+        return name
+
+    facade.logger.debug(
+        "_last_disconnect_source unavailable; using default detection source"
+    )
+    return "meshtastic.connection.lost"
+
+
+def _tear_down_meshtastic_client_for_disconnect(detection_source: str) -> None:
+    if not facade.meshtastic_client:
+        return
+
+    if facade.meshtastic_client is facade.meshtastic_iface:
+        facade.logger.debug("Disconnecting BLE interface due to connection loss")
+        facade._disconnect_ble_interface(
+            facade.meshtastic_iface,
+            reason=f"connection loss: {detection_source}",
+        )
+        facade.meshtastic_iface = None
+    else:
+        try:
+            facade.meshtastic_client.close()
+        except OSError as e:
+            if e.errno != facade.ERRNO_BAD_FILE_DESCRIPTOR:
+                facade.logger.warning(f"Error closing Meshtastic client: {e}")
+        except Exception as e:
+            facade.logger.warning(f"Error closing Meshtastic client: {e}")
+
+
+def _clear_stale_ble_future_for_reconnect(
+    detection_source: str,
+) -> tuple[Any, Any, str | None]:
+    ble_future_to_cancel = None
+    stale_executor = None
+    stale_ble_address: str | None = None
+    with facade._ble_executor_lock:
+        stale_ble_address = facade._ble_future_address
+        if facade._ble_future and not facade._ble_future.done():
+            facade.logger.debug(
+                "Clearing stale BLE future before reconnect (%s)",
+                detection_source,
+            )
+            ble_future_to_cancel = facade._ble_future
+            facade._ble_future = None
+            if facade._ble_future_address:
+                with facade._ble_timeout_lock:
+                    facade._ble_timeout_counts.pop(facade._ble_future_address, None)
+            facade._ble_future_address = None
+            facade._ble_future_started_at = None
+            facade._ble_future_timeout_secs = None
+            if facade._ble_executor is not None:
+                stale_executor = facade._ble_executor
+                facade._ble_executor = facade.ThreadPoolExecutor(max_workers=1)
+    return ble_future_to_cancel, stale_executor, stale_ble_address
+
+
+def _finalize_stale_ble_cleanup(
+    ble_future_to_cancel: Any,
+    stale_executor: Any,
+    stale_ble_address: str | None,
+    detection_source: str,
+) -> None:
+    if ble_future_to_cancel is not None:
+        if stale_ble_address:
+            facade._attach_late_ble_interface_disposer(
+                ble_future_to_cancel,
+                stale_ble_address,
+                reason=f"connection loss: {detection_source}",
+            )
+        ble_future_to_cancel.cancel()
+    if stale_executor is not None:
+        try:
+            stale_executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            stale_executor.shutdown(wait=False)
+
+
+def _reset_ble_degraded_state_after_disconnect(
+    stale_ble_address: str | None,
+) -> None:
+    if stale_ble_address is not None:
+        facade.reset_executor_degraded_state(ble_address=stale_ble_address)
+    else:
+        should_reset_all_degraded = False
+        with facade._ble_executor_lock:
+            if facade._ble_executor_degraded_addresses:
+                should_reset_all_degraded = True
+                facade.logger.debug(
+                    "Resetting degraded BLE executor state during reconnect "
+                    "(no stale_ble_address but degraded addresses exist)"
+                )
+        if should_reset_all_degraded:
+            facade.reset_executor_degraded_state(reset_all=True)
+
+
+def _schedule_reconnect_after_disconnect() -> None:
+    if facade.event_loop and not facade.event_loop.is_closed():
+        facade.reconnect_task = facade.asyncio.run_coroutine_threadsafe(
+            facade.reconnect(), facade.event_loop
+        )
+        facade.reconnecting = True
+    else:
+        facade.reconnecting = False
+        facade.logger.error(
+            "Cannot schedule reconnect because the event loop is unavailable"
+        )
+
+
 def on_lost_meshtastic_connection(
     interface: Any = None,
     detection_source: str = "unknown",
@@ -135,122 +265,25 @@ def on_lost_meshtastic_connection(
                 "Reconnection already in progress. Skipping additional reconnection attempt."
             )
             return
-        if detection_source == "unknown":
-            interface_source = getattr(interface, "_last_disconnect_source", None)
-            if isinstance(interface_source, str) and (
-                stripped := interface_source.strip()
-            ):
-                # Strip 'ble.' prefix to make detection source library-agnostic
-                res = stripped[4:].strip() if stripped.startswith("ble.") else stripped
-                if res:
-                    detection_source = res
-                    facade.logger.debug(
-                        "Using interface-provided detection source: %s",
-                        detection_source,
-                    )
 
-            if detection_source == "unknown":
-                if topic is not None and topic is not facade.pub.AUTO_TOPIC:
-                    # Real topic object from pypubsub - extract its name
-                    detection_source = getattr(topic, "getName", lambda: str(topic))()
-                    facade.logger.debug(
-                        "Using pubsub topic-derived detection source: %s",
-                        detection_source,
-                    )
-                else:
-                    # Called directly without a topic, or with AUTO_TOPIC sentinel
-                    facade.logger.debug(
-                        "_last_disconnect_source unavailable; using default detection source"
-                    )
-                    detection_source = "meshtastic.connection.lost"
+        detection_source = _derive_disconnect_detection_source(
+            interface, detection_source, topic
+        )
 
         facade.logger.error(f"Lost connection ({detection_source}). Reconnecting...")
 
-        if facade.meshtastic_client:
-            if facade.meshtastic_client is facade.meshtastic_iface:
-                # This is a BLE interface - use proper disconnect sequence
-                facade.logger.debug(
-                    "Disconnecting BLE interface due to connection loss"
-                )
-                facade._disconnect_ble_interface(
-                    facade.meshtastic_iface,
-                    reason=f"connection loss: {detection_source}",
-                )
-                facade.meshtastic_iface = None
-            else:
-                # Serial or TCP interface - use standard close()
-                try:
-                    facade.meshtastic_client.close()
-                except OSError as e:
-                    if e.errno == facade.ERRNO_BAD_FILE_DESCRIPTOR:
-                        # Bad file descriptor, already closed
-                        pass
-                    else:
-                        facade.logger.warning(f"Error closing Meshtastic client: {e}")
-                except Exception as e:
-                    facade.logger.warning(f"Error closing Meshtastic client: {e}")
+        _tear_down_meshtastic_client_for_disconnect(detection_source)
         facade.meshtastic_client = None
         facade._relay_active_client_id = None
-        ble_future_to_cancel = None
-        stale_executor = None
-        stale_ble_address: str | None = None
-        with facade._ble_executor_lock:
-            stale_ble_address = facade._ble_future_address
-            if facade._ble_future and not facade._ble_future.done():
-                facade.logger.debug(
-                    "Clearing stale BLE future before reconnect (%s)",
-                    detection_source,
-                )
-                ble_future_to_cancel = facade._ble_future
-                facade._ble_future = None
-                if facade._ble_future_address:
-                    with facade._ble_timeout_lock:
-                        facade._ble_timeout_counts.pop(facade._ble_future_address, None)
-                facade._ble_future_address = None
-                facade._ble_future_started_at = None
-                facade._ble_future_timeout_secs = None
-                if facade._ble_executor is not None:
-                    stale_executor = facade._ble_executor
-                    facade._ble_executor = facade.ThreadPoolExecutor(max_workers=1)
 
-        if ble_future_to_cancel is not None:
-            if stale_ble_address:
-                facade._attach_late_ble_interface_disposer(
-                    ble_future_to_cancel,
-                    stale_ble_address,
-                    reason=f"connection loss: {detection_source}",
-                )
-            ble_future_to_cancel.cancel()
-        if stale_executor is not None:
-            try:
-                stale_executor.shutdown(wait=False, cancel_futures=True)
-            except TypeError:
-                stale_executor.shutdown(wait=False)
-
-        if stale_ble_address is not None:
-            facade.reset_executor_degraded_state(ble_address=stale_ble_address)
-        else:
-            should_reset_all_degraded = False
-            with facade._ble_executor_lock:
-                if facade._ble_executor_degraded_addresses:
-                    should_reset_all_degraded = True
-                    facade.logger.debug(
-                        "Resetting degraded BLE executor state during reconnect "
-                        "(no stale_ble_address but degraded addresses exist)"
-                    )
-            if should_reset_all_degraded:
-                facade.reset_executor_degraded_state(reset_all=True)
-
-        if facade.event_loop and not facade.event_loop.is_closed():
-            facade.reconnect_task = facade.asyncio.run_coroutine_threadsafe(
-                facade.reconnect(), facade.event_loop
-            )
-            facade.reconnecting = True
-        else:
-            facade.reconnecting = False
-            facade.logger.error(
-                "Cannot schedule reconnect because the event loop is unavailable"
-            )
+        ble_future, stale_exec, stale_addr = _clear_stale_ble_future_for_reconnect(
+            detection_source
+        )
+        _finalize_stale_ble_cleanup(
+            ble_future, stale_exec, stale_addr, detection_source
+        )
+        _reset_ble_degraded_state_after_disconnect(stale_addr)
+        _schedule_reconnect_after_disconnect()
 
 
 async def reconnect() -> None:
