@@ -773,14 +773,14 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             return
 
         # Attempt to get longname/shortname from database or nodes
-        longname = facade._get_name_or_none(facade.get_longname, sender)
+        longname = facade._get_name_or_none(facade.get_longname, sender)  # type: ignore[assignment]
         if longname is None:
             facade.logger.debug(
                 "Failed to get longname from database for %s, will try interface fallback",
                 sender,
             )
 
-        shortname = facade._get_name_or_none(facade.get_shortname, sender)
+        shortname = facade._get_name_or_none(facade.get_shortname, sender)  # type: ignore[assignment]
         if shortname is None:
             facade.logger.debug(
                 "Failed to get shortname from database for %s, will try interface fallback",
