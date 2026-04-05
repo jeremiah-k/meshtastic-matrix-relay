@@ -1,8 +1,5 @@
 from typing import Any, cast
 
-import meshtastic
-from meshtastic.protobuf import mesh_pb2, portnums_pb2
-
 import mmrelay.meshtastic_utils as _facade
 
 __all__ = [
@@ -122,7 +119,7 @@ def _get_portnum_name(portnum: Any) -> str:
 
     if isinstance(portnum, int) and not isinstance(portnum, bool):
         try:
-            return portnums_pb2.PortNum.Name(portnum)  # type: ignore[arg-type]
+            return _facade.portnums_pb2.PortNum.Name(portnum)  # type: ignore[arg-type]
         except ValueError:
             return f"UNKNOWN (portnum={portnum})"
 
@@ -174,7 +171,7 @@ def send_text_reply(
     interface: Any,
     text: str,
     reply_id: int,
-    destinationId: Any = meshtastic.BROADCAST_ADDR,
+    destinationId: Any = _facade.meshtastic.BROADCAST_ADDR,
     wantAck: bool = False,
     channelIndex: int = 0,
 ) -> Any:
@@ -203,13 +200,13 @@ def send_text_reply(
         return None
 
     # Create the Data protobuf message with reply_id set
-    data_msg = mesh_pb2.Data()
-    data_msg.portnum = portnums_pb2.PortNum.TEXT_MESSAGE_APP
+    data_msg = _facade.mesh_pb2.Data()
+    data_msg.portnum = _facade.portnums_pb2.PortNum.TEXT_MESSAGE_APP
     data_msg.payload = text.encode(_facade.MESHTASTIC_TEXT_ENCODING)
     data_msg.reply_id = reply_id
 
     # Create the MeshPacket
-    mesh_packet = mesh_pb2.MeshPacket()
+    mesh_packet = _facade.mesh_pb2.MeshPacket()
     mesh_packet.channel = channelIndex
     mesh_packet.decoded.CopyFrom(data_msg)
     mesh_packet.id = interface._generatePacketId()

@@ -6,7 +6,6 @@ from typing import Any
 
 import mmrelay.meshtastic_utils as _facade
 from mmrelay.constants.network import DEFAULT_PLUGIN_TIMEOUT_SECS
-from mmrelay.meshtastic.async_utils import _submit_coro, _wait_for_result
 
 __all__ = [
     "_resolve_plugin_result",
@@ -75,14 +74,14 @@ def _resolve_plugin_result(
     ):
         return bool(handler_result)
 
-    result_future = _submit_coro(handler_result, loop=loop)
+    result_future = _facade._submit_coro(handler_result, loop=loop)
     if result_future is None:
         _facade.logger.warning(
             "Plugin %s returned no awaitable; skipping.", plugin.plugin_name
         )
         return False
     try:
-        return bool(_wait_for_result(result_future, plugin_timeout, loop=loop))
+        return bool(_facade._wait_for_result(result_future, plugin_timeout, loop=loop))
     except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
         _facade.logger.warning(
             "Plugin %s did not respond within %ss: %s",
