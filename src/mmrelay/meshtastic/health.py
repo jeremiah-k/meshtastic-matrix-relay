@@ -478,7 +478,7 @@ def _probe_device_connection(
         wantResponse=True,
         onResponse=functools.partial(_handle_probe_ack_callback, local_node),
     )
-    request_id = _track_health_probe_request_id(
+    request_id = facade._track_health_probe_request_id(
         (
             getattr(sent_packet, "id", None)
             if not isinstance(sent_packet, dict)
