@@ -499,7 +499,7 @@ def _probe_device_connection(
         )
 
     if getattr(client, "_acknowledgment", None) is not None:
-        _wait_for_probe_ack(client, timeout_secs)
+        facade._wait_for_probe_ack(client, timeout_secs)
         return
 
     if callable(getattr(client, "waitForAckNak", None)):
