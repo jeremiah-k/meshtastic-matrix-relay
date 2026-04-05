@@ -226,7 +226,7 @@ def _get_ble_executor() -> ThreadPoolExecutor:
     if facade._ble_executor is None or getattr(
         facade._ble_executor, "_shutdown", False
     ):
-        facade._ble_executor = ThreadPoolExecutor(max_workers=1)
+        facade._ble_executor = facade.ThreadPoolExecutor(max_workers=1)
     return facade._ble_executor
 
 
@@ -244,7 +244,7 @@ def _get_metadata_executor() -> ThreadPoolExecutor:
     if facade._metadata_executor is None or getattr(
         facade._metadata_executor, "_shutdown", False
     ):
-        facade._metadata_executor = ThreadPoolExecutor(max_workers=1)
+        facade._metadata_executor = facade.ThreadPoolExecutor(max_workers=1)
     return facade._metadata_executor
 
 
@@ -304,7 +304,7 @@ def _reset_metadata_executor_for_stale_probe() -> None:
             stale_executor = facade._metadata_executor
             facade._metadata_future = None
             facade._metadata_future_started_at = None
-            facade._metadata_executor = ThreadPoolExecutor(max_workers=1)
+            facade._metadata_executor = facade.ThreadPoolExecutor(max_workers=1)
             if stale_executor is not None and not getattr(
                 stale_executor, "_shutdown", False
             ):
@@ -416,7 +416,7 @@ def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
         if facade._metadata_future is not None and not facade._metadata_future.done():
             return None
         try:
-            future = _get_metadata_executor().submit(probe)
+            future = facade._get_metadata_executor().submit(probe)
         except RuntimeError as exc:
             submission_error = exc
             future = None
@@ -435,8 +435,8 @@ def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
     if future is None:
         return None
 
-    future.add_done_callback(_clear_metadata_future_if_current)
-    _schedule_metadata_future_cleanup(future, reason="metadata-probe")
+    future.add_done_callback(facade._clear_metadata_future_if_current)
+    facade._schedule_metadata_future_cleanup(future, reason="metadata-probe")
     return future
 
 
@@ -670,7 +670,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
                 orphaned_workers,
                 EXECUTOR_ORPHAN_THRESHOLD,
             )
-            facade._ble_executor = ThreadPoolExecutor(max_workers=1)
+            facade._ble_executor = facade.ThreadPoolExecutor(max_workers=1)
             facade._ble_future = None
             facade._ble_future_address = None
             facade._ble_future_started_at = None
