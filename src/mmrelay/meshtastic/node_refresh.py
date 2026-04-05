@@ -138,7 +138,7 @@ async def refresh_node_name_tables(
     if refresh_interval_seconds is None:
         interval = facade.get_nodedb_refresh_interval_seconds()
     else:
-        parsed = facade._parse_refresh_interval_seconds(refresh_interval_seconds)
+        parsed = _parse_refresh_interval_seconds(refresh_interval_seconds)
         if parsed is None:
             configured_interval = facade.get_nodedb_refresh_interval_seconds()
             facade.logger.warning(
