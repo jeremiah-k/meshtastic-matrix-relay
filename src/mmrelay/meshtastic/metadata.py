@@ -100,12 +100,12 @@ def _extract_firmware_version_from_metadata(metadata_source: Any) -> str | None:
         return None
 
     if isinstance(metadata_source, dict):
-        return _normalize_firmware_version(
+        return facade._normalize_firmware_version(
             metadata_source.get("firmware_version")
             or metadata_source.get("firmwareVersion")
         )
 
-    return _normalize_firmware_version(
+    return facade._normalize_firmware_version(
         getattr(metadata_source, "firmware_version", None)
         or getattr(metadata_source, "firmwareVersion", None)
     )
@@ -131,7 +131,7 @@ def _extract_firmware_version_from_client(client: Any) -> str | None:
         local_iface and getattr(local_iface, "metadata", None),
     )
     for candidate in candidates:
-        parsed = _extract_firmware_version_from_metadata(candidate)
+        parsed = facade._extract_firmware_version_from_metadata(candidate)
         if parsed is not None:
             return parsed
     return None
@@ -179,7 +179,7 @@ def _get_device_metadata(
     """
     result = {"firmware_version": "unknown", "raw_output": "", "success": False}
 
-    cached_firmware = _extract_firmware_version_from_client(client)
+    cached_firmware = facade._extract_firmware_version_from_client(client)
     if cached_firmware is not None and not force_refresh:
         result["firmware_version"] = cached_firmware
         result["success"] = True
@@ -190,7 +190,7 @@ def _get_device_metadata(
         getattr(client.localNode, "getMetadata", None)
     ):
         if raise_on_error:
-            raise _missing_metadata_probe_error()
+            raise facade._missing_metadata_probe_error()
         facade.logger.debug(
             "Meshtastic client has no localNode.getMetadata(); skipping metadata retrieval"
         )
@@ -310,13 +310,13 @@ def _get_device_metadata(
 
         match = FIRMWARE_VERSION_REGEX.search(console_output)
         parsed_output_firmware = (
-            _normalize_firmware_version(match.group(1)) if match else None
+            facade._normalize_firmware_version(match.group(1)) if match else None
         )
         if parsed_output_firmware is not None:
             result["firmware_version"] = parsed_output_firmware
             result["success"] = True
         else:
-            refreshed_firmware = _extract_firmware_version_from_client(client)
+            refreshed_firmware = facade._extract_firmware_version_from_client(client)
             if refreshed_firmware is not None:
                 result["firmware_version"] = refreshed_firmware
                 result["success"] = True

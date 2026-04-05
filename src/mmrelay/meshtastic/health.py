@@ -578,7 +578,7 @@ async def check_connection() -> None:
         return
 
     # Exit early if health monitoring is not required for this connection type/config
-    if not requires_continuous_health_monitor(facade.config):
+    if not facade.requires_continuous_health_monitor(facade.config):
         connection_type = facade.config[facade.CONFIG_SECTION_MESHTASTIC][
             facade.CONFIG_KEY_CONNECTION_TYPE
         ]

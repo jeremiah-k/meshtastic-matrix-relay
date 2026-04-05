@@ -144,7 +144,7 @@ def _schedule_connect_time_calibration_probe(
     """
     Best-effort one-shot metadata probe after connect for skew calibration backup.
     """
-    enabled, timeout_secs = _get_connect_time_probe_settings(
+    enabled, timeout_secs = facade._get_connect_time_probe_settings(
         active_config, connection_type
     )
     if not enabled:
@@ -310,7 +310,7 @@ def connect_meshtastic(
                 return None
 
     try:
-        return _connect_meshtastic_impl(
+        return facade._connect_meshtastic_impl(
             passed_config=passed_config,
             force_connect=force_connect,
         )
@@ -499,7 +499,7 @@ def _connect_meshtastic_impl(
                 facade.logger.info(f"Connecting to serial port {serial_port}")
 
                 # Check if serial port exists before connecting
-                if not serial_port_exists(serial_port):
+                if not facade.serial_port_exists(serial_port):
                     raise facade.serial.SerialException(
                         f"Serial port {serial_port} does not exist."
                     )
@@ -1145,7 +1145,7 @@ def _connect_meshtastic_impl(
                     facade.logger.debug(
                         "Shutdown started during connect setup (after getMyNodeInfo); rolling back client"
                     )
-                    client_assigned_for_this_connect = _rollback_connect_attempt_state(
+                    client_assigned_for_this_connect = facade._rollback_connect_attempt_state(
                         client=client,
                         client_assigned_for_this_connect=client_assigned_for_this_connect,
                         startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
@@ -1169,7 +1169,7 @@ def _connect_meshtastic_impl(
                     facade.logger.debug(
                         "Shutdown started during connect setup (after metadata); rolling back client"
                     )
-                    client_assigned_for_this_connect = _rollback_connect_attempt_state(
+                    client_assigned_for_this_connect = facade._rollback_connect_attempt_state(
                         client=client,
                         client_assigned_for_this_connect=client_assigned_for_this_connect,
                         startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
@@ -1211,7 +1211,7 @@ def _connect_meshtastic_impl(
                     facade.logger.debug(
                         "Shutdown started before callback subscription; rolling back client"
                     )
-                    client_assigned_for_this_connect = _rollback_connect_attempt_state(
+                    client_assigned_for_this_connect = facade._rollback_connect_attempt_state(
                         client=client,
                         client_assigned_for_this_connect=client_assigned_for_this_connect,
                         startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
@@ -1225,14 +1225,14 @@ def _connect_meshtastic_impl(
                 # Subscribe to message and connection-lost events.
                 facade.ensure_meshtastic_callbacks_subscribed()
 
-                _schedule_connect_time_calibration_probe(
+                facade._schedule_connect_time_calibration_probe(
                     client,
                     connection_type=connection_type,
                     active_config=facade.config,
                 )
 
         except ConnectionRefusedError:
-            _rollback_connect_attempt_state(
+            facade._rollback_connect_attempt_state(
                 client=client,
                 client_assigned_for_this_connect=client_assigned_for_this_connect,
                 startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
@@ -1243,7 +1243,7 @@ def _connect_meshtastic_impl(
             successful = False
             return None
         except (MemoryError, facade.BleExecutorDegradedError):
-            _rollback_connect_attempt_state(
+            facade._rollback_connect_attempt_state(
                 client=client,
                 client_assigned_for_this_connect=client_assigned_for_this_connect,
                 startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
@@ -1256,7 +1256,7 @@ def _connect_meshtastic_impl(
             return None
         except (facade.FuturesTimeoutError, TimeoutError) as e:
             successful = False
-            client_assigned_for_this_connect = _rollback_connect_attempt_state(
+            client_assigned_for_this_connect = facade._rollback_connect_attempt_state(
                 client=client,
                 client_assigned_for_this_connect=client_assigned_for_this_connect,
                 startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
@@ -1292,7 +1292,7 @@ def _connect_meshtastic_impl(
                 facade.logger.exception("Connection failed after %s attempts", attempts)
                 return None
 
-            wait_time = _get_connection_retry_wait_time(attempts)
+            wait_time = facade._get_connection_retry_wait_time(attempts)
             facade.logger.warning(
                 "Connection attempt %s timed out (%s). Retrying in %s seconds...",
                 attempts,
@@ -1302,7 +1302,7 @@ def _connect_meshtastic_impl(
             facade.time.sleep(wait_time)
         except Exception as e:
             successful = False
-            client_assigned_for_this_connect = _rollback_connect_attempt_state(
+            client_assigned_for_this_connect = facade._rollback_connect_attempt_state(
                 client=client,
                 client_assigned_for_this_connect=client_assigned_for_this_connect,
                 startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
@@ -1344,7 +1344,7 @@ def _connect_meshtastic_impl(
                 ble_scan_after_failure = True
                 ble_scan_reason = type(e).__name__
             if retry_limit == 0 or attempts <= retry_limit:
-                wait_time = _get_connection_retry_wait_time(attempts)
+                wait_time = facade._get_connection_retry_wait_time(attempts)
                 facade.logger.warning(
                     "An unexpected error occurred on attempt %s: %s. Retrying in %s seconds...",
                     attempts,
