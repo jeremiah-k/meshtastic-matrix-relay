@@ -470,7 +470,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
 
     # Full packet logging for debugging (when enabled in config)
     # Check if full packet logging is enabled - accepts boolean True or string "true"
-    debug_settings = (
+    debug_settings: dict[str, Any] = (
         facade.config.get("logging", {}).get("debug", {}) if facade.config else {}
     )
     full_packets_setting = debug_settings.get("full_packets")
@@ -634,7 +634,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                     longname,
                     shortname,
                     meshtastic_meshnet or meshnet_name,
-                    decoded.get("portnum"),
+                    decoded.get("portnum", 0),
                     meshtastic_id=packet.get("id"),
                     meshtastic_replyId=replyId,
                     meshtastic_text=meshtastic_text,
@@ -685,7 +685,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                     longname,
                     shortname,
                     meshtastic_meshnet or meshnet_name,
-                    decoded.get("portnum"),
+                    decoded.get("portnum", 0),
                     meshtastic_id=packet.get("id"),
                     meshtastic_replyId=replyId,
                     meshtastic_text=text,
@@ -896,7 +896,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                             longname,
                             shortname,
                             meshnet_name,
-                            decoded.get("portnum"),
+                            decoded.get("portnum", 0),
                             meshtastic_id=packet.get("id"),
                             meshtastic_text=text,
                         ),

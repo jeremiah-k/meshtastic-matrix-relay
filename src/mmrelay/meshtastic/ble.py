@@ -247,7 +247,9 @@ def _is_ble_discovery_error(error: Exception) -> bool:
     ):
         return True
 
-    mesh_interface = getattr(facade.meshtastic.mesh_interface, "MeshInterface", None)
+    mesh_interface = getattr(
+        facade.meshtastic.mesh_interface, "MeshInterface", None
+    )  # pyright: ignore[reportAttributeAccessIssue]
     mesh_error_type = getattr(mesh_interface, "MeshInterfaceError", None)
     if (
         mesh_error_type

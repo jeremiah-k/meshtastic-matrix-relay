@@ -149,7 +149,7 @@ class BleExecutorDegradedError(Exception):
 
 
 # Global config variable that will be set from config.py
-config = None
+config: dict[str, Any] | None = None
 
 # Do not import plugin_loader here to avoid circular imports
 
