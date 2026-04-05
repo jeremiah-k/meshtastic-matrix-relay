@@ -409,7 +409,16 @@ def _disconnect_ble_by_address(address: str) -> None:
                         )
                         return
                     if inspect.isawaitable(connected_result):
-                        connected_status = await cast(Awaitable[bool], connected_result)
+                        try:
+                            connected_status = await facade.asyncio.wait_for(
+                                cast(Awaitable[bool], connected_result),
+                                timeout=facade.BLE_DISCONNECT_TIMEOUT_SECS,
+                            )
+                        except facade.asyncio.TimeoutError:
+                            facade.logger.debug(
+                                "Timed out checking connection state for %s", address
+                            )
+                            connected_status = False
                     elif isinstance(connected_result, bool):
                         connected_status = connected_result
                     else:

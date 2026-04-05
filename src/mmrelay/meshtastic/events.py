@@ -605,7 +605,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         decoded = {}
 
     # Filter packets based on interaction settings
-    if decoded.get("portnum") == TEXT_MESSAGE_APP:
+    if decoded.get("portnum") in (TEXT_MESSAGE_APP, PORTNUM_TEXT_MESSAGE_APP):
         # Filter out reactions if reactions are disabled
         if (
             not interactions["reactions"]
@@ -798,10 +798,11 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
 
         # Check if channel is mapped to a Matrix room
         channel_mapped = False
+        matrix_rooms_configured = bool(facade.matrix_rooms)
         iterable_rooms = (
             facade.matrix_rooms.values()
             if isinstance(facade.matrix_rooms, dict)
-            else facade.matrix_rooms
+            else (facade.matrix_rooms or ())
         )
         for room in iterable_rooms:
             if not isinstance(room, dict):
@@ -898,6 +899,17 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             )
             return
 
+        # Check if matrix_rooms is empty BEFORE attempting unmapped-channel logic
+        # This can happen during startup race conditions where messages arrive
+        # before matrix_rooms is populated, or during reconnection
+        if not matrix_rooms_configured:
+            facade.logger.warning(
+                f"matrix_rooms is empty - cannot relay message from {longname}. "
+                f"This may indicate a startup race condition or configuration issue. "
+                f"Message will be dropped: {text[:50]}{'...' if len(text) > 50 else ''}"
+            )
+            return
+
         # Check if channel is mapped to a Matrix room (only matters for messages
         # that actually need Matrix delivery - DMs and plugin-handled packets
         # have already returned above)
@@ -916,24 +928,13 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             )
             return
 
-        # Check if matrix_rooms is empty BEFORE attempting to relay
-        # This can happen during startup race conditions where messages arrive
-        # before matrix_rooms is populated, or during reconnection
-        if not facade.matrix_rooms:
-            facade.logger.warning(
-                f"matrix_rooms is empty - cannot relay message from {longname}. "
-                f"This may indicate a startup race condition or configuration issue. "
-                f"Message will be dropped: {text[:50]}{'...' if len(text) > 50 else ''}"
-            )
-            return
-
         # Relay the message to all Matrix rooms mapped to this channel
         facade.logger.info(f"Relaying Meshtastic message from {longname} to Matrix")
 
         iterable_rooms = (
             facade.matrix_rooms.values()
             if isinstance(facade.matrix_rooms, dict)
-            else facade.matrix_rooms
+            else (facade.matrix_rooms or ())
         )
         for room in iterable_rooms:
             if not isinstance(room, dict):
