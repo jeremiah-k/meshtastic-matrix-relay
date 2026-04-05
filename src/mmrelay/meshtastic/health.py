@@ -2,8 +2,6 @@ import functools
 import threading
 from typing import Any
 
-from meshtastic.protobuf import admin_pb2, portnums_pb2
-
 import mmrelay.meshtastic_utils as facade
 
 __all__ = [
@@ -460,7 +458,7 @@ def _probe_device_connection(
     if ack_state is not None:
         facade._reset_probe_ack_state(ack_state)
 
-    request = admin_pb2.AdminMessage()
+    request = facade.admin_pb2.AdminMessage()
     request.get_device_metadata_request = True
     # Use the public sendData API instead of private _sendAdmin
     node_num = getattr(local_node, "nodeNum", None)

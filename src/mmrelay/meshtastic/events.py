@@ -303,7 +303,7 @@ async def reconnect() -> None:
                 loop = facade.asyncio.get_running_loop()
                 # Pass the current config during reconnection to ensure matrix_rooms is populated
                 # Using None for passed_config would skip matrix_rooms initialization
-                connect_future = asyncio.ensure_future(
+                connect_future = facade.asyncio.ensure_future(
                     loop.run_in_executor(
                         None, facade.connect_meshtastic, facade.config, True
                     )
@@ -318,7 +318,7 @@ async def reconnect() -> None:
                     break
                 facade.logger.exception("Reconnection attempt failed")
                 backoff_time = min(backoff_time * 2, 300)  # Cap backoff at 5 minutes
-    except asyncio.CancelledError:
+    except facade.asyncio.CancelledError:
         facade.logger.info("Reconnection task was cancelled.")
     finally:
         if facade.reconnect_task_future is not None:
