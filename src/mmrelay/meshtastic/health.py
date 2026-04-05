@@ -515,8 +515,8 @@ def requires_continuous_health_monitor(config: dict) -> bool:
     detection) and when health_check.enabled is explicitly set to False.
 
     Note: This function only returns False for "clean" exit cases (BLE or explicitly
-    disabled). Malformed health_check configs return True so that check_connection
-    can log appropriate warnings before exiting.
+    disabled). Malformed health_check configs fall back to DEFAULT_HEALTH_CHECK_ENABLED
+    for consistency with check_connection's own fallback behavior.
 
     Args:
         config: The full configuration dictionary.
@@ -536,7 +536,7 @@ def requires_continuous_health_monitor(config: dict) -> bool:
     if health_config is None:
         return facade.DEFAULT_HEALTH_CHECK_ENABLED
     if not isinstance(health_config, dict):
-        return True
+        return facade.DEFAULT_HEALTH_CHECK_ENABLED
     raw_enabled = health_config.get("enabled", facade.DEFAULT_HEALTH_CHECK_ENABLED)
     return facade._coerce_bool(
         raw_enabled, facade.DEFAULT_HEALTH_CHECK_ENABLED, "health_check.enabled"

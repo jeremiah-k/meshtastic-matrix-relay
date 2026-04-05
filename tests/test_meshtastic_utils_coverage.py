@@ -761,7 +761,7 @@ class TestMessageHandlerEdgeCases:
         mu.on_meshtastic_message(packet, mock_interface)
 
     def test_check_connection_non_dict_health_config(self):
-        """Test check_connection with non-dict health_check config."""
+        """Test check_connection with non-dict health_check config exits early via requires_continuous_health_monitor."""
         mu.config = {
             "meshtastic": {
                 CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_TCP,
@@ -769,15 +769,15 @@ class TestMessageHandlerEdgeCases:
             }
         }
         mu.meshtastic_client = None
-        mu.shutting_down = True  # Exit immediately
+        mu.shutting_down = True
 
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             asyncio.run(mu.check_connection())
 
-            # Should log warning about invalid config
-            mock_logger.warning.assert_called()
-            call_args = mock_logger.warning.call_args[0]
-            assert "not a dictionary" in call_args[0]
+            mock_logger.warning.assert_not_called()
+            mock_logger.info.assert_called()
+            call_args = mock_logger.info.call_args[0]
+            assert "disabled" in call_args[0]
 
     def test_check_connection_probe_submission_fails(self):
         """Test check_connection when probe submission raises RuntimeError."""

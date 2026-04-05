@@ -121,7 +121,7 @@ def test_requires_continuous_health_monitor_defaults_to_config_constant() -> Non
         main_module._requires_continuous_health_monitor(
             {"meshtastic": {"health_check": "invalid"}}
         )
-        is True
+        is DEFAULT_HEALTH_CHECK_ENABLED
     )
 
 
