@@ -136,11 +136,11 @@ async def refresh_node_name_tables(
     allowing recovery from transient failures.
     """
     if refresh_interval_seconds is None:
-        interval = facade.get_nodedb_refresh_interval_seconds()
+        interval = get_nodedb_refresh_interval_seconds()
     else:
         parsed = _parse_refresh_interval_seconds(refresh_interval_seconds)
         if parsed is None:
-            configured_interval = facade.get_nodedb_refresh_interval_seconds()
+            configured_interval = get_nodedb_refresh_interval_seconds()
             facade.logger.warning(
                 "Invalid NodeDB name-cache refresh interval override %r; defaulting to configured interval %.1f",
                 refresh_interval_seconds,
@@ -154,8 +154,8 @@ async def refresh_node_name_tables(
     client_unavailable_reason: str | None = None
     while not shutdown_event.is_set():
         try:
-            nodes_snapshot, client_missing = await facade.asyncio.to_thread(
-                facade._snapshot_node_name_rows
+            nodes_snapshot, client_missing = await asyncio.to_thread(
+                _snapshot_node_name_rows
             )
 
             if nodes_snapshot is None:
@@ -181,7 +181,7 @@ async def refresh_node_name_tables(
                     )
             else:
                 client_unavailable_reason = None
-                previous_state = await facade.asyncio.to_thread(
+                previous_state = await asyncio.to_thread(
                     facade.sync_name_tables_if_changed,
                     nodes_snapshot,
                     previous_state,
@@ -200,8 +200,6 @@ async def refresh_node_name_tables(
             return
 
         try:
-            await facade.asyncio.wait_for(
-                shutdown_event.wait(), timeout=float(interval)
-            )
-        except facade.asyncio.TimeoutError:
+            await asyncio.wait_for(shutdown_event.wait(), timeout=float(interval))
+        except asyncio.TimeoutError:
             continue

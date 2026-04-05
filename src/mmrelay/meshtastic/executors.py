@@ -457,7 +457,7 @@ def _clear_ble_future(done_future: Future[Any]) -> None:
     If `done_future` is the currently tracked BLE executor future, clear the tracked
     future and its associated address; also remove the per-address timeout count.
     Parameters:
-        done_future (concurrent.futures.Future | asyncio.Future): The future that has completed and should be cleared if it matches the active BLE task.
+        done_future (concurrent.futures.Future): The future that has completed and should be cleared if it matches the active BLE task.
     """
     with facade._ble_executor_lock:
         if facade._ble_future is done_future:
@@ -510,10 +510,16 @@ def _schedule_ble_future_cleanup(
         )
         facade._maybe_reset_ble_executor(ble_address, reset_threshold)
 
-    timer = threading.Timer(watchdog_secs, _cleanup)
-    timer.daemon = True
-    future.add_done_callback(lambda _f: timer.cancel())
-    timer.start()
+    try:
+        timer = threading.Timer(watchdog_secs, _cleanup)
+        timer.daemon = True
+        future.add_done_callback(lambda _f: timer.cancel())
+        timer.start()
+    except Exception as exc:  # noqa: BLE001 - best-effort watchdog setup
+        facade.logger.debug(
+            "Failed to schedule BLE future cleanup watchdog",
+            exc_info=exc,
+        )
 
 
 def _ensure_ble_worker_available(ble_address: str, *, operation: str) -> None:
@@ -566,6 +572,8 @@ def _ensure_ble_worker_available(ble_address: str, *, operation: str) -> None:
             reason=f"stale worker during {operation}",
         )
         timeout_count = facade._record_ble_timeout(stale_address)
+        # Force a reset even when timeout_count < reset_threshold because this
+        # worker has already been identified as stale beyond its grace period.
         facade._maybe_reset_ble_executor(
             stale_address,
             max(timeout_count, reset_threshold),
@@ -598,14 +606,6 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
         ble_address (str): BLE device address associated with the observed timeouts.
         timeout_count (int): Number of consecutive timeouts recorded for that address.
     """
-    if ble_address in facade._ble_executor_degraded_addresses:
-        facade.logger.debug(
-            "BLE executor for %s is in degraded state; refusing to reset. "
-            "Reconnect or restart required to recover.",
-            ble_address,
-        )
-        return
-
     reset_threshold = facade._coerce_positive_int(
         facade._ble_timeout_reset_threshold, facade.BLE_TIMEOUT_RESET_THRESHOLD
     )
@@ -614,6 +614,14 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     orphaned_workers = 0
     stale_executor: ThreadPoolExecutor | None = None
     with facade._ble_executor_lock:
+        if ble_address in facade._ble_executor_degraded_addresses:
+            facade.logger.debug(
+                "BLE executor for %s is in degraded state; refusing to reset. "
+                "Reconnect or restart required to recover.",
+                ble_address,
+            )
+            return
+
         if timeout_count < reset_threshold:
             return
 

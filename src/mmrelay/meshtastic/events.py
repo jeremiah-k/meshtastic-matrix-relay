@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Iterable
 
 from meshtastic.mesh_interface import BROADCAST_NUM
 
@@ -26,7 +26,7 @@ __all__ = [
 ]
 
 
-def _get_iterable_matrix_rooms():
+def _get_iterable_matrix_rooms() -> Iterable[Any]:
     return (
         facade.matrix_rooms.values()
         if isinstance(facade.matrix_rooms, dict)

@@ -5,4 +5,4 @@ select = ["B", "D3", "E", "F"]
 ignore = ["E501"]
 
 [per-file-ignores]
-"meshtastic_utils.py" = ["E402", "I001"]
+"src/mmrelay/meshtastic_utils.py" = ["E402", "I001"]
