@@ -1,7 +1,5 @@
-import asyncio
 import functools
 import threading
-import time
 from typing import Any
 
 from meshtastic.protobuf import admin_pb2, portnums_pb2
