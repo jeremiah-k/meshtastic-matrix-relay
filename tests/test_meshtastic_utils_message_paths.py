@@ -480,4 +480,4 @@ def test_on_meshtastic_message_non_text_plugin_exception(reset_meshtastic_global
     ):
         on_meshtastic_message(packet, _make_interface())
 
-    mock_logger.exception.assert_any_call("Plugin boom failed")
+    mock_logger.exception.assert_any_call("Plugin %s failed", "boom")

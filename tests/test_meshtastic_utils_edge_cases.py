@@ -788,7 +788,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             # Verify Matrix relay was NOT called (message was handled by plugin even though it timed out)
             mock_matrix_relay.assert_not_called()
             # Verify debug log was called (confirming found_matching_plugin was True)
-            mock_logger.debug.assert_any_call("Processed by plugin test_plugin")
+            mock_logger.debug.assert_any_call("Processed by plugin %s", "test_plugin")
 
     def test_on_meshtastic_message_plugin_timeout_with_dm(self):
         """
@@ -899,7 +899,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             )
             # Verify debug log was called (confirming found_matching_plugin was True)
             mock_logger.debug.assert_any_call(
-                "Processed TELEMETRY_APP with plugin telemetry_plugin"
+                "Processed %s with plugin %s", "TELEMETRY_APP", "telemetry_plugin"
             )
 
     def test_on_meshtastic_message_non_text_plugin_no_match_continues(self):
@@ -1014,7 +1014,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             plugin2.handle_meshtastic_message.assert_not_called()
             # Debug log should confirm first plugin handled it
             mock_logger.debug.assert_any_call(
-                "Processed POSITION_APP with plugin position_plugin"
+                "Processed %s with plugin %s", "POSITION_APP", "position_plugin"
             )
             # Matrix relay should NOT have been called
             mock_matrix_relay.assert_not_called()

@@ -536,7 +536,7 @@ def requires_continuous_health_monitor(config: dict) -> bool:
     if health_config is None:
         return facade.DEFAULT_HEALTH_CHECK_ENABLED
     if not isinstance(health_config, dict):
-        return facade.DEFAULT_HEALTH_CHECK_ENABLED
+        return True
     raw_enabled = health_config.get("enabled", facade.DEFAULT_HEALTH_CHECK_ENABLED)
     return facade._coerce_bool(
         raw_enabled, facade.DEFAULT_HEALTH_CHECK_ENABLED, "health_check.enabled"
@@ -600,7 +600,7 @@ async def check_connection() -> None:
     connection_type = meshtastic_config.get(facade.CONFIG_KEY_CONNECTION_TYPE)
 
     # Get health check configuration
-    health_config = facade.config["meshtastic"].get("health_check", {})
+    health_config = meshtastic_config.get("health_check", {})
     if not isinstance(health_config, dict):
         facade.logger.warning(
             "meshtastic.health_check config is not a dictionary (got %r); using defaults",
