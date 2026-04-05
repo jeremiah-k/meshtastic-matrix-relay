@@ -136,10 +136,20 @@ from mmrelay.meshtastic.messaging import (
     send_text_reply,
     sendTextReply,
 )
+from mmrelay.meshtastic.node_refresh import (
+    _parse_refresh_interval_seconds,
+    _snapshot_node_name_rows,
+    get_nodedb_refresh_interval_seconds,
+    refresh_node_name_tables,
+)
 from mmrelay.meshtastic.plugins import (
     _resolve_plugin_result,
     _resolve_plugin_timeout,
     _run_meshtastic_plugins,
+)
+from mmrelay.meshtastic.subscriptions import (
+    ensure_meshtastic_callbacks_subscribed,
+    unsubscribe_meshtastic_callbacks,
 )
 from mmrelay.runtime_utils import is_running_as_service
 
@@ -252,66 +262,8 @@ subscribed_to_connection_lost = False
 _callbacks_tearing_down = False
 
 
-def ensure_meshtastic_callbacks_subscribed() -> None:
-    """Ensure Meshtastic pubsub callbacks are subscribed exactly once."""
-    global _callbacks_tearing_down
-    global subscribed_to_messages, subscribed_to_connection_lost
-
-    with meshtastic_sub_lock:
-        _callbacks_tearing_down = False
-        if not subscribed_to_messages:
-            pub.subscribe(on_meshtastic_message, "meshtastic.receive")
-            subscribed_to_messages = True
-            logger.debug("Subscribed to meshtastic.receive")
-
-        if not subscribed_to_connection_lost:
-            pub.subscribe(on_lost_meshtastic_connection, "meshtastic.connection.lost")
-            subscribed_to_connection_lost = True
-            logger.debug("Subscribed to meshtastic.connection.lost")
-
-
-def unsubscribe_meshtastic_callbacks() -> None:
-    """Best-effort unsubscribe for Meshtastic pubsub callbacks."""
-    global _callbacks_tearing_down
-    global subscribed_to_messages, subscribed_to_connection_lost
-
-    with meshtastic_sub_lock:
-        _callbacks_tearing_down = True
-        if subscribed_to_messages:
-            try:
-                pub.unsubscribe(on_meshtastic_message, "meshtastic.receive")
-            except TopicNameError:
-                subscribed_to_messages = False
-                logger.debug(
-                    "meshtastic.receive topic missing during unsubscribe; treated as unsubscribed"
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to unsubscribe from meshtastic.receive; keeping subscribed_to_messages=True"
-                )
-            else:
-                subscribed_to_messages = False
-                logger.debug("Unsubscribed from meshtastic.receive")
-
-        if subscribed_to_connection_lost:
-            try:
-                pub.unsubscribe(
-                    on_lost_meshtastic_connection,
-                    "meshtastic.connection.lost",
-                )
-            except TopicNameError:
-                subscribed_to_connection_lost = False
-                logger.debug(
-                    "meshtastic.connection.lost topic missing during unsubscribe; treated as unsubscribed"
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to unsubscribe from meshtastic.connection.lost; keeping subscribed_to_connection_lost=True"
-                )
-            else:
-                subscribed_to_connection_lost = False
-                logger.debug("Unsubscribed from meshtastic.connection.lost")
-
+# Subscription lifecycle — implemented in meshtastic.subscriptions, re-exported here
+# for backward-compatible patch targets (tests patch mmrelay.meshtastic_utils.*).
 
 # Shared executor for getMetadata() to avoid leaking threads when metadata calls hang.
 # A single worker is enough because getMetadata() is serialized by design.
@@ -962,189 +914,8 @@ def _coerce_bool(value: Any, default: bool, setting_name: str) -> bool:
     return default
 
 
-def _parse_refresh_interval_seconds(raw_interval: Any) -> float | None:
-    """
-    Parse and validate a refresh interval value.
-
-    Returns the parsed float if valid, or None if invalid (wrong type, non-finite, etc.).
-    """
-    try:
-        if isinstance(raw_interval, bool):
-            raise TypeError("boolean interval")
-        interval = float(raw_interval)
-        if not math.isfinite(interval):
-            raise ValueError("non-finite interval")
-        if interval < 0:
-            raise ValueError("negative interval")
-        return interval
-    except (TypeError, ValueError, OverflowError):
-        return None
-
-
-def get_nodedb_refresh_interval_seconds(
-    passed_config: dict[str, Any] | None = None,
-) -> float:
-    """
-    Return the configured nodedb refresh interval (seconds).
-
-    Reads `meshtastic.nodedb_refresh_interval` and falls back to
-    `DEFAULT_NODEDB_REFRESH_INTERVAL` when missing or invalid.
-
-    Current scope: this interval controls periodic refresh of cached long/short
-    node-name tables derived from the Meshtastic NodeDB. The key name is
-    future-oriented because later releases may expand persistence beyond names.
-
-    Parameters:
-        passed_config (dict[str, Any] | None): Optional config to read from.
-            When omitted, uses this module's global `config`.
-    """
-    config_source = passed_config if passed_config is not None else config
-    if not isinstance(config_source, dict):
-        config_source = {}
-    raw_interval = get_meshtastic_config_value(
-        config_source,
-        CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
-        DEFAULT_NODEDB_REFRESH_INTERVAL,
-    )
-    interval = _parse_refresh_interval_seconds(raw_interval)
-    if interval is not None:
-        return interval
-
-    logger.warning(
-        "Invalid meshtastic.nodedb_refresh_interval=%r; defaulting to %.1f",
-        raw_interval,
-        DEFAULT_NODEDB_REFRESH_INTERVAL,
-    )
-    return DEFAULT_NODEDB_REFRESH_INTERVAL
-
-
-def _snapshot_node_name_rows() -> tuple[dict[str, Any] | None, bool]:
-    """
-    Build a minimal node-name snapshot under meshtastic_lock.
-
-    Returns:
-        tuple[dict[str, Any] | None, bool]:
-            - Snapshot suitable for sync_name_tables_if_changed(), or None when unavailable.
-            - True when the Meshtastic client is unavailable.
-    """
-    with meshtastic_lock:
-        client = meshtastic_client
-        if client is None:
-            return None, True
-
-        raw_nodes = getattr(client, "nodes", None)
-        if not isinstance(raw_nodes, dict):
-            return None, False
-
-        nodes_snapshot: dict[str, Any] = {}
-        for node_id, raw_node in raw_nodes.items():
-            node_key = str(node_id)
-            if not isinstance(raw_node, dict):
-                nodes_snapshot[node_key] = {"user": None}
-                continue
-
-            raw_user = raw_node.get("user")
-            if not isinstance(raw_user, dict):
-                nodes_snapshot[node_key] = {"user": {"id": None}}
-                continue
-
-            user_snapshot: dict[str, Any] = {
-                "id": raw_user.get("id"),
-                PROTO_NODE_NAME_LONG: raw_user.get(PROTO_NODE_NAME_LONG),
-                PROTO_NODE_NAME_SHORT: raw_user.get(PROTO_NODE_NAME_SHORT),
-            }
-            nodes_snapshot[node_key] = {"user": user_snapshot}
-
-        return nodes_snapshot, False
-
-
-async def refresh_node_name_tables(
-    shutdown_event: asyncio.Event,
-    *,
-    refresh_interval_seconds: float | None = None,
-) -> None:
-    """
-    Periodically sync longname/shortname tables from the current Meshtastic node DB.
-
-    The first refresh attempt runs immediately. When `refresh_interval_seconds`
-    is zero, one immediate refresh is attempted and periodic refresh
-    is disabled afterward.
-
-    Current scope: this task updates only long/short name cache tables from the
-    NodeDB snapshot. Future releases may extend persistence to broader NodeDB
-    fields while keeping this interval setting.
-
-    Note: Exceptions are intentionally propagated to the caller (the supervisor in
-    main.py) which catches them and restarts this task with exponential backoff.
-    This prevents silent infinite retry loops on persistent errors while still
-    allowing recovery from transient failures.
-    """
-    if refresh_interval_seconds is None:
-        interval = get_nodedb_refresh_interval_seconds()
-    else:
-        parsed = _parse_refresh_interval_seconds(refresh_interval_seconds)
-        if parsed is None:
-            configured_interval = get_nodedb_refresh_interval_seconds()
-            logger.warning(
-                "Invalid NodeDB name-cache refresh interval override %r; defaulting to configured interval %.1f",
-                refresh_interval_seconds,
-                configured_interval,
-            )
-            interval = configured_interval
-        else:
-            interval = parsed
-
-    previous_state: NodeNameState | None = None
-    client_unavailable_reason: str | None = None
-    while not shutdown_event.is_set():
-        try:
-            nodes_snapshot, client_missing = await asyncio.to_thread(
-                _snapshot_node_name_rows
-            )
-
-            if nodes_snapshot is None:
-                if client_missing:
-                    if reconnecting:
-                        next_reason = "reconnecting"
-                        if client_unavailable_reason != next_reason:
-                            logger.debug(
-                                "Skipping name-cache refresh from NodeDB while reconnection is in progress"
-                            )
-                        client_unavailable_reason = next_reason
-                    else:
-                        next_reason = "unavailable"
-                        if client_unavailable_reason != next_reason:
-                            logger.debug(
-                                "Skipping name-cache refresh from NodeDB because Meshtastic client is unavailable"
-                            )
-                        client_unavailable_reason = next_reason
-                else:
-                    client_unavailable_reason = None
-                    logger.debug(
-                        "Skipping name-cache refresh from NodeDB because client.nodes is unavailable"
-                    )
-            else:
-                client_unavailable_reason = None
-                previous_state = await asyncio.to_thread(
-                    sync_name_tables_if_changed,
-                    nodes_snapshot,
-                    previous_state,
-                )
-        except Exception:
-            logger.exception("Failed to refresh name-cache tables from NodeDB snapshot")
-            raise
-
-        if interval <= 0:
-            logger.debug(
-                "NodeDB name-cache periodic refresh disabled (interval=%.3f)",
-                float(interval),
-            )
-            return
-
-        try:
-            await asyncio.wait_for(shutdown_event.wait(), timeout=float(interval))
-        except asyncio.TimeoutError:
-            continue
+# Node refresh lifecycle — implemented in meshtastic.node_refresh, re-exported here
+# for backward-compatible patch targets (tests patch mmrelay.meshtastic_utils.*).
 
 
 def _extract_packet_request_id(packet: Any) -> int | None:
