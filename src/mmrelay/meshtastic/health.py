@@ -396,14 +396,13 @@ def _handle_probe_ack_callback(local_node: Any, packet: Any) -> None:
     raise facade._failed_probe_ack_state_error()
 
 
-def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
+def _wait_for_probe_ack(ack_state: Any, timeout_secs: float) -> None:
     """
     Wait for ACK/NAK flags with a bounded timeout for health probes.
 
     Uses the interface acknowledgment object directly so probe duration is
     capped independently of the interface-wide timeout setting.
     """
-    ack_state = getattr(client, "_acknowledgment", None)
     if ack_state is None:
         raise facade._missing_ack_state_error()
 
@@ -491,8 +490,8 @@ def _probe_device_connection(
             timeout_secs,
         )
 
-    if getattr(client, "_acknowledgment", None) is not None:
-        facade._wait_for_probe_ack(client, timeout_secs)
+    if ack_state is not None:
+        facade._wait_for_probe_ack(ack_state, timeout_secs)
         return
 
     if callable(getattr(client, "waitForAckNak", None)):
@@ -635,6 +634,7 @@ async def check_connection() -> None:
     if (
         isinstance(meshtastic_config, dict)
         and "heartbeat_interval" in meshtastic_config
+        and "heartbeat_interval" not in health_config
     ):
         heartbeat_interval = meshtastic_config["heartbeat_interval"]
 
@@ -695,7 +695,8 @@ async def check_connection() -> None:
                     not facade.reconnecting
                     and facade.meshtastic_client is submitted_client
                 ):
-                    facade.on_lost_meshtastic_connection(
+                    await facade.asyncio.to_thread(
+                        facade.on_lost_meshtastic_connection,
                         interface=submitted_client,
                         detection_source="metadata executor degraded",
                     )
@@ -727,7 +728,8 @@ async def check_connection() -> None:
                             error_detail,
                             exc_info=True,
                         )
-                        facade.on_lost_meshtastic_connection(
+                        await facade.asyncio.to_thread(
+                            facade.on_lost_meshtastic_connection,
                             interface=submitted_client,
                             detection_source=f"health check failed: {error_detail}",
                         )
