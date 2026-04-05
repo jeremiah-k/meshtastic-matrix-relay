@@ -1250,10 +1250,12 @@ class TestRefreshNodeNameTablesInvalidInterval:
         mu.config = {"meshtastic": {}}
 
         with patch(
-            "mmrelay.meshtastic_utils.get_nodedb_refresh_interval_seconds",
+            "mmrelay.meshtastic.node_refresh.get_nodedb_refresh_interval_seconds",
             return_value=60.0,
         ):
-            with patch("mmrelay.meshtastic_utils.asyncio.to_thread") as mock_to_thread:
+            with patch(
+                "mmrelay.meshtastic.node_refresh.asyncio.to_thread"
+            ) as mock_to_thread:
                 mock_to_thread.return_value = (None, True)
                 with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                     shutdown_event = asyncio.Event()
@@ -1288,10 +1290,12 @@ class TestRefreshNodeNameTablesInvalidInterval:
         mu.config = {"meshtastic": {}}
 
         with patch(
-            "mmrelay.meshtastic_utils.get_nodedb_refresh_interval_seconds",
+            "mmrelay.meshtastic.node_refresh.get_nodedb_refresh_interval_seconds",
             return_value=120.0,
         ):
-            with patch("mmrelay.meshtastic_utils.asyncio.to_thread") as mock_to_thread:
+            with patch(
+                "mmrelay.meshtastic.node_refresh.asyncio.to_thread"
+            ) as mock_to_thread:
                 mock_to_thread.return_value = (None, True)
                 with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                     shutdown_event = asyncio.Event()
@@ -1326,10 +1330,12 @@ class TestRefreshNodeNameTablesInvalidInterval:
         mu.config = {"meshtastic": {}}
 
         with patch(
-            "mmrelay.meshtastic_utils.get_nodedb_refresh_interval_seconds",
+            "mmrelay.meshtastic.node_refresh.get_nodedb_refresh_interval_seconds",
             return_value=90.0,
         ):
-            with patch("mmrelay.meshtastic_utils.asyncio.to_thread") as mock_to_thread:
+            with patch(
+                "mmrelay.meshtastic.node_refresh.asyncio.to_thread"
+            ) as mock_to_thread:
                 mock_to_thread.return_value = (None, True)
                 with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                     shutdown_event = asyncio.Event()
