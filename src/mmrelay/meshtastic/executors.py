@@ -4,14 +4,6 @@ from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any, Callable
 
 import mmrelay.meshtastic_utils as facade
-from mmrelay.constants.network import (
-    BLE_FUTURE_STALE_GRACE_SECS,
-    BLE_FUTURE_WATCHDOG_SECS,
-    BLE_TIMEOUT_RESET_THRESHOLD,
-    EXECUTOR_ORPHAN_THRESHOLD,
-    FUTURE_CANCEL_TIMEOUT_SECS,
-    METADATA_WATCHDOG_SECS,
-)
 
 __all__ = [
     "_clear_ble_future",

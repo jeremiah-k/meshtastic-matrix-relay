@@ -5,14 +5,6 @@ import math
 from concurrent.futures import Future
 from typing import Any
 
-import meshtastic
-import meshtastic.ble_interface
-import meshtastic.serial_interface
-import meshtastic.tcp_interface
-import serial
-import serial.tools.list_ports
-from meshtastic.protobuf import portnums_pb2
-
 import mmrelay.meshtastic_utils as facade
 from mmrelay.constants.config import (
     CONFIG_KEY_CONNECT_PROBE_ENABLED,
@@ -23,8 +15,6 @@ from mmrelay.constants.config import (
     DEFAULT_HEALTH_CHECK_ENABLED,
 )
 from mmrelay.constants.network import (
-    BLE_CONNECT_TIMEOUT_SECS,
-    BLE_FUTURE_WATCHDOG_SECS,
     BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
     BLE_SCAN_TIMEOUT_SECS,
     BLE_TROUBLESHOOTING_GUIDANCE,
@@ -34,8 +24,6 @@ from mmrelay.constants.network import (
     CONFIG_KEY_PORT,
     CONFIG_KEY_SERIAL_PORT,
     CONFIG_KEY_TIMEOUT,
-    CONNECTION_RETRY_BACKOFF_BASE,
-    CONNECTION_RETRY_BACKOFF_MAX_SECS,
     CONNECTION_TYPE_BLE,
     CONNECTION_TYPE_NETWORK,
     CONNECTION_TYPE_SERIAL,
@@ -43,10 +31,6 @@ from mmrelay.constants.network import (
     DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
     DEFAULT_MESHTASTIC_TIMEOUT,
     DEFAULT_TCP_PORT,
-    INFINITE_RETRIES,
-    MAX_TIMEOUT_RETRIES_INFINITE,
-    RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS,
-    STARTUP_PACKET_DRAIN_SECS,
 )
 
 __all__ = [

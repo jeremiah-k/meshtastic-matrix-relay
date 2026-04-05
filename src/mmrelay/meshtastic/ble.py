@@ -6,16 +6,6 @@ from concurrent.futures import Future
 from typing import Any, Awaitable, Callable, Coroutine, cast
 
 import mmrelay.meshtastic_utils as facade
-from mmrelay.constants.network import (
-    BLE_CONN_SUPPRESSED_TOKEN,
-    BLE_CONNECTED_ELSEWHERE_TOKEN,
-    BLE_DISCONNECT_MAX_RETRIES,
-    BLE_DISCONNECT_SETTLE_SECS,
-    BLE_DISCONNECT_TIMEOUT_SECS,
-    BLE_DUP_CONNECT_SUPPRESSED_TOKEN,
-    BLE_RETRY_DELAY_SECS,
-    STALE_DISCONNECT_TIMEOUT_SECS,
-)
 
 __all__ = [
     "_attach_late_ble_interface_disposer",

@@ -1,5 +1,4 @@
 import functools
-import threading
 from typing import Any
 
 import mmrelay.meshtastic_utils as facade

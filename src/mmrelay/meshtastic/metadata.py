@@ -13,7 +13,6 @@ from mmrelay.constants.formats import (
     ENCODING_ERROR_IGNORE,
     FIRMWARE_VERSION_REGEX,
 )
-from mmrelay.constants.network import METADATA_WATCHDOG_SECS
 
 __all__ = [
     "_extract_firmware_version_from_client",
