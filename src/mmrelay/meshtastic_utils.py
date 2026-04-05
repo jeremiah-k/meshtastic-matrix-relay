@@ -1,3 +1,8 @@
+# isort: skip_file
+# ruff: noqa: E402, F401, I001
+# fmt: off
+# Facade module with load-bearing import ordering:
+# globals and constants must be defined before submodule imports.
 import asyncio
 import atexit
 import concurrent.futures

@@ -3,3 +3,6 @@ select = ["B", "D3", "E", "F"]
 
 # Never enforce `E501` (line length violations). This should be handled by formatters.
 ignore = ["E501"]
+
+[per-file-ignores]
+"meshtastic_utils.py" = ["E402", "I001"]
