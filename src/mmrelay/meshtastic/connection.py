@@ -931,7 +931,8 @@ def _connect_meshtastic_impl(
                                 # but raise a short error and keep operator guidance in logs (TRY003).
                                 ble_connect_timeout_logged_for_attempt = True
                                 facade.logger.exception(
-                                    f"BLE connect() call timed out after {facade.BLE_CONNECT_TIMEOUT_SECS} seconds for %s.",
+                                    "BLE connect() call timed out after %s seconds for %s.",
+                                    facade.BLE_CONNECT_TIMEOUT_SECS,
                                     ble_address,
                                 )
                                 facade.logger.warning(
@@ -942,9 +943,12 @@ def _connect_meshtastic_impl(
                                 )
                                 # Best-effort cancellation: a hung BLE connect blocks the worker
                                 # thread, so we cancel to allow retries only if it completes.
-                                if connect_future.cancel():
+                                if (
+                                    connect_future is not None
+                                    and connect_future.cancel()
+                                ):
                                     facade._clear_ble_future(connect_future)
-                                else:
+                                elif connect_future is not None:
                                     timed_out_iface = iface
                                     # Clear global/local references before attaching late
                                     # disposer so late completions cannot observe stale active
@@ -1282,7 +1286,8 @@ def _connect_meshtastic_impl(
                 and str(e).startswith("BLE connect() timed out for ")
             ):
                 facade.logger.exception(
-                    f"BLE connect() call timed out after {facade.BLE_CONNECT_TIMEOUT_SECS} seconds for %s.",
+                    "BLE connect() call timed out after %s seconds for %s.",
+                    facade.BLE_CONNECT_TIMEOUT_SECS,
                     ble_address,
                 )
                 facade.logger.warning("This may indicate a BlueZ or adapter issue.")
