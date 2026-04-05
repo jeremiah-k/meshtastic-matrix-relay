@@ -848,6 +848,7 @@ def _connect_meshtastic_impl(
                             operation="connect",
                         )
 
+                        connect_future: Future[Any] | None = None
                         with facade._ble_executor_lock:
                             if facade._ble_future and not facade._ble_future.done():
                                 facade.logger.debug(
@@ -906,9 +907,12 @@ def _connect_meshtastic_impl(
                                     ble_address,
                                 )
                                 shutdown_iface = iface
-                                if connect_future.cancel():
+                                if (
+                                    connect_future is not None
+                                    and connect_future.cancel()
+                                ):
                                     facade._clear_ble_future(connect_future)
-                                else:
+                                elif connect_future is not None:
                                     facade._schedule_ble_future_cleanup(
                                         connect_future,
                                         ble_address,
