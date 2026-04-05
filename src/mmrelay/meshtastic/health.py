@@ -665,7 +665,7 @@ async def check_connection() -> None:
             try:
                 probe_future = facade._submit_metadata_probe(
                     functools.partial(
-                        _probe_device_connection,
+                        facade._probe_device_connection,
                         submitted_client,
                         probe_timeout,
                     )
