@@ -1,17 +1,32 @@
 import asyncio
 import atexit
+import contextlib
+import functools
 import importlib
 import importlib.util
+import inspect
+import io
+import logging
+import math
 import sys
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Any, Callable, cast
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from typing import Any, Awaitable, Callable, Coroutine, cast
 
 # meshtastic is not marked py.typed; keep import-untyped for strict mypy.
 import meshtastic
+import meshtastic.ble_interface
+import meshtastic.serial_interface
+import meshtastic.tcp_interface
+import serial  # For serial port exceptions
+import serial.tools.list_ports  # Import serial tools for port listing
+from meshtastic.protobuf import admin_pb2, mesh_pb2, portnums_pb2
 from pubsub import pub
+from pubsub.core.topicexc import TopicNameError
 
+from mmrelay.config import get_meshtastic_config_value
 from mmrelay.constants.config import (
     CONFIG_KEY_CONNECT_PROBE_ENABLED,
     CONFIG_KEY_ENABLED,
@@ -88,6 +103,15 @@ from mmrelay.constants.network import (
     RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS,
     STALE_DISCONNECT_TIMEOUT_SECS,
     STARTUP_PACKET_DRAIN_SECS,
+)
+from mmrelay.db_utils import (
+    NodeNameState,
+    get_longname,
+    get_message_map_by_meshtastic_id,
+    get_shortname,
+    save_longname,
+    save_shortname,
+    sync_name_tables_if_changed,
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.meshtastic.async_utils import (
