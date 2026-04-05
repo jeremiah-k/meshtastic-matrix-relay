@@ -5,6 +5,7 @@ import mmrelay.meshtastic_utils as facade
 
 __all__ = [
     "_claim_health_probe_response_and_maybe_calibrate",
+    "_execute_health_probe",
     "_extract_packet_request_id",
     "_failed_probe_ack_state_error",
     "_handle_probe_ack_callback",
@@ -617,6 +618,84 @@ def _parse_health_check_config(
     return connection_type, heartbeat_interval, initial_delay, probe_timeout
 
 
+async def _execute_health_probe(
+    submitted_client: Any, connection_type: str | None, probe_timeout: float
+) -> None:
+    """
+    Submit a metadata probe and handle success, degradation, and failure paths.
+
+    This helper owns the probe lifecycle for a single health-check cycle:
+    submitting the probe via the metadata executor, awaiting the result, and
+    triggering reconnection when the probe fails or the executor is degraded.
+
+    Parameters:
+        submitted_client: The Meshtastic client captured at the start of this cycle.
+        connection_type: Connection transport string (e.g. ``"tcp"``) or ``None``.
+        probe_timeout: Maximum seconds to wait for the probe result.
+    """
+    probe_submission_failed = False
+    degraded_error = False
+    probe_future = None
+    try:
+        probe_future = facade._submit_metadata_probe(
+            functools.partial(
+                facade._probe_device_connection,
+                submitted_client,
+                probe_timeout,
+            )
+        )
+    except facade.MetadataExecutorDegradedError:
+        facade.logger.error("Metadata executor degraded; triggering reconnection")
+        degraded_error = True
+    except RuntimeError as exc:
+        facade.logger.debug(
+            "Skipping connection check - metadata probe submission failed",
+            exc_info=exc,
+        )
+        probe_submission_failed = True
+
+    if degraded_error:
+        if not facade.reconnecting and facade.meshtastic_client is submitted_client:
+            await facade.asyncio.to_thread(
+                facade.on_lost_meshtastic_connection,
+                interface=submitted_client,
+                detection_source="metadata executor degraded",
+            )
+    elif probe_future is None:
+        if not probe_submission_failed:
+            facade.logger.debug(
+                "Skipping connection check - metadata probe already in progress"
+            )
+    else:
+        try:
+            await facade.asyncio.wait_for(
+                facade.asyncio.wrap_future(probe_future),
+                timeout=probe_timeout,
+            )
+        except Exception as exc:
+            # Broad catch is intentional: any probe failure (timeout,
+            # transport error, unexpected packet shape, etc.) must
+            # trigger connection recovery rather than crash the health
+            # loop.
+            error_detail = str(exc).strip() or exc.__class__.__name__
+            if not facade.reconnecting and facade.meshtastic_client is submitted_client:
+                facade.logger.error(
+                    "%s connection health check failed: %s",
+                    (connection_type or "unknown").capitalize(),
+                    error_detail,
+                    exc_info=True,
+                )
+                await facade.asyncio.to_thread(
+                    facade.on_lost_meshtastic_connection,
+                    interface=submitted_client,
+                    detection_source=f"health check failed: {error_detail}",
+                )
+            else:
+                facade.logger.debug(
+                    "Skipping reconnection trigger - already reconnecting or client changed"
+                )
+
+
 async def check_connection() -> None:
     """
     Periodically verify the Meshtastic connection and trigger a reconnect when the device appears unresponsive.
@@ -644,12 +723,10 @@ async def check_connection() -> None:
 
     No return value; side effects are logging and scheduling/triggering reconnection when the device is unresponsive.
     """
-    # Check if config is available
     if facade.config is None:
         facade.logger.error("No configuration available. Cannot check connection.")
         return
 
-    # Exit early if health monitoring is not required for this connection type/config
     if not facade.requires_continuous_health_monitor(facade.config):
         meshtastic_config = facade.config.get(facade.CONFIG_SECTION_MESHTASTIC)
         connection_type = (
@@ -671,10 +748,6 @@ async def check_connection() -> None:
         return
     connection_type, heartbeat_interval, initial_delay, probe_timeout = parsed
 
-    # Initial delay before first health check to allow connection to settle.
-    # This is particularly important for fast-responding systems like MeshMonitor
-    # where the connection may be established quickly but ACK handling may not be
-    # fully initialized yet.
     facade.logger.debug(
         "Waiting before starting connection health checks to allow connection to settle"
     )
@@ -682,82 +755,9 @@ async def check_connection() -> None:
 
     while not facade.shutting_down:
         if facade.meshtastic_client and not facade.reconnecting:
-            submitted_client = facade.meshtastic_client
-            probe_submission_failed = False
-            degraded_error = False
-            try:
-                probe_future = facade._submit_metadata_probe(
-                    functools.partial(
-                        facade._probe_device_connection,
-                        submitted_client,
-                        probe_timeout,
-                    )
-                )
-            except facade.MetadataExecutorDegradedError:
-                facade.logger.error(
-                    "Metadata executor degraded; triggering reconnection"
-                )
-                probe_future = None
-                degraded_error = True
-            except RuntimeError as exc:
-                facade.logger.debug(
-                    "Skipping connection check - metadata probe submission failed",
-                    exc_info=exc,
-                )
-                probe_future = None
-                probe_submission_failed = True
-
-            if degraded_error:
-                if (
-                    not facade.reconnecting
-                    and facade.meshtastic_client is submitted_client
-                ):
-                    await facade.asyncio.to_thread(
-                        facade.on_lost_meshtastic_connection,
-                        interface=submitted_client,
-                        detection_source="metadata executor degraded",
-                    )
-            elif probe_future is None:
-                if not probe_submission_failed:
-                    facade.logger.debug(
-                        "Skipping connection check - metadata probe already in progress"
-                    )
-            else:
-                try:
-                    # NOTE: Use the metadata admin request for keepalive/liveness.
-                    # `getMyNodeInfo()` is local cached state in Meshtastic Python,
-                    # so it can succeed even when the transport is unhealthy.
-                    await facade.asyncio.wait_for(
-                        facade.asyncio.wrap_future(probe_future),
-                        timeout=probe_timeout,
-                    )
-
-                except Exception as exc:
-                    # Broad catch is intentional: any probe failure (timeout,
-                    # transport error, unexpected packet shape, etc.) must
-                    # trigger connection recovery rather than crash the health
-                    # loop.
-                    error_detail = str(exc).strip() or exc.__class__.__name__
-                    # Only trigger reconnection if we're not already reconnecting
-                    if (
-                        not facade.reconnecting
-                        and facade.meshtastic_client is submitted_client
-                    ):
-                        facade.logger.error(
-                            "%s connection health check failed: %s",
-                            (connection_type or "unknown").capitalize(),
-                            error_detail,
-                            exc_info=True,
-                        )
-                        await facade.asyncio.to_thread(
-                            facade.on_lost_meshtastic_connection,
-                            interface=submitted_client,
-                            detection_source=f"health check failed: {error_detail}",
-                        )
-                    else:
-                        facade.logger.debug(
-                            "Skipping reconnection trigger - already reconnecting or client changed"
-                        )
+            await _execute_health_probe(
+                facade.meshtastic_client, connection_type, probe_timeout
+            )
         elif facade.reconnecting:
             facade.logger.debug("Skipping connection check - reconnection in progress")
         elif not facade.meshtastic_client:
