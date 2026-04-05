@@ -396,6 +396,7 @@ async def test_check_connection_uses_legacy_heartbeat_interval(
     reset_meshtastic_globals,
 ):
     mu.config = _make_health_config(connection_type=CONNECTION_TYPE_TCP)
+    del mu.config["meshtastic"]["health_check"]["heartbeat_interval"]
     mu.config["meshtastic"]["heartbeat_interval"] = 5
     mu.meshtastic_client = None
 

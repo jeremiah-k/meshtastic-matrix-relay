@@ -479,11 +479,8 @@ class TestProbeAckHandling:
 
     def test_wait_for_probe_ack_no_ack_state(self):
         """Test waiting for probe ACK with no ack state."""
-        client = Mock()
-        client._acknowledgment = None
-
         with pytest.raises(RuntimeError, match="missing acknowledgment state"):
-            mu._wait_for_probe_ack(client, 1.0)
+            mu._wait_for_probe_ack(None, 1.0)
 
     def test_wait_for_probe_ack_with_reset(self):
         """Test waiting for probe ACK calls reset when available."""
@@ -493,10 +490,7 @@ class TestProbeAckHandling:
         ack_state.receivedImplAck = False
         ack_state.reset = Mock()
 
-        client = Mock()
-        client._acknowledgment = ack_state
-
-        mu._wait_for_probe_ack(client, 1.0)
+        mu._wait_for_probe_ack(ack_state, 1.0)
 
         ack_state.reset.assert_called_once()
 
@@ -526,6 +520,7 @@ class TestProbeAckHandling:
         """Test probe connection when client cannot wait for ACK."""
         client = Mock()
         client.localNode = Mock()
+        client.localNode.iface._acknowledgment = None
         client.localNode.nodeNum = 12345
         client.sendData = Mock(return_value=Mock(id=999))
         client._acknowledgment = None
@@ -761,7 +756,7 @@ class TestMessageHandlerEdgeCases:
         mu.on_meshtastic_message(packet, mock_interface)
 
     def test_check_connection_non_dict_health_config(self):
-        """Test check_connection with non-dict health_check config."""
+        """Test check_connection with non-dict health_check config exits early via requires_continuous_health_monitor."""
         mu.config = {
             "meshtastic": {
                 CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_TCP,
@@ -769,15 +764,15 @@ class TestMessageHandlerEdgeCases:
             }
         }
         mu.meshtastic_client = None
-        mu.shutting_down = True  # Exit immediately
+        mu.shutting_down = True
 
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             asyncio.run(mu.check_connection())
 
-            # Should log warning about invalid config
-            mock_logger.warning.assert_called()
-            call_args = mock_logger.warning.call_args[0]
-            assert "not a dictionary" in call_args[0]
+            mock_logger.warning.assert_not_called()
+            mock_logger.info.assert_called()
+            call_args = mock_logger.info.call_args[0]
+            assert "disabled" in call_args[0]
 
     def test_check_connection_probe_submission_fails(self):
         """Test check_connection when probe submission raises RuntimeError."""
@@ -1108,10 +1103,7 @@ class TestWaitForProbeAckManualReset:
         # Make reset a non-callable attribute
         ack_state.reset = "not_callable"
 
-        client = Mock()
-        client._acknowledgment = ack_state
-
-        mu._wait_for_probe_ack(client, 0.1)
+        mu._wait_for_probe_ack(ack_state, 0.1)
 
         # Verify flags were manually reset
         assert ack_state.receivedAck is False
@@ -1258,10 +1250,12 @@ class TestRefreshNodeNameTablesInvalidInterval:
         mu.config = {"meshtastic": {}}
 
         with patch(
-            "mmrelay.meshtastic_utils.get_nodedb_refresh_interval_seconds",
+            "mmrelay.meshtastic.node_refresh.get_nodedb_refresh_interval_seconds",
             return_value=60.0,
         ):
-            with patch("mmrelay.meshtastic_utils.asyncio.to_thread") as mock_to_thread:
+            with patch(
+                "mmrelay.meshtastic.node_refresh.asyncio.to_thread"
+            ) as mock_to_thread:
                 mock_to_thread.return_value = (None, True)
                 with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                     shutdown_event = asyncio.Event()
@@ -1296,10 +1290,12 @@ class TestRefreshNodeNameTablesInvalidInterval:
         mu.config = {"meshtastic": {}}
 
         with patch(
-            "mmrelay.meshtastic_utils.get_nodedb_refresh_interval_seconds",
+            "mmrelay.meshtastic.node_refresh.get_nodedb_refresh_interval_seconds",
             return_value=120.0,
         ):
-            with patch("mmrelay.meshtastic_utils.asyncio.to_thread") as mock_to_thread:
+            with patch(
+                "mmrelay.meshtastic.node_refresh.asyncio.to_thread"
+            ) as mock_to_thread:
                 mock_to_thread.return_value = (None, True)
                 with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                     shutdown_event = asyncio.Event()
@@ -1334,10 +1330,12 @@ class TestRefreshNodeNameTablesInvalidInterval:
         mu.config = {"meshtastic": {}}
 
         with patch(
-            "mmrelay.meshtastic_utils.get_nodedb_refresh_interval_seconds",
+            "mmrelay.meshtastic.node_refresh.get_nodedb_refresh_interval_seconds",
             return_value=90.0,
         ):
-            with patch("mmrelay.meshtastic_utils.asyncio.to_thread") as mock_to_thread:
+            with patch(
+                "mmrelay.meshtastic.node_refresh.asyncio.to_thread"
+            ) as mock_to_thread:
                 mock_to_thread.return_value = (None, True)
                 with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                     shutdown_event = asyncio.Event()

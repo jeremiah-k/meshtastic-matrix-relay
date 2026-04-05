@@ -1320,6 +1320,23 @@ class TestConnectionLossHandling(unittest.TestCase):
         mmrelay.meshtastic_utils.shutting_down = False
         mmrelay.meshtastic_utils.reconnect_task = None
 
+    def tearDown(self):
+        """Drain any coroutines submitted via run_coroutine_threadsafe."""
+        import asyncio
+
+        import mmrelay.meshtastic_utils as mu
+
+        loop = mu.event_loop
+        if loop and not loop.is_closed():
+            if loop.is_running():
+                with contextlib.suppress(RuntimeError, ConcurrentTimeoutError):
+                    asyncio.run_coroutine_threadsafe(asyncio.sleep(0), loop).result(
+                        timeout=1
+                    )
+            else:
+                with contextlib.suppress(RuntimeError):
+                    loop.run_until_complete(asyncio.sleep(0))
+
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("mmrelay.meshtastic_utils.reconnect", new_callable=AsyncMock)
     def test_on_lost_meshtastic_connection_normal(self, mock_reconnect, mock_logger):
@@ -4999,8 +5016,11 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             connect_timeout_calls = [
                 call
                 for call in mock_logger.exception.call_args_list
-                if f"connect() call timed out after {BLE_CONNECT_TIMEOUT_SECS} seconds"
-                in str(call)
+                if call.args
+                and call.args[0]
+                == "BLE connect() call timed out after %s seconds for %s."
+                and call.args[1] == BLE_CONNECT_TIMEOUT_SECS
+                and call.args[2] == TEST_BLE_MAC
             ]
             self.assertEqual(
                 len(connect_timeout_calls), MAX_TIMEOUT_RETRIES_INFINITE + 1
