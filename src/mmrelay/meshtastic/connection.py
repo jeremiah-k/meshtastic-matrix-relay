@@ -424,7 +424,9 @@ def _connect_meshtastic_impl(
     )
     retry_limit_raw = meshtastic_settings.get("retries")
     if retry_limit_raw is None:
-        retry_limit_raw = meshtastic_settings.get("retry_limit", INFINITE_RETRIES)
+        retry_limit_raw = meshtastic_settings.get(
+            "retry_limit", facade.INFINITE_RETRIES
+        )
         if "retry_limit" in meshtastic_settings:
             facade.logger.warning(
                 "'retry_limit' is deprecated in meshtastic config; use 'retries' instead"
@@ -432,7 +434,7 @@ def _connect_meshtastic_impl(
     try:
         retry_limit = int(retry_limit_raw)
     except (TypeError, ValueError):
-        retry_limit = INFINITE_RETRIES
+        retry_limit = facade.INFINITE_RETRIES
     attempts = 0
     timeout_attempts = 0
     successful = False
@@ -1280,9 +1282,9 @@ def _connect_meshtastic_impl(
                     f"BlueZ may be in a bad state. {BLE_TROUBLESHOOTING_GUIDANCE.format(ble_address=ble_address)}"
                 )
             attempts += 1
-            if retry_limit == INFINITE_RETRIES:
+            if retry_limit == facade.INFINITE_RETRIES:
                 timeout_attempts += 1
-                if timeout_attempts > MAX_TIMEOUT_RETRIES_INFINITE:
+                if timeout_attempts > facade.MAX_TIMEOUT_RETRIES_INFINITE:
                     facade.logger.exception(
                         "Connection timed out after %s attempts (unlimited retries); aborting",
                         attempts,
