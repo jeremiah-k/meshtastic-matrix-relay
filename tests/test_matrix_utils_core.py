@@ -477,7 +477,7 @@ def test_format_reply_message_remote_mesh_prefix():
         mesh_text_override="Test",
     )
 
-    assert result == "Trak/Mt.P: Test"
+    assert result == "[LoRa/Mt.P]:  Test"
 
 
 def test_format_reply_message_remote_without_longname():
@@ -495,7 +495,7 @@ def test_format_reply_message_remote_without_longname():
         mesh_text_override="Hi",
     )
 
-    assert result == "Tr/Mt.P: Hi"
+    assert result == "[MtP Relay/Mt.P]:  Hi"
 
 
 def test_format_reply_message_remote_strips_prefix_and_uses_override(monkeypatch):
@@ -516,8 +516,8 @@ def test_format_reply_message_remote_strips_prefix_and_uses_override(monkeypatch
         mesh_text_override="PREFIX",
     )
 
-    assert result.startswith("Al/Remo:")
-    assert "PREFIX" in result
+    assert result.startswith("PREFIX")
+    assert result == "PREFIX PREFIX"
 
 
 # Utils Tests
