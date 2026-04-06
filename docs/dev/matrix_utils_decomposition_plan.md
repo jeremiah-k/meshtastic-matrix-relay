@@ -533,6 +533,12 @@ State access:
 
 ## 7. Import / Export Compatibility Strategy
 
+Note: **Wildcard imports are ONLY allowed in the facade module**
+
+- `matrix_utils.py` may use `from X import *`
+- Submodules MUST use explicit imports
+- Each submodule MUST define `__all__` to control exports
+
 ### 7.1 Facade Pattern
 
 `src/mmrelay/matrix_utils.py` becomes a thin facade that keeps:
