@@ -153,7 +153,7 @@ async def _get_meshtastic_interface_and_channel(
     """
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
-    meshtastic_interface = await _connect_meshtastic()
+    meshtastic_interface = await facade._connect_meshtastic()
     if not meshtastic_interface:
         meshtastic_logger.error(f"Failed to connect to Meshtastic. Cannot {purpose}.")
         return None, None
@@ -216,7 +216,9 @@ async def _handle_detection_sensor_packet(
     (
         meshtastic_interface,
         meshtastic_channel,
-    ) = await _get_meshtastic_interface_and_channel(room_config, "relay detection data")
+    ) = await facade._get_meshtastic_interface_and_channel(
+        room_config, "relay detection data"
+    )
     if not meshtastic_interface:
         return
 
