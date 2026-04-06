@@ -9,7 +9,6 @@ import mmrelay.matrix_utils as facade
 from mmrelay.cli_utils import msg_require_auth_login
 from mmrelay.config import (
     InvalidCredentialsPathTypeError,
-    get_explicit_credentials_path,
 )
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
@@ -45,7 +44,7 @@ def _resolve_credentials_save_path(config_data: dict[str, Any] | None) -> str | 
         str | None: Absolute path to use for saving credentials, or `None` if resolution fails.
     """
     try:
-        explicit_path = get_explicit_credentials_path(config_data)
+        explicit_path = facade.get_explicit_credentials_path(config_data)
         if explicit_path:
             return os.path.expanduser(explicit_path)
         return str(facade.get_credentials_path())

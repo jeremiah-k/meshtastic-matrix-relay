@@ -19,8 +19,6 @@ from urllib.parse import urlparse
 
 from nio import (
     AsyncClientConfig,
-    DiscoveryInfoError,
-    DiscoveryInfoResponse,
     MatrixRoom,
     MegolmEvent,
     ProfileGetDisplayNameError,
@@ -48,8 +46,6 @@ import mmrelay.config as config_module
 import mmrelay.matrix_utils as facade
 from mmrelay.config import (
     InvalidCredentialsPathTypeError,
-    get_e2ee_store_dir,
-    get_explicit_credentials_path,
     get_meshtastic_config_value,
 )
 from mmrelay.constants.app import WINDOWS_PLATFORM
@@ -702,13 +698,13 @@ async def login_matrix_bot(
             )
 
             try:
-                if isinstance(discovery_response, DiscoveryInfoResponse):
+                if isinstance(discovery_response, facade.DiscoveryInfoResponse):
                     actual_homeserver = discovery_response.homeserver_url
                     facade.logger.info(
                         f"Server discovery successful: {actual_homeserver}"
                     )
                     homeserver = actual_homeserver
-                elif isinstance(discovery_response, DiscoveryInfoError):
+                elif isinstance(discovery_response, facade.DiscoveryInfoError):
                     facade.logger.info(
                         f"Server discovery failed, using original URL: {homeserver}"
                     )
@@ -864,7 +860,7 @@ async def login_matrix_bot(
         store_path = None
         if e2ee_enabled:
             try:
-                store_path = str(await asyncio.to_thread(get_e2ee_store_dir))
+                store_path = str(await asyncio.to_thread(facade.get_e2ee_store_dir))
             except E2EENotSupportedError as e:
                 facade.logger.warning(
                     "E2EE is not supported on this platform; "
