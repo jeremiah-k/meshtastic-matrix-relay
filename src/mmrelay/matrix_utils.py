@@ -3,61 +3,44 @@
 # fmt: off
 # Facade module with load-bearing import ordering:
 # globals and constants must be defined before submodule imports.
+# Builtins accessed by submodules via facade.NAME (must be explicit for module attribute access)
+input = input
+
+# Globals used by submodules via facade.NAME
 import asyncio
-import getpass
-import html
-import importlib
-import inspect
 import io
-import json
 import logging
 import os
-import re
-import secrets
-import ssl
-import sys
 import time
+
+# Globals imported but only for facade's own use (not accessed by submodules):
+import getpass
+import importlib
+import sys
 from dataclasses import dataclass
-from json import JSONDecodeError
-from types import SimpleNamespace
 from typing import (
     TYPE_CHECKING,
     Any,
-    Awaitable,
-    Callable,
     Dict,
-    Generator,
     Optional,
-    Tuple,
     cast,
 )
-from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     pass
 
-# matrix-nio is not marked py.typed in our environment, so mypy treats it as untyped.
 from nio import (
     AsyncClient,
     AsyncClientConfig,
     DiscoveryInfoError,
     DiscoveryInfoResponse,
     MatrixRoom,
-    MegolmEvent,
     ProfileGetDisplayNameError,
     ProfileGetDisplayNameResponse,
     ReactionEvent,
     RoomMessageEmote,
     RoomMessageNotice,
     RoomMessageText,
-    SyncError,
-    ToDeviceError,
-    ToDeviceResponse,
-    UploadError,
-    UploadResponse,
-)
-from nio.events.room_events import (
-    RoomMemberEvent,
 )
 
 # Import InviteMemberEvent separately to avoid submodule import issues
@@ -68,61 +51,36 @@ except ImportError:
         InviteMemberEvent,
     )
 
-from PIL import Image
-
 import mmrelay.config as config_module
 
 # Local imports
 from mmrelay.cli_utils import (
     _create_ssl_context,
-    msg_require_auth_login,
     msg_retry_auth_login,
 )
 from mmrelay.config import (
-    InvalidCredentialsPathTypeError,
     async_load_credentials,
     get_e2ee_store_dir,
     get_explicit_credentials_path,
     get_meshtastic_config_value,
     save_credentials,
 )
-from mmrelay.constants.app import WINDOWS_PLATFORM
 from mmrelay.constants.config import (
-    CONFIG_KEY_ACCESS_TOKEN,
-    CONFIG_KEY_BOT_USER_ID,
-    CONFIG_KEY_DEVICE_ID,
-    CONFIG_KEY_HOMESERVER,
-    CONFIG_KEY_PASSWORD,
-    CONFIG_KEY_USER_ID,
-    CONFIG_SECTION_DATABASE,
-    CONFIG_SECTION_DATABASE_LEGACY,
-    CONFIG_SECTION_MATRIX,
-    CONFIG_SECTION_MESHTASTIC,
     DEFAULT_BROADCAST_ENABLED,
     DEFAULT_DETECTION_SENSOR,
     E2EE_KEY_REQUEST_BASE_DELAY,
     E2EE_KEY_REQUEST_MAX_ATTEMPTS,
     E2EE_KEY_REQUEST_MAX_DELAY,
     E2EE_KEY_SHARING_DELAY_SECONDS,
-    REQUIRED_CREDENTIALS_KEYS,
 )
-from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
 from mmrelay.constants.formats import (
-    DEFAULT_MATRIX_PREFIX,
-    DEFAULT_MESHTASTIC_PREFIX,
     DEFAULT_TEXT_ENCODING,
     DETECTION_SENSOR_APP,
     ENCODING_ERROR_IGNORE,
-    HTML_TAG_REGEX,
-    MARKDOWN_ESCAPE_REGEX,
-    OBJECT_REPR_REGEX,
-    PREFIX_DEFINITION_REGEX,
 )
 from mmrelay.constants.messages import (
     DEFAULT_MESSAGE_TRUNCATE_BYTES,
-    DISPLAY_NAME_DEFAULT_LENGTH,
-    MAX_TRUNCATION_LENGTH,
     MESHNET_NAME_ABBREVIATION_LENGTH,
     MESSAGE_PREVIEW_LENGTH,
     MSG_MATRIX_SYNC_FAILED,
@@ -137,7 +95,6 @@ from mmrelay.constants.network import (
     MATRIX_EVENT_EPOCH_FLOOR_MS,
     MATRIX_INITIAL_SYNC_MAX_ATTEMPTS,
     MATRIX_INITIAL_SYNC_RETRY_MAX_DELAY_SECS,
-    MATRIX_LOGIN_TIMEOUT,
     MATRIX_ROOM_SEND_TIMEOUT,
     MATRIX_STALE_STARTUP_EVENT_DROP_MS,
     MATRIX_STARTUP_STALE_FILTER_WINDOW_MS,
@@ -159,7 +116,7 @@ from mmrelay.meshtastic_utils import connect_meshtastic, send_text_reply
 
 # Import meshtastic protobuf for port numbers when needed
 from mmrelay.message_queue import get_message_queue, queue_message
-from mmrelay.paths import E2EENotSupportedError, get_credentials_path
+from mmrelay.paths import get_credentials_path
 
 # Import nio exception types with error handling for test environments.
 # matrix-nio is not marked py.typed in our env; keep import-untyped for mypy --strict.
@@ -172,7 +129,6 @@ try:
     NioRemoteProtocolError = nio_exceptions.RemoteProtocolError
     NioRemoteTransportError = nio_exceptions.RemoteTransportError
     NioLoginError = nio_responses.LoginError
-    NioLogoutError = nio_responses.LogoutError
 except (ImportError, AttributeError):
     # Fallback for test environments where nio imports might fail
     class _NioStubError(Exception):
@@ -181,7 +137,6 @@ except (ImportError, AttributeError):
         pass
 
     NioLoginError = _NioStubError
-    NioLogoutError = _NioStubError
     NioLocalProtocolError = _NioStubError
     NioRemoteProtocolError = _NioStubError
     NioLocalTransportError = _NioStubError
@@ -279,7 +234,7 @@ _MIME_TYPE_MAP: Dict[str, str] = {
 # import resolution.
 # ---------------------------------------------------------------------------
 
-# Builtins accessed by submodules via facade.NAME (must be explicit for module attribute access)
+# Builtin accessed by submodules via facade.NAME (must be explicit for module attribute access)
 input = input
 
 # Global config variable that will be set from config.py
