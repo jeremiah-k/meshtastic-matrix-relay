@@ -9,7 +9,6 @@ import mmrelay.matrix_utils as facade
 from mmrelay.cli_utils import msg_require_auth_login
 from mmrelay.config import (
     InvalidCredentialsPathTypeError,
-    async_load_credentials,
     get_explicit_credentials_path,
 )
 from mmrelay.constants.config import (
@@ -98,7 +97,7 @@ async def _resolve_and_load_credentials(
     )
 
     try:
-        credentials = await async_load_credentials()
+        credentials = await facade.async_load_credentials()
     except asyncio.CancelledError:
         raise
     except (OSError, ValueError, json.JSONDecodeError, TypeError) as exc:
@@ -184,7 +183,7 @@ async def _resolve_and_load_credentials(
                 facade.logger.info(
                     "Automatic login successful! Credentials saved to credentials.json"
                 )
-                credentials = await async_load_credentials()
+                credentials = await facade.async_load_credentials()
                 if not credentials:
                     facade.logger.error("Failed to load newly created credentials")
                     return None

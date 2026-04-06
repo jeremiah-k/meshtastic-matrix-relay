@@ -5,7 +5,7 @@ import ssl
 import sys
 from typing import Any, Optional, cast
 
-from nio import AsyncClient, AsyncClientConfig
+from nio import AsyncClientConfig
 
 import mmrelay.matrix_utils as facade
 
@@ -166,7 +166,7 @@ def _initialize_matrix_client(
     e2ee_enabled: bool,
     e2ee_store_path: str | None,
     ssl_context: ssl.SSLContext | None,
-) -> AsyncClient:
+) -> "facade.AsyncClient":
     """
     Create and configure a nio AsyncClient for the given Matrix account.
 
@@ -201,11 +201,11 @@ def _initialize_matrix_client(
     if device_id:
         client_kwargs["device_id"] = device_id
 
-    return AsyncClient(**client_kwargs)
+    return facade.AsyncClient(**client_kwargs)
 
 
 async def _perform_matrix_login(
-    client: AsyncClient,
+    client: "facade.AsyncClient",
     auth_info: "facade.MatrixAuthInfo",
 ) -> Optional[str]:
     """
@@ -219,7 +219,6 @@ async def _perform_matrix_login(
     Returns:
         device_id (str | None): The E2EE device_id that was restored or discovered, or None if no device_id is available.
     """
-    from mmrelay.config import save_credentials
     from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID, CONFIG_KEY_USER_ID
 
     e2ee_device_id = auth_info.device_id
@@ -274,7 +273,7 @@ async def _perform_matrix_login(
                 if credentials_updated and auth_info.credentials is not None:
                     try:
                         await asyncio.to_thread(
-                            save_credentials,
+                            facade.save_credentials,
                             auth_info.credentials,
                             credentials_path=auth_info.credentials_path,
                         )
@@ -340,7 +339,7 @@ async def _perform_matrix_login(
     return e2ee_device_id
 
 
-async def _maybe_upload_e2ee_keys(client: AsyncClient) -> None:
+async def _maybe_upload_e2ee_keys(client: "facade.AsyncClient") -> None:
     """
     Upload end-to-end encryption (E2EE) keys using the given Matrix client when the client requests it.
 
@@ -363,7 +362,7 @@ async def _maybe_upload_e2ee_keys(client: AsyncClient) -> None:
 
 
 async def _close_matrix_client_after_failure(
-    client: AsyncClient | None, context: str
+    client: "facade.AsyncClient | None", context: str
 ) -> None:
     """
     Close the provided Matrix AsyncClient and clear the module-level client reference when appropriate.
