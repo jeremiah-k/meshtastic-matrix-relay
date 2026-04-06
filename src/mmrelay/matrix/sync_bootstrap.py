@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import getpass
 import json
 import logging
@@ -198,6 +199,11 @@ async def _perform_initial_sync(
 
                     async with facade._MATRIX_STARTUP_SYNC_LOCK:
                         try:
+                            # Class-level monkey-patch protected by the startup sync lock.
+                            # A concurrent sync_forever() could theoretically observe the
+                            # patched method, but this is acceptable because the safe
+                            # wrapper is strictly more robust (it only adds error handling).
+                            # The patch is always restored in the finally block below.
                             nio_responses.SyncResponse._get_invite_state = staticmethod(  # pyright: ignore[reportAttributeAccessIssue]  # type: ignore[misc]
                                 _safe_get_invite_state
                             )
@@ -219,10 +225,8 @@ async def _perform_initial_sync(
                                     "_get_invite_state"
                                     in nio_responses.SyncResponse.__dict__
                                 ):
-                                    try:
+                                    with contextlib.suppress(AttributeError, TypeError):
                                         del nio_responses.SyncResponse._get_invite_state
-                                    except (AttributeError, TypeError):
-                                        pass
 
                 try:
                     sync_response = await _sync_ignore_invalid_invites()
@@ -575,7 +579,7 @@ async def login_matrix_bot(
             )
             prompted_for_credentials = True
 
-        if not (homeserver.startswith("https://") or homeserver.startswith("http://")):
+        if not homeserver.startswith(("https://", "http://")):
             homeserver = "https://" + homeserver
 
         parsed = urlparse(homeserver)

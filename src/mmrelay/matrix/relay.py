@@ -394,11 +394,6 @@ async def matrix_relay(
             if event_id:
                 facade.logger.debug(f"Message event_id: {event_id}")
 
-        except asyncio.TimeoutError:
-            facade.logger.exception(
-                "Timeout sending message to Matrix room %s", room_id
-            )
-            return
         except facade.NIO_COMM_EXCEPTIONS:
             facade.logger.exception(f"Error sending message to Matrix room {room_id}")
             return
