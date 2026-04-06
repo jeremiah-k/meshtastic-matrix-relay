@@ -588,7 +588,7 @@ async def on_room_message(
         if hasattr(plugin_obj, "matches"):
             try:
                 return bool(plugin_obj.matches(event))
-            except Exception as exc:  # noqa: BLE001 - broad catch for plugin isolation
+            except Exception:  # noqa: BLE001 - broad catch for plugin isolation
                 facade.logger.exception(
                     "Error checking plugin match for %s",
                     getattr(plugin_obj, "plugin_name", plugin_obj),
@@ -608,7 +608,7 @@ async def on_room_message(
                     facade.bot_command(cmd, event, require_mention=require_mention)
                     for cmd in plugin_obj.get_matrix_commands()
                 )
-            except Exception as exc:  # noqa: BLE001 - broad catch for plugin isolation
+            except Exception:  # noqa: BLE001 - broad catch for plugin isolation
                 facade.logger.exception(
                     "Error checking plugin commands for %s",
                     getattr(plugin_obj, "plugin_name", plugin_obj),

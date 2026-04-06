@@ -1,5 +1,4 @@
 import asyncio
-import importlib
 import json
 import logging
 import os
@@ -18,11 +17,9 @@ from mmrelay.constants.app import CREDENTIALS_FILENAME
 from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 from mmrelay.matrix_utils import (
     NioLocalTransportError,
-    NioLoginError,
     NioRemoteTransportError,
     _can_auto_create_credentials,
     _extract_localpart_from_mxid,
-    _get_detailed_matrix_error_message,
     _normalize_bot_user_id,
     connect_matrix,
     login_matrix_bot,
@@ -3273,7 +3270,6 @@ async def test_login_matrix_bot_save_credentials_failure_triggers_cleanup(
     mock_async_client,
 ):
     """Failures during save_credentials should trigger outer exception handling."""
-    from mmrelay.matrix_utils import NioLoginError
 
     mock_discovery_client = AsyncMock()
     mock_main_client = AsyncMock()

@@ -2,7 +2,6 @@ import asyncio
 import contextlib
 import importlib
 import os
-import re
 import ssl
 import sys
 import types
@@ -41,20 +40,17 @@ from mmrelay.matrix_utils import (
     _is_room_alias,
     _iter_room_alias_entries,
     _normalize_bot_user_id,
-    _send_matrix_message_with_retry,
     _update_room_id_in_mapping,
     bot_command,
     connect_matrix,
     get_displayname,
     get_user_display_name,
-    handle_matrix_reply,
     login_matrix_bot,
     matrix_relay,
     on_decryption_failure,
     on_room_member,
     on_room_message,
     send_image,
-    send_reply_to_meshtastic,
     send_room_image,
     strip_quoted_lines,
     truncate_message,
@@ -66,7 +62,6 @@ from tests.constants import (
     TEST_ROOM_ID,
     TEST_USER_ID,
 )
-from tests.helpers import InlineExecutorLoop
 
 # Test constants for login_matrix_bot tests (avoids Ruff S106 warnings)
 TEST_HOMESERVER = "https://matrix.org"
