@@ -190,7 +190,9 @@ def _get_msgs_to_keep_config(config_override: dict[str, Any] | None = None) -> i
         msg_map_config = {}
 
     msgs_to_keep = msg_map_config.get("msgs_to_keep", DEFAULT_MSGS_TO_KEEP)
-    return msgs_to_keep if isinstance(msgs_to_keep, int) else DEFAULT_MSGS_TO_KEEP
+    if isinstance(msgs_to_keep, bool) or not isinstance(msgs_to_keep, int):
+        return DEFAULT_MSGS_TO_KEEP
+    return msgs_to_keep
 
 
 def _get_detailed_matrix_error_message(matrix_response: Any) -> str:
@@ -457,7 +459,7 @@ def validate_prefix_format(
         # Test format with dummy data
         format_string.format(**available_vars)
         return True, None
-    except (KeyError, ValueError) as e:
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError) as e:
         return False, str(e)
 
 
@@ -523,7 +525,7 @@ def get_meshtastic_prefix(
             result,
         )
         return result
-    except (KeyError, ValueError) as e:
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError) as e:
         # Fallback to default format if custom format is invalid
         facade.logger.warning(
             f"Invalid prefix_format '{prefix_format}': {e}. Using default format."
@@ -588,7 +590,7 @@ def get_matrix_prefix(
             result,
         )
         return result
-    except (KeyError, ValueError) as e:
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError) as e:
         # Fallback to default format if custom format is invalid
         facade.logger.warning(
             f"Invalid matrix prefix_format '{matrix_prefix_format}': {e}. Using default format."

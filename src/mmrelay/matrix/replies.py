@@ -120,6 +120,7 @@ def format_reply_message(
     meshnet_name: str | None = None,
     local_meshnet_name: str | None = None,
     mesh_text_override: str | None = None,
+    user_id: str | None = None,
 ) -> str:
     """
     Format a Meshtastic-style reply, applying an appropriate sender prefix and truncating the result to the configured maximum length.
@@ -178,7 +179,7 @@ def format_reply_message(
         reply_message = f"{mesh_prefix}{reply_body}"
         return truncate_message(reply_message.strip())
 
-    prefix = facade.get_meshtastic_prefix(config, full_display_name)
+    prefix = facade.get_meshtastic_prefix(config, full_display_name, user_id)
     reply_message = f"{prefix}{clean_text}" if clean_text else prefix.rstrip()
     return truncate_message(reply_message)
 
@@ -395,6 +396,7 @@ async def handle_matrix_reply(
         meshnet_name=reply_meshnet_name,
         local_meshnet_name=local_meshnet_name,
         mesh_text_override=mesh_text_override,
+        user_id=event.sender,
     )
 
     if original_meshtastic_id is not None:
@@ -406,7 +408,7 @@ async def handle_matrix_reply(
             f"Relaying Matrix reply from {full_display_name} to Meshtastic as broadcast reply"
         )
 
-    await facade.send_reply_to_meshtastic(
+    return await facade.send_reply_to_meshtastic(
         reply_message,
         full_display_name,
         room_config,
@@ -418,5 +420,3 @@ async def handle_matrix_reply(
         reply_id=original_meshtastic_id,
         relay_config=config,
     )
-
-    return True

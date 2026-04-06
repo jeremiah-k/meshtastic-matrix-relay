@@ -10,6 +10,8 @@ import re
 import secrets
 from typing import Any
 
+from nio import RoomSendError
+
 import mmrelay.matrix_utils as facade
 
 __all__ = [
@@ -148,7 +150,30 @@ async def _send_matrix_message_with_retry(
                     f"Error sending message to Matrix room {room_id} after {max_retries + 1} attempts"
                 )
         else:
-            return response
+            if isinstance(response, RoomSendError):
+                if attempt < max_retries:
+                    delay = _retry_backoff_delay(attempt, base_delay, max_delay)
+                    jitter = rng.uniform(0, delay * 0.1)
+                    total_delay = delay + jitter
+                    facade.logger.warning(
+                        "API error sending to Matrix room %s (attempt %d/%d): %s, "
+                        "retrying in %.1fs...",
+                        room_id,
+                        attempt + 1,
+                        max_retries + 1,
+                        getattr(response, "message", response),
+                        total_delay,
+                    )
+                    await asyncio.sleep(total_delay)
+                else:
+                    facade.logger.error(
+                        "API error sending to Matrix room %s after %d attempts: %s",
+                        room_id,
+                        max_retries + 1,
+                        getattr(response, "message", response),
+                    )
+            else:
+                return response
 
     return None
 
@@ -258,7 +283,9 @@ async def matrix_relay(
         if room_id not in matrix_client.rooms:
             await facade.join_matrix_room(matrix_client, room_id)
 
-        relay_meshnet_name = meshnet_name or facade.config["meshtastic"]["meshnet_name"]
+        relay_meshnet_name = meshnet_name or facade.get_meshtastic_config_value(
+            facade.config, "meshnet_name", ""
+        )
 
         has_html = bool(re.search(r"</?[a-zA-Z][^>]*>", message))
         safe_message, has_prefix = facade._escape_leading_prefix_for_markdown(message)

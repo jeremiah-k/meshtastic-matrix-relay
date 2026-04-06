@@ -2,7 +2,7 @@ import io
 import os
 from types import SimpleNamespace
 
-from nio import UploadError, UploadResponse
+from nio import RoomSendError, UploadError, UploadResponse
 from PIL import Image
 
 import mmrelay.matrix_utils as facade
@@ -107,7 +107,7 @@ async def send_room_image(
     """
     content_uri = getattr(upload_response, "content_uri", None)
     if content_uri:
-        await client.room_send(
+        send_response = await client.room_send(
             room_id=room_id,
             message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
             content={
@@ -116,6 +116,18 @@ async def send_room_image(
                 "body": filename,
             },
         )
+        if isinstance(send_response, RoomSendError):
+            facade.logger.error(
+                "Failed to send image to room %s: %s",
+                room_id,
+                getattr(send_response, "message", send_response),
+            )
+            raise ImageUploadError(
+                SimpleNamespace(
+                    message=getattr(send_response, "message", "Unknown error"),
+                    status_code=getattr(send_response, "status_code", None),
+                )
+            )
     else:
         facade.logger.error(
             f"Upload failed: {getattr(upload_response, 'message', 'Unknown error')}"

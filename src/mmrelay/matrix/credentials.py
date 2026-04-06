@@ -181,7 +181,20 @@ async def _resolve_and_load_credentials(
                 facade.logger.info(
                     "Automatic login successful! Credentials saved to credentials.json"
                 )
-                credentials = await facade.async_load_credentials()
+                try:
+                    credentials = await facade.async_load_credentials()
+                except (
+                    OSError,
+                    ValueError,
+                    json.JSONDecodeError,
+                    TypeError,
+                ) as exc:
+                    facade.logger.error(
+                        "Failed to reload newly created credentials: %s",
+                        exc,
+                        exc_info=True,
+                    )
+                    return None
                 if not credentials:
                     facade.logger.error("Failed to load newly created credentials")
                     return None

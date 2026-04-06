@@ -11,7 +11,6 @@ import time
 from typing import Any
 
 from nio import (
-    InviteMemberEvent,
     MatrixRoom,
     MegolmEvent,
     ReactionEvent,
@@ -21,6 +20,12 @@ from nio import (
     ToDeviceError,
     ToDeviceResponse,
 )
+
+try:
+    from nio import InviteMemberEvent
+except ImportError:
+    from nio.events.invite_events import InviteMemberEvent
+
 from nio.events.room_events import RoomMemberEvent
 
 import mmrelay.matrix_utils as facade
@@ -319,7 +324,9 @@ async def on_room_message(
         )
         return
 
-    local_meshnet_name = facade.config["meshtastic"]["meshnet_name"]
+    local_meshnet_name = facade.get_meshtastic_config_value(
+        facade.config, "meshnet_name", ""
+    )
 
     is_reply = False
     reply_to_event_id = None
@@ -711,7 +718,15 @@ async def on_invite(room: MatrixRoom, event: InviteMemberEvent) -> None:
 
     room_id = room.room_id
 
-    if not facade._is_room_mapped(facade.matrix_rooms, room_id):
+    candidates = [room_id]
+    canonical_alias = getattr(room, "canonical_alias", None)
+    if isinstance(canonical_alias, str) and canonical_alias:
+        candidates.append(canonical_alias)
+    aliases = getattr(room, "aliases", None)
+    if isinstance(aliases, (list, tuple)):
+        candidates.extend(a for a in aliases if isinstance(a, str))
+
+    if not any(facade._is_room_mapped(facade.matrix_rooms, c) for c in candidates):
         facade.logger.info(
             f"Room '{room_id}' is not in matrix_rooms configuration, ignoring invite"
         )
