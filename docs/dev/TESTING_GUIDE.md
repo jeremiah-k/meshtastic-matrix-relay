@@ -198,7 +198,6 @@ The project uses a cleanup fixture in `tests/conftest.py` to handle AsyncMock cl
 # In conftest.py
 asyncmock_patterns = [
     "test_async_patterns",
-    "test_matrix_utils",
     "test_matrix_utils_edge_cases",
     "test_mesh_relay_plugin",
     "test_map_plugin",
@@ -619,9 +618,7 @@ The `mmrelay.matrix_utils` module serves as a facade that re-exports functions f
 
 ### Where to write new Matrix tests
 
-Do **not** append new tests to `tests/test_matrix_utils.py`. That file is a monolith (~8,100 lines) that cannot be safely parallelized.
-
-Instead, write tests into split domain files:
+Write tests into the appropriate split domain files:
 
 | File                                          | Domain                                      |
 | --------------------------------------------- | ------------------------------------------- |
@@ -639,24 +636,25 @@ Instead, write tests into split domain files:
 | `tests/test_matrix_utils_relay.py`            | Message relay and retry logic               |
 | `tests/test_matrix_utils_media.py`            | Image upload and media handling             |
 | `tests/test_matrix_utils_replies.py`          | Reply formatting and threading              |
+| `tests/test_matrix_utils_detection.py`        | Client and server capability detection      |
 
 If no existing file matches, create a new one following the `test_matrix_utils_<domain>.py` naming convention.
 
 ### Legacy File Freeze
 
-The following files are legacy-monoliths and are subject to migration rules:
+> **Status Update**: `tests/test_matrix_utils.py` has been successfully eliminated. All tests have been migrated to the appropriate domain files listed above.
 
-- `tests/test_matrix_utils.py` (~6,800 lines)
+The following file is still a legacy-monolith and is subject to migration rules:
+
 - `tests/test_matrix_utils_auth.py` (~1,900 lines after auth split)
 
 **Rules:**
 
-1. Do NOT add new tests to these files
-2. Use them only as migration sources while decomposing coverage into split domain files
+1. Do NOT add new tests to this file
+2. Use it only as a migration source while decomposing coverage into split domain files
 3. Moved tests must be removed from the legacy file in the same change
 4. Prefer existing split files before creating new ones
-5. The intended end state is to eliminate `tests/test_matrix_utils.py` completely
-6. For `tests/test_matrix_utils_auth.py`, the goal is to keep only connect_matrix-related tests; login/logout/credentials/E2EE tests should be in their respective split files
+5. The goal is to keep only connect_matrix-related tests; login/logout/credentials/E2EE tests should be in their respective split files
 
 ### Patch targets
 

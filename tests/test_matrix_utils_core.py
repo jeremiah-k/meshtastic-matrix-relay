@@ -4,11 +4,16 @@ import pytest
 
 from mmrelay.matrix_utils import (
     _add_truncated_vars,
+    _can_auto_create_credentials,
     _create_mapping_info,
     _escape_leading_prefix_for_markdown,
+    _extract_localpart_from_mxid,
     _get_msgs_to_keep_config,
     _get_valid_device_id,
+    _is_room_alias,
+    _iter_room_alias_entries,
     _normalize_bot_user_id,
+    _update_room_id_in_mapping,
     format_reply_message,
     get_interaction_settings,
     get_matrix_prefix,
@@ -738,3 +743,99 @@ def test_create_mapping_info():
         "msgs_to_keep": 100,
     }
     assert result == expected
+
+
+# Migrated unique tests from test_matrix_utils.py
+
+
+def test_is_room_alias_with_various_inputs():
+    """Test _is_room_alias function with different input types."""
+    # Test with valid alias
+    assert _is_room_alias("#room:example.com") is True
+
+    # Test with room ID (should be False)
+    assert _is_room_alias("!room:example.com") is False
+
+    # Test with non-string types
+    assert _is_room_alias(None) is False
+    assert _is_room_alias(123) is False
+    assert _is_room_alias([]) is False
+
+
+def test_iter_room_alias_entries_list_format():
+    """Test _iter_room_alias_entries with list format."""
+    # Test with list of strings
+    mapping = ["#room1:example.com", "#room2:example.com"]
+    entries = list(_iter_room_alias_entries(mapping))
+
+    assert len(entries) == 2
+    assert entries[0][0] == "#room1:example.com"
+    assert entries[1][0] == "#room2:example.com"
+
+    # Test that setters work
+    entries[0][1]("!newroom:example.com")
+    assert mapping[0] == "!newroom:example.com"
+
+
+def test_iter_room_alias_entries_dict_format():
+    """Test _iter_room_alias_entries with dict format."""
+    mapping = {
+        "one": "#room1:example.com",
+        "two": {"id": "#room2:example.com"},
+    }
+    entries = list(_iter_room_alias_entries(mapping))
+
+    assert len(entries) == 2
+    entries[0][1]("!new1:example.com")
+    entries[1][1]("!new2:example.com")
+
+    assert mapping["one"] == "!new1:example.com"
+    assert mapping["two"]["id"] == "!new2:example.com"
+
+
+def test_can_auto_create_credentials_missing_fields():
+    """Test _can_auto_create_credentials with missing fields."""
+    # Test missing homeserver
+    config1 = {"bot_user_id": "@bot:example.com", "password": "secret123"}
+    assert _can_auto_create_credentials(config1) is False
+
+    # Test missing user_id
+    config2 = {"homeserver": "https://example.com", "password": "secret123"}
+    assert _can_auto_create_credentials(config2) is False
+
+    # Test empty strings
+    config3 = {
+        "homeserver": "",
+        "bot_user_id": "@bot:example.com",
+        "password": "secret123",
+    }
+    assert _can_auto_create_credentials(config3) is False
+
+
+def test_extract_localpart_from_mxid():
+    """Test _extract_localpart_from_mxid with different input formats."""
+    # Test with full MXID
+    assert _extract_localpart_from_mxid("@user:example.com") == "user"
+
+    # Test with MXID using different server
+    assert _extract_localpart_from_mxid("@bot:tchncs.de") == "bot"
+
+    # Test with localpart only
+    assert _extract_localpart_from_mxid("alice") == "alice"
+
+    # Test with empty string
+    assert _extract_localpart_from_mxid("") == ""
+
+    # Test with None
+    assert _extract_localpart_from_mxid(None) is None
+
+    # Test with MXID containing special characters
+    assert _extract_localpart_from_mxid("@user_123:example.com") == "user_123"
+
+
+def test_update_room_id_in_mapping_unsupported_type():
+    """Test _update_room_id_in_mapping with unsupported mapping type."""
+    mapping = "not a list or dict"
+    result = _update_room_id_in_mapping(mapping, "#old:example.com", "!new:example.com")
+
+    assert result is False
