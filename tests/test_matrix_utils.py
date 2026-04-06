@@ -6880,6 +6880,7 @@ async def test_handle_matrix_reply_unexpected_id_type_broadcasts():
         mock_db_lookup.return_value = (12.34, "!room123", "original text", "local")
         mock_format_reply.return_value = "formatted reply"
         mock_get_display_name.return_value = "Test User"
+        mock_send_reply.return_value = True
 
         result = await handle_matrix_reply(
             mock_room,

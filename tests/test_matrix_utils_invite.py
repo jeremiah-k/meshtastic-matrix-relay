@@ -382,3 +382,95 @@ async def test_on_invite_with_id_in_mapping(mock_logger: MagicMock) -> None:
         "Room '!abc123:matrix.org' is in matrix_rooms configuration, accepting invite"
     )
     mock_client.join.assert_called_once_with("!abc123:matrix.org")
+
+
+@pytest.mark.usefixtures("reset_matrix_utils_globals")
+@patch("mmrelay.matrix_utils.logger")
+async def test_on_invite_canonical_alias_match(mock_logger: MagicMock) -> None:
+    mock_room = MagicMock()
+    mock_room.room_id = "!unmapped:matrix.org"
+    mock_room.canonical_alias = "#mapped:matrix.org"
+    mock_room.aliases = None
+
+    mock_event = MagicMock()
+    mock_event.state_key = "@bot:matrix.org"
+    mock_event.membership = "invite"
+    mock_event.sender = "@inviter:matrix.org"
+
+    mock_client = AsyncMock()
+    mock_client.rooms = {}
+    mock_join_response = MagicMock()
+    mock_join_response.room_id = "!unmapped:matrix.org"
+    mock_client.join.return_value = mock_join_response
+
+    import mmrelay.matrix_utils
+
+    mmrelay.matrix_utils.matrix_client = mock_client
+    mmrelay.matrix_utils.bot_user_id = "@bot:matrix.org"
+    mmrelay.matrix_utils.matrix_rooms = [
+        {"id": "#mapped:matrix.org", "meshtastic_channel": 0}
+    ]
+
+    await on_invite(mock_room, mock_event)
+    mock_client.join.assert_called_once_with("!unmapped:matrix.org")
+
+
+@pytest.mark.usefixtures("reset_matrix_utils_globals")
+@patch("mmrelay.matrix_utils.logger")
+async def test_on_invite_aliases_list_match(mock_logger: MagicMock) -> None:
+    mock_room = MagicMock()
+    mock_room.room_id = "!unmapped:matrix.org"
+    mock_room.canonical_alias = None
+    mock_room.aliases = ["#alias1:matrix.org", "#mapped:matrix.org"]
+
+    mock_event = MagicMock()
+    mock_event.state_key = "@bot:matrix.org"
+    mock_event.membership = "invite"
+    mock_event.sender = "@inviter:matrix.org"
+
+    mock_client = AsyncMock()
+    mock_client.rooms = {}
+    mock_join_response = MagicMock()
+    mock_join_response.room_id = "!unmapped:matrix.org"
+    mock_client.join.return_value = mock_join_response
+
+    import mmrelay.matrix_utils
+
+    mmrelay.matrix_utils.matrix_client = mock_client
+    mmrelay.matrix_utils.bot_user_id = "@bot:matrix.org"
+    mmrelay.matrix_utils.matrix_rooms = [
+        {"id": "#mapped:matrix.org", "meshtastic_channel": 0}
+    ]
+
+    await on_invite(mock_room, mock_event)
+    mock_client.join.assert_called_once_with("!unmapped:matrix.org")
+
+
+@pytest.mark.usefixtures("reset_matrix_utils_globals")
+@patch("mmrelay.matrix_utils.logger")
+async def test_on_invite_no_alias_match_rejects(mock_logger: MagicMock) -> None:
+    mock_room = MagicMock()
+    mock_room.room_id = "!unmapped:matrix.org"
+    mock_room.canonical_alias = "#other:matrix.org"
+    mock_room.aliases = ["#alias1:matrix.org"]
+
+    mock_event = MagicMock()
+    mock_event.state_key = "@bot:matrix.org"
+    mock_event.membership = "invite"
+    mock_event.sender = "@inviter:matrix.org"
+
+    mock_client = AsyncMock()
+
+    import mmrelay.matrix_utils
+
+    mmrelay.matrix_utils.matrix_client = mock_client
+    mmrelay.matrix_utils.bot_user_id = "@bot:matrix.org"
+    mmrelay.matrix_utils.matrix_rooms = [
+        {"id": "!mapped:matrix.org", "meshtastic_channel": 0}
+    ]
+
+    await on_invite(mock_room, mock_event)
+    mock_client.join.assert_not_called()
+    mock_logger.info.assert_any_call(
+        "Room '!unmapped:matrix.org' is not in matrix_rooms configuration, ignoring invite"
+    )

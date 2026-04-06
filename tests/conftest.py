@@ -488,6 +488,18 @@ nio_mock.WhoamiError = MockWhoamiError
 nio_mock.SyncError = MockSyncError
 
 
+class MockRoomSendError(Exception):
+    def __init__(
+        self, message: str = "Room send error", status_code: str | None = None
+    ):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+
+
+nio_mock.RoomSendError = MockRoomSendError
+
+
 # Mock ToDevice response classes for isinstance checks
 class MockToDeviceResponse:
     """Mock ToDeviceResponse for testing."""

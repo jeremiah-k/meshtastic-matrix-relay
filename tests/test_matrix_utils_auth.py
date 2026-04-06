@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import tempfile
@@ -1449,4 +1450,38 @@ async def test_login_matrix_bot_existing_credentials_and_e2ee_check_exceptions(
     assert any(
         "Could not load config for E2EE check" in call.args[0]
         for call in mock_logger.debug.call_args_list
+    )
+
+
+@pytest.mark.asyncio
+@patch("mmrelay.matrix_utils.matrix_client", None)
+@patch("mmrelay.matrix_utils.logger")
+@patch(
+    "mmrelay.matrix_utils.login_matrix_bot", new_callable=AsyncMock, return_value=True
+)
+@patch("mmrelay.matrix_utils.async_load_credentials", new_callable=AsyncMock)
+async def test_connect_matrix_auto_login_reload_json_decode_error(
+    mock_load_credentials, mock_login_bot, mock_logger
+):
+    mock_load_credentials.side_effect = json.JSONDecodeError("test", "", 0)
+
+    config = {
+        "matrix": {
+            "homeserver": "https://matrix.org",
+            "bot_user_id": "@test:matrix.org",
+            "password": "test_password",
+        },
+        "matrix_rooms": [],
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.get_credentials_path", side_effect=OSError("test")),
+        patch("mmrelay.matrix_utils.get_explicit_credentials_path", return_value=None),
+    ):
+        result = await connect_matrix(config)
+
+    assert result is None
+    assert any(
+        "Failed to reload newly created credentials" in call.args[0]
+        for call in mock_logger.error.call_args_list
     )

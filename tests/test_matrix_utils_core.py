@@ -6,6 +6,7 @@ from mmrelay.matrix_utils import (
     _add_truncated_vars,
     _create_mapping_info,
     _escape_leading_prefix_for_markdown,
+    _get_msgs_to_keep_config,
     _get_valid_device_id,
     _normalize_bot_user_id,
     format_reply_message,
@@ -641,3 +642,42 @@ def test_get_valid_device_id_non_string():
 
     result = _get_valid_device_id([])
     assert result is None
+
+
+def test_get_msgs_to_keep_config_rejects_true():
+    config = {"database": {"msg_map": {"msgs_to_keep": True}}}
+    result = _get_msgs_to_keep_config(config)
+    assert result == 500
+
+
+def test_get_msgs_to_keep_config_rejects_false():
+    config = {"database": {"msg_map": {"msgs_to_keep": False}}}
+    result = _get_msgs_to_keep_config(config)
+    assert result == 500
+
+
+def test_get_meshtastic_prefix_index_error_fallback():
+    config = {"meshtastic": {"prefix_enabled": True, "prefix_format": "{0}"}}
+    result = get_meshtastic_prefix(config, "Alice")
+    assert result == "Alice[M]: "
+
+
+def test_get_matrix_prefix_attribute_error_fallback():
+    config = {
+        "matrix": {
+            "matrix_prefix_enabled": True,
+            "matrix_prefix_format": "{long.nonexistent}",
+        }
+    }
+    result = get_matrix_prefix(config, "Alice", "A", "TestMesh")
+    assert result == "[Alice/TestMesh]: "
+
+
+def test_validate_prefix_format_index_error():
+    result = validate_prefix_format("{0}", {"display5": "Test"})
+    assert result[0] is False
+
+
+def test_validate_prefix_format_attribute_error():
+    result = validate_prefix_format("{display.nonexistent}", {"display": "Test"})
+    assert result[0] is False
