@@ -9,13 +9,8 @@ Tests automatic room joining on invitation:
 - Edge cases for various invite scenarios
 """
 
-import os
-import sys
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pytest
 
