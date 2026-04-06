@@ -2,128 +2,38 @@ from __future__ import annotations
 
 import asyncio
 import getpass
-import html
-import importlib
 import json
 import logging
 import os
 import re
-import secrets
 import ssl
-import sys
-import time
-from dataclasses import dataclass
-from types import SimpleNamespace
 from typing import Any, Optional, cast
 from urllib.parse import urlparse
 
 from nio import (
     AsyncClientConfig,
-    MatrixRoom,
-    MegolmEvent,
-    ProfileGetDisplayNameError,
-    ProfileGetDisplayNameResponse,
-    ReactionEvent,
-    RoomMessageEmote,
-    RoomMessageNotice,
-    RoomMessageText,
     SyncError,
-    ToDeviceError,
-    ToDeviceResponse,
-    UploadError,
-    UploadResponse,
 )
-from nio.events.room_events import RoomMemberEvent
-
-try:
-    from nio import InviteMemberEvent
-except ImportError:
-    from nio.events.invite_events import InviteMemberEvent
-
-from PIL import Image
 
 import mmrelay.config as config_module
 import mmrelay.matrix_utils as facade
-from mmrelay.config import (
-    InvalidCredentialsPathTypeError,
-    get_meshtastic_config_value,
-)
-from mmrelay.constants.app import WINDOWS_PLATFORM
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
     CONFIG_KEY_BOT_USER_ID,
     CONFIG_KEY_DEVICE_ID,
     CONFIG_KEY_HOMESERVER,
-    CONFIG_KEY_PASSWORD,
     CONFIG_KEY_USER_ID,
-    CONFIG_SECTION_DATABASE,
-    CONFIG_SECTION_DATABASE_LEGACY,
-    CONFIG_SECTION_MATRIX,
-    CONFIG_SECTION_MESHTASTIC,
-    DEFAULT_BROADCAST_ENABLED,
-    DEFAULT_DETECTION_SENSOR,
-    E2EE_KEY_REQUEST_BASE_DELAY,
-    E2EE_KEY_REQUEST_MAX_ATTEMPTS,
-    E2EE_KEY_REQUEST_MAX_DELAY,
     E2EE_KEY_SHARING_DELAY_SECONDS,
-    REQUIRED_CREDENTIALS_KEYS,
-)
-from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
-from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
-from mmrelay.constants.formats import (
-    DEFAULT_MATRIX_PREFIX,
-    DEFAULT_MESHTASTIC_PREFIX,
-    DEFAULT_TEXT_ENCODING,
-    DETECTION_SENSOR_APP,
-    ENCODING_ERROR_IGNORE,
-    HTML_TAG_REGEX,
-    MARKDOWN_ESCAPE_REGEX,
-    OBJECT_REPR_REGEX,
-    PREFIX_DEFINITION_REGEX,
-)
-from mmrelay.constants.messages import (
-    DEFAULT_MESSAGE_TRUNCATE_BYTES,
-    DISPLAY_NAME_DEFAULT_LENGTH,
-    MAX_TRUNCATION_LENGTH,
-    MESHNET_NAME_ABBREVIATION_LENGTH,
-    MESSAGE_PREVIEW_LENGTH,
-    MSG_MATRIX_SYNC_FAILED,
-    MSG_MATRIX_SYNC_TIMEOUT,
-    MSG_MISSING_MATRIX_ROOMS,
-    PORTNUM_DETECTION_SENSOR_APP,
-    SHORTNAME_FALLBACK_LENGTH,
 )
 from mmrelay.constants.network import (
-    MATRIX_CLOCK_ROLLBACK_DISABLE_MS,
-    MATRIX_EARLY_SYNC_TIMEOUT,
-    MATRIX_EVENT_EPOCH_FLOOR_MS,
-    MATRIX_INITIAL_SYNC_MAX_ATTEMPTS,
-    MATRIX_INITIAL_SYNC_RETRY_MAX_DELAY_SECS,
     MATRIX_LOGIN_TIMEOUT,
-    MATRIX_ROOM_SEND_TIMEOUT,
-    MATRIX_STALE_STARTUP_EVENT_DROP_MS,
-    MATRIX_STARTUP_STALE_FILTER_WINDOW_MS,
-    MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS,
-    MATRIX_SYNC_OPERATION_TIMEOUT,
-    MATRIX_SYNC_RETRY_DELAY_SECS,
-    MATRIX_TO_DEVICE_TIMEOUT,
-    MILLISECONDS_PER_SECOND,
 )
-from mmrelay.e2ee_utils import get_e2ee_error_message, get_e2ee_status
 from mmrelay.paths import E2EENotSupportedError
 
 NIO_COMM_EXCEPTIONS = facade.NIO_COMM_EXCEPTIONS
 JSONSCHEMA_VALIDATION_ERROR = facade.JSONSCHEMA_VALIDATION_ERROR
 SYNC_RETRY_EXCEPTIONS = facade.SYNC_RETRY_EXCEPTIONS
 WHOAMI_USER_ID_FALLBACK_EXCEPTIONS = facade.WHOAMI_USER_ID_FALLBACK_EXCEPTIONS
-WHOAMI_USER_ID_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    *NIO_COMM_EXCEPTIONS,
-    OSError,
-    AttributeError,
-    TypeError,
-    ValueError,
-    RuntimeError,
-)
 
 __all__ = [
     "_perform_initial_sync",

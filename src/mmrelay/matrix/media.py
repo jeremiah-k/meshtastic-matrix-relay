@@ -121,7 +121,7 @@ async def send_room_image(
         facade.logger.error(
             f"Upload failed: {getattr(upload_response, 'message', 'Unknown error')}"
         )
-        raise getattr(facade, "ImageUploadError")(upload_response)
+        raise facade.ImageUploadError(upload_response)
 
 
 async def send_image(

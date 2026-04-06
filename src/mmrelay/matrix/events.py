@@ -8,14 +8,12 @@ import asyncio
 import inspect
 import re
 import time
-from typing import Any, cast
+from typing import Any
 
 from nio import (
     InviteMemberEvent,
     MatrixRoom,
     MegolmEvent,
-    ProfileGetDisplayNameError,
-    ProfileGetDisplayNameResponse,
     ReactionEvent,
     RoomMessageEmote,
     RoomMessageNotice,

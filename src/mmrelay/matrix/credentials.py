@@ -19,7 +19,6 @@ from mmrelay.constants.config import (
     CONFIG_KEY_USER_ID,
     REQUIRED_CREDENTIALS_KEYS,
 )
-from mmrelay.paths import E2EENotSupportedError
 
 __all__ = [
     "_resolve_credentials_save_path",
@@ -104,7 +103,7 @@ async def _resolve_and_load_credentials(
         credentials = None
 
     if credentials is None:
-        if candidate_path and await asyncio.to_thread(os.path.isfile, candidate_path):
+        if candidate_path and await asyncio.to_thread(os.path.isfile, candidate_path):  # type: ignore[arg-type]
             facade.logger.warning(
                 "Ignoring invalid credentials file: %s", candidate_path
             )

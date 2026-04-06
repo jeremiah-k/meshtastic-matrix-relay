@@ -10,16 +10,6 @@ import re
 import secrets
 from typing import Any
 
-from nio import (
-    AsyncClient,
-    MatrixRoom,
-    RoomMessageEmote,
-    RoomMessageNotice,
-    RoomMessageText,
-    ToDeviceError,
-    ToDeviceResponse,
-)
-
 import mmrelay.matrix_utils as facade
 
 __all__ = [
