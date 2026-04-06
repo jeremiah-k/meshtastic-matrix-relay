@@ -623,21 +623,39 @@ Do **not** append new tests to `tests/test_matrix_utils.py`. That file is a mono
 
 Instead, write tests into split domain files:
 
-| File                                        | Domain                                      |
-| ------------------------------------------- | ------------------------------------------- |
-| `tests/test_matrix_utils_invite.py`         | Room invite handling and alias matching     |
-| `tests/test_matrix_utils_auth.py`           | Login, logout, credential loading           |
-| `tests/test_matrix_utils_core.py`           | Prefixes, config parsing, general utilities |
-| `tests/test_matrix_utils_room.py`           | Room mapping and discovery                  |
-| `tests/test_matrix_utils_error_handling.py` | Error paths across Matrix operations        |
-| `tests/test_matrix_utils_edge_cases.py`     | Boundary conditions and unusual inputs      |
-| `tests/test_matrix_utils_bot.py`            | Bot lifecycle and identity                  |
-| `tests/test_matrix_utils_errors.py`         | Error classification and reporting          |
-| `tests/test_matrix_utils_relay.py`          | Message relay and retry logic               |
-| `tests/test_matrix_utils_media.py`          | Image upload and media handling             |
-| `tests/test_matrix_utils_replies.py`        | Reply formatting and threading              |
+| File                                          | Domain                                      |
+| --------------------------------------------- | ------------------------------------------- |
+| `tests/test_matrix_utils_invite.py`           | Room invite handling and alias matching     |
+| `tests/test_matrix_utils_auth_login.py`       | Login flow and discovery                    |
+| `tests/test_matrix_utils_auth_credentials.py` | Credential loading and storage              |
+| `tests/test_matrix_utils_auth_logout.py`      | Logout and cleanup                          |
+| `tests/test_matrix_utils_auth_e2ee.py`        | E2EE setup and decryption                   |
+| `tests/test_matrix_utils_core.py`             | Prefixes, config parsing, general utilities |
+| `tests/test_matrix_utils_room.py`             | Room mapping and discovery                  |
+| `tests/test_matrix_utils_error_handling.py`   | Error paths across Matrix operations        |
+| `tests/test_matrix_utils_edge_cases.py`       | Boundary conditions and unusual inputs      |
+| `tests/test_matrix_utils_bot.py`              | Bot lifecycle and identity                  |
+| `tests/test_matrix_utils_errors.py`           | Error classification and reporting          |
+| `tests/test_matrix_utils_relay.py`            | Message relay and retry logic               |
+| `tests/test_matrix_utils_media.py`            | Image upload and media handling             |
+| `tests/test_matrix_utils_replies.py`          | Reply formatting and threading              |
 
 If no existing file matches, create a new one following the `test_matrix_utils_<domain>.py` naming convention.
+
+### Legacy File Freeze
+
+The following files are considered legacy-monolith and are frozen for new test additions:
+
+- `tests/test_matrix_utils.py` (~6,800 lines) - frozen for new tests
+- `tests/test_matrix_utils_auth.py` (~4,700 lines) - frozen for new tests
+
+**Rules:**
+
+1. Do NOT add new tests to these files
+2. Only small bugfixes allowed if absolutely necessary
+3. New Matrix tests MUST go into the split domain files listed above
+4. When migrating tests, remove them from the legacy file in the same change to prevent duplication
+5. The auth split files (`test_matrix_utils_auth_*.py`) are the preferred destination for auth-related tests
 
 ### Patch targets
 
