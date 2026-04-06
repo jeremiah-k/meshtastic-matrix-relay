@@ -645,21 +645,32 @@ Write tests into the appropriate split domain files:
 
 If no existing file matches, create a new one following the `test_matrix_utils_<domain>.py` naming convention.
 
-### Legacy File Freeze
+### Legacy File Status
 
-> **Status Update**: `tests/test_matrix_utils.py` has been successfully eliminated. All tests have been migrated to the appropriate domain files listed above.
+Both legacy Matrix monoliths have been eliminated:
 
-The following file is still a legacy-monolith and is subject to migration rules:
+- `tests/test_matrix_utils.py` — eliminated
+- `tests/test_matrix_utils_auth.py` — eliminated
 
-- `tests/test_matrix_utils_auth.py` (~1,840 lines, now effectively a temporary `connect_matrix` legacy file)
+All Matrix tests now live in the split domain files listed above.
 
 **Rules:**
 
-1. **Do NOT add new tests to this file** — it is frozen and migration-source-only
-2. **Use it only as a migration source** while decomposing coverage into split domain files
-3. **Moved tests must be removed from the legacy file in the same change** — no duplication
-4. **Prefer existing split files before creating new ones**
-5. **This file should ultimately be eliminated entirely** — new `connect_matrix` tests should go into the appropriate split files (e.g., `test_matrix_utils_connect.py`, `test_matrix_utils_connect_sync.py`, etc.) rather than this legacy file
+1. **Do NOT recreate legacy catch-all Matrix test files** — no new `test_matrix_utils.py` or `test_matrix_utils_auth.py`
+2. **New Matrix tests must go into the appropriate split domain file** — extend the file whose domain matches the behavior under test
+3. **Prefer existing split files before creating new ones**
+4. **If a domain file grows too large, split it by subdomain** — e.g. `test_matrix_utils_relay_send.py`, `test_matrix_utils_relay_formatting.py` — rather than creating a new misc/catch-all file
+
+### File Boundary Guidance
+
+- **`auth_login.py`** — login flow, user discovery, authentication-specific behavior
+- **`connect_*` files** — `connect_matrix` orchestration, bootstrap, sync, credentials reload, room setup, E2EE/device initialization during connection
+- **`relay.py`** — message relay, retry logic, `on_room_message` handler, message formatting, mapping/storage, reply/quote behavior, meshnet/prefix relay
+- **`room.py`** — room mapping and discovery (separate from connect-time room setup)
+- **`auth_credentials.py`** — credential loading and storage (separate from connect-time credential reload)
+- **`auth_e2ee.py`** — E2EE setup and decryption logic (separate from connect-time E2EE bootstrapping)
+
+If unsure where a new test belongs, follow the function's source module: tests for `mmrelay.matrix.relay` go in `test_matrix_utils_relay.py`, tests for `mmrelay.matrix.connect` go in `test_matrix_utils_connect.py`, etc.
 
 ### Patch targets
 
