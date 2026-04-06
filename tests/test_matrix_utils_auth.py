@@ -2933,6 +2933,10 @@ async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch, tmp_path):
     sleep_mock.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+@patch("mmrelay.matrix_utils.async_load_credentials", new_callable=AsyncMock)
+@patch("mmrelay.matrix_utils._create_ssl_context")
+@patch("mmrelay.matrix_utils.AsyncClient")
 async def test_connect_matrix_legacy_config(
     mock_async_client, mock_ssl_context, mock_load_credentials
 ):
