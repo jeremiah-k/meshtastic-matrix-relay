@@ -80,8 +80,7 @@ async def upload_image(
         )
     except facade.NIO_COMM_EXCEPTIONS as e:
         facade.logger.exception("Image upload failed due to a network error")
-        upload_error = SimpleNamespace(message=str(e), status_code=None)
-        return upload_error
+        return SimpleNamespace(message=str(e), status_code=None)
     else:
         return response
 
@@ -121,7 +120,7 @@ async def send_room_image(
         facade.logger.error(
             f"Upload failed: {getattr(upload_response, 'message', 'Unknown error')}"
         )
-        raise facade.ImageUploadError(upload_response)
+        raise ImageUploadError(upload_response)
 
 
 async def send_image(
@@ -138,7 +137,5 @@ async def send_image(
     Raises:
         ImageUploadError: If the upload or send operation fails.
     """
-    response = await facade.upload_image(client=client, image=image, filename=filename)
-    await facade.send_room_image(
-        client, room_id, upload_response=response, filename=filename
-    )
+    response = await upload_image(client=client, image=image, filename=filename)
+    await send_room_image(client, room_id, upload_response=response, filename=filename)

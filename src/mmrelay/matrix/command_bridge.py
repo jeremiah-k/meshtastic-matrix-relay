@@ -49,6 +49,9 @@ def _refresh_bot_start_timestamps() -> None:
 
     Called at the start of each Matrix bootstrap so that stale-event startup
     window filtering is anchored to the actual bootstrap rather than module import.
+
+    Note: Not thread-safe. Must be called only during single-threaded bootstrap,
+    before concurrent event processing begins.
     """
     facade.bot_start_time = int(facade.time.time() * facade.MILLISECONDS_PER_SECOND)
     facade.bot_start_monotonic_secs = facade.time.monotonic()
@@ -110,9 +113,11 @@ def bot_command(
         if ident:
             try:
                 mention_parts.append(re.escape(str(ident)))
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 - str() may invoke broken __str__
                 facade.logger.debug(
-                    "Failed to escape identifier %r for bot_command pattern", ident
+                    "Failed to escape identifier %r for bot_command pattern: %s",
+                    ident,
+                    type(exc).__name__,
                 )
                 continue
 

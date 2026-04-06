@@ -2958,10 +2958,10 @@ async def test_send_image():
     mock_upload_response.content_uri = "mxc://matrix.org/test123"
 
     with patch(
-        "mmrelay.matrix_utils.upload_image", return_value=mock_upload_response
+        "mmrelay.matrix.media.upload_image", return_value=mock_upload_response
     ) as mock_upload:
         with patch(
-            "mmrelay.matrix_utils.send_room_image", return_value=None
+            "mmrelay.matrix.media.send_room_image", return_value=None
         ) as mock_send:
             await send_image(mock_client, "!room:matrix.org", mock_image, "test.png")
 

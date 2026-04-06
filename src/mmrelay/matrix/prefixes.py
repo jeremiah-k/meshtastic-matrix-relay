@@ -1,5 +1,5 @@
 import re
-from typing import Any, Dict
+from typing import Any
 from urllib.parse import urlparse
 
 import mmrelay.matrix_utils as facade
@@ -54,7 +54,7 @@ def _first_nonblank_str(*values: Any) -> str | None:
     return None
 
 
-def _can_auto_create_credentials(matrix_config: Dict[str, Any] | None) -> bool:
+def _can_auto_create_credentials(matrix_config: dict[str, Any] | None) -> bool:
     """
     Determine whether the Matrix configuration contains the fields required to create credentials automatically.
 
@@ -494,12 +494,11 @@ def get_meshtastic_prefix(
     # Parse username and server from user_id if available
     username = ""
     server = ""
-    if user_id:
+    if user_id and user_id.startswith("@") and ":" in user_id:
         # Extract username and server from @username:server.com format
-        if user_id.startswith("@") and ":" in user_id:
-            parts = user_id[1:].split(":", 1)  # Remove @ and split on first :
-            username = parts[0]
-            server = parts[1] if len(parts) > 1 else ""
+        parts = user_id[1:].split(":", 1)  # Remove @ and split on first :
+        username = parts[0]
+        server = parts[1] if len(parts) > 1 else ""
 
     # Available variables for formatting with variable length support
     format_vars = {

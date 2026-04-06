@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, cast
+from typing import Any
 
 import mmrelay.matrix_utils as facade
 
@@ -108,7 +108,6 @@ async def get_user_display_name(
             facade.logger.debug(f"Failed to get display name for {event.sender}: {e}")
             return facade.cast(str, event.sender)
     return facade.cast(str, event.sender)
-    return cast(str, event.sender)
 
 
 def format_reply_message(

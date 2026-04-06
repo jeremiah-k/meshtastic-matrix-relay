@@ -107,11 +107,13 @@ async def _configure_e2ee(
                                 os.makedirs, e2ee_store_path, exist_ok=True
                             )
                         except OSError as e:
-                            facade.logger.warning(
-                                "Could not create E2EE store directory %s: %s",
+                            facade.logger.error(
+                                "Could not create E2EE store directory %s: %s; disabling E2EE for this session.",
                                 e2ee_store_path,
                                 e,
                             )
+                            e2ee_enabled = False
+                            e2ee_store_path = None
 
                         store_exists = await asyncio.to_thread(
                             os.path.exists, e2ee_store_path
@@ -127,8 +129,8 @@ async def _configure_e2ee(
                                 f"Found existing E2EE store files: {', '.join(db_files)}"
                             )
                         else:
-                            facade.logger.warning(
-                                "No existing E2EE store files found. Encryption may not work correctly."
+                            facade.logger.info(
+                                "No existing E2EE store files found; this is expected for first-time setup and encryption will initialize on first use."
                             )
 
                         facade.logger.debug(f"Using E2EE store path: {e2ee_store_path}")

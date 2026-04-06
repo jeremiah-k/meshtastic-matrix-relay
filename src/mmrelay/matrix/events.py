@@ -408,9 +408,12 @@ async def on_room_message(
                 )
                 return
 
-            meshtastic_id, matrix_room_id, meshtastic_text_db, meshtastic_meshnet_db = (
-                orig
-            )
+            (
+                _meshtastic_id,
+                _matrix_room_id,
+                meshtastic_text_db,
+                _meshtastic_meshnet_db,
+            ) = orig
             full_display_name = await facade.get_user_display_name(room, event)
 
             prefix = facade.get_meshtastic_prefix(facade.config, full_display_name)
@@ -560,9 +563,11 @@ async def on_room_message(
                     facade.logger.info(
                         f"Processed command with plugin: {plugin.plugin_name} from {event.sender}"
                     )
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 - broad catch for plugin isolation
                 facade.logger.error(
-                    "Error processing message with plugin %s", plugin.plugin_name
+                    "Error processing message with plugin %s: %s",
+                    plugin.plugin_name,
+                    type(exc).__name__,
                 )
                 facade.logger.exception(
                     "Error processing message with plugin %s", plugin.plugin_name
@@ -576,7 +581,7 @@ async def on_room_message(
         if hasattr(plugin_obj, "matches"):
             try:
                 return bool(plugin_obj.matches(event))
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 - broad catch for plugin isolation
                 facade.logger.exception(
                     "Error checking plugin match for %s",
                     getattr(plugin_obj, "plugin_name", plugin_obj),
@@ -596,7 +601,7 @@ async def on_room_message(
                     facade.bot_command(cmd, event, require_mention=require_mention)
                     for cmd in plugin_obj.get_matrix_commands()
                 )
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 - broad catch for plugin isolation
                 facade.logger.exception(
                     "Error checking plugin commands for %s",
                     getattr(plugin_obj, "plugin_name", plugin_obj),
@@ -678,7 +683,6 @@ async def on_room_member(room: MatrixRoom, event: RoomMemberEvent) -> None:
 
     This callback is registered so the Matrix client processes member state updates; no explicit action is required here because room-specific display names are available via the room state immediately after this event.
     """
-    pass
 
 
 async def on_invite(room: MatrixRoom, event: InviteMemberEvent) -> None:

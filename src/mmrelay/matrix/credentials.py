@@ -201,7 +201,9 @@ async def _resolve_and_load_credentials(
                 matrix_access_token = credentials[CONFIG_KEY_ACCESS_TOKEN]
                 raw_user_id = credentials.get(CONFIG_KEY_USER_ID)
                 bot_user_id = (
-                    raw_user_id.strip() if isinstance(raw_user_id, str) else ""
+                    facade._normalize_bot_user_id(matrix_homeserver, raw_user_id)
+                    if isinstance(raw_user_id, str) and raw_user_id
+                    else ""
                 )
                 e2ee_device_id = facade._get_valid_device_id(
                     credentials.get(CONFIG_KEY_DEVICE_ID)
@@ -222,7 +224,7 @@ async def _resolve_and_load_credentials(
                 return None
         except asyncio.CancelledError:
             raise
-        except (OSError, IOError) as e:
+        except OSError as e:
             facade.logger.exception(
                 "I/O error during automatic login (%s). Please use 'mmrelay auth login' for interactive setup",
                 type(e).__name__,

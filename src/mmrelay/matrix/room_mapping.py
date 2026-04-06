@@ -1,12 +1,5 @@
-from typing import (
-    Any,
-    Awaitable,
-    Callable,
-    Dict,
-    Generator,
-    Optional,
-    Tuple,
-)
+from collections.abc import Awaitable, Callable, Generator
+from typing import Any, Optional
 
 import mmrelay.matrix_utils as facade
 
@@ -90,7 +83,7 @@ def _is_room_mapped(mapping: Any, room_id_or_alias: str) -> bool:
 
 def _iter_room_alias_entries(
     mapping: Any,
-) -> Generator[Tuple[str, Callable[[str], None]], None, None]:
+) -> Generator[tuple[str, Callable[[str], None]], None, None]:
     """
     Yield (alias_or_id, setter) pairs for entries in a Matrix room mapping.
 
@@ -240,7 +233,7 @@ def _update_room_id_in_mapping(
 
 
 def _display_room_channel_mappings(
-    rooms: Dict[str, Any], config: Dict[str, Any], e2ee_status: Dict[str, Any]
+    rooms: dict[str, Any], config: dict[str, Any], e2ee_status: dict[str, Any]
 ) -> None:
     """
     Log Matrix rooms grouped by Meshtastic channel and show encryption/E2EE status indicators.
@@ -310,22 +303,21 @@ def _display_room_channel_mappings(
                     facade.logger.info(f"    🔒 {room_name}")
                 else:
                     facade.logger.info(f"    ✅ {room_name}")
-            else:
-                if encrypted:
-                    if e2ee_status["overall_status"] == "unavailable":
-                        facade.logger.info(
-                            f"    ⚠️ {room_name} (E2EE not supported - messages blocked)"
-                        )
-                    elif e2ee_status["overall_status"] == "disabled":
-                        facade.logger.info(
-                            f"    ⚠️ {room_name} (E2EE disabled - messages blocked)"
-                        )
-                    else:
-                        facade.logger.info(
-                            f"    ⚠️ {room_name} (E2EE incomplete - messages may be blocked)"
-                        )
+            elif encrypted:
+                if e2ee_status["overall_status"] == "unavailable":
+                    facade.logger.info(
+                        f"    ⚠️ {room_name} (E2EE not supported - messages blocked)"
+                    )
+                elif e2ee_status["overall_status"] == "disabled":
+                    facade.logger.info(
+                        f"    ⚠️ {room_name} (E2EE disabled - messages blocked)"
+                    )
                 else:
-                    facade.logger.info(f"    ✅ {room_name}")
+                    facade.logger.info(
+                        f"    ⚠️ {room_name} (E2EE incomplete - messages may be blocked)"
+                    )
+            else:
+                facade.logger.info(f"    ✅ {room_name}")
 
 
 def _create_mapping_info(
