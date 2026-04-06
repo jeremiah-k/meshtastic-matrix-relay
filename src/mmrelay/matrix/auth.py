@@ -5,8 +5,6 @@ import ssl
 import sys
 from typing import Any, Optional, cast
 
-from nio import AsyncClientConfig
-
 import mmrelay.matrix_utils as facade
 
 __all__ = [
@@ -181,7 +179,7 @@ def _initialize_matrix_client(
     Returns:
         AsyncClient: A configured AsyncClient instance ready for login and synchronization.
     """
-    client_config = AsyncClientConfig(
+    client_config = facade.AsyncClientConfig(
         max_limit_exceeded=0,
         max_timeouts=0,
         store_sync_tokens=True,

@@ -672,7 +672,7 @@ async def login_matrix_bot(
         username_included_serverpart = False
 
         if not homeserver:
-            homeserver = input(
+            homeserver = facade.input(
                 "Enter Matrix homeserver URL (e.g., https://matrix.org): "
             )
             prompted_for_credentials = True
@@ -743,7 +743,7 @@ async def login_matrix_bot(
             await temp_client.close()
 
         if not username:
-            username = input(
+            username = facade.input(
                 "Enter Matrix username (localpart, e.g., bot) or full user ID (e.g., @bot:example.com): "
             )
             prompted_for_credentials = True
@@ -786,7 +786,7 @@ async def login_matrix_bot(
             facade.logger.warning("No password provided")
 
         if logout_others is None and prompted_for_credentials:
-            logout_others_input = input(
+            logout_others_input = facade.input(
                 "Log out other sessions? (Y/n) [Default: Yes]: "
             ).lower()
             logout_others = (

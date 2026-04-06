@@ -20,7 +20,7 @@ from mmrelay.constants.config import (
     CONFIG_KEY_USER_ID,
     REQUIRED_CREDENTIALS_KEYS,
 )
-from mmrelay.paths import get_credentials_path
+from mmrelay.paths import E2EENotSupportedError
 
 __all__ = [
     "_resolve_credentials_save_path",
@@ -48,7 +48,7 @@ def _resolve_credentials_save_path(config_data: dict[str, Any] | None) -> str | 
         explicit_path = get_explicit_credentials_path(config_data)
         if explicit_path:
             return os.path.expanduser(explicit_path)
-        return str(get_credentials_path())
+        return str(facade.get_credentials_path())
     except (InvalidCredentialsPathTypeError, TypeError, OSError, ValueError) as exc:
         facade.logger.debug("Failed to resolve credentials path: %s", exc)
         return None
