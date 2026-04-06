@@ -175,7 +175,11 @@ def format_reply_message(
         if not clean_text and mesh_text_override:
             clean_text = strip_quoted_lines(mesh_text_override).strip()
 
-        mesh_prefix = f"{sender_short}/{short_meshnet_name}:"
+        mesh_prefix = (
+            matrix_prefix_short
+            or matrix_prefix_full
+            or f"{sender_short}/{short_meshnet_name}:"
+        )
         reply_body = f" {clean_text}" if clean_text else ""
         reply_message = f"{mesh_prefix}{reply_body}"
         return truncate_message(reply_message.strip())
@@ -385,8 +389,7 @@ async def handle_matrix_reply(
 
     full_display_name = await facade.get_user_display_name(room, event)
 
-    orig_meshnet_name = orig[3]
-    reply_meshnet_name = meshnet_name or orig_meshnet_name
+    reply_meshnet_name = meshnet_name
 
     reply_message = facade.format_reply_message(
         config,

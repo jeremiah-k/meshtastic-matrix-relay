@@ -226,7 +226,7 @@ async def test_logout_matrix_bot_timeout():
             new=AsyncMock(return_value=mock_credentials),
         ),
         patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
-        patch("asyncio.wait_for") as mock_wait_for,
+        patch("mmrelay.cli_utils.asyncio.wait_for") as mock_wait_for,
         patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
     ):
         mock_temp_client = AsyncMock()

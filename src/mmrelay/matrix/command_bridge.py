@@ -176,7 +176,11 @@ async def _get_meshtastic_interface_and_channel(
             f"Room config missing 'meshtastic_channel'; cannot {purpose}."
         )
         return None, None
-    if not isinstance(meshtastic_channel, int) or meshtastic_channel < 0:
+    if (
+        isinstance(meshtastic_channel, bool)
+        or not isinstance(meshtastic_channel, int)
+        or meshtastic_channel < 0
+    ):
         meshtastic_logger.error(
             f"Invalid meshtastic_channel value {meshtastic_channel!r} in room config; must be a non-negative integer."
         )

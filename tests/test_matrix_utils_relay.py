@@ -430,6 +430,58 @@ async def test_matrix_relay_reply_formatting(
 @patch("mmrelay.matrix_utils.connect_matrix")
 @patch("mmrelay.matrix_utils.get_interaction_settings")
 @patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False)
+async def test_matrix_relay_reply_plain_text_not_html_escaped(
+    _mock_storage_enabled, mock_get_interactions, mock_connect_matrix
+):
+    """Reply plain body should contain raw original text, not HTML-escaped entities."""
+    mock_get_interactions.return_value = {"reactions": False, "replies": False}
+
+    mock_room = MagicMock()
+    mock_room.encrypted = False
+    mock_room.display_name = "Room"
+
+    mock_client = MagicMock()
+    mock_client.user_id = "@bot:matrix.org"
+    mock_client.rooms = {"!room:matrix.org": mock_room}
+    mock_client.room_send = AsyncMock(return_value=MagicMock(event_id="$event123"))
+    mock_connect_matrix.return_value = mock_client
+
+    config = {
+        "meshtastic": {"meshnet_name": "TestMesh"},
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.config", config),
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+            return_value=(
+                "mesh_id",
+                "!room:matrix.org",
+                "<b>bold & stuff</b>",
+                "TestMesh",
+            ),
+        ),
+    ):
+        await matrix_relay(
+            room_id="!room:matrix.org",
+            message="Reply text",
+            longname="Alice",
+            shortname="A",
+            meshnet_name="TestMesh",
+            portnum=1,
+            reply_to_event_id="$orig",
+        )
+
+    content = mock_client.room_send.call_args.kwargs["content"]
+    assert "<b>bold & stuff</b>" in content["body"]
+    assert "&lt;b&gt;bold &amp; stuff&lt;/b&gt;" not in content["body"]
+    assert "&lt;b&gt;bold &amp; stuff&lt;/b&gt;" in content["formatted_body"]
+
+
+@patch("mmrelay.matrix_utils.connect_matrix")
+@patch("mmrelay.matrix_utils.get_interaction_settings")
+@patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False)
 @patch("mmrelay.matrix_utils.logger")
 async def test_matrix_relay_e2ee_blocked(
     mock_logger, _mock_storage_enabled, mock_get_interactions, mock_connect_matrix
@@ -705,36 +757,6 @@ async def test_matrix_relay_send_nio_error_logs_and_returns(
         "Error sending message to Matrix room" in call.args[0]
         for call in mock_logger.exception.call_args_list
     )
-
-
-def test_markdown_import_error_fallback_coverage():
-    """
-    Tests that the markdown processing fallback is triggered and behaves correctly when the `markdown` module is unavailable, ensuring coverage of the ImportError path.
-    """
-    message = "**bold** and *italic* text"
-    has_markdown = True
-    has_html = False
-
-    with patch.dict("sys.modules", {"markdown": None}):
-        if has_markdown or has_html:
-            try:
-                import markdown  # type: ignore[import-untyped]
-
-                formatted_body = markdown.markdown(message)
-                plain_body = re.sub(r"</?[^>]*>", "", formatted_body)
-            except ImportError:
-                formatted_body = message
-                plain_body = message
-                has_markdown = False
-                has_html = False
-        else:
-            formatted_body = message
-            plain_body = message
-
-    assert formatted_body == message
-    assert plain_body == message
-    assert has_markdown is False
-    assert has_html is False
 
 
 @pytest.mark.asyncio

@@ -618,3 +618,105 @@ async def test_send_reply_to_meshtastic_defaults_config_when_missing():
 
     mock_get_interface.assert_called_once()
     mock_queue.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_matrix_reply_local_user_not_treated_as_remote():
+    """A local Matrix user replying to a remote-mesh message should NOT inherit
+    the original message's meshnet name."""
+    mock_room = MagicMock()
+    mock_event = MagicMock()
+    mock_event.sender = "@localuser:matrix.org"
+    mock_room_config = {"meshtastic_channel": 0}
+    mock_config = {"matrix_rooms": []}
+
+    loop = asyncio.get_running_loop()
+    with (
+        patch(
+            "mmrelay.matrix_utils.asyncio.get_running_loop",
+            return_value=InlineExecutorLoop(loop),
+        ),
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
+        ) as mock_db_lookup,
+        patch(
+            "mmrelay.matrix_utils.send_reply_to_meshtastic",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch("mmrelay.matrix_utils.format_reply_message") as mock_format_reply,
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            new_callable=AsyncMock,
+            return_value="Local User",
+        ),
+    ):
+        mock_db_lookup.return_value = (123, "!room", "text", "RemoteMesh")
+        mock_format_reply.return_value = "formatted reply"
+
+        await handle_matrix_reply(
+            mock_room,
+            mock_event,
+            "event_id",
+            "reply text",
+            mock_room_config,
+            True,
+            "LocalMesh",
+            mock_config,
+        )
+
+        call_kwargs = mock_format_reply.call_args.kwargs
+        assert call_kwargs["meshnet_name"] is None
+
+
+def test_format_reply_message_remote_prefix_disabled():
+    """Remote reply should fall back to hard-coded format when matrix prefix is disabled."""
+    config = {"matrix": {"prefix_enabled": False}}
+    result = format_reply_message(
+        config,
+        "Alice",
+        "[LoRa/Mt.P]: Hello",
+        longname="LoRa",
+        shortname="LR",
+        meshnet_name="Mt.P",
+        local_meshnet_name="Forx",
+        mesh_text_override="Hello",
+    )
+
+    assert result.startswith("LR/Mt.P:")
+    assert "Hello" in result
+
+
+def test_format_reply_message_remote_custom_prefix():
+    """Remote reply should use a configured custom matrix prefix format."""
+    config = {"matrix": {"prefix_enabled": True, "prefix_format": "<{short}/{mesh}> "}}
+    result = format_reply_message(
+        config,
+        "Alice",
+        "Hello",
+        longname="LongName",
+        shortname="LN",
+        meshnet_name="RemoteMesh",
+        local_meshnet_name="LocalMesh",
+        mesh_text_override="Hello",
+    )
+
+    assert result.startswith("<LN/Remo>")
+    assert "Hello" in result
+
+
+def test_format_reply_message_remote_fallback_when_prefix_empty():
+    """Remote reply falls back to hard-coded short/meshnet when matrix prefix is disabled."""
+    config = {"matrix": {"prefix_enabled": False}}
+    result = format_reply_message(
+        config,
+        "Alice",
+        "Test",
+        longname="LoRa",
+        shortname="Trak",
+        meshnet_name="Mt.Peaks",
+        local_meshnet_name="Forx",
+        mesh_text_override="Test",
+    )
+
+    assert result == "Trak/Mt.P: Test"

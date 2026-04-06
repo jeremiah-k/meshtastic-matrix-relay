@@ -496,49 +496,47 @@ async def connect_matrix(
             ssl_context=ssl_context,
         )
 
-    try:
-        await facade._perform_matrix_login(client, auth_info)
+        try:
+            await facade._perform_matrix_login(client, auth_info)
 
-        if auth_info.user_id and auth_info.user_id != facade.bot_user_id:
-            facade.bot_user_id = auth_info.user_id
+            if auth_info.user_id and auth_info.user_id != facade.bot_user_id:
+                facade.bot_user_id = auth_info.user_id
 
-        if not facade.bot_user_id:
-            resolved_user_id = client.user_id
-            if isinstance(resolved_user_id, str) and resolved_user_id:
-                facade.bot_user_id = resolved_user_id
-            else:
-                facade.logger.error("Matrix user ID is missing or invalid.")
-                await facade._close_matrix_client_after_failure(
-                    client, "connect_matrix setup"
-                )
-                return None
+            if not facade.bot_user_id:
+                resolved_user_id = client.user_id
+                if isinstance(resolved_user_id, str) and resolved_user_id:
+                    facade.bot_user_id = resolved_user_id
+                else:
+                    facade.logger.error("Matrix user ID is missing or invalid.")
+                    await facade._close_matrix_client_after_failure(
+                        client, "connect_matrix setup"
+                    )
+                    return None
 
-        if e2ee_enabled:
-            await facade._maybe_upload_e2ee_keys(client)
+            if e2ee_enabled:
+                await facade._maybe_upload_e2ee_keys(client)
 
-        facade.logger.debug("Performing initial sync to initialize rooms...")
-        sync_response = await _perform_initial_sync(client, facade.matrix_homeserver)
-        await _post_sync_setup(
-            client,
-            sync_response,
-            facade.config,
-            facade.matrix_rooms,
-            facade.matrix_homeserver,
-            facade.bot_user_id,
-            e2ee_enabled,
-        )
-    except BaseException:
-        await facade._close_matrix_client_after_failure(client, "connect_matrix setup")
-        raise
-    else:
-        async with facade._MATRIX_STARTUP_SYNC_LOCK:
-            if facade.matrix_client is not None:
-                await facade._close_matrix_client_after_failure(
-                    client, "connect_matrix duplicate setup"
-                )
-                return facade.matrix_client
-            facade.matrix_client = client
-            return client
+            facade.logger.debug("Performing initial sync to initialize rooms...")
+            sync_response = await _perform_initial_sync(
+                client, facade.matrix_homeserver
+            )
+            await _post_sync_setup(
+                client,
+                sync_response,
+                facade.config,
+                facade.matrix_rooms,
+                facade.matrix_homeserver,
+                facade.bot_user_id,
+                e2ee_enabled,
+            )
+        except BaseException:
+            await facade._close_matrix_client_after_failure(
+                client, "connect_matrix setup"
+            )
+            raise
+
+        facade.matrix_client = client
+        return client
 
 
 async def login_matrix_bot(

@@ -168,7 +168,6 @@ async def on_room_message(
     )
 
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
-    from mmrelay.message_queue import get_message_queue
 
     full_display_name = "Unknown user"
     message_timestamp = event.server_timestamp
@@ -666,7 +665,7 @@ async def on_room_message(
             )
 
             if success:
-                queue_size = get_message_queue().get_queue_size()
+                queue_size = facade.get_message_queue().get_queue_size()
 
                 if queue_size > 1:
                     meshtastic_logger.info(

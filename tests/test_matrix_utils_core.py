@@ -670,12 +670,32 @@ def test_get_meshtastic_prefix_index_error_fallback():
 def test_get_matrix_prefix_attribute_error_fallback():
     config = {
         "matrix": {
-            "matrix_prefix_enabled": True,
-            "matrix_prefix_format": "{long.nonexistent}",
+            "prefix_enabled": True,
+            "prefix_format": "{long.nonexistent}",
         }
     }
     result = get_matrix_prefix(config, "Alice", "A", "TestMesh")
     assert result == "[Alice/TestMesh]: "
+
+
+def test_get_meshtastic_prefix_malformed_config_list_section():
+    result = get_meshtastic_prefix({"meshtastic": []}, "Alice")
+    assert result == "Alice[M]: "
+
+
+def test_get_matrix_prefix_malformed_config_string_section():
+    result = get_matrix_prefix({"matrix": "bad"}, "Alice", "A", "TestMesh")
+    assert result == "[Alice/TestMesh]: "
+
+
+def test_get_meshtastic_prefix_config_not_dict():
+    result = get_meshtastic_prefix("not_a_dict", "Alice")
+    assert result == ""
+
+
+def test_get_matrix_prefix_config_not_dict():
+    result = get_matrix_prefix(None, "Alice", "A", "TestMesh")
+    assert result == ""
 
 
 def test_validate_prefix_format_index_error():

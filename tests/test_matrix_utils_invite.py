@@ -380,8 +380,7 @@ async def test_on_invite_with_id_in_mapping(mock_logger: MagicMock) -> None:
 
 
 @pytest.mark.usefixtures("reset_matrix_utils_globals")
-@patch("mmrelay.matrix_utils.logger")
-async def test_on_invite_canonical_alias_match(mock_logger: MagicMock) -> None:
+async def test_on_invite_canonical_alias_match() -> None:
     mock_room = MagicMock()
     mock_room.room_id = "!unmapped:matrix.org"
     mock_room.canonical_alias = "#mapped:matrix.org"
@@ -411,8 +410,7 @@ async def test_on_invite_canonical_alias_match(mock_logger: MagicMock) -> None:
 
 
 @pytest.mark.usefixtures("reset_matrix_utils_globals")
-@patch("mmrelay.matrix_utils.logger")
-async def test_on_invite_aliases_list_match(mock_logger: MagicMock) -> None:
+async def test_on_invite_aliases_list_match() -> None:
     mock_room = MagicMock()
     mock_room.room_id = "!unmapped:matrix.org"
     mock_room.canonical_alias = None

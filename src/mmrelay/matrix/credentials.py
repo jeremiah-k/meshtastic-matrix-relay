@@ -21,9 +21,9 @@ from mmrelay.constants.config import (
 )
 
 __all__ = [
-    "_resolve_credentials_save_path",
     "_missing_credentials_keys",
     "_resolve_and_load_credentials",
+    "_resolve_credentials_save_path",
 ]
 
 
@@ -152,7 +152,7 @@ async def _resolve_and_load_credentials(
                 credentials.get(CONFIG_KEY_DEVICE_ID)
             )
 
-            facade.logger.debug(f"Using Matrix credentials (device: {e2ee_device_id})")
+            facade.logger.debug("Using Matrix credentials (device: %s)", e2ee_device_id)
 
             if (
                 isinstance(matrix_section, dict)

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mmrelay.matrix_utils import connect_matrix
+from mmrelay.matrix_utils import MissingMatrixRoomsError, connect_matrix
 
 
 @pytest.mark.asyncio
@@ -65,7 +65,7 @@ async def test_connect_matrix_missing_matrix_rooms_raises():
 
     with (
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
-        pytest.raises(ValueError),
+        pytest.raises(MissingMatrixRoomsError, match="matrix_rooms"),
     ):
         await connect_matrix(config)
 
@@ -185,3 +185,49 @@ async def test_connect_matrix_uses_ssl_context_object(monkeypatch):
 
     assert client is mock_client
     assert client_calls and client_calls[0] is ssl_ctx
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_duplicate_caller_returns_existing_client():
+    """A second call should return the already-established client without re-running setup."""
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.sync = AsyncMock(return_value=SimpleNamespace())
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+    mock_client.close = AsyncMock()
+
+    config = {
+        "matrix": {
+            "homeserver": "https://example.org",
+            "access_token": "token",
+            "bot_user_id": "@bot:example.org",
+        },
+        "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+    }
+
+    ssl_ctx = MagicMock()
+    init_mock = MagicMock(return_value=mock_client)
+
+    with (
+        patch("mmrelay.matrix_utils.AsyncClient", init_mock),
+        patch("mmrelay.matrix_utils._create_ssl_context", return_value=ssl_ctx),
+        patch("mmrelay.matrix_utils.matrix_client", None, create=True),
+        patch("mmrelay.matrix_utils.config", config, create=True),
+        patch(
+            "mmrelay.matrix_utils._resolve_aliases_in_mapping",
+            AsyncMock(return_value=None),
+        ),
+        patch(
+            "mmrelay.matrix_utils._display_room_channel_mappings",
+            lambda *_a, **_k: None,
+        ),
+    ):
+        client1 = await connect_matrix(config)
+        assert client1 is mock_client
+        init_mock.assert_called_once()
+
+        client2 = await connect_matrix(config)
+        assert client2 is mock_client
+        init_mock.assert_called_once()

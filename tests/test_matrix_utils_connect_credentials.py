@@ -256,7 +256,7 @@ async def test_connect_matrix_ignores_config_access_token_when_credentials_prese
 
 
 @pytest.mark.asyncio
-async def test_connect_matrix_auto_login_load_credentials_failure(monkeypatch):
+async def test_connect_matrix_auto_login_load_credentials_failure():
     """Automatic login should return None if new credentials cannot be loaded."""
     config = {
         "matrix": {
@@ -283,7 +283,7 @@ async def test_connect_matrix_auto_login_load_credentials_failure(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_connect_matrix_auto_login_failure(monkeypatch):
+async def test_connect_matrix_auto_login_failure():
     """Automatic login failures should return None."""
     config = {
         "matrix": {

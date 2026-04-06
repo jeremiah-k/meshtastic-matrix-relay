@@ -56,7 +56,9 @@ async def test_handle_detection_sensor_packet_connect_fail():
 
     with (
         patch("mmrelay.matrix_utils.get_meshtastic_config_value") as mock_get_config,
-        patch("mmrelay.matrix_utils._connect_meshtastic") as mock_connect,
+        patch(
+            "mmrelay.matrix_utils._connect_meshtastic", new_callable=AsyncMock
+        ) as mock_connect,
     ):
         mock_get_config.side_effect = [
             True,
@@ -83,7 +85,9 @@ async def test_handle_detection_sensor_packet_missing_channel():
 
     with (
         patch("mmrelay.matrix_utils.get_meshtastic_config_value") as mock_get_config,
-        patch("mmrelay.matrix_utils._connect_meshtastic") as mock_connect,
+        patch(
+            "mmrelay.matrix_utils._connect_meshtastic", new_callable=AsyncMock
+        ) as mock_connect,
     ):
         mock_get_config.side_effect = [True, True]
         mock_connect.return_value = mock_interface
@@ -107,7 +111,9 @@ async def test_handle_detection_sensor_packet_invalid_channel():
 
     with (
         patch("mmrelay.matrix_utils.get_meshtastic_config_value") as mock_get_config,
-        patch("mmrelay.matrix_utils._connect_meshtastic") as mock_connect,
+        patch(
+            "mmrelay.matrix_utils._connect_meshtastic", new_callable=AsyncMock
+        ) as mock_connect,
     ):
         mock_get_config.side_effect = [True, True]
         mock_connect.return_value = mock_interface
@@ -197,7 +203,9 @@ async def test_handle_detection_sensor_packet_queue_fail():
 
     with (
         patch("mmrelay.matrix_utils.get_meshtastic_config_value") as mock_get_config,
-        patch("mmrelay.matrix_utils._connect_meshtastic") as mock_connect,
+        patch(
+            "mmrelay.matrix_utils._connect_meshtastic", new_callable=AsyncMock
+        ) as mock_connect,
         patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
     ):
         mock_get_config.side_effect = [True, True]

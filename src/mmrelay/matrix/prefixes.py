@@ -477,7 +477,11 @@ def get_meshtastic_prefix(
     Returns:
         str: The formatted prefix string when enabled, or an empty string if prefixing is disabled.
     """
-    meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC, {})
+    if not isinstance(config, dict):
+        return ""
+    meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC)
+    if not isinstance(meshtastic_config, dict):
+        meshtastic_config = {}
 
     # Check if prefixes are enabled
     if not meshtastic_config.get("prefix_enabled", True):
@@ -552,7 +556,11 @@ def get_matrix_prefix(
     Returns:
         str: The formatted prefix string, or an empty string if prefixing is disabled.
     """
-    matrix_config = config.get(CONFIG_SECTION_MATRIX, {})
+    if not isinstance(config, dict):
+        return ""
+    matrix_config = config.get(CONFIG_SECTION_MATRIX)
+    if not isinstance(matrix_config, dict):
+        matrix_config = {}
 
     # Check if prefixes are enabled for Matrix direction
     if not matrix_config.get("prefix_enabled", True):

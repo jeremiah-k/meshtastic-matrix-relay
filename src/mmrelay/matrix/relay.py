@@ -365,9 +365,7 @@ async def matrix_relay(
                     safe_sender_display = re.sub(
                         r"([\\`*_{}[\]()#+.!-])", r"\\\1", original_sender_display
                     )
-                    quoted_text = (
-                        f"> <{bot_user_id}> [{safe_sender_display}]: {safe_original}"
-                    )
+                    quoted_text = f"> <{bot_user_id}> [{safe_sender_display}]: {original_text or ''}"
                     content["body"] = f"{quoted_text}\n\n{plain_body}"
 
                     content["format"] = "org.matrix.custom.html"

@@ -61,27 +61,28 @@ def test_load_credentials_file_not_exists(mock_exists, mock_get_credentials_path
 
 
 @patch("mmrelay.config.get_credentials_path")
+@patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
 @patch("builtins.open")
 @patch("mmrelay.config.json.dump")
-@patch("os.makedirs")  # Mock the directory creation
-@patch("os.path.exists", return_value=True)  # Mock file existence check
+@patch("os.makedirs")
+@patch("os.path.exists", return_value=True)
 def test_save_credentials(
     _mock_exists,
     _mock_makedirs,
     mock_json_dump,
     _mock_open,
+    _mock_get_explicit,
     mock_get_credentials_path,
 ):
     """
     Verify that save_credentials writes the provided credentials JSON to the resolved config directory.
 
-    This test sets the module-level config_path to None to force resolution via the base directory fixture, then calls save_credentials with a credentials dict and asserts that the target directory is created, the credentials file is opened, and json.dump is called with the credentials and an indent of 2.
+    get_explicit_credentials_path is patched to return None so save_credentials falls through to
+    get_credentials_path, which is mocked to return a fixed path. Asserts that the target directory
+    is created, the credentials file is opened, and json.dump is called with the credentials and
+    an indent of 2.
     """
     mock_get_credentials_path.return_value = Path("/test/config/credentials.json")
-    import mmrelay.config as config_module
-
-    original_config_path = config_module.config_path
-    config_module.config_path = None
 
     test_credentials = {
         "homeserver": "https://matrix.example.org",
@@ -90,10 +91,7 @@ def test_save_credentials(
         CONFIG_KEY_DEVICE_ID: "TEST_DEVICE",
     }
 
-    try:
-        save_credentials(test_credentials)
-    finally:
-        config_module.config_path = original_config_path
+    save_credentials(test_credentials)
 
     _mock_makedirs.assert_called_once_with("/test/config", exist_ok=True)
     _mock_open.assert_called_once()

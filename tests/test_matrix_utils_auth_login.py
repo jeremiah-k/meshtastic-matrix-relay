@@ -28,7 +28,7 @@ TEST_FULL_MXID = "@user:matrix.org"
 @pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
-@patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 @patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
 async def test_login_matrix_bot_discovery_response_unexpected_no_attr(
     _mock_normalize,
@@ -73,7 +73,7 @@ async def test_login_matrix_bot_discovery_response_unexpected_no_attr(
 
 @pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.AsyncClient")
-@patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 async def test_login_matrix_bot_username_normalization_failure_returns_false(
     _mock_ssl_context, mock_async_client
 ):
@@ -418,7 +418,7 @@ import os  # noqa: E402
 
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
-@patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 @patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
 async def test_login_matrix_bot_api_login_debug_path(
     _mock_normalize,
@@ -513,7 +513,7 @@ async def test_login_matrix_bot_type_error_specific_message(mock_input, mock_get
 
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
-@patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 @patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
 async def test_login_matrix_bot_login_response_unexpected(
     _mock_normalize,
@@ -557,7 +557,7 @@ async def test_login_matrix_bot_login_response_unexpected(
 
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
-@patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 @patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
 async def test_login_matrix_bot_whoami_fallback_when_missing_user_id(
     _mock_normalize,
@@ -604,7 +604,7 @@ async def test_login_matrix_bot_whoami_fallback_when_missing_user_id(
 
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
-@patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 @patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
 async def test_login_matrix_bot_logout_others_warns(
     _mock_normalize,
@@ -645,7 +645,7 @@ async def test_login_matrix_bot_logout_others_warns(
 
 
 @patch("mmrelay.matrix_utils.AsyncClient")
-@patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 @patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
 async def test_login_matrix_bot_save_credentials_failure_triggers_cleanup(
     _mock_normalize,

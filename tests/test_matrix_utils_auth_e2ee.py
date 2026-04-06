@@ -757,9 +757,7 @@ async def test_connect_matrix_e2ee_store_path_default(monkeypatch, tmp_path):
         raising=False,
     )
 
-    from mmrelay.config import get_e2ee_store_dir as config_get_e2ee_store_dir
-
-    default_path = str(config_get_e2ee_store_dir())
+    default_path = str(tmp_path)
     client_calls = []
 
     def fake_async_client(*_args, **_kwargs):
@@ -772,6 +770,7 @@ async def test_connect_matrix_e2ee_store_path_default(monkeypatch, tmp_path):
         raising=False,
     )
     with (
+        patch("mmrelay.matrix_utils.get_e2ee_store_dir", return_value=str(tmp_path)),
         patch("mmrelay.matrix_utils.os.makedirs"),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch(
@@ -1154,11 +1153,10 @@ async def test_login_matrix_bot_e2ee_store_path_created(
     mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
     mock_main_client.close = AsyncMock()
 
-    from mmrelay.config import get_e2ee_store_dir as config_get_e2ee_store_dir
-
-    store_path = str(config_get_e2ee_store_dir())
+    store_path = str(tmp_path)
 
     with (
+        patch("mmrelay.matrix_utils.get_e2ee_store_dir", return_value=str(tmp_path)),
         patch("mmrelay.config.load_config", return_value={"matrix": {}}),
         patch("mmrelay.config.is_e2ee_enabled", return_value=True),
         patch("mmrelay.matrix_utils.os.makedirs") as mock_makedirs,
