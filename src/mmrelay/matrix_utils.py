@@ -3,9 +3,6 @@
 # fmt: off
 # Facade module with load-bearing import ordering:
 # globals and constants must be defined before submodule imports.
-# Builtins accessed by submodules via facade.NAME (must be explicit for module attribute access)
-input = input
-
 # Globals used by submodules via facade.NAME
 import asyncio
 import io
@@ -63,6 +60,7 @@ from mmrelay.config import (
     get_e2ee_store_dir,
     get_explicit_credentials_path,
     get_meshtastic_config_value,
+    is_e2ee_enabled,
     save_credentials,
 )
 from mmrelay.constants.config import (
@@ -117,6 +115,12 @@ from mmrelay.meshtastic_utils import connect_meshtastic, send_text_reply
 # Import meshtastic protobuf for port numbers when needed
 from mmrelay.message_queue import get_message_queue, queue_message
 from mmrelay.paths import get_credentials_path
+
+from mmrelay.e2ee_utils import (
+    get_e2ee_error_message,
+    get_e2ee_status,
+    get_room_encryption_warnings,
+)
 
 # Import nio exception types with error handling for test environments.
 # matrix-nio is not marked py.typed in our env; keep import-untyped for mypy --strict.

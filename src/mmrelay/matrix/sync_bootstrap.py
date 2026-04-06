@@ -287,8 +287,6 @@ async def _post_sync_setup(
     Raises:
         MatrixSyncFailedDetailsError: If the provided sync_response indicates a SyncError; error type and a short, user-facing error message are included.
     """
-    global bot_user_name
-
     if isinstance(sync_response, SyncError):
         error_type = sync_response.__class__.__name__
         error_details = facade._get_detailed_matrix_error_message(sync_response)
@@ -310,13 +308,8 @@ async def _post_sync_setup(
 
     facade.logger.info(f"Initial sync completed. Found {len(client.rooms)} rooms.")
 
-    from mmrelay.e2ee_utils import (
-        get_e2ee_status,
-        get_room_encryption_warnings,
-    )
-
     e2ee_status = await asyncio.to_thread(
-        get_e2ee_status, config_data or {}, config_module.config_path
+        facade.get_e2ee_status, config_data or {}, config_module.config_path
     )
 
     async def _resolve_alias(alias: str) -> str | None:
@@ -360,7 +353,7 @@ async def _post_sync_setup(
 
     facade._display_room_channel_mappings(client.rooms, config_data, dict(e2ee_status))
 
-    warnings = get_room_encryption_warnings(client.rooms, dict(e2ee_status))
+    warnings = facade.get_room_encryption_warnings(client.rooms, dict(e2ee_status))
     for warning in warnings:
         facade.logger.warning(warning)
 
@@ -413,7 +406,6 @@ async def connect_matrix(
         MatrixSyncFailedError: If the initial Matrix sync fails.
         MatrixSyncFailedDetailsError: If the initial Matrix sync fails with detailed error information.
     """
-    global matrix_client, bot_user_name, matrix_homeserver, matrix_rooms, matrix_access_token, bot_user_id
 
     if passed_config is not None:
         facade.config = passed_config
@@ -437,9 +429,9 @@ async def connect_matrix(
     if auth_info is None:
         return None
 
-    matrix_homeserver = auth_info.homeserver
-    matrix_access_token = auth_info.access_token
-    bot_user_id = auth_info.user_id
+    facade.matrix_homeserver = auth_info.homeserver
+    facade.matrix_access_token = auth_info.access_token
+    facade.bot_user_id = auth_info.user_id
     e2ee_device_id = auth_info.device_id
 
     if not isinstance(facade.config, dict):
@@ -458,7 +450,7 @@ async def connect_matrix(
             "Please ensure your config.yaml includes a valid matrix_rooms configuration"
         )
         raise facade.MissingMatrixRoomsError()
-    matrix_rooms = facade.config["matrix_rooms"]
+    facade.matrix_rooms = facade.config["matrix_rooms"]
 
     ssl_context = facade._create_ssl_context()
     if ssl_context is None:
@@ -470,17 +462,20 @@ async def connect_matrix(
         facade.config, matrix_section, e2ee_device_id
     )
 
-    if not isinstance(matrix_homeserver, str) or not matrix_homeserver:
+    if not isinstance(facade.matrix_homeserver, str) or not facade.matrix_homeserver:
         facade.logger.error("Matrix homeserver is missing or invalid.")
         return None
-    if not isinstance(matrix_access_token, str) or not matrix_access_token:
+    if (
+        not isinstance(facade.matrix_access_token, str)
+        or not facade.matrix_access_token
+    ):
         facade.logger.error("Matrix access token is missing or invalid.")
         return None
-    if not isinstance(bot_user_id, str) or not bot_user_id:
+    if not isinstance(facade.bot_user_id, str) or not facade.bot_user_id:
         facade.logger.warning(
             "Matrix user ID is missing or invalid; will attempt whoami after login."
         )
-        bot_user_id = ""
+        facade.bot_user_id = ""
 
     async with facade._MATRIX_STARTUP_SYNC_LOCK:
         if facade.matrix_client:
@@ -489,8 +484,8 @@ async def connect_matrix(
         facade._refresh_bot_start_timestamps()
 
         client = facade._initialize_matrix_client(
-            homeserver=matrix_homeserver,
-            user_id=bot_user_id,
+            homeserver=facade.matrix_homeserver,
+            user_id=facade.bot_user_id,
             device_id=e2ee_device_id,
             e2ee_enabled=e2ee_enabled,
             e2ee_store_path=e2ee_store_path,
@@ -500,13 +495,13 @@ async def connect_matrix(
     try:
         await facade._perform_matrix_login(client, auth_info)
 
-        if auth_info.user_id and auth_info.user_id != bot_user_id:
-            bot_user_id = auth_info.user_id
+        if auth_info.user_id and auth_info.user_id != facade.bot_user_id:
+            facade.bot_user_id = auth_info.user_id
 
-        if not bot_user_id:
+        if not facade.bot_user_id:
             resolved_user_id = client.user_id
             if isinstance(resolved_user_id, str) and resolved_user_id:
-                bot_user_id = resolved_user_id
+                facade.bot_user_id = resolved_user_id
             else:
                 facade.logger.error("Matrix user ID is missing or invalid.")
                 await facade._close_matrix_client_after_failure(
@@ -518,14 +513,14 @@ async def connect_matrix(
             await facade._maybe_upload_e2ee_keys(client)
 
         facade.logger.debug("Performing initial sync to initialize rooms...")
-        sync_response = await _perform_initial_sync(client, matrix_homeserver)
+        sync_response = await _perform_initial_sync(client, facade.matrix_homeserver)
         await _post_sync_setup(
             client,
             sync_response,
             facade.config,
-            matrix_rooms,
-            matrix_homeserver,
-            bot_user_id,
+            facade.matrix_rooms,
+            facade.matrix_homeserver,
+            facade.bot_user_id,
             e2ee_enabled,
         )
     except BaseException:
@@ -538,8 +533,8 @@ async def connect_matrix(
                     client, "connect_matrix duplicate setup"
                 )
                 return facade.matrix_client
-            matrix_client = client
-            return matrix_client
+            facade.matrix_client = client
+            return client
 
 
 async def login_matrix_bot(
@@ -698,7 +693,7 @@ async def login_matrix_bot(
         if logout_others is None:
             logout_others = False
 
-        from mmrelay.config import is_e2ee_enabled, load_config
+        from mmrelay.config import load_config
 
         loaded_config_for_paths = config_for_paths
         e2ee_enabled = False
@@ -755,7 +750,7 @@ async def login_matrix_bot(
 
         if loaded_config_for_paths is not None:
             try:
-                e2ee_enabled = is_e2ee_enabled(loaded_config_for_paths)
+                e2ee_enabled = facade.is_e2ee_enabled(loaded_config_for_paths)
             except (KeyError, TypeError, ValueError) as e:
                 facade.logger.debug(f"Could not load config for E2EE check: {e}")
                 e2ee_enabled = False

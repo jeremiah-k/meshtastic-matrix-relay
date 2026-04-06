@@ -41,9 +41,7 @@ async def _configure_e2ee(
     e2ee_enabled = False
     e2ee_store_path = None
     try:
-        from mmrelay.config import is_e2ee_enabled
-
-        e2ee_enabled = is_e2ee_enabled(config_data)
+        e2ee_enabled = facade.is_e2ee_enabled(config_data)
         facade.logger.debug(
             f"E2EE detection: matrix config section present: {'matrix' in config_data}"
         )
@@ -88,8 +86,6 @@ async def _configure_e2ee(
                         facade.logger.info("End-to-End Encryption (E2EE) is enabled")
 
                     if e2ee_enabled:
-                        from mmrelay.config import get_e2ee_store_dir
-
                         store_override = None
                         if isinstance(matrix_section, dict):
                             encryption_section = matrix_section.get("encryption")
@@ -103,7 +99,7 @@ async def _configure_e2ee(
                             e2ee_store_path = os.path.expanduser(store_override)
                         else:
                             e2ee_store_path = str(
-                                await asyncio.to_thread(get_e2ee_store_dir)
+                                await asyncio.to_thread(facade.get_e2ee_store_dir)
                             )
 
                         try:

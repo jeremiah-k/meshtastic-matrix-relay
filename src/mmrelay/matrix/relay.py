@@ -29,13 +29,11 @@ async def _get_e2ee_error_message() -> str:
     Returns:
         str: A short explanation of the current E2EE problem, or an empty string if no specific issue is detected.
     """
-    from mmrelay.e2ee_utils import get_e2ee_error_message, get_e2ee_status
-
     e2ee_status = await asyncio.to_thread(
-        get_e2ee_status, facade.config or {}, facade.config_module.config_path
+        facade.get_e2ee_status, facade.config or {}, facade.config_module.config_path
     )
 
-    return get_e2ee_error_message(dict(e2ee_status))
+    return facade.get_e2ee_error_message(dict(e2ee_status))
 
 
 def _retry_backoff_delay(
