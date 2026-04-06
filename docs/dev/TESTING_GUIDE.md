@@ -613,6 +613,55 @@ Before merge, confirm:
 - Shutdown/cleanup paths are covered where background tasks or worker executors are involved.
 - Targeted integration tests were run locally (plus targeted lint/type checks).
 
+## Matrix Facade Testing
+
+The `mmrelay.matrix_utils` module serves as a facade that re-exports functions from decomposed submodules under `mmrelay.matrix/`. Tests for Matrix behavior must follow these rules to stay compatible with the facade architecture.
+
+### Where to write new Matrix tests
+
+Do **not** append new tests to `tests/test_matrix_utils.py`. That file is a monolith (~8,100 lines) that cannot be safely parallelized.
+
+Instead, write tests into split domain files:
+
+| File                                        | Domain                                      |
+| ------------------------------------------- | ------------------------------------------- |
+| `tests/test_matrix_utils_invite.py`         | Room invite handling and alias matching     |
+| `tests/test_matrix_utils_auth.py`           | Login, logout, credential loading           |
+| `tests/test_matrix_utils_core.py`           | Prefixes, config parsing, general utilities |
+| `tests/test_matrix_utils_room.py`           | Room mapping and discovery                  |
+| `tests/test_matrix_utils_error_handling.py` | Error paths across Matrix operations        |
+| `tests/test_matrix_utils_edge_cases.py`     | Boundary conditions and unusual inputs      |
+| `tests/test_matrix_utils_bot.py`            | Bot lifecycle and identity                  |
+| `tests/test_matrix_utils_errors.py`         | Error classification and reporting          |
+| `tests/test_matrix_utils_relay.py`          | Message relay and retry logic               |
+| `tests/test_matrix_utils_media.py`          | Image upload and media handling             |
+| `tests/test_matrix_utils_replies.py`        | Reply formatting and threading              |
+
+If no existing file matches, create a new one following the `test_matrix_utils_<domain>.py` naming convention.
+
+### Patch targets
+
+By default, patch Matrix functions through the facade:
+
+```python
+@patch("mmrelay.matrix_utils.send_reply_to_meshtastic")
+@patch("mmrelay.matrix_utils.matrix_client", new_callable=AsyncMock)
+async def test_something(mock_client, mock_send):
+    ...
+```
+
+Patch a source submodule directly **only** when the test is specifically verifying source-module lookup behavior (e.g., testing that a submodule imports `RoomSendError` from nio directly rather than through the facade).
+
+Rationale: the decomposed submodules call each other through the facade (`facade.func_name`), so patches on `mmrelay.matrix_utils.X` intercept the actual call path.
+
+### nio mock classes
+
+`tests/conftest.py` mocks `sys.modules["nio"]` with a `MagicMock()`. Any new nio import used in source code (e.g., `RoomSendError`, `InviteMemberEvent`) requires a corresponding mock class in conftest. Without it, `isinstance()` checks in source will raise `TypeError`.
+
+### Shared state
+
+The facade owns global state (`matrix_client`, `config`, `logger`, etc.). Tests that mutate these should restore them in teardown or use existing fixtures like `reset_meshtastic_globals`.
+
 ## References
 
 - [unittest.mock documentation](https://docs.python.org/3/library/unittest.mock.html)
