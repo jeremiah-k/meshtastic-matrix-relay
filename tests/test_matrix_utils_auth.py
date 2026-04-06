@@ -17,6 +17,7 @@ from mmrelay.constants.app import CREDENTIALS_FILENAME
 from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 from mmrelay.matrix_utils import (
     NioLocalTransportError,
+    NioLoginError,
     NioRemoteTransportError,
     _can_auto_create_credentials,
     _extract_localpart_from_mxid,

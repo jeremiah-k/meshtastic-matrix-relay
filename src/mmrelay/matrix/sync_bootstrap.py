@@ -384,10 +384,10 @@ async def _post_sync_setup(
         if displayname:
             facade.bot_user_name = displayname
         else:
-            facade.bot_user_name = bot_user_id
+            facade.bot_user_name = bot_user_id or ""  # type: ignore[assignment]
     except NIO_COMM_EXCEPTIONS as e:
         facade.logger.debug(f"Failed to get bot display name for {bot_user_id}: {e}")
-        facade.bot_user_name = bot_user_id
+        facade.bot_user_name = bot_user_id or ""  # type: ignore[assignment]
 
     cast(Any, client).e2ee_enabled = e2ee_enabled
 
@@ -412,7 +412,7 @@ async def connect_matrix(
     """
 
     if passed_config is not None:
-        facade.config = passed_config
+        facade.config = passed_config  # type: ignore[assignment]
         config_module.relay_config = passed_config
 
     if facade.config is None:
@@ -1094,7 +1094,7 @@ async def login_matrix_bot(
             await client.close()
             return False
 
-    except (*facade.NIO_COMM_EXCEPTIONS, ssl.SSLError, OSError):
+    except NIO_COMM_EXCEPTIONS + (ssl.SSLError, OSError):
         facade.logger.exception("Error during login")
         try:
             if client is not None:

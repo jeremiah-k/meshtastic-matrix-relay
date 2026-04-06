@@ -1,5 +1,7 @@
 import asyncio
-from typing import Any
+from typing import Any, cast
+
+from nio import AsyncClient
 
 import mmrelay.matrix_utils as facade
 
@@ -81,9 +83,8 @@ async def get_user_display_name(
 
     if facade.matrix_client:
         try:
-            display_name_response = await facade.matrix_client.get_displayname(
-                event.sender
-            )
+            client = cast(AsyncClient, facade.matrix_client)
+            display_name_response = await client.get_displayname(event.sender)
             if response_types and isinstance(display_name_response, response_types):
                 return facade.cast(
                     str,

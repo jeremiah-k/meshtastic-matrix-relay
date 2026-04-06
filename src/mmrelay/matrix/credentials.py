@@ -70,6 +70,24 @@ def _missing_credentials_keys(credentials: dict[str, Any]) -> list[str]:
     return missing_keys
 
 
+def _get_bot_user_id(facade_module: Any, homeserver: str, raw_user_id: Any) -> str:
+    """
+    Normalize and validate the bot user ID, returning an empty string if invalid.
+
+    Parameters:
+        facade_module: The matrix_utils facade module.
+        homeserver: The Matrix homeserver URL.
+        raw_user_id: The raw user ID value from credentials (may be any type).
+
+    Returns:
+        str: The normalized user ID, or empty string if invalid/None.
+    """
+    if isinstance(raw_user_id, str) and raw_user_id:
+        normalized = facade_module._normalize_bot_user_id(homeserver, raw_user_id)
+        return normalized if normalized is not None else ""
+    return ""
+
+
 async def _resolve_and_load_credentials(
     config_data: dict[str, Any] | None,
     matrix_section: Any,
@@ -213,11 +231,7 @@ async def _resolve_and_load_credentials(
                 matrix_homeserver = credentials[CONFIG_KEY_HOMESERVER]
                 matrix_access_token = credentials[CONFIG_KEY_ACCESS_TOKEN]
                 raw_user_id = credentials.get(CONFIG_KEY_USER_ID)
-                bot_user_id = (
-                    facade._normalize_bot_user_id(matrix_homeserver, raw_user_id)
-                    if isinstance(raw_user_id, str) and raw_user_id
-                    else ""
-                )
+                bot_user_id = _get_bot_user_id(facade, matrix_homeserver, raw_user_id)
                 e2ee_device_id = facade._get_valid_device_id(
                     credentials.get(CONFIG_KEY_DEVICE_ID)
                 )

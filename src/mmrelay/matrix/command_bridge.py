@@ -1,8 +1,14 @@
 import asyncio
 import re
-from typing import Any
+from typing import Any, cast
 
-from nio import ReactionEvent, RoomMessageEmote, RoomMessageNotice, RoomMessageText
+from nio import (
+    AsyncClient,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 
 import mmrelay.matrix_utils as facade
 
@@ -67,10 +73,11 @@ async def get_displayname(user_id: str) -> str | None:
     Returns:
         str | None: The display name, or None if not available.
     """
-    if not facade.matrix_client:
-        return None
-    response = await facade.matrix_client.get_displayname(user_id)
-    return getattr(response, "displayname", None)
+    if facade.matrix_client:
+        client = cast(AsyncClient, facade.matrix_client)
+        response = await client.get_displayname(user_id)
+        return getattr(response, "displayname", None)
+    return None
 
 
 def bot_command(

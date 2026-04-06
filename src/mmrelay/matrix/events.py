@@ -8,9 +8,10 @@ import asyncio
 import inspect
 import re
 import time
-from typing import Any
+from typing import Any, cast
 
 from nio import (
+    AsyncClient,
     MatrixRoom,
     MegolmEvent,
     ReactionEvent,
@@ -235,10 +236,10 @@ async def on_room_message(
         return
 
     room_config = None
-    iterable = (
-        facade.matrix_rooms.values()
+    iterable: list[dict[str, Any]] | list[Any] = (
+        list(facade.matrix_rooms.values())
         if facade.matrix_rooms and isinstance(facade.matrix_rooms, dict)
-        else (facade.matrix_rooms or [])
+        else list(facade.matrix_rooms or [])
     )
     for room_conf in iterable:
         if isinstance(room_conf, dict) and room_conf.get("id") == room.room_id:
@@ -739,10 +740,11 @@ async def on_invite(room: MatrixRoom, event: InviteMemberEvent) -> None:
         facade.logger.error("matrix_client is None, cannot join room")
         return
 
+    client = cast(AsyncClient, facade.matrix_client)
     try:
-        if room_id not in facade.matrix_client.rooms:
+        if room_id not in client.rooms:
             facade.logger.info(f"Joining mapped room '{room_id}'...")
-            response = await facade.matrix_client.join(room_id)
+            response = await client.join(room_id)
             joined_room_id = getattr(response, "room_id", None) if response else None
             if joined_room_id:
                 facade.logger.info(f"Successfully joined room '{joined_room_id}'")
