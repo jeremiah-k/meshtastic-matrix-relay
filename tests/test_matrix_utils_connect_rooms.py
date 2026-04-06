@@ -4,6 +4,7 @@ This module tests room alias resolution, displayname handling,
 and room setup behavior during Matrix connection establishment.
 """
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -240,7 +241,7 @@ async def test_connect_matrix_displayname_exception_fallback(monkeypatch):
     mock_client.rooms = {}
     mock_client.sync = AsyncMock(return_value=SimpleNamespace())
     mock_client.should_upload_keys = False
-    mock_client.get_displayname = AsyncMock(side_effect=TimeoutError)
+    mock_client.get_displayname = AsyncMock(side_effect=asyncio.TimeoutError)
     mock_client.close = AsyncMock()
 
     monkeypatch.setattr(
