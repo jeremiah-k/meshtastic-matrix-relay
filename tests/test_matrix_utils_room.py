@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -10,6 +11,8 @@ from mmrelay.matrix_utils import (
     _iter_room_alias_entries,
     _resolve_aliases_in_mapping,
     _update_room_id_in_mapping,
+    get_displayname,
+    get_user_display_name,
     join_matrix_room,
 )
 
@@ -648,3 +651,188 @@ def test_display_room_channel_mappings_no_display_name():
             call("    🔒 !room1:matrix.org"),  # Should fall back to room_id
         ]
         mock_logger.info.assert_has_calls(expected_calls)
+
+
+# User/Display Name Tests
+
+
+@pytest.mark.asyncio
+async def test_get_displayname_returns_none_when_client_missing(monkeypatch):
+    """Return None when no Matrix client is available."""
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+
+    result = await get_displayname("@user:example.org")
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_displayname_returns_displayname(monkeypatch):
+    """Return displayname attribute when client responds with one."""
+    mock_client = MagicMock()
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Alice")
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_client", mock_client, raising=False
+    )
+
+    result = await get_displayname("@user:example.org")
+
+    assert result == "Alice"
+
+
+@pytest.mark.asyncio
+@patch("mmrelay.matrix_utils.matrix_client")
+@patch("mmrelay.matrix_utils.logger")
+async def test_get_user_display_name_room_name(_mock_logger, _mock_matrix_client):
+    """Test getting user display name from room."""
+    mock_room = MagicMock()
+    mock_room.user_name.return_value = "Room Display Name"
+
+    mock_event = MagicMock()
+    mock_event.sender = "@user:matrix.org"
+
+    result = await get_user_display_name(mock_room, mock_event)
+
+    assert result == "Room Display Name"
+    mock_room.user_name.assert_called_once_with("@user:matrix.org")
+
+
+@pytest.mark.asyncio
+@patch("mmrelay.matrix_utils.matrix_client")
+@patch("mmrelay.matrix_utils.logger")
+async def test_get_user_display_name_fallback(_mock_logger, mock_matrix_client):
+    """Test getting user display name with fallback to Matrix API."""
+    mock_room = MagicMock()
+    mock_room.user_name.return_value = None  # No room-specific name
+
+    mock_event = MagicMock()
+    mock_event.sender = "@user:matrix.org"
+
+    # Mock Matrix API response
+    mock_displayname_response = MagicMock()
+    mock_displayname_response.displayname = "Global Display Name"
+    mock_matrix_client.get_displayname = AsyncMock(
+        return_value=mock_displayname_response
+    )
+
+    result = await get_user_display_name(mock_room, mock_event)
+
+    assert result == "Global Display Name"
+    mock_matrix_client.get_displayname.assert_called_once_with("@user:matrix.org")
+
+
+@pytest.mark.asyncio
+@patch("mmrelay.matrix_utils.matrix_client")
+@patch("mmrelay.matrix_utils.logger")
+async def test_get_user_display_name_no_displayname(_mock_logger, mock_matrix_client):
+    """Test getting user display name when no display name is set."""
+    mock_room = MagicMock()
+    mock_room.user_name.return_value = None
+
+    mock_event = MagicMock()
+    mock_event.sender = "@user:matrix.org"
+
+    # Mock Matrix API response with no display name
+    mock_displayname_response = MagicMock()
+    mock_displayname_response.displayname = None
+    mock_matrix_client.get_displayname = AsyncMock(
+        return_value=mock_displayname_response
+    )
+
+    result = await get_user_display_name(mock_room, mock_event)
+
+    # Should fallback to sender ID
+    assert result == "@user:matrix.org"
+
+
+@pytest.mark.asyncio
+async def test_get_user_display_name_profile_response(monkeypatch):
+    """Use ProfileGetDisplayNameResponse instances when available."""
+
+    class DummyResponse:
+        def __init__(self, displayname):
+            self.displayname = displayname
+
+    class DummyError:
+        pass
+
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.ProfileGetDisplayNameResponse",
+        DummyResponse,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.ProfileGetDisplayNameError", DummyError, raising=False
+    )
+
+    mock_client = MagicMock()
+    mock_client.get_displayname = AsyncMock(return_value=DummyResponse("Global Name"))
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_client", mock_client, raising=False
+    )
+
+    mock_room = MagicMock()
+    mock_room.user_name.return_value = None
+    mock_event = MagicMock()
+    mock_event.sender = "@user:matrix.org"
+
+    result = await get_user_display_name(mock_room, mock_event)
+
+    assert result == "Global Name"
+
+
+@pytest.mark.asyncio
+async def test_get_user_display_name_error_response(monkeypatch):
+    """Fall back to sender ID for ProfileGetDisplayNameError responses."""
+
+    class DummyResponse:
+        pass
+
+    class DummyError:
+        def __init__(self, message):
+            self.message = message
+
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.ProfileGetDisplayNameResponse",
+        DummyResponse,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.ProfileGetDisplayNameError", DummyError, raising=False
+    )
+
+    mock_client = MagicMock()
+    mock_client.get_displayname = AsyncMock(return_value=DummyError("No access"))
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_client", mock_client, raising=False
+    )
+
+    mock_room = MagicMock()
+    mock_room.user_name.return_value = None
+    mock_event = MagicMock()
+    mock_event.sender = "@user:matrix.org"
+
+    result = await get_user_display_name(mock_room, mock_event)
+
+    assert result == "@user:matrix.org"
+
+
+@pytest.mark.asyncio
+async def test_get_user_display_name_handles_comm_errors(monkeypatch):
+    """Return sender ID when get_displayname raises a comm exception."""
+    mock_client = MagicMock()
+    mock_client.get_displayname = AsyncMock(side_effect=asyncio.TimeoutError)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_client", mock_client, raising=False
+    )
+
+    mock_room = MagicMock()
+    mock_room.user_name.return_value = None
+    mock_event = MagicMock()
+    mock_event.sender = "@user:matrix.org"
+
+    result = await get_user_display_name(mock_room, mock_event)
+
+    assert result == "@user:matrix.org"

@@ -681,3 +681,60 @@ def test_validate_prefix_format_index_error():
 def test_validate_prefix_format_attribute_error():
     result = validate_prefix_format("{display.nonexistent}", {"display": "Test"})
     assert result[0] is False
+
+
+# Migrated tests from test_matrix_utils.py
+
+
+from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
+
+
+@patch("mmrelay.matrix_utils.config", {})
+def test_get_msgs_to_keep_config_default():
+    """
+    Test that the default message retention value is returned when no configuration is set.
+    """
+    result = _get_msgs_to_keep_config()
+    assert result == DEFAULT_MSGS_TO_KEEP
+
+
+@patch("mmrelay.matrix_utils.config", {"db": {"msg_map": {"msgs_to_keep": 100}}})
+def test_get_msgs_to_keep_config_legacy():
+    """
+    Test that the legacy configuration format correctly sets the message retention value.
+    """
+    result = _get_msgs_to_keep_config()
+    assert result == 100
+
+
+@patch("mmrelay.matrix_utils.config", {"database": {"msg_map": {"msgs_to_keep": 200}}})
+def test_get_msgs_to_keep_config_new_format():
+    """
+    Test that the new configuration format correctly sets the message retention value.
+
+    Verifies that `_get_msgs_to_keep_config()` returns the expected value when the configuration uses the new nested format for message retention.
+    """
+    result = _get_msgs_to_keep_config()
+    assert result == 200
+
+
+def test_create_mapping_info():
+    """
+    Tests that _create_mapping_info returns a dictionary with the correct message mapping information based on the provided parameters.
+    """
+    result = _create_mapping_info(
+        matrix_event_id="$event123",
+        room_id="!room:matrix.org",
+        text="Hello world",
+        meshnet="test_mesh",
+        msgs_to_keep=100,
+    )
+
+    expected = {
+        "matrix_event_id": "$event123",
+        "room_id": "!room:matrix.org",
+        "text": "Hello world",
+        "meshnet": "test_mesh",
+        "msgs_to_keep": 100,
+    }
+    assert result == expected
