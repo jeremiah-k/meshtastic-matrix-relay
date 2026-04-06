@@ -300,8 +300,9 @@ def _is_room_alias(value: Any) -> bool:
     Returns:
         `True` if `value` is a string that begins with '#', `False` otherwise.
     """
+    from mmrelay.matrix.room_mapping import _is_room_alias as _impl
 
-    return isinstance(value, str) and value.startswith("#")
+    return _impl(value)
 
 
 def _get_valid_device_id(device_id_value: Any) -> Optional[str]:
@@ -314,10 +315,9 @@ def _get_valid_device_id(device_id_value: Any) -> Optional[str]:
     Returns:
         Optional[str]: The input string with surrounding whitespace removed if it is non-empty, `None` otherwise.
     """
-    if isinstance(device_id_value, str):
-        value = device_id_value.strip()
-        return value or None
-    return None
+    from mmrelay.matrix.room_mapping import _get_valid_device_id as _impl
+
+    return _impl(device_id_value)
 
 
 def _extract_localpart_from_mxid(mxid: str | None) -> str | None:
@@ -331,11 +331,9 @@ def _extract_localpart_from_mxid(mxid: str | None) -> str | None:
         str | None: The localpart portion of the MXID (without @ and server),
         or the original value if it's already a localpart, or None if input is None.
     """
-    if not mxid:
-        return mxid
-    if mxid.startswith("@"):
-        return mxid[1:].split(":", 1)[0]
-    return mxid
+    from mmrelay.matrix.room_mapping import _extract_localpart_from_mxid as _impl
+
+    return _impl(mxid)
 
 
 def _is_room_mapped(mapping: Any, room_id_or_alias: str) -> bool:
@@ -349,13 +347,9 @@ def _is_room_mapped(mapping: Any, room_id_or_alias: str) -> bool:
     Returns:
         bool: `True` if the room ID or alias is present in the mapping, `False` otherwise.
     """
-    if not isinstance(mapping, (list, dict)):
-        return False
+    from mmrelay.matrix.room_mapping import _is_room_mapped as _impl
 
-    return any(
-        alias_or_id == room_id_or_alias
-        for alias_or_id, _ in _iter_room_alias_entries(mapping)
-    )
+    return _impl(mapping, room_id_or_alias)
 
 
 def _iter_room_alias_entries(
@@ -376,78 +370,9 @@ def _iter_room_alias_entries(
     Yields:
         tuple[str, Callable[[str], None]]: (alias_or_id, setter) for each entry in the mapping.
     """
+    from mmrelay.matrix.room_mapping import _iter_room_alias_entries as _impl
 
-    def _make_entry_setter(entry: dict[str, Any]) -> Callable[[str], None]:
-        # Capture the current entry via default args to avoid loop-variable reuse.
-        """
-        Create and return a setter function that updates the given entry's "id" field in place.
-
-        Parameters:
-            entry (dict[str, Any]): The dictionary whose "id" key will be updated by the returned setter.
-
-        Returns:
-            Callable[[str], None]: A function that sets entry["id"] to the provided string.
-        """
-
-        def _set_entry_id(new_id: str, target: dict[str, Any] = entry) -> None:
-            target["id"] = new_id
-
-        return _set_entry_id
-
-    def _make_list_setter(index: int, collection: list[Any]) -> Callable[[str], None]:
-        """
-        Create a callable that replaces the element at a fixed index in a given list.
-
-        Parameters:
-            index (int): The index in the list whose value the returned callable will replace.
-            collection (list[Any]): The list to be modified by the returned callable.
-
-        Returns:
-            Callable[[str], None]: A function that accepts a single `new_id` string and sets `collection[index]` to `new_id`.
-        """
-
-        def _set_list_entry_value(
-            new_id: str, idx: int = index, target: list[Any] = collection
-        ) -> None:
-            target[idx] = new_id
-
-        return _set_list_entry_value
-
-    def _make_dict_setter(
-        key: Any, collection: dict[Any, Any]
-    ) -> Callable[[str], None]:
-        """
-        Create a setter function that assigns a new string ID to a specific key in a dictionary.
-
-        Parameters:
-            key (Any): The dictionary key whose value the returned setter will replace.
-            collection (dict[Any, Any]): The dictionary to be modified by the returned setter.
-
-        Returns:
-            setter (Callable[[str], None]): A function that sets collection[key] to the provided `new_id`.
-        """
-
-        def _set_dict_entry_value(
-            new_id: str,
-            target_key: Any = key,
-            target: dict[Any, Any] = collection,
-        ) -> None:
-            target[target_key] = new_id
-
-        return _set_dict_entry_value
-
-    if isinstance(mapping, list):
-        for index, entry in enumerate(mapping):
-            if isinstance(entry, dict):
-                yield (entry.get("id", ""), _make_entry_setter(entry))
-            else:
-                yield (entry, _make_list_setter(index, mapping))
-    elif isinstance(mapping, dict):
-        for key, entry in list(mapping.items()):
-            if isinstance(entry, dict):
-                yield (entry.get("id", ""), _make_entry_setter(entry))
-            else:
-                yield (entry, _make_dict_setter(key, mapping))
+    return _impl(mapping)
 
 
 async def _resolve_aliases_in_mapping(
@@ -467,19 +392,9 @@ async def _resolve_aliases_in_mapping(
     Notes:
         If `mapping` is not a list or dict, the function logs a warning and makes no changes.
     """
+    from mmrelay.matrix.room_mapping import _resolve_aliases_in_mapping as _impl
 
-    if not isinstance(mapping, (list, dict)):
-        logger.warning(
-            "matrix_rooms is expected to be a list or dict, got %s",
-            type(mapping).__name__,
-        )
-        return
-
-    for alias, setter in _iter_room_alias_entries(mapping):
-        if _is_room_alias(alias):
-            resolved_id = await resolver(alias)
-            if resolved_id:
-                setter(resolved_id)
+    return await _impl(mapping, resolver)
 
 
 def _update_room_id_in_mapping(
@@ -498,15 +413,9 @@ def _update_room_id_in_mapping(
     Returns:
         bool: True if the alias was found and replaced with resolved_id; False if the mapping type is unsupported or the alias was not present.
     """
+    from mmrelay.matrix.room_mapping import _update_room_id_in_mapping as _impl
 
-    if not isinstance(mapping, (list, dict)):
-        return False
-
-    for existing_alias, setter in _iter_room_alias_entries(mapping):
-        if existing_alias == alias:
-            setter(resolved_id)
-            return True
-    return False
+    return _impl(mapping, alias, resolved_id)
 
 
 def _display_room_channel_mappings(
@@ -522,88 +431,16 @@ def _display_room_channel_mappings(
         config (dict): Configuration containing a "matrix_rooms" section with entries that include "id" and "meshtastic_channel".
         e2ee_status (dict): E2EE status information; expects an "overall_status" key used to determine status messages (common values: "ready", "unavailable", "disabled").
     """
-    if not rooms:
-        logger.info("Bot is not in any Matrix rooms")
-        return
+    from mmrelay.matrix.room_mapping import _display_room_channel_mappings as _impl
 
-    # Get matrix_rooms configuration
-    matrix_rooms_config = config.get("matrix_rooms", [])
-    if not matrix_rooms_config:
-        logger.info("No matrix_rooms configuration found")
-        return
-
-    # Normalize matrix_rooms configuration to list format
-    if isinstance(matrix_rooms_config, dict):
-        # Convert dict format to list format
-        matrix_rooms_list = list(matrix_rooms_config.values())
-    else:
-        # Already in list format
-        matrix_rooms_list = matrix_rooms_config
-
-    # Create mapping of room_id -> channel number
-    room_to_channel = {}
-    for room_config in matrix_rooms_list:
-        if isinstance(room_config, dict):
-            room_id = room_config.get("id")
-            channel = room_config.get("meshtastic_channel")
-            if room_id and channel is not None:
-                room_to_channel[room_id] = channel
-
-    # Group rooms by channel
-    channels: dict[int, list[tuple[str, Any]]] = {}
-
-    for room_id, room in rooms.items():
-        if room_id in room_to_channel:
-            channel = room_to_channel[room_id]
-            if channel not in channels:
-                channels[channel] = []
-            channels[channel].append((room_id, room))
-
-    # Display header
-    mapped_rooms = sum(len(room_list) for room_list in channels.values())
-    logger.info(f"Meshtastic Channels ↔ Matrix Rooms ({mapped_rooms} configured):")
-
-    # Display rooms organized by channel (sorted by channel number)
-    for channel in sorted(channels.keys()):
-        room_list = channels[channel]
-        logger.info(f"  Channel {channel}:")
-
-        for room_id, room in room_list:
-            room_name = getattr(room, "display_name", room_id)
-            encrypted = getattr(room, "encrypted", False)
-
-            # Format with encryption status
-            if e2ee_status["overall_status"] == "ready":
-                if encrypted:
-                    logger.info(f"    🔒 {room_name}")
-                else:
-                    logger.info(f"    ✅ {room_name}")
-            else:
-                if encrypted:
-                    if e2ee_status["overall_status"] == "unavailable":
-                        logger.info(
-                            f"    ⚠️ {room_name} (E2EE not supported - messages blocked)"
-                        )
-                    elif e2ee_status["overall_status"] == "disabled":
-                        logger.info(
-                            f"    ⚠️ {room_name} (E2EE disabled - messages blocked)"
-                        )
-                    else:
-                        logger.info(
-                            f"    ⚠️ {room_name} (E2EE incomplete - messages may be blocked)"
-                        )
-                else:
-                    logger.info(f"    ✅ {room_name}")
+    return _impl(rooms, config, e2ee_status)
 
 
 def _first_nonblank_str(*values: Any) -> str | None:
     """Return the first non-blank string value after stripping whitespace."""
-    for value in values:
-        if isinstance(value, str):
-            stripped = value.strip()
-            if stripped:
-                return stripped
-    return None
+    from mmrelay.matrix.prefixes import _first_nonblank_str as _impl
+
+    return _impl(*values)
 
 
 def _can_auto_create_credentials(matrix_config: Dict[str, Any] | None) -> bool:
@@ -616,15 +453,9 @@ def _can_auto_create_credentials(matrix_config: Dict[str, Any] | None) -> bool:
     Returns:
         True if `homeserver`, a user id (`bot_user_id` or `user_id`), and `password` are present as non-empty strings, False otherwise.
     """
-    if not isinstance(matrix_config, dict):
-        return False
-    homeserver = matrix_config.get(CONFIG_KEY_HOMESERVER)
-    user = _first_nonblank_str(
-        matrix_config.get(CONFIG_KEY_BOT_USER_ID),
-        matrix_config.get(CONFIG_KEY_USER_ID),
-    )
-    password = matrix_config.get(CONFIG_KEY_PASSWORD)
-    return all(isinstance(v, str) and v.strip() for v in (homeserver, user, password))
+    from mmrelay.matrix.prefixes import _can_auto_create_credentials as _impl
+
+    return _impl(matrix_config)
 
 
 def _normalize_bot_user_id(homeserver: str, bot_user_id: str | None) -> str | None:
@@ -651,47 +482,9 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str | None) -> str | No
         str | None: A normalized Matrix user ID in the form "@localpart:server",
         or None if bot_user_id is falsy.
     """
-    if not bot_user_id:
-        return bot_user_id
+    from mmrelay.matrix.prefixes import _normalize_bot_user_id as _impl
 
-    def _canonical_server(value: str | None) -> str | None:
-        if not value:
-            return value
-        value = value.strip()
-        if value.startswith("[") and "]" in value:
-            closing_index = value.find("]")
-            value = value[1:closing_index]
-        if value.count(":") == 1 and re.search(r":\d+$", value):
-            value = value.rsplit(":", 1)[0]
-        if ":" in value and not value.startswith("["):
-            value = f"[{value}]"
-        return value
-
-    # Derive domain from homeserver (tolerate missing scheme; drop brackets/port/paths)
-    parsed = urlparse(homeserver)
-    domain = parsed.hostname or urlparse(f"//{homeserver}").hostname
-    if not domain:
-        # Last-ditch fallback for malformed inputs; drop any trailing :port
-        host = homeserver.split("://")[-1].split("/", 1)[0]
-        domain = re.sub(r":\d+$", "", host)
-
-    domain = _canonical_server(domain) or ""
-
-    # Normalize user ID
-    localpart, *serverpart = bot_user_id.lstrip("@").split(":", 1)
-    if serverpart and serverpart[0]:
-        # Already has a server part; drop any brackets/port consistently
-        raw_server = serverpart[0]
-        server = urlparse(f"//{raw_server}").hostname or re.sub(
-            r":\d+$",
-            "",
-            raw_server,
-        )
-        canonical_server = _canonical_server(server)
-        return f"@{localpart}:{canonical_server or domain}"
-
-    # No server part, add the derived domain
-    return f"@{localpart.rstrip(':')}:{domain}"
+    return _impl(homeserver, bot_user_id)
 
 
 def _get_msgs_to_keep_config(config_override: dict[str, Any] | None = None) -> int:
@@ -706,43 +499,9 @@ def _get_msgs_to_keep_config(config_override: dict[str, Any] | None = None) -> i
     Returns:
         int: The configured number of mappings to keep, or DEFAULT_MSGS_TO_KEEP if unspecified or invalid.
     """
-    global config
-    effective_config = config_override if config_override is not None else config
-    if not isinstance(effective_config, dict) or not effective_config:
-        return DEFAULT_MSGS_TO_KEEP
+    from mmrelay.matrix.prefixes import _get_msgs_to_keep_config as _impl
 
-    def _get_msg_map_config(section: dict[str, Any] | None) -> dict[str, Any] | None:
-        """
-        Extract the "msg_map" subsection from a configuration section if present and valid.
-
-        Parameters:
-            section (dict[str, Any] | None): Configuration section to inspect.
-
-        Returns:
-            dict[str, Any] | None: The value of `section["msg_map"]` if it exists and is a dict, otherwise `None`.
-        """
-        if not isinstance(section, dict):
-            return None
-        candidate = section.get("msg_map")
-        return candidate if isinstance(candidate, dict) else None
-
-    msg_map_config = _get_msg_map_config(effective_config.get(CONFIG_SECTION_DATABASE))
-
-    # If not found in database config, check legacy db config
-    if msg_map_config is None:
-        msg_map_config = _get_msg_map_config(
-            effective_config.get(CONFIG_SECTION_DATABASE_LEGACY)
-        )
-        if msg_map_config is not None:
-            logger.warning(
-                "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
-            )
-
-    if msg_map_config is None:
-        msg_map_config = {}
-
-    msgs_to_keep = msg_map_config.get("msgs_to_keep", DEFAULT_MSGS_TO_KEEP)
-    return msgs_to_keep if isinstance(msgs_to_keep, int) else DEFAULT_MSGS_TO_KEEP
+    return _impl(config_override)
 
 
 def _get_detailed_matrix_error_message(matrix_response: Any) -> str:
@@ -757,107 +516,9 @@ def _get_detailed_matrix_error_message(matrix_response: Any) -> str:
     Returns:
         A short descriptive error string (e.g., "Authentication failed - invalid or expired credentials", "Access forbidden - check user permissions", "Rate limited - too many requests", "Server error (HTTP <code>) - the Matrix server is experiencing issues", or "Network connectivity issue or server unreachable").
     """
+    from mmrelay.matrix.prefixes import _get_detailed_matrix_error_message as _impl
 
-    def _is_unhelpful_error_string(error_str: str) -> bool:
-        """
-        Detect whether an error message string is unhelpful (e.g., an object repr, bare HTML-like tag, or generic "unknown error").
-
-        Parameters:
-            error_str (str): The error message text to evaluate.
-
-        Returns:
-            bool: `true` if the string appears to be an unhelpful error message (contains an object memory-address repr, a lone HTML-like tag, or the phrase "unknown error"), `false` otherwise.
-        """
-        return (
-            OBJECT_REPR_REGEX.search(error_str) is not None
-            or HTML_TAG_REGEX.search(error_str) is not None
-            or "unknown error" in error_str.lower()
-        )
-
-    try:
-        # Handle bytes/bytearray types by converting to string
-        if isinstance(matrix_response, (bytes, bytearray)):
-            try:
-                matrix_response = matrix_response.decode(DEFAULT_TEXT_ENCODING)
-            except UnicodeDecodeError:
-                return "Network connectivity issue or server unreachable (binary data)"
-
-        # If already a string, decide whether to return or fall back
-        if isinstance(matrix_response, str):
-            # Clean up object/HTML/unknown placeholders
-            if _is_unhelpful_error_string(matrix_response):
-                return "Network connectivity issue or server unreachable"
-            return matrix_response
-
-        # Try to extract specific error information from an object
-        message_attr = getattr(matrix_response, "message", None)
-        if message_attr:
-            message = message_attr
-            # Handle if message is bytes/bytearray
-            if isinstance(message, (bytes, bytearray)):
-                try:
-                    message = message.decode(DEFAULT_TEXT_ENCODING)
-                except UnicodeDecodeError:
-                    return "Network connectivity issue or server unreachable"
-            if isinstance(message, str):
-                return message
-        status_code_attr = getattr(matrix_response, "status_code", None)
-        if status_code_attr:
-            status_code = status_code_attr
-            # Handle if status_code is not an int
-            try:
-                status_code = int(status_code)
-            except (ValueError, TypeError):
-                return "Network connectivity issue or server unreachable"
-
-            if status_code == 401:
-                return "Authentication failed - invalid or expired credentials"
-            elif status_code == 403:
-                return "Access forbidden - check user permissions"
-            elif status_code == 404:
-                return "Server not found - check homeserver URL"
-            elif status_code == 429:
-                return "Rate limited - too many requests"
-            elif status_code >= 500:
-                return f"Server error (HTTP {status_code}) - the Matrix server is experiencing issues"
-            else:
-                return f"HTTP error {status_code}"
-        elif hasattr(matrix_response, "transport_response"):
-            # Check for transport-level errors
-            transport = getattr(matrix_response, "transport_response", None)
-            if transport and hasattr(transport, "status_code"):
-                try:
-                    status_code = int(transport.status_code)
-                    return f"Transport error: HTTP {status_code}"
-                except (ValueError, TypeError):
-                    return "Network connectivity issue or server unreachable"
-
-        # Fallback to string representation with safety checks
-        try:
-            error_str = str(matrix_response)
-        except Exception:  # noqa: BLE001 — keep bridge alive on hostile __str__()
-            # Keep broad here: custom nio/error objects can raise arbitrary exceptions in __str__;
-            # returning a generic connectivity message prevents sync loop crashes and keeps handling consistent.
-            logger.debug("Failed to convert matrix_response to string", exc_info=True)
-            return "Network connectivity issue or server unreachable"
-
-        if (
-            error_str
-            and error_str != "None"
-            and not _is_unhelpful_error_string(error_str)
-        ):
-            return error_str
-        else:
-            return "Network connectivity issue or server unreachable"
-
-    except (AttributeError, ValueError, TypeError) as e:
-        logger.debug(
-            "Failed to extract matrix error details from %r: %s", matrix_response, e
-        )
-        # If we can't extract error details, provide a generic but helpful message
-        return (
-            "Unable to determine specific error - likely a network connectivity issue"
-        )
+    return _impl(matrix_response)
 
 
 def _create_mapping_info(
@@ -882,19 +543,9 @@ def _create_mapping_info(
     Returns:
         A dict with keys `matrix_event_id`, `room_id`, `text`, `meshnet`, and `msgs_to_keep`, or `None` if required inputs are missing.
     """
-    if not matrix_event_id or not room_id or not text:
-        return None
+    from mmrelay.matrix.room_mapping import _create_mapping_info as _impl
 
-    if msgs_to_keep is None:
-        msgs_to_keep = _get_msgs_to_keep_config()
-
-    return {
-        "matrix_event_id": matrix_event_id,
-        "room_id": room_id,
-        "text": strip_quoted_lines(text),
-        "meshnet": meshnet,
-        "msgs_to_keep": msgs_to_keep,
-    }
+    return _impl(matrix_event_id, room_id, text, meshnet, msgs_to_keep)
 
 
 def get_interaction_settings(config: dict[str, Any] | None) -> dict[str, bool]:
@@ -909,70 +560,9 @@ def get_interaction_settings(config: dict[str, Any] | None) -> dict[str, bool]:
     Returns:
         dict[str, bool]: A mapping with keys `"reactions"` and `"replies"`. `"reactions"` is `True` when reactions are enabled, `"replies"` is `True` when replies are enabled; both are `False` by default.
     """
-    if config is None:
-        return {"reactions": False, "replies": False}
+    from mmrelay.matrix.prefixes import get_interaction_settings as _impl
 
-    meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC, {})
-    if not isinstance(meshtastic_config, dict):
-        logger.warning(
-            "Invalid '%s' configuration type (%s); disabling reactions and replies.",
-            CONFIG_SECTION_MESHTASTIC,
-            type(meshtastic_config).__name__,
-        )
-        return {"reactions": False, "replies": False}
-
-    # Check for new structured configuration first
-    interactions = meshtastic_config.get("message_interactions")
-    if interactions is not None:
-        if not isinstance(interactions, dict):
-            logger.warning(
-                "Invalid '%s.message_interactions' value (%s); disabling reactions and replies.",
-                CONFIG_SECTION_MESHTASTIC,
-                type(interactions).__name__,
-            )
-            return {"reactions": False, "replies": False}
-
-        reactions = interactions.get("reactions", False)
-        replies = interactions.get("replies", False)
-        if "reactions" in interactions and not isinstance(reactions, bool):
-            logger.warning(
-                "Invalid '%s.message_interactions.reactions' value (%s); treating as False.",
-                CONFIG_SECTION_MESHTASTIC,
-                type(reactions).__name__,
-            )
-        if "replies" in interactions and not isinstance(replies, bool):
-            logger.warning(
-                "Invalid '%s.message_interactions.replies' value (%s); treating as False.",
-                CONFIG_SECTION_MESHTASTIC,
-                type(replies).__name__,
-            )
-        return {
-            "reactions": reactions if isinstance(reactions, bool) else False,
-            "replies": replies if isinstance(replies, bool) else False,
-        }
-
-    # Fall back to legacy relay_reactions setting
-    if "relay_reactions" in meshtastic_config:
-        enabled_value = meshtastic_config.get("relay_reactions")
-        enabled = enabled_value if isinstance(enabled_value, bool) else False
-        if not isinstance(enabled_value, bool):
-            logger.warning(
-                "Invalid '%s.relay_reactions' value (%s); treating as False.",
-                CONFIG_SECTION_MESHTASTIC,
-                type(enabled_value).__name__,
-            )
-        logger.warning(
-            "Configuration setting 'relay_reactions' is deprecated. "
-            "Please use 'message_interactions: {reactions: bool, replies: bool}' instead. "
-            "Legacy mode: enabling reactions only."
-        )
-        return {
-            "reactions": enabled,
-            "replies": False,
-        }  # Only reactions for legacy compatibility
-
-    # Default to privacy-first (both disabled)
-    return {"reactions": False, "replies": False}
+    return _impl(config)
 
 
 def message_storage_enabled(interactions: dict[str, bool]) -> bool:
@@ -982,7 +572,9 @@ def message_storage_enabled(interactions: dict[str, bool]) -> bool:
     Returns:
         True if either reactions or replies are enabled in the interactions dictionary; otherwise, False.
     """
-    return interactions["reactions"] or interactions["replies"]
+    from mmrelay.matrix.prefixes import message_storage_enabled as _impl
+
+    return _impl(interactions)
 
 
 def _add_truncated_vars(
@@ -998,13 +590,9 @@ def _add_truncated_vars(
         prefix (str): Base name for keys; numeric suffixes 1..MAX_TRUNCATION_LENGTH are appended.
         text (str | None): Source string to truncate; treated as empty string when None.
     """
-    # Always add truncated variables, even for empty text (to prevent KeyError)
-    text = text or ""  # Convert None to empty string
-    for i in range(
-        1, MAX_TRUNCATION_LENGTH + 1
-    ):  # Support up to MAX_TRUNCATION_LENGTH chars, always add all variants
-        truncated_value = text[:i]
-        format_vars[f"{prefix}{i}"] = truncated_value
+    from mmrelay.matrix.prefixes import _add_truncated_vars as _impl
+
+    return _impl(format_vars, prefix, text)
 
 
 def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
@@ -1016,15 +604,9 @@ def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
     Returns:
         tuple[str, bool]: `(safe_message, escaped)` where `safe_message` is the possibly-escaped message and `escaped` is `True` if an escape was performed, `False` otherwise.
     """
-    match = PREFIX_DEFINITION_REGEX.match(message)
-    if not match:
-        return message, False
+    from mmrelay.matrix.prefixes import _escape_leading_prefix_for_markdown as _impl
 
-    prefix_text = match.group(1)
-    spacing = match.group(2)
-    escaped_prefix = MARKDOWN_ESCAPE_REGEX.sub(r"\\\1", prefix_text)
-    escaped = f"\\[{escaped_prefix}]:{spacing}"
-    return escaped + message[match.end() :], True
+    return _impl(message)
 
 
 def validate_prefix_format(
@@ -1040,12 +622,9 @@ def validate_prefix_format(
     Returns:
         tuple: (is_valid, error_message). is_valid is True if formatting succeeds, False otherwise. error_message is the exception message when invalid, or None when valid.
     """
-    try:
-        # Test format with dummy data
-        format_string.format(**available_vars)
-        return True, None
-    except (KeyError, ValueError) as e:
-        return False, str(e)
+    from mmrelay.matrix.prefixes import validate_prefix_format as _impl
+
+    return _impl(format_string, available_vars)
 
 
 def get_meshtastic_prefix(
@@ -1062,64 +641,9 @@ def get_meshtastic_prefix(
     Returns:
         str: The formatted prefix string when enabled, or an empty string if prefixing is disabled.
     """
-    meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC, {})
+    from mmrelay.matrix.prefixes import get_meshtastic_prefix as _impl
 
-    # Check if prefixes are enabled
-    if not meshtastic_config.get("prefix_enabled", True):
-        return ""
-
-    # Get custom format or use default
-    prefix_format_value = meshtastic_config.get(
-        "prefix_format", DEFAULT_MESHTASTIC_PREFIX
-    )
-    prefix_format = (
-        str(prefix_format_value)
-        if prefix_format_value is not None
-        else DEFAULT_MESHTASTIC_PREFIX
-    )
-
-    # Parse username and server from user_id if available
-    username = ""
-    server = ""
-    if user_id:
-        # Extract username and server from @username:server.com format
-        if user_id.startswith("@") and ":" in user_id:
-            parts = user_id[1:].split(":", 1)  # Remove @ and split on first :
-            username = parts[0]
-            server = parts[1] if len(parts) > 1 else ""
-
-    # Available variables for formatting with variable length support
-    format_vars = {
-        "display": display_name or "",
-        "user": user_id or "",
-        "username": username,
-        "server": server,
-    }
-
-    # Add variable length display name truncation (display1, display2, display3, etc.)
-    _add_truncated_vars(format_vars, "display", display_name)
-
-    try:
-        result = prefix_format.format(**format_vars)
-        logger.debug(
-            "Meshtastic prefix generated (%s): %s",
-            (
-                "custom format"
-                if prefix_format != DEFAULT_MESHTASTIC_PREFIX
-                else "default format"
-            ),
-            result,
-        )
-        return result
-    except (KeyError, ValueError) as e:
-        # Fallback to default format if custom format is invalid
-        logger.warning(
-            f"Invalid prefix_format '{prefix_format}': {e}. Using default format."
-        )
-        # The default format only uses 'display5', which is safe to format
-        return DEFAULT_MESHTASTIC_PREFIX.format(
-            display5=display_name[:DISPLAY_NAME_DEFAULT_LENGTH] if display_name else ""
-        )
+    return _impl(config, display_name, user_id)
 
 
 def get_matrix_prefix(
@@ -1138,53 +662,9 @@ def get_matrix_prefix(
     Returns:
         str: The formatted prefix string, or an empty string if prefixing is disabled.
     """
-    matrix_config = config.get(CONFIG_SECTION_MATRIX, {})
+    from mmrelay.matrix.prefixes import get_matrix_prefix as _impl
 
-    # Check if prefixes are enabled for Matrix direction
-    if not matrix_config.get("prefix_enabled", True):
-        return ""
-
-    # Get custom format or use default
-    matrix_prefix_format_value = matrix_config.get(
-        "prefix_format", DEFAULT_MATRIX_PREFIX
-    )
-    matrix_prefix_format = (
-        str(matrix_prefix_format_value)
-        if matrix_prefix_format_value is not None
-        else DEFAULT_MATRIX_PREFIX
-    )
-    # Available variables for formatting with variable length support
-    format_vars = {
-        "long": longname,
-        "short": shortname,
-        "mesh": meshnet_name,
-    }
-
-    # Add variable length truncation for longname and mesh name
-    _add_truncated_vars(format_vars, "long", longname)
-    _add_truncated_vars(format_vars, "mesh", meshnet_name)
-
-    try:
-        result = matrix_prefix_format.format(**format_vars)
-        logger.debug(
-            "Matrix prefix generated (%s): %s",
-            (
-                "custom format"
-                if matrix_prefix_format != DEFAULT_MATRIX_PREFIX
-                else "default format"
-            ),
-            result,
-        )
-        return result
-    except (KeyError, ValueError) as e:
-        # Fallback to default format if custom format is invalid
-        logger.warning(
-            f"Invalid matrix prefix_format '{matrix_prefix_format}': {e}. Using default format."
-        )
-        # The default format only uses 'long' and 'mesh', which are safe
-        return DEFAULT_MATRIX_PREFIX.format(
-            long=longname or "", mesh=meshnet_name or ""
-        )
+    return _impl(config, longname, shortname, meshnet_name)
 
 
 # Global config variable that will be set from config.py
@@ -1200,6 +680,12 @@ bot_start_time = int(
     time.time() * MILLISECONDS_PER_SECOND
 )  # Timestamp when the bot starts, used to filter out old messages
 bot_start_monotonic_secs = time.monotonic()
+
+
+from mmrelay.matrix.prefixes import *
+
+# Re-export from submodules for backward compatibility
+from mmrelay.matrix.room_mapping import *
 
 
 def _estimate_clock_rollback_ms(
