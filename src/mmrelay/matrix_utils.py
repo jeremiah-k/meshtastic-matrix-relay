@@ -682,6 +682,15 @@ bot_start_time = int(
 bot_start_monotonic_secs = time.monotonic()
 
 
+# Phase 3: Re-export from mmrelay.matrix.auth
+from mmrelay.matrix.auth import (
+    _close_matrix_client_after_failure,
+    _configure_e2ee,
+    _initialize_matrix_client,
+    _maybe_upload_e2ee_keys,
+    _perform_matrix_login,
+)
+
 # Phase 2: Re-export from submodules
 from mmrelay.matrix.command_bridge import *
 from mmrelay.matrix.media import send_image, send_room_image, upload_image
@@ -759,6 +768,33 @@ async def _handle_detection_sensor_packet(
     from mmrelay.matrix.command_bridge import _handle_detection_sensor_packet as _impl
 
     return await _impl(config, room_config, full_display_name, text)
+
+
+from mmrelay.matrix.credentials import _missing_credentials_keys as _creds_missing_keys
+from mmrelay.matrix.credentials import (
+    _resolve_and_load_credentials as _creds_resolve_and_load,
+)
+from mmrelay.matrix.credentials import (
+    _resolve_credentials_save_path as _creds_save_path,
+)
+
+
+def _resolve_credentials_save_path(config_data: dict[str, Any] | None) -> str | None:
+    """Re-exported from mmrelay.matrix.credentials for backward compatibility."""
+    return _creds_save_path(config_data)
+
+
+def _missing_credentials_keys(credentials: dict[str, Any]) -> list[str]:
+    """Re-exported from mmrelay.matrix.credentials for backward compatibility."""
+    return _creds_missing_keys(credentials)
+
+
+async def _resolve_and_load_credentials(
+    config_data: dict[str, Any] | None,
+    matrix_section: Any,
+) -> "MatrixAuthInfo | None":
+    """Re-exported from mmrelay.matrix.credentials for backward compatibility."""
+    return await _creds_resolve_and_load(config_data, matrix_section)
 
 
 @dataclass
