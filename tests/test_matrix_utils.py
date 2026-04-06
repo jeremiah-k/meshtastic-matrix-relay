@@ -1343,7 +1343,9 @@ async def test_on_room_message_plugin_handle_exception_logs_and_continues(
         await on_room_message(mock_room, mock_event)
 
     mock_queue.assert_called_once()
-    mock_logger.error.assert_any_call("Error processing message with plugin %s", "boom")
+    mock_logger.error.assert_any_call(
+        "Error processing message with plugin %s: %s", "boom", "RuntimeError"
+    )
     mock_logger.exception.assert_any_call(
         "Error processing message with plugin %s", "boom"
     )
@@ -2958,10 +2960,10 @@ async def test_send_image():
     mock_upload_response.content_uri = "mxc://matrix.org/test123"
 
     with patch(
-        "mmrelay.matrix.media.upload_image", return_value=mock_upload_response
+        "mmrelay.matrix_utils.upload_image", return_value=mock_upload_response
     ) as mock_upload:
         with patch(
-            "mmrelay.matrix.media.send_room_image", return_value=None
+            "mmrelay.matrix_utils.send_room_image", return_value=None
         ) as mock_send:
             await send_image(mock_client, "!room:matrix.org", mock_image, "test.png")
 
@@ -5314,7 +5316,7 @@ async def test_connect_matrix_e2ee_store_missing_db_files_warns(
 
     assert any(
         "No existing E2EE store files found" in call.args[0]
-        for call in mock_logger.warning.call_args_list
+        for call in mock_logger.info.call_args_list
     )
 
 

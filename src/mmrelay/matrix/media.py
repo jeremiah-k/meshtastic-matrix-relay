@@ -137,5 +137,7 @@ async def send_image(
     Raises:
         ImageUploadError: If the upload or send operation fails.
     """
-    response = await upload_image(client=client, image=image, filename=filename)
-    await send_room_image(client, room_id, upload_response=response, filename=filename)
+    response = await facade.upload_image(client=client, image=image, filename=filename)
+    await facade.send_room_image(
+        client, room_id, upload_response=response, filename=filename
+    )
