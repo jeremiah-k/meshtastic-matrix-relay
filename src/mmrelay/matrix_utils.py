@@ -682,6 +682,9 @@ bot_start_time = int(
 bot_start_monotonic_secs = time.monotonic()
 
 
+# Phase 2: Re-export from submodules
+from mmrelay.matrix.command_bridge import *
+from mmrelay.matrix.media import send_image, send_room_image, upload_image
 from mmrelay.matrix.prefixes import *
 
 # Re-export from submodules for backward compatibility
@@ -691,38 +694,17 @@ from mmrelay.matrix.room_mapping import *
 def _estimate_clock_rollback_ms(
     bot_start_time: int, bot_start_monotonic_secs: float
 ) -> int:
-    """
-    Estimate how many milliseconds the local clock has rolled backward since bot startup.
+    """Re-exported from mmrelay.matrix.command_bridge for backward compatibility."""
+    from mmrelay.matrix.command_bridge import _estimate_clock_rollback_ms as _impl
 
-    Compares the expected current time (based on monotonic elapsed time since startup)
-    against the actual wall-clock time to detect clock rollback events.
-
-    Parameters:
-        bot_start_time: The bot's startup timestamp in milliseconds (from time.time()).
-        bot_start_monotonic_secs: The bot's startup monotonic time in seconds.
-
-    Returns:
-        The estimated rollback in milliseconds. Positive values indicate the local
-        clock appears to have stepped backward relative to the monotonic clock.
-    """
-    now_ms = int(time.time() * MILLISECONDS_PER_SECOND)
-    elapsed_ms = int(
-        (time.monotonic() - bot_start_monotonic_secs) * MILLISECONDS_PER_SECOND
-    )
-    expected_now_ms = bot_start_time + elapsed_ms
-    return expected_now_ms - now_ms
+    return _impl(bot_start_time, bot_start_monotonic_secs)
 
 
 def _refresh_bot_start_timestamps() -> None:
-    """
-    Refresh bot_start_time and bot_start_monotonic_secs to the current wall/monotonic time.
+    """Re-exported from mmrelay.matrix.command_bridge for backward compatibility."""
+    from mmrelay.matrix.command_bridge import _refresh_bot_start_timestamps as _impl
 
-    Called at the start of each Matrix bootstrap so that stale-event startup
-    window filtering is anchored to the actual bootstrap rather than module import.
-    """
-    global bot_start_time, bot_start_monotonic_secs
-    bot_start_time = int(time.time() * MILLISECONDS_PER_SECOND)
-    bot_start_monotonic_secs = time.monotonic()
+    return _impl()
 
 
 matrix_client = None
@@ -732,19 +714,10 @@ _MATRIX_STARTUP_SYNC_LOCK = asyncio.Lock()
 
 
 async def get_displayname(user_id: str) -> str | None:
-    """
-    Get the display name for a given user ID.
+    """Re-exported from mmrelay.matrix.command_bridge for backward compatibility."""
+    from mmrelay.matrix.command_bridge import get_displayname as _impl
 
-    Parameters:
-        user_id (str): The Matrix user ID.
-
-    Returns:
-        str | None: The display name, or None if not available.
-    """
-    if not matrix_client:
-        return None
-    response = await matrix_client.get_displayname(user_id)
-    return getattr(response, "displayname", None)
+    return await _impl(user_id)
 
 
 def bot_command(
@@ -752,103 +725,28 @@ def bot_command(
     event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
     require_mention: bool = False,
 ) -> bool:
-    """
-    Determine whether a Matrix event addresses the bot with the given command.
+    """Re-exported from mmrelay.matrix.command_bridge for backward compatibility."""
+    from mmrelay.matrix.command_bridge import bot_command as _impl
 
-    Checks the event's plain and HTML-formatted bodies. Matches when the message either starts with `!<command>` (only allowed when `require_mention` is False) or begins with an explicit mention of the bot (bot MXID or display name) optionally followed by punctuation/whitespace and then `!<command>`.
-
-    Parameters:
-        command (str): Command name to detect (without the leading `!`).
-        event: Matrix event object expected to provide a plain `body` and a `source`/`content` with optional `formatted_body`.
-        require_mention (bool): If True, only accept commands that explicitly mention the bot; if False, accept bare `!<command>` messages as well.
-
-    Returns:
-        bool: `True` if the message addresses the bot with the given command, `False` otherwise.
-    """
-    full_message = (getattr(event, "body", "") or "").strip()
-    if not command:
-        return False
-    content = event.source.get("content", {})
-    formatted_body = content.get("formatted_body", "")
-
-    # Remove HTML tags and extract the text content
-    text_content = re.sub(r"<[^>]+>", "", formatted_body).strip()
-
-    bodies = [full_message, text_content]
-
-    bare_pattern = rf"^!{re.escape(command)}(?:\s|$)"
-
-    if not require_mention and any(
-        re.match(bare_pattern, body, re.IGNORECASE) for body in bodies if body
-    ):
-        return True
-
-    mention_parts: list[str] = []
-    for ident in (bot_user_id, bot_user_name):
-        if ident:
-            try:
-                mention_parts.append(re.escape(str(ident)))
-            except Exception:
-                logger.debug(
-                    "Failed to escape identifier %r for bot_command pattern", ident
-                )
-                continue
-
-    if not mention_parts:
-        return False
-
-    pattern = (
-        rf"^(?:{'|'.join(mention_parts)})[,:;]?\s*!" rf"{re.escape(command)}(?:\s|$)"
-    )
-
-    return any(re.match(pattern, body, re.IGNORECASE) for body in bodies if body)
+    return _impl(command, event, require_mention)
 
 
 async def _connect_meshtastic() -> Any:
-    """
-    Obtain a Meshtastic interface usable from asynchronous code.
+    """Re-exported from mmrelay.matrix.command_bridge for backward compatibility."""
+    from mmrelay.matrix.command_bridge import _connect_meshtastic as _impl
 
-    Returns:
-        meshtastic_iface: The Meshtastic interface or proxy object produced by the synchronous connector.
-    """
-    return await asyncio.to_thread(connect_meshtastic)
+    return await _impl()
 
 
 async def _get_meshtastic_interface_and_channel(
     room_config: dict[str, Any], purpose: str
 ) -> tuple[Any | None, int | None]:
-    """
-    Return a connected Meshtastic interface and the room's validated Meshtastic channel.
+    """Re-exported from mmrelay.matrix.command_bridge for backward compatibility."""
+    from mmrelay.matrix.command_bridge import (
+        _get_meshtastic_interface_and_channel as _impl,
+    )
 
-    Parameters:
-        room_config (dict): Room configuration; must contain a non-negative integer under "meshtastic_channel".
-        purpose (str): Short description of the caller's intent used in logged error messages.
-
-    Returns:
-        tuple: (meshtastic_interface, channel)
-            - meshtastic_interface (Any | None): A connected Meshtastic interface object, or `None` if a connection could not be made.
-            - channel (int | None): The validated non-negative channel number from the room config, or `None` if missing or invalid.
-    """
-    from mmrelay.meshtastic_utils import logger as meshtastic_logger
-
-    meshtastic_interface = await _connect_meshtastic()
-    if not meshtastic_interface:
-        meshtastic_logger.error(f"Failed to connect to Meshtastic. Cannot {purpose}.")
-        return None, None
-
-    meshtastic_channel = room_config.get("meshtastic_channel")
-    if meshtastic_channel is None:
-        meshtastic_logger.error(
-            f"Room config missing 'meshtastic_channel'; cannot {purpose}."
-        )
-        return None, None
-    if not isinstance(meshtastic_channel, int) or meshtastic_channel < 0:
-        meshtastic_logger.error(
-            f"Invalid meshtastic_channel value {meshtastic_channel!r} in room config; must be a non-negative integer."
-        )
-        return None, None
-
-    return meshtastic_interface, meshtastic_channel
+    return await _impl(room_config, purpose)
 
 
 async def _handle_detection_sensor_packet(
@@ -857,69 +755,10 @@ async def _handle_detection_sensor_packet(
     full_display_name: str,
     text: str,
 ) -> None:
-    """
-    Relay detection-sensor text from Matrix to Meshtastic as a DETECTION_SENSOR_APP payload when enabled.
+    """Re-exported from mmrelay.matrix.command_bridge for backward compatibility."""
+    from mmrelay.matrix.command_bridge import _handle_detection_sensor_packet as _impl
 
-    If both global broadcast and detection_sensor processing are enabled, queue the provided text on the room's configured Meshtastic channel using the DETECTION_SENSOR_APP port; otherwise do nothing. Logs outcomes and returns silently on failures to obtain a Meshtastic interface or channel.
-
-    Parameters:
-        config (dict[str, Any]): Global configuration used to determine feature flags.
-        room_config (dict[str, Any]): Room-specific configuration; must include "meshtastic_channel".
-        full_display_name (str): Matrix sender display name used in the queued message description.
-        text (str): Plain-text payload to send.
-    """
-    detection_enabled = get_meshtastic_config_value(
-        config, "detection_sensor", DEFAULT_DETECTION_SENSOR
-    )
-    broadcast_enabled = get_meshtastic_config_value(
-        config,
-        "broadcast_enabled",
-        DEFAULT_BROADCAST_ENABLED,
-        required=False,
-    )
-    from mmrelay.meshtastic_utils import logger as meshtastic_logger
-
-    if not broadcast_enabled:
-        meshtastic_logger.debug(
-            f"Detection sensor packet received from {full_display_name}, but broadcast is disabled."
-        )
-        return
-
-    if not detection_enabled:
-        meshtastic_logger.debug(
-            f"Detection sensor packet received from {full_display_name}, but detection sensor processing is disabled."
-        )
-        return
-
-    (
-        meshtastic_interface,
-        meshtastic_channel,
-    ) = await _get_meshtastic_interface_and_channel(room_config, "relay detection data")
-    if not meshtastic_interface:
-        return
-
-    import meshtastic.protobuf.portnums_pb2
-
-    success = queue_message(
-        meshtastic_interface.sendData,
-        data=text.encode(DEFAULT_TEXT_ENCODING, ENCODING_ERROR_IGNORE),
-        channelIndex=meshtastic_channel,
-        portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
-        description=f"Detection sensor data from {full_display_name}",
-    )
-
-    if success:
-        queue_size = get_message_queue().get_queue_size()
-        if queue_size > 1:
-            meshtastic_logger.info(
-                f"Relaying detection sensor data from {full_display_name} to radio broadcast (queued: {queue_size} messages)"
-            )
-        else:
-            meshtastic_logger.info(
-                f"Relaying detection sensor data from {full_display_name} to radio broadcast"
-            )
-    else:
-        meshtastic_logger.error("Failed to relay detection sensor data to Meshtastic")
+    return await _impl(config, room_config, full_display_name, text)
 
 
 @dataclass
@@ -4360,21 +4199,12 @@ async def on_room_message(
 
 
 class ImageUploadError(RuntimeError):
-    """Raised when Matrix image upload fails."""
+    """Re-exported from mmrelay.matrix.media for backward compatibility."""
 
     def __init__(
         self,
         upload_response: UploadError | UploadResponse | SimpleNamespace | None,
     ):
-        """
-        Create an ImageUploadError and attach the underlying upload response or error.
-
-        Parameters:
-            upload_response: The underlying upload error or response object (or None). If present, its `message`
-                attribute will be included in the exception text and the object will be stored on the instance as
-                `upload_response`.
-
-        """
         message = getattr(upload_response, "message", "Unknown error")
         super().__init__(f"Image upload failed: {message}")
         self.upload_response = upload_response
@@ -4383,54 +4213,10 @@ class ImageUploadError(RuntimeError):
 async def upload_image(
     client: AsyncClient, image: Image.Image, filename: str
 ) -> UploadResponse | UploadError | SimpleNamespace:
-    """
-    Upload an image to the Matrix content repository and return the upload result.
+    """Re-exported from mmrelay.matrix.media for backward compatibility."""
+    from mmrelay.matrix.media import upload_image as _impl
 
-    Parameters:
-        client (AsyncClient): Matrix nio client used to perform the upload.
-        image (PIL.Image.Image): Pillow image to upload.
-        filename (str): Filename used to infer the image MIME type and as the uploaded filename.
-
-    Returns:
-        UploadResponse on success (contains `content_uri`).
-        On failure, a SimpleNamespace-like object with `message` and optional `status_code` attributes describing the error.
-    """
-    # Determine image format from filename
-    image_format = os.path.splitext(filename)[1][1:].upper() or "PNG"
-    if image_format == "JPG":
-        image_format = "JPEG"
-
-    buffer = io.BytesIO()
-    try:
-        image.save(buffer, format=image_format)
-        content_type = _MIME_TYPE_MAP.get(image_format, "image/png")
-    except (ValueError, KeyError, OSError):
-        # Fallback to PNG if format is unsupported
-        logger.warning(
-            f"Unsupported image format '{image_format}' for {filename}. Falling back to PNG."
-        )
-        buffer.seek(0)
-        buffer.truncate(0)
-        image.save(buffer, format="PNG")
-        content_type = "image/png"
-
-    image_data = buffer.getvalue()
-
-    try:
-        response, _ = await client.upload(
-            io.BytesIO(image_data),
-            content_type=content_type,
-            filename=filename,
-            filesize=len(image_data),
-        )
-    except NIO_COMM_EXCEPTIONS as e:
-        # Convert nio communication exceptions to an UploadError-like instance
-        logger.exception("Image upload failed due to a network error")
-        # Use a simple object with the attributes our callers expect
-        upload_error = SimpleNamespace(message=str(e), status_code=None)
-        return upload_error
-    else:
-        return response
+    return await _impl(client, image, filename)
 
 
 async def send_room_image(
@@ -4439,51 +4225,19 @@ async def send_room_image(
     upload_response: UploadResponse | UploadError | SimpleNamespace | None,
     filename: str = "image.png",
 ) -> None:
-    """
-    Send an uploaded image to a Matrix room.
+    """Re-exported from mmrelay.matrix.media for backward compatibility."""
+    from mmrelay.matrix.media import send_room_image as _impl
 
-    If `upload_response` exposes a `content_uri`, sends an `m.image` message referencing that URI and using `filename` as the body. If `content_uri` is missing, logs an error and raises ImageUploadError.
-
-    Parameters:
-        client (AsyncClient): Matrix client used to send the message.
-        room_id (str): Target Matrix room ID.
-        upload_response (UploadResponse | UploadError | SimpleNamespace | None): Result from an upload operation; must provide a `content_uri` attribute on success.
-        filename (str): Filename to include as the message body (defaults to "image.png").
-
-    Raises:
-        ImageUploadError: If `upload_response` does not contain a `content_uri`.
-    """
-    content_uri = getattr(upload_response, "content_uri", None)
-    if content_uri:
-        await client.room_send(
-            room_id=room_id,
-            message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
-            content={
-                "msgtype": "m.image",
-                "url": content_uri,
-                "body": filename,
-            },
-        )
-    else:
-        logger.error(
-            f"Upload failed: {getattr(upload_response, 'message', 'Unknown error')}"
-        )
-        raise ImageUploadError(upload_response)
+    return await _impl(client, room_id, upload_response, filename)
 
 
 async def send_image(
     client: AsyncClient, room_id: str, image: Image.Image, filename: str = "image.png"
 ) -> None:
-    """
-    Upload a Pillow Image to the Matrix content repository and send it to a room.
+    """Re-exported from mmrelay.matrix.media for backward compatibility."""
+    from mmrelay.matrix.media import send_image as _impl
 
-    Uploads the provided PIL Image, stores it in the client's content repository, and sends it to the specified room as an `m.image` message using the given filename.
-
-    Raises:
-        ImageUploadError: If the upload or send operation fails.
-    """
-    response = await upload_image(client=client, image=image, filename=filename)
-    await send_room_image(client, room_id, upload_response=response, filename=filename)
+    return await _impl(client, room_id, image, filename)
 
 
 async def on_room_member(room: MatrixRoom, event: RoomMemberEvent) -> None:
