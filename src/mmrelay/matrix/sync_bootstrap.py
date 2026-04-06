@@ -51,9 +51,6 @@ from mmrelay.config import (
     get_e2ee_store_dir,
     get_explicit_credentials_path,
     get_meshtastic_config_value,
-    is_e2ee_enabled,
-    load_config,
-    save_credentials,
 )
 from mmrelay.constants.app import WINDOWS_PLATFORM
 from mmrelay.constants.config import (
@@ -1113,7 +1110,7 @@ async def login_matrix_bot(
                 await client.close()
                 return False
             await asyncio.to_thread(
-                save_credentials, credentials, credentials_path=credentials_path
+                facade.save_credentials, credentials, credentials_path=credentials_path
             )
             facade.logger.info("Credentials saved to %s", credentials_path)
 
