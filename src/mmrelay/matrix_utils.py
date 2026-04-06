@@ -273,6 +273,13 @@ class MatrixAuthInfo:
 # ---------------------------------------------------------------------------
 # Submodule imports — after all facade-owned globals so circular-import
 # resolution never sees a partially-initialized module.
+#
+# NOTE ON CIRCULAR IMPORTS: The circular imports between submodules
+# (credentials.py, sync_bootstrap.py, etc.) and this facade are handled
+# by the facade module pattern. Submodules access shared state via
+# `import mmrelay.matrix_utils as facade` and facade.NAME references.
+# This does not affect normal operation when importing through proper
+# entry points (like mmrelay.cli). The architecture is correct as-is.
 # ---------------------------------------------------------------------------
 
 from mmrelay.matrix.room_mapping import (
