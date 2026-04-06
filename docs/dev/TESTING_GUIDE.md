@@ -620,23 +620,28 @@ The `mmrelay.matrix_utils` module serves as a facade that re-exports functions f
 
 Write tests into the appropriate split domain files:
 
-| File                                          | Domain                                      |
-| --------------------------------------------- | ------------------------------------------- |
-| `tests/test_matrix_utils_invite.py`           | Room invite handling and alias matching     |
-| `tests/test_matrix_utils_auth_login.py`       | Login flow and discovery                    |
-| `tests/test_matrix_utils_auth_credentials.py` | Credential loading and storage              |
-| `tests/test_matrix_utils_auth_logout.py`      | Logout and cleanup                          |
-| `tests/test_matrix_utils_auth_e2ee.py`        | E2EE setup and decryption                   |
-| `tests/test_matrix_utils_core.py`             | Prefixes, config parsing, general utilities |
-| `tests/test_matrix_utils_room.py`             | Room mapping and discovery                  |
-| `tests/test_matrix_utils_error_handling.py`   | Error paths across Matrix operations        |
-| `tests/test_matrix_utils_edge_cases.py`       | Boundary conditions and unusual inputs      |
-| `tests/test_matrix_utils_bot.py`              | Bot lifecycle and identity                  |
-| `tests/test_matrix_utils_errors.py`           | Error classification and reporting          |
-| `tests/test_matrix_utils_relay.py`            | Message relay and retry logic               |
-| `tests/test_matrix_utils_media.py`            | Image upload and media handling             |
-| `tests/test_matrix_utils_replies.py`          | Reply formatting and threading              |
-| `tests/test_matrix_utils_detection.py`        | Client and server capability detection      |
+| File                                             | Domain                                      |
+| ------------------------------------------------ | ------------------------------------------- |
+| `tests/test_matrix_utils_invite.py`              | Room invite handling and alias matching     |
+| `tests/test_matrix_utils_auth_login.py`          | Login flow and discovery                    |
+| `tests/test_matrix_utils_auth_credentials.py`    | Credential loading and storage              |
+| `tests/test_matrix_utils_auth_logout.py`         | Logout and cleanup                          |
+| `tests/test_matrix_utils_auth_e2ee.py`           | E2EE setup and decryption                   |
+| `tests/test_matrix_utils_core.py`                | Prefixes, config parsing, general utilities |
+| `tests/test_matrix_utils_room.py`                | Room mapping and discovery                  |
+| `tests/test_matrix_utils_error_handling.py`      | Error paths across Matrix operations        |
+| `tests/test_matrix_utils_edge_cases.py`          | Boundary conditions and unusual inputs      |
+| `tests/test_matrix_utils_bot.py`                 | Bot lifecycle and identity                  |
+| `tests/test_matrix_utils_errors.py`              | Error classification and reporting          |
+| `tests/test_matrix_utils_relay.py`               | Message relay and retry logic               |
+| `tests/test_matrix_utils_media.py`               | Image upload and media handling             |
+| `tests/test_matrix_utils_replies.py`             | Reply formatting and threading              |
+| `tests/test_matrix_utils_detection.py`           | Detection sensor packet handling            |
+| `tests/test_matrix_utils_connect.py`             | General connect/bootstrap/config behavior   |
+| `tests/test_matrix_utils_connect_sync.py`        | Initial sync and retry behavior             |
+| `tests/test_matrix_utils_connect_credentials.py` | Credentials reload/save during connect      |
+| `tests/test_matrix_utils_connect_rooms.py`       | Room/alias/displayname setup during connect |
+| `tests/test_matrix_utils_connect_e2ee.py`        | E2EE/device/whoami setup during connect     |
 
 If no existing file matches, create a new one following the `test_matrix_utils_<domain>.py` naming convention.
 
@@ -646,15 +651,15 @@ If no existing file matches, create a new one following the `test_matrix_utils_<
 
 The following file is still a legacy-monolith and is subject to migration rules:
 
-- `tests/test_matrix_utils_auth.py` (~1,900 lines after auth split)
+- `tests/test_matrix_utils_auth.py` (~1,840 lines, now effectively a temporary `connect_matrix` legacy file)
 
 **Rules:**
 
-1. Do NOT add new tests to this file
-2. Use it only as a migration source while decomposing coverage into split domain files
-3. Moved tests must be removed from the legacy file in the same change
-4. Prefer existing split files before creating new ones
-5. The goal is to keep only connect_matrix-related tests; login/logout/credentials/E2EE tests should be in their respective split files
+1. **Do NOT add new tests to this file** — it is frozen and migration-source-only
+2. **Use it only as a migration source** while decomposing coverage into split domain files
+3. **Moved tests must be removed from the legacy file in the same change** — no duplication
+4. **Prefer existing split files before creating new ones**
+5. **This file should ultimately be eliminated entirely** — new `connect_matrix` tests should go into the appropriate split files (e.g., `test_matrix_utils_connect.py`, `test_matrix_utils_connect_sync.py`, etc.) rather than this legacy file
 
 ### Patch targets
 

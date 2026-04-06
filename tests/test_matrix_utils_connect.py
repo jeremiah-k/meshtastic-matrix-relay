@@ -1,0 +1,187 @@
+"""Tests for Matrix connect/bootstrap/config behavior.
+
+This module tests general connection setup, config validation,
+and legacy config handling during Matrix connection establishment.
+"""
+
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from mmrelay.matrix_utils import connect_matrix
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_missing_matrix_section_returns_none():
+    """Missing matrix config should log and return None."""
+    config = {"matrix_rooms": []}
+
+    with (
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        result = await connect_matrix(config)
+
+    assert result is None
+    mock_logger.error.assert_any_call(
+        "No Matrix authentication available. Neither credentials.json nor matrix section in config found."
+    )
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_missing_required_fields_returns_none():
+    """Missing required fields in matrix section should return None."""
+    config = {
+        "matrix": {"homeserver": "https://example.org", "bot_user_id": "@bot:example"},
+        "matrix_rooms": [],
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        result = await connect_matrix(config)
+
+    assert result is None
+    assert any(
+        "Matrix section is missing required field"
+        in " ".join(str(arg) for arg in call.args)
+        and "access_token" in " ".join(str(arg) for arg in call.args)
+        for call in mock_logger.error.call_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_missing_matrix_rooms_raises():
+    """Missing matrix_rooms should raise ValueError."""
+    config = {
+        "matrix": {
+            "homeserver": "https://example.org",
+            "access_token": "token",
+            "bot_user_id": "@bot:example.org",
+        }
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        pytest.raises(ValueError),
+    ):
+        await connect_matrix(config)
+
+
+@pytest.mark.asyncio
+@patch("mmrelay.matrix_utils.async_load_credentials", new_callable=AsyncMock)
+@patch("mmrelay.matrix_utils._create_ssl_context")
+@patch("mmrelay.matrix_utils.AsyncClient")
+async def test_connect_matrix_legacy_config(
+    mock_async_client, mock_ssl_context, mock_load_credentials
+):
+    """Test Matrix connection with legacy config (no E2EE)."""
+    # No credentials.json available
+    mock_load_credentials.return_value = None
+
+    # Mock SSL context
+    mock_ssl_context.return_value = MagicMock()
+
+    # Mock AsyncClient instance
+    mock_client_instance = MagicMock()
+    mock_client_instance.sync = AsyncMock()
+    mock_client_instance.rooms = {}
+    mock_client_instance.whoami = AsyncMock()
+    mock_client_instance.whoami.return_value = MagicMock(device_id="LEGACY_DEVICE")
+    mock_client_instance.get_displayname = AsyncMock()
+    mock_client_instance.get_displayname.return_value = MagicMock(
+        displayname="Test Bot"
+    )
+    mock_async_client.return_value = mock_client_instance
+
+    # Legacy config without E2EE
+    test_config = {
+        "matrix": {
+            "homeserver": "https://matrix.example.org",
+            "access_token": "legacy_token",
+            "bot_user_id": "@bot:example.org",
+        },
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    # Mock the global matrix_client to None to ensure fresh creation
+    with patch("mmrelay.matrix_utils.matrix_client", None):
+        client = await connect_matrix(test_config)
+
+        assert client is not None
+        assert client == mock_client_instance
+
+        # Verify AsyncClient was created without E2EE
+        mock_async_client.assert_called_once()
+        call_args = mock_async_client.call_args
+        assert "device_id" not in call_args[1]
+        assert call_args[1].get("store_path") is None
+
+        # Verify sync was called
+        mock_client_instance.sync.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_uses_ssl_context_object(monkeypatch):
+    """Ensure AsyncClient receives the actual SSLContext object, not a bool."""
+    ssl_ctx = object()
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.should_upload_keys = False
+    mock_client.sync = AsyncMock(return_value=SimpleNamespace())
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+    mock_client.close = AsyncMock()
+
+    client_calls = []
+
+    def fake_async_client(*_args, **_kwargs):
+        """Create a fake async Matrix client for tests that records the passed SSL value and returns a predefined mock client.
+
+        Parameters:
+            *_args: Ignored positional arguments.
+            **_kwargs: Keyword arguments; the `ssl` key, if present, is recorded into `client_calls`.
+
+        Returns:
+            mock_client: The predefined mock client object used by tests.
+        """
+        client_calls.append(_kwargs.get("ssl"))
+        return mock_client
+
+    monkeypatch.setattr("mmrelay.matrix_utils.AsyncClient", fake_async_client)
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._create_ssl_context", lambda: ssl_ctx, raising=False
+    )
+    # Stub helpers to avoid extra work
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._resolve_aliases_in_mapping",
+        AsyncMock(return_value=None),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._display_room_channel_mappings",
+        lambda *_args, **_kwargs: None,
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.config",
+        {
+            "matrix": {
+                "homeserver": "https://example.org",
+                "access_token": "token",
+                "bot_user_id": "@bot:example.org",
+            },
+            "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+        },
+        raising=False,
+    )
+
+    client = await connect_matrix()
+
+    assert client is mock_client
+    assert client_calls and client_calls[0] is ssl_ctx
