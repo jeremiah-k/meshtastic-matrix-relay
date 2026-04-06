@@ -769,8 +769,12 @@ async def test_connect_matrix_e2ee_store_path_default(monkeypatch, tmp_path):
         fake_async_client,
         raising=False,
     )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_e2ee_store_dir",
+        lambda: str(tmp_path),
+        raising=False,
+    )
     with (
-        patch("mmrelay.matrix_utils.get_e2ee_store_dir", return_value=str(tmp_path)),
         patch("mmrelay.matrix_utils.os.makedirs"),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch(
@@ -1136,7 +1140,7 @@ TEST_FULL_MXID = "@user:matrix.org"
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 async def test_login_matrix_bot_e2ee_store_path_created(
-    _mock_ssl_context, mock_async_client, _mock_save_credentials, tmp_path
+    _mock_ssl_context, mock_async_client, _mock_save_credentials, tmp_path, monkeypatch
 ):
     """E2EE-enabled logins should create a store path."""
     mock_discovery_client = AsyncMock()
@@ -1155,8 +1159,13 @@ async def test_login_matrix_bot_e2ee_store_path_created(
 
     store_path = str(tmp_path)
 
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_e2ee_store_dir",
+        lambda: str(tmp_path),
+        raising=False,
+    )
+
     with (
-        patch("mmrelay.matrix_utils.get_e2ee_store_dir", return_value=str(tmp_path)),
         patch("mmrelay.config.load_config", return_value={"matrix": {}}),
         patch("mmrelay.config.is_e2ee_enabled", return_value=True),
         patch("mmrelay.matrix_utils.os.makedirs") as mock_makedirs,
