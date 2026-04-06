@@ -644,18 +644,19 @@ If no existing file matches, create a new one following the `test_matrix_utils_<
 
 ### Legacy File Freeze
 
-The following files are considered legacy-monolith and are frozen for new test additions:
+The following files are legacy-monoliths and are subject to migration rules:
 
-- `tests/test_matrix_utils.py` (~6,800 lines) - frozen for new tests
-- `tests/test_matrix_utils_auth.py` (~4,700 lines) - frozen for new tests
+- `tests/test_matrix_utils.py` (~6,800 lines)
+- `tests/test_matrix_utils_auth.py` (~1,900 lines after auth split)
 
 **Rules:**
 
 1. Do NOT add new tests to these files
-2. Only small bugfixes allowed if absolutely necessary
-3. New Matrix tests MUST go into the split domain files listed above
-4. When migrating tests, remove them from the legacy file in the same change to prevent duplication
-5. The auth split files (`test_matrix_utils_auth_*.py`) are the preferred destination for auth-related tests
+2. Use them only as migration sources while decomposing coverage into split domain files
+3. Moved tests must be removed from the legacy file in the same change
+4. Prefer existing split files before creating new ones
+5. The intended end state is to eliminate `tests/test_matrix_utils.py` completely
+6. For `tests/test_matrix_utils_auth.py`, the goal is to keep only connect_matrix-related tests; login/logout/credentials/E2EE tests should be in their respective split files
 
 ### Patch targets
 
