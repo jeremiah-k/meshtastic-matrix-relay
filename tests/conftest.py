@@ -769,7 +769,13 @@ def cleanup_asyncmock_objects(request):
     asyncmock_patterns = [
         "test_async_patterns",
         "test_matrix_utils",
+        "test_matrix_utils_auth",
+        "test_matrix_utils_core",
         "test_matrix_utils_edge_cases",
+        "test_matrix_utils_invite",
+        "test_matrix_utils_media",
+        "test_matrix_utils_relay",
+        "test_matrix_utils_replies",
         "test_mesh_relay_plugin",
         "test_map_plugin",
         "test_meshtastic_utils",

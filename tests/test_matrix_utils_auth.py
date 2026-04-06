@@ -2431,6 +2431,7 @@ async def test_connect_matrix_whoami_failure_warns(monkeypatch):
         return_value=SimpleNamespace(displayname="Bot")
     )
     mock_client.whoami = AsyncMock(side_effect=NioLocalTransportError("fail"))
+    mock_client.close = AsyncMock()
 
     monkeypatch.setattr(
         "mmrelay.matrix_utils.AsyncClient",

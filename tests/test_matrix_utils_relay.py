@@ -3,6 +3,7 @@ import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import nio
 import pytest
 
 from mmrelay.matrix_utils import (
@@ -11,17 +12,11 @@ from mmrelay.matrix_utils import (
     matrix_relay,
 )
 
-
-class RoomSendError(Exception):
-    def __init__(self, message="API error", status_code=None):
-        super().__init__(message)
-        self.message = message
-        self.status_code = status_code
+RoomSendError = nio.RoomSendError
 
 
 def _make_room_send_error(message="API error"):
-    obj = MagicMock()
-    obj.__class__ = RoomSendError
+    obj = MagicMock(spec=RoomSendError)
     obj.message = message
     return obj
 
