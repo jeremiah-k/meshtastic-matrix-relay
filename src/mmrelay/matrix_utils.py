@@ -279,6 +279,9 @@ _MIME_TYPE_MAP: Dict[str, str] = {
 # import resolution.
 # ---------------------------------------------------------------------------
 
+# Builtins accessed by submodules via facade.NAME (must be explicit for module attribute access)
+input = input
+
 # Global config variable that will be set from config.py
 config = None
 
