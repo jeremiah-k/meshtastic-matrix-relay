@@ -57,10 +57,8 @@ from mmrelay.cli_utils import (
 )
 from mmrelay.config import (
     async_load_credentials,
-    get_e2ee_store_dir,
     get_explicit_credentials_path,
     get_meshtastic_config_value,
-    is_e2ee_enabled,
     save_credentials,
 )
 from mmrelay.constants.config import (
@@ -116,11 +114,6 @@ from mmrelay.meshtastic_utils import connect_meshtastic, send_text_reply
 from mmrelay.message_queue import get_message_queue, queue_message
 from mmrelay.paths import get_credentials_path
 
-from mmrelay.e2ee_utils import (
-    get_e2ee_error_message,
-    get_e2ee_status,
-    get_room_encryption_warnings,
-)
 
 # Import nio exception types with error handling for test environments.
 # matrix-nio is not marked py.typed in our env; keep import-untyped for mypy --strict.
@@ -262,6 +255,43 @@ matrix_client = None
 
 # Serialize connect_matrix startup publication and invite-state monkey patching.
 _MATRIX_STARTUP_SYNC_LOCK = asyncio.Lock()
+
+
+# ---------------------------------------------------------------------------
+# Thin live wrappers for config / e2ee_utils helpers.
+#
+# These MUST be wrapper functions, not direct imported aliases, so that
+# monkeypatching the original source modules (mmrelay.config.* or
+# mmrelay.e2ee_utils.*) is still observable by code that routes through
+# facade.*.  A direct alias freezes the function object at import time;
+# a wrapper performs a live lookup on every call.
+# ---------------------------------------------------------------------------
+
+
+def is_e2ee_enabled(*args: Any, **kwargs: Any) -> Any:
+    return config_module.is_e2ee_enabled(*args, **kwargs)
+
+
+def get_e2ee_store_dir(*args: Any, **kwargs: Any) -> Any:
+    return config_module.get_e2ee_store_dir(*args, **kwargs)
+
+
+def get_e2ee_status(*args: Any, **kwargs: Any) -> Any:
+    from mmrelay import e2ee_utils as _e2ee_utils
+
+    return _e2ee_utils.get_e2ee_status(*args, **kwargs)
+
+
+def get_room_encryption_warnings(*args: Any, **kwargs: Any) -> Any:
+    from mmrelay import e2ee_utils as _e2ee_utils
+
+    return _e2ee_utils.get_room_encryption_warnings(*args, **kwargs)
+
+
+def get_e2ee_error_message(*args: Any, **kwargs: Any) -> Any:
+    from mmrelay import e2ee_utils as _e2ee_utils
+
+    return _e2ee_utils.get_e2ee_error_message(*args, **kwargs)
 
 
 @dataclass
