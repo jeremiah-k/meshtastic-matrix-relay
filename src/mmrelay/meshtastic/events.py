@@ -788,55 +788,63 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
 
     # Normal text messages or detection sensor messages
     if text:
-        # Determine the channel for this message
-        channel = packet.get("channel")
-        if channel is None:
-            # If channel not specified, deduce from portnum
-            # Note: meshtastic-python emits enum names (e.g., "TEXT_MESSAGE_APP") in decoded dicts,
-            # while other paths (protobuf/raw) surface numeric portnums. Support both to avoid drops.
-            if decoded.get("portnum") in (
-                PORTNUM_TEXT_MESSAGE_APP,
-                PORTNUM_DETECTION_SENSOR_APP,
-                TEXT_MESSAGE_APP,
-                DETECTION_SENSOR_APP,
-            ):
-                channel = DEFAULT_CHANNEL_VALUE
-            else:
-                facade.logger.debug(
-                    f"Unknown portnum {decoded.get('portnum')}, cannot determine channel"
-                )
-                return
-
-        # Normalize channel to integer to prevent type mismatch issues
-        try:
-            channel = int(channel)
-        except (ValueError, TypeError):
-            facade.logger.warning(
-                f"Invalid channel value {channel!r} (type: {type(channel).__name__}), "
-                f"defaulting to {DEFAULT_CHANNEL_VALUE}"
+        # Classify packet BEFORE channel deduction so that PLUGIN_ONLY packets
+        # reach plugins even when channel cannot be determined, and DROP packets
+        # short-circuit immediately.
+        action = classify_packet(decoded.get("portnum"), facade.config)
+        if action == PacketAction.DROP:
+            facade.logger.debug(
+                "Packet %s classified as %s; skipping plugin and Matrix relay pipelines.",
+                facade._get_portnum_name(decoded.get("portnum")),
+                PacketAction.DROP,
             )
-            channel = DEFAULT_CHANNEL_VALUE
+            return
 
-        # Check if channel is mapped to a Matrix room
+        # Channel deduction and mapping are only relevant for RELAY packets.
+        # PLUGIN_ONLY packets skip all channel logic and go straight to plugins.
+        channel: int | None = None
         channel_mapped = False
         matrix_rooms_configured = bool(facade.matrix_rooms)
         iterable_rooms = _get_iterable_matrix_rooms()
-        for room in iterable_rooms:
-            if not isinstance(room, dict):
-                continue
+        if action == PacketAction.RELAY:
+            channel = packet.get("channel")
+            if channel is None:
+                if decoded.get("portnum") in (
+                    PORTNUM_TEXT_MESSAGE_APP,
+                    PORTNUM_DETECTION_SENSOR_APP,
+                    TEXT_MESSAGE_APP,
+                    DETECTION_SENSOR_APP,
+                ):
+                    channel = DEFAULT_CHANNEL_VALUE
+                else:
+                    facade.logger.debug(
+                        f"Unknown portnum {decoded.get('portnum')}, cannot determine channel"
+                    )
+                    return
 
-            room_channel = facade._normalize_room_channel(room)
-            if room_channel is None:
-                continue
-
-            if room_channel == channel:
-                channel_mapped = True
-                facade.logger.debug(
-                    f"Channel {channel} mapped to Matrix room {room.get('id', 'unknown')}"
+            try:
+                channel = int(channel)
+            except (ValueError, TypeError):
+                facade.logger.warning(
+                    f"Invalid channel value {channel!r} (type: {type(channel).__name__}), "
+                    f"defaulting to {DEFAULT_CHANNEL_VALUE}"
                 )
-                break
+                channel = DEFAULT_CHANNEL_VALUE
 
-        # Attempt to get longname/shortname from database or nodes
+            for room in iterable_rooms:
+                if not isinstance(room, dict):
+                    continue
+                room_channel = facade._normalize_room_channel(room)
+                if room_channel is None:
+                    continue
+                if room_channel == channel:
+                    channel_mapped = True
+                    facade.logger.debug(
+                        f"Channel {channel} mapped to Matrix room {room.get('id', 'unknown')}"
+                    )
+                    break
+
+        # Resolve sender names (needed for both plugin delivery and Matrix relay)
         longname = facade._get_name_or_none(facade.get_longname, sender)  # type: ignore[assignment]
         if longname is None:
             facade.logger.debug(
@@ -869,27 +877,15 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             else:
                 facade.logger.debug(f"Node info for sender {sender} not available yet.")
 
-        # If still not available, fallback to sender ID
         if not longname:
             longname = str(sender)
         if not shortname:
             shortname = str(sender)
 
-        # Import the matrix prefix function
         from mmrelay.matrix_utils import get_matrix_prefix
 
-        # Get the formatted prefix
         prefix = get_matrix_prefix(facade.config, longname, shortname, meshnet_name)
         formatted_message = f"{prefix}{text}"
-
-        action = classify_packet(decoded.get("portnum"), facade.config)
-        if action == PacketAction.DROP:
-            facade.logger.debug(
-                "Packet %s classified as %s; skipping plugin and Matrix relay pipelines.",
-                facade._get_portnum_name(decoded.get("portnum")),
-                PacketAction.DROP,
-            )
-            return
 
         # Plugin functionality - Check if any plugin handles this message before relaying
         found_matching_plugin = facade._run_meshtastic_plugins(
@@ -901,7 +897,6 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             cfg=facade.config,
         )
 
-        # If message is a DM or handled by plugin, do not relay further
         if is_direct_message:
             facade.logger.debug(
                 f"Received a direct message from {longname}: {text}. Not relaying to Matrix."
@@ -916,9 +911,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         if action == PacketAction.PLUGIN_ONLY:
             return
 
-        # Check if matrix_rooms is empty BEFORE attempting unmapped-channel logic
-        # This can happen during startup race conditions where messages arrive
-        # before matrix_rooms is populated, or during reconnection
+        # Only RELAY packets reach here
         if not matrix_rooms_configured:
             facade.logger.warning(
                 f"matrix_rooms is empty - cannot relay message from {longname}. "
@@ -927,9 +920,6 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             )
             return
 
-        # Check if channel is mapped to a Matrix room (only matters for messages
-        # that actually need Matrix delivery - DMs and plugin-handled packets
-        # have already returned above)
         if not channel_mapped:
             available_channels = []
             for room in iterable_rooms:
@@ -945,7 +935,6 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             )
             return
 
-        # Relay the message to all Matrix rooms mapped to this channel
         facade.logger.info(f"Relaying Meshtastic message from {longname} to Matrix")
 
         iterable_rooms = _get_iterable_matrix_rooms()
@@ -958,8 +947,6 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 continue
 
             if room_channel == channel:
-                # Storing the message_map (if enabled) occurs inside matrix_relay() now,
-                # controlled by relay_reactions.
                 try:
                     facade._fire_and_forget(
                         matrix_relay(

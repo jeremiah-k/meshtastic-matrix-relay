@@ -249,7 +249,7 @@ def test_on_meshtastic_message_channel_fallback_numeric_portnum(
     mock_relay.assert_awaited_once()
 
 
-def test_on_meshtastic_message_unknown_portnum_logs_debug(
+def test_on_meshtastic_message_unknown_portnum_plugin_only(
     reset_meshtastic_globals,
 ):
     config = _base_config()
@@ -258,16 +258,19 @@ def test_on_meshtastic_message_unknown_portnum_logs_debug(
     packet["channel"] = None
     packet["decoded"]["portnum"] = 9999
 
-    with (
-        patch(
-            "mmrelay.matrix_utils.get_interaction_settings",
-            return_value={"reactions": False, "replies": False},
-        ),
-        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    plugin = MagicMock()
+    plugin.plugin_name = "observer"
+    plugin.handle_meshtastic_message.return_value = False
+
+    with _patch_message_deps(plugins=[plugin], patch_logger=False) as (
+        _mock_logger,
+        mock_relay,
     ):
         on_meshtastic_message(packet, _make_interface())
 
-    mock_logger.debug.assert_any_call("Unknown portnum 9999, cannot determine channel")
+    assert mock_relay is not None
+    mock_relay.assert_not_called()
+    plugin.handle_meshtastic_message.assert_called_once()
 
 
 def test_on_meshtastic_message_unknown_numeric_portnum_plugin_only(
@@ -587,10 +590,10 @@ def test_on_meshtastic_message_chat_portnums_override_promotes_range_test(
 def test_on_meshtastic_message_chat_portnums_override_promotes_via_numeric_config(
     reset_meshtastic_globals,
 ):
-    config = _base_config_with_routing(chat_portnums=["RANGE_TEST_APP"])
+    config = _base_config_with_routing(chat_portnums=[1])
     _set_globals(config)
     packet = _base_packet()
-    packet["decoded"]["portnum"] = "RANGE_TEST_APP"
+    packet["decoded"]["portnum"] = 1
 
     with _patch_message_deps(plugins=[], patch_logger=False) as (
         _mock_logger,
@@ -759,3 +762,28 @@ def test_get_packet_routing_overrides_with_values():
     chat, disabled = _get_packet_routing_overrides(config)
     assert chat == frozenset({"RANGE_TEST_APP"})
     assert disabled == frozenset({"TELEMETRY_APP"})
+
+
+def test_on_meshtastic_message_non_chat_text_with_no_channel_reaches_plugins(
+    reset_meshtastic_globals,
+):
+    config = _base_config()
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"]["portnum"] = "RANGE_TEST_APP"
+    packet["decoded"]["text"] = "range test payload"
+    packet.pop("channel", None)
+
+    plugin = MagicMock()
+    plugin.plugin_name = "observer"
+    plugin.handle_meshtastic_message.return_value = False
+
+    with _patch_message_deps(plugins=[plugin], patch_logger=False) as (
+        _mock_logger,
+        mock_relay,
+    ):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_not_called()
+    plugin.handle_meshtastic_message.assert_called_once()
