@@ -74,7 +74,7 @@ def test_handle_auth_logout_keyboard_interrupt(self, mock_print, mock_logout):
 
 ## Standardized Async Patterns
 
-The project has standardized async testing patterns and no longer requires test environment detection (e.g., `MMRELAY_TESTING` environment variable).
+Use standardized async testing patterns and avoid test-environment detection branches (for example, `MMRELAY_TESTING`).
 
 ### Key Principles
 
@@ -92,12 +92,12 @@ Some code paths use `asyncio.to_thread()` or `loop.run_in_executor()`. In tests,
 3. **Avoid KeyboardInterrupt control flow**: Do not raise `KeyboardInterrupt` inside async tasks; prefer explicit shutdown events for deterministic cleanup.
 4. **Cleanup isolation**: When a test reaches `main()` cleanup, patch `shutdown_plugins` and `stop_message_queue` to no-ops unless the test is explicitly validating cleanup behavior.
 
-### Migration from Old Patterns
+### Legacy Pattern Cleanup
 
-If you encounter code using old test environment detection patterns:
+If you encounter code that still uses test-environment detection patterns:
 
 ```python
-# ❌ OLD PATTERN - No longer needed
+# ❌ Avoid
 if os.getenv("MMRELAY_TESTING"):
     # Test-specific behavior
 else:
@@ -107,7 +107,7 @@ else:
 Replace with consistent behavior:
 
 ```python
-# ✅ NEW PATTERN - Consistent behavior
+# ✅ Preferred
 async def function_that_works_everywhere():
     # Same logic for test and production
     return await asyncio.to_thread(blocking_operation)
@@ -161,6 +161,33 @@ class TestFeatureName(unittest.TestCase):
         # Assert
 ```
 
+### Matrix Test Layout and Patch Targets
+
+Matrix tests are maintained as split domain files. Keep that structure stable.
+
+- Add tests to the existing domain file for the behavior under test.
+- Do not recreate catch-all Matrix test files (for example, a new omnibus `test_matrix_utils*.py` that mixes unrelated domains).
+- Keep connect/bootstrap, credentials, room mapping, relay/event, and prefix behavior in separate files.
+
+Patch target policy for Matrix tests:
+
+- Default to patching through `mmrelay.matrix_utils.*` (facade patching).
+- Patch `mmrelay.matrix.<module>.*` directly only when the test is explicitly about source-module lookup/type behavior.
+
+Source-module to test-file mapping:
+
+- `mmrelay.matrix.sync_bootstrap` (`connect_matrix`, sync/bootstrap ordering): `tests/test_matrix_utils_connect.py`, `tests/test_matrix_utils_connect_credentials.py`, `tests/test_matrix_utils_connect_e2ee.py`, `tests/test_matrix_utils_connect_rooms.py`, `tests/test_matrix_utils_connect_sync.py`
+- `mmrelay.matrix.credentials`: `tests/test_matrix_utils_connect_credentials.py`, `tests/test_matrix_utils_auth_credentials.py`
+- `mmrelay.matrix.events` (`on_room_message`, invite/member handlers): `tests/test_matrix_utils_relay.py`, `tests/test_matrix_utils_invite.py`
+- `mmrelay.matrix.prefixes`: `tests/test_matrix_utils_core.py` (behavioral policy tests), `tests/test_prefix_customization.py` (format/compatibility scenarios)
+- `mmrelay.matrix.command_bridge`: `tests/test_command_bridge_channel_validation.py`, `tests/test_matrix_utils_detection.py`
+
+Matrix/Meshtastic global-state reset policy:
+
+- Use `reset_matrix_utils_globals` when a test mutates Matrix facade globals (`matrix_client`, `matrix_rooms`, `bot_user_id`, related startup state).
+- Use `reset_meshtastic_globals` when a test mutates Meshtastic globals, executors, or reconnect/shutdown flags.
+- For cross-boundary tests that mutate both sides, use both fixtures.
+
 ### Global State Management
 
 For tests that interact with meshtastic utilities or plugins that maintain global state, use the `reset_meshtastic_globals` fixture to ensure proper test isolation:
@@ -198,7 +225,6 @@ The project uses a cleanup fixture in `tests/conftest.py` to handle AsyncMock cl
 # In conftest.py
 asyncmock_patterns = [
     "test_async_patterns",
-    "test_matrix_utils",
     "test_matrix_utils_edge_cases",
     "test_mesh_relay_plugin",
     "test_map_plugin",
@@ -612,6 +638,90 @@ Before merge, confirm:
 - New retry/timeout logic has a test for success path and a test for failure path.
 - Shutdown/cleanup paths are covered where background tasks or worker executors are involved.
 - Targeted integration tests were run locally (plus targeted lint/type checks).
+
+## Matrix Facade Testing
+
+The `mmrelay.matrix_utils` module serves as a facade that re-exports functions from decomposed submodules under `mmrelay.matrix/`. Tests for Matrix behavior must follow these rules to stay compatible with the facade architecture.
+
+### Where to write new Matrix tests
+
+Write tests into the appropriate split domain files:
+
+| File                                             | Domain                                      |
+| ------------------------------------------------ | ------------------------------------------- |
+| `tests/test_matrix_utils_invite.py`              | Room invite handling and alias matching     |
+| `tests/test_matrix_utils_auth_login.py`          | Login flow and discovery                    |
+| `tests/test_matrix_utils_auth_credentials.py`    | Credential loading and storage              |
+| `tests/test_matrix_utils_auth_logout.py`         | Logout and cleanup                          |
+| `tests/test_matrix_utils_auth_e2ee.py`           | E2EE setup and decryption                   |
+| `tests/test_matrix_utils_core.py`                | Prefixes, config parsing, general utilities |
+| `tests/test_matrix_utils_room.py`                | Room mapping and discovery                  |
+| `tests/test_matrix_utils_error_handling.py`      | Error paths across Matrix operations        |
+| `tests/test_matrix_utils_edge_cases.py`          | Boundary conditions and unusual inputs      |
+| `tests/test_matrix_utils_bot.py`                 | Bot lifecycle and identity                  |
+| `tests/test_matrix_utils_errors.py`              | Error classification and reporting          |
+| `tests/test_matrix_utils_relay.py`               | Message relay and retry logic               |
+| `tests/test_matrix_utils_media.py`               | Image upload and media handling             |
+| `tests/test_matrix_utils_replies.py`             | Reply formatting and threading              |
+| `tests/test_matrix_utils_detection.py`           | Detection sensor packet handling            |
+| `tests/test_matrix_utils_connect.py`             | General connect/bootstrap/config behavior   |
+| `tests/test_matrix_utils_connect_sync.py`        | Initial sync and retry behavior             |
+| `tests/test_matrix_utils_connect_credentials.py` | Credentials reload/save during connect      |
+| `tests/test_matrix_utils_connect_rooms.py`       | Room/alias/displayname setup during connect |
+| `tests/test_matrix_utils_connect_e2ee.py`        | E2EE/device/whoami setup during connect     |
+
+If no existing file matches, create a new one following the `test_matrix_utils_<domain>.py` naming convention.
+
+### Matrix Test File Organization
+
+All Matrix tests live in split domain files under `tests/`. Each file targets a specific area of Matrix functionality:
+
+**Rules:**
+
+1. **Do NOT recreate legacy catch-all Matrix test files** — no new `test_matrix_utils.py` or `test_matrix_utils_auth.py`
+2. **New Matrix tests must go into the appropriate split domain file** — extend the file whose domain matches the behavior under test
+3. **Prefer existing split files before creating new ones**
+4. **If a domain file grows too large, split it by subdomain** — e.g. `test_matrix_utils_relay_send.py`, `test_matrix_utils_relay_formatting.py` — rather than creating a new misc/catch-all file
+
+### File Boundary Guidance
+
+- **`auth_login.py`** — login flow, user discovery, authentication-specific behavior
+- **`connect_*` files** — `connect_matrix` orchestration, bootstrap, sync, credentials reload, room setup, E2EE/device initialization during connection
+- **`relay.py`** — message relay, retry logic, `on_room_message` handler, message formatting, mapping/storage, reply/quote behavior, meshnet/prefix relay
+- **`room.py`** — room mapping and discovery (separate from connect-time room setup)
+- **`auth_credentials.py`** — credential loading and storage (separate from connect-time credential reload)
+- **`auth_e2ee.py`** — E2EE setup and decryption logic (separate from connect-time E2EE bootstrapping)
+
+If unsure where a new test belongs, follow the function's source module: tests for `mmrelay.matrix.relay` go in `test_matrix_utils_relay.py`, tests for `mmrelay.matrix.sync_bootstrap` go in `test_matrix_utils_connect*.py`, etc.
+
+### Patch targets
+
+By default, patch Matrix functions through the facade:
+
+```python
+@patch("mmrelay.matrix_utils.send_reply_to_meshtastic")
+@patch("mmrelay.matrix_utils.matrix_client", new_callable=AsyncMock)
+async def test_something(mock_client, mock_send):
+    ...
+```
+
+Patch a source submodule directly **only** when the test is specifically verifying source-module lookup behavior (e.g., testing that a submodule imports `RoomSendError` from nio directly rather than through the facade).
+
+Rationale: the decomposed submodules call each other through the facade (`facade.func_name`), so patches on `mmrelay.matrix_utils.X` intercept the actual call path.
+
+Note: The `asyncmock_patterns` list in `conftest.py` contains **filename-prefix patterns** used for GC cleanup (e.g., `test_matrix_utils_connect` matches `test_matrix_utils_connect.py`, `test_matrix_utils_connect_sync.py`, etc.). Entries should NOT be removed just because legacy monolith files were deleted — they match by prefix, not exact filename.
+
+### nio mock classes
+
+`tests/conftest.py` mocks `sys.modules["nio"]` with a `MagicMock()`. Any new nio import used in source code (e.g., `RoomSendError`, `InviteMemberEvent`) requires a corresponding mock class in conftest. Without it, `isinstance()` checks in source will raise `TypeError`.
+
+### Shared state
+
+The facade owns global state (`matrix_client`, `matrix_rooms`, `bot_user_id`, `config`, `logger`, etc.).
+
+- **`reset_matrix_utils_globals`** restores: `matrix_client`, `matrix_rooms`, `bot_user_id`. Use this in fixtures/teardown to reset Matrix-side globals.
+- **`reset_meshtastic_globals`** restores Meshtastic-side globals.
+- **NOT reset by `reset_matrix_utils_globals`**: `config` and `logger` are intentionally preserved. If a test mutates `config` or `logger`, restore them manually in teardown or via a dedicated fixture.
 
 ## References
 

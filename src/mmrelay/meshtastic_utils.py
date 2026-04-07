@@ -192,6 +192,8 @@ _relay_rx_time_clock_skew_lock = threading.Lock()
 # Briefly drain inbound packets after connect to avoid relaying queued backlog
 # while connection/session timing state settles.
 _relay_startup_drain_deadline_monotonic_secs: float | None = None
+# Timer used to decouple startup-drain expiry from packet arrival.
+_relay_startup_drain_expiry_timer: threading.Timer | None = None
 # Only apply startup drain on the first successful process-lifetime connect.
 _startup_packet_drain_applied = False
 # On reconnects, allow exactly one bounded pre-start skew bootstrap packet
@@ -326,6 +328,7 @@ from mmrelay.meshtastic.connection import (
     serial_port_exists,
 )
 from mmrelay.meshtastic.events import (
+    _schedule_startup_drain_deadline_cleanup,
     on_lost_meshtastic_connection,
     on_meshtastic_message,
     reconnect,

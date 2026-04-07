@@ -2,12 +2,19 @@ from unittest.mock import patch
 
 import pytest
 
+from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 from mmrelay.matrix_utils import (
     _add_truncated_vars,
+    _can_auto_create_credentials,
     _create_mapping_info,
     _escape_leading_prefix_for_markdown,
+    _extract_localpart_from_mxid,
+    _get_msgs_to_keep_config,
     _get_valid_device_id,
+    _is_room_alias,
+    _iter_room_alias_entries,
     _normalize_bot_user_id,
+    _update_room_id_in_mapping,
     format_reply_message,
     get_interaction_settings,
     get_matrix_prefix,
@@ -121,6 +128,15 @@ def test_get_interaction_settings_none_config():
     result = get_interaction_settings(None)
     expected = {"reactions": False, "replies": False}
     assert result == expected
+
+
+def test_get_interaction_settings_invalid_top_level_config_type() -> None:
+    """Non-dict top-level config values should disable interactions."""
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        result = get_interaction_settings(True)  # type: ignore[arg-type]
+
+    assert result == {"reactions": False, "replies": False}
+    mock_logger.warning.assert_called_once()
 
 
 def test_get_interaction_settings_invalid_meshtastic_section_type() -> None:
@@ -471,7 +487,7 @@ def test_format_reply_message_remote_mesh_prefix():
         mesh_text_override="Test",
     )
 
-    assert result == "Trak/Mt.P: Test"
+    assert result == "[LoRa/Mt.P]:  Test"
 
 
 def test_format_reply_message_remote_without_longname():
@@ -489,7 +505,7 @@ def test_format_reply_message_remote_without_longname():
         mesh_text_override="Hi",
     )
 
-    assert result == "Tr/Mt.P: Hi"
+    assert result == "[MtP Relay/Mt.P]:  Hi"
 
 
 def test_format_reply_message_remote_strips_prefix_and_uses_override(monkeypatch):
@@ -510,8 +526,8 @@ def test_format_reply_message_remote_strips_prefix_and_uses_override(monkeypatch
         mesh_text_override="PREFIX",
     )
 
-    assert result.startswith("Al/Remo:")
-    assert "PREFIX" in result
+    assert result.startswith("PREFIX")
+    assert result == "PREFIX PREFIX"
 
 
 # Utils Tests
@@ -607,6 +623,19 @@ def test_normalize_bot_user_id_trailing_colon():
     assert result == "@relaybot:example.com"
 
 
+def test_normalize_bot_user_id_rejects_empty_localpart():
+    """Malformed IDs with empty localpart should be rejected."""
+    homeserver = "https://example.com"
+
+    assert _normalize_bot_user_id(homeserver, "@") is None
+    assert _normalize_bot_user_id(homeserver, "@:example.com") is None
+
+
+def test_normalize_bot_user_id_rejects_missing_server_derivation():
+    """When no usable homeserver domain can be derived, normalization should fail."""
+    assert _normalize_bot_user_id("", "relaybot") is None
+
+
 def test_get_valid_device_id_valid_string():
     """
     Test that _get_valid_device_id returns stripped string for valid input.
@@ -641,3 +670,212 @@ def test_get_valid_device_id_non_string():
 
     result = _get_valid_device_id([])
     assert result is None
+
+
+def test_get_msgs_to_keep_config_rejects_true():
+    config = {"database": {"msg_map": {"msgs_to_keep": True}}}
+    result = _get_msgs_to_keep_config(config)
+    assert result == 500
+
+
+def test_get_msgs_to_keep_config_rejects_false():
+    config = {"database": {"msg_map": {"msgs_to_keep": False}}}
+    result = _get_msgs_to_keep_config(config)
+    assert result == 500
+
+
+def test_get_meshtastic_prefix_index_error_fallback():
+    config = {"meshtastic": {"prefix_enabled": True, "prefix_format": "{0}"}}
+    result = get_meshtastic_prefix(config, "Alice")
+    assert result == "Alice[M]: "
+
+
+def test_get_matrix_prefix_attribute_error_fallback():
+    config = {
+        "matrix": {
+            "prefix_enabled": True,
+            "prefix_format": "{long.nonexistent}",
+        }
+    }
+    result = get_matrix_prefix(config, "Alice", "A", "TestMesh")
+    assert result == "[Alice/TestMesh]: "
+
+
+def test_get_meshtastic_prefix_malformed_config_list_section():
+    result = get_meshtastic_prefix({"meshtastic": []}, "Alice")
+    assert result == "Alice[M]: "
+
+
+def test_get_matrix_prefix_malformed_config_string_section():
+    result = get_matrix_prefix({"matrix": "bad"}, "Alice", "A", "TestMesh")
+    assert result == "[Alice/TestMesh]: "
+
+
+def test_get_meshtastic_prefix_config_not_dict():
+    result = get_meshtastic_prefix("not_a_dict", "Alice")
+    assert result == ""
+
+
+def test_get_matrix_prefix_config_not_dict():
+    result = get_matrix_prefix(None, "Alice", "A", "TestMesh")
+    assert result == ""
+
+
+def test_validate_prefix_format_index_error():
+    result = validate_prefix_format("{0}", {"display5": "Test"})
+    assert result[0] is False
+
+
+def test_validate_prefix_format_attribute_error():
+    result = validate_prefix_format("{display.nonexistent}", {"display": "Test"})
+    assert result[0] is False
+
+
+# Migrated tests from test_matrix_utils.py
+
+
+@patch("mmrelay.matrix_utils.config", {})
+def test_get_msgs_to_keep_config_default():
+    """
+    Test that the default message retention value is returned when no configuration is set.
+    """
+    result = _get_msgs_to_keep_config()
+    assert result == DEFAULT_MSGS_TO_KEEP
+
+
+@patch("mmrelay.matrix_utils.config", {"db": {"msg_map": {"msgs_to_keep": 100}}})
+def test_get_msgs_to_keep_config_legacy():
+    """
+    Test that the legacy configuration format correctly sets the message retention value.
+    """
+    result = _get_msgs_to_keep_config()
+    assert result == 100
+
+
+@patch("mmrelay.matrix_utils.config", {"database": {"msg_map": {"msgs_to_keep": 200}}})
+def test_get_msgs_to_keep_config_new_format():
+    """
+    Test that the new configuration format correctly sets the message retention value.
+
+    Verifies that `_get_msgs_to_keep_config()` returns the expected value when the configuration uses the new nested format for message retention.
+    """
+    result = _get_msgs_to_keep_config()
+    assert result == 200
+
+
+def test_create_mapping_info():
+    """
+    Tests that _create_mapping_info returns a dictionary with the correct message mapping information based on the provided parameters.
+    """
+    result = _create_mapping_info(
+        matrix_event_id="$event123",
+        room_id="!room:matrix.org",
+        text="Hello world",
+        meshnet="test_mesh",
+        msgs_to_keep=100,
+    )
+
+    expected = {
+        "matrix_event_id": "$event123",
+        "room_id": "!room:matrix.org",
+        "text": "Hello world",
+        "meshnet": "test_mesh",
+        "msgs_to_keep": 100,
+    }
+    assert result == expected
+
+
+# Migrated unique tests from test_matrix_utils.py
+
+
+def test_is_room_alias_with_various_inputs():
+    """Test _is_room_alias function with different input types."""
+    # Test with valid alias
+    assert _is_room_alias("#room:example.com") is True
+
+    # Test with room ID (should be False)
+    assert _is_room_alias("!room:example.com") is False
+
+    # Test with non-string types
+    assert _is_room_alias(None) is False
+    assert _is_room_alias(123) is False
+    assert _is_room_alias([]) is False
+
+
+def test_iter_room_alias_entries_list_format():
+    """Test _iter_room_alias_entries with list format."""
+    # Test with list of strings
+    mapping = ["#room1:example.com", "#room2:example.com"]
+    entries = list(_iter_room_alias_entries(mapping))
+
+    assert len(entries) == 2
+    assert entries[0][0] == "#room1:example.com"
+    assert entries[1][0] == "#room2:example.com"
+
+    # Test that setters work
+    entries[0][1]("!newroom:example.com")
+    assert mapping[0] == "!newroom:example.com"
+
+
+def test_iter_room_alias_entries_dict_format():
+    """Test _iter_room_alias_entries with dict format."""
+    mapping = {
+        "one": "#room1:example.com",
+        "two": {"id": "#room2:example.com"},
+    }
+    entries = list(_iter_room_alias_entries(mapping))
+
+    assert len(entries) == 2
+    entries[0][1]("!new1:example.com")
+    entries[1][1]("!new2:example.com")
+
+    assert mapping["one"] == "!new1:example.com"
+    assert mapping["two"]["id"] == "!new2:example.com"
+
+
+def test_can_auto_create_credentials_missing_fields():
+    """Test _can_auto_create_credentials with missing fields."""
+    # Test missing homeserver
+    config1 = {"bot_user_id": "@bot:example.com", "password": "secret123"}
+    assert _can_auto_create_credentials(config1) is False
+
+    # Test missing user_id
+    config2 = {"homeserver": "https://example.com", "password": "secret123"}
+    assert _can_auto_create_credentials(config2) is False
+
+    # Test empty strings
+    config3 = {
+        "homeserver": "",
+        "bot_user_id": "@bot:example.com",
+        "password": "secret123",
+    }
+    assert _can_auto_create_credentials(config3) is False
+
+
+def test_extract_localpart_from_mxid():
+    """Test _extract_localpart_from_mxid with different input formats."""
+    # Test with full MXID
+    assert _extract_localpart_from_mxid("@user:example.com") == "user"
+
+    # Test with MXID using different server
+    assert _extract_localpart_from_mxid("@bot:tchncs.de") == "bot"
+
+    # Test with localpart only
+    assert _extract_localpart_from_mxid("alice") == "alice"
+
+    # Test with empty string
+    assert _extract_localpart_from_mxid("") == ""
+
+    # Test with None
+    assert _extract_localpart_from_mxid(None) is None
+
+    # Test with MXID containing special characters
+    assert _extract_localpart_from_mxid("@user_123:example.com") == "user_123"
+
+
+def test_update_room_id_in_mapping_unsupported_type():
+    """Test _update_room_id_in_mapping with unsupported mapping type."""
+    mapping = "not a list or dict"
+    result = _update_room_id_in_mapping(mapping, "#old:example.com", "!new:example.com")
+
+    assert result is False

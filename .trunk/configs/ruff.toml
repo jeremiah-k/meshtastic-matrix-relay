@@ -6,3 +6,4 @@ ignore = ["E501"]
 
 [per-file-ignores]
 "src/mmrelay/meshtastic_utils.py" = ["E402", "I001"]
+"src/mmrelay/matrix_utils.py" = ["E402", "I001"]

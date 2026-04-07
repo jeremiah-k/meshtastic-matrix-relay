@@ -30,6 +30,7 @@ from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.network import (
     BLE_CONNECT_TIMEOUT_SECS,
     BLE_DISCONNECT_SETTLE_SECS,
+    BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
     CONNECTION_TYPE_BLE,
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
@@ -786,7 +787,7 @@ class TestMeshtasticUtils(unittest.TestCase):
             noProto=False,
             debugOut=None,
             noNodes=False,
-            timeout=DEFAULT_MESHTASTIC_TIMEOUT,
+            timeout=int(BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS),
         )
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
@@ -2347,6 +2348,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
         mu.RELAY_START_TIME = 200_000.0
         mu._relay_startup_drain_deadline_monotonic_secs = 1_000.0
+        mu._relay_startup_drain_expiry_timer = None
         packet = {
             "from": TEST_PACKET_FROM_ID,
             "to": TEST_PACKET_FROM_ID,
@@ -2366,6 +2368,131 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             on_meshtastic_message(packet, mock_interface)
 
         assert mu._relay_startup_drain_deadline_monotonic_secs is None
+
+    def test_startup_drain_expiry_timer_clears_deadline_and_logs(self):
+        """Drain deadline should clear and log even when no packet arrives."""
+        import mmrelay.meshtastic_utils as mu
+
+        mu._relay_startup_drain_deadline_monotonic_secs = 1_010.0
+        created_timers = []
+
+        class _FakeTimer:
+            def __init__(self, interval: float, callback: Callable[[], None]) -> None:
+                self.interval: float = interval
+                self._callback: Callable[[], None] = callback
+                self.daemon: bool = False
+                self.cancelled: bool = False
+                created_timers.append(self)
+
+            def start(self) -> None:
+                return None
+
+            def cancel(self) -> None:
+                self.cancelled = True
+
+            def fire(self) -> None:
+                self._callback()
+
+        with (
+            patch("mmrelay.meshtastic.events.threading.Timer", new=_FakeTimer),
+            patch(
+                "mmrelay.meshtastic_utils.time.monotonic",
+                side_effect=[1_005.0, 1_011.0],
+            ),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            mu._schedule_startup_drain_deadline_cleanup(1_010.0)
+            assert len(created_timers) == 1
+            assert created_timers[0].interval == pytest.approx(5.0)
+            created_timers[0].fire()
+
+        assert mu._relay_startup_drain_deadline_monotonic_secs is None
+        assert mu._relay_startup_drain_expiry_timer is None
+        log_calls = [str(call) for call in mock_logger.debug.call_args_list]
+        assert any("Startup drain window has ended" in c for c in log_calls)
+
+    def test_startup_drain_expiry_timer_ignores_stale_deadline(self):
+        """Timer for an old deadline should not clear a newer drain deadline."""
+        import mmrelay.meshtastic_utils as mu
+
+        mu._relay_startup_drain_deadline_monotonic_secs = 1_010.0
+        created_timers = []
+
+        class _FakeTimer:
+            def __init__(self, interval: float, callback: Callable[[], None]) -> None:
+                self.interval: float = interval
+                self._callback: Callable[[], None] = callback
+                self.daemon: bool = False
+                self.cancelled: bool = False
+                created_timers.append(self)
+
+            def start(self) -> None:
+                return None
+
+            def cancel(self) -> None:
+                self.cancelled = True
+
+            def fire(self) -> None:
+                self._callback()
+
+        with (
+            patch("mmrelay.meshtastic.events.threading.Timer", new=_FakeTimer),
+            patch(
+                "mmrelay.meshtastic_utils.time.monotonic",
+                side_effect=[1_005.0, 1_011.0],
+            ),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            mu._schedule_startup_drain_deadline_cleanup(1_010.0)
+            mu._relay_startup_drain_deadline_monotonic_secs = 1_020.0
+            created_timers[0].fire()
+
+        assert mu._relay_startup_drain_deadline_monotonic_secs == 1_020.0
+        assert mu._relay_startup_drain_expiry_timer is None
+        log_calls = [str(call) for call in mock_logger.debug.call_args_list]
+        assert not any("Startup drain window has ended" in c for c in log_calls)
+
+    def test_startup_drain_expiry_timer_reschedules_when_triggered_early(self):
+        """Early timer wakeups should reschedule and still clear on the deadline."""
+        import mmrelay.meshtastic_utils as mu
+
+        mu._relay_startup_drain_deadline_monotonic_secs = 1_010.0
+        created_timers = []
+
+        class _FakeTimer:
+            def __init__(self, interval: float, callback: Callable[[], None]) -> None:
+                self.interval: float = interval
+                self._callback: Callable[[], None] = callback
+                self.daemon: bool = False
+                created_timers.append(self)
+
+            def start(self) -> None:
+                return None
+
+            def cancel(self) -> None:
+                return None
+
+            def fire(self) -> None:
+                self._callback()
+
+        with (
+            patch("mmrelay.meshtastic.events.threading.Timer", new=_FakeTimer),
+            patch(
+                "mmrelay.meshtastic_utils.time.monotonic",
+                side_effect=[1_005.0, 1_009.0, 1_009.5, 1_011.0],
+            ),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            mu._schedule_startup_drain_deadline_cleanup(1_010.0)
+            created_timers[0].fire()
+            assert len(created_timers) == 2
+            assert created_timers[1].interval == pytest.approx(0.5)
+            created_timers[1].fire()
+
+        assert mu._relay_startup_drain_deadline_monotonic_secs is None
+        assert mu._relay_startup_drain_expiry_timer is None
+        log_calls = [str(call) for call in mock_logger.debug.call_args_list]
+        assert any("Startup drain window has ended" in c for c in log_calls)
 
     def test_is_health_probe_response_packet_handles_zero_sender_id(self):
         """Sender 0 should not match a non-zero local node id."""
@@ -2739,6 +2866,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         mu.RELAY_START_TIME = 100_000.0
         mu._relay_rx_time_clock_skew_secs = None
         mu._relay_startup_drain_deadline_monotonic_secs = 1_000.0
+        mu._relay_startup_drain_expiry_timer = None
         packet = {
             "from": TEST_PACKET_FROM_ID,
             "to": TEST_PACKET_FROM_ID,
@@ -2761,6 +2889,40 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         assert mu._relay_startup_drain_deadline_monotonic_secs is None
         log_calls = [str(c) for c in mock_logger.debug.call_args_list]
         assert any("Startup drain window has ended" in c for c in log_calls)
+
+    def test_on_meshtastic_message_expired_drain_uses_timer_for_end_log(self):
+        """
+        With an active expiry timer, packet handling should not emit drain-end log.
+        """
+        import mmrelay.meshtastic_utils as mu
+
+        mu.RELAY_START_TIME = 100_000.0
+        mu._relay_rx_time_clock_skew_secs = None
+        mu._relay_startup_drain_deadline_monotonic_secs = 1_000.0
+        mu._relay_startup_drain_expiry_timer = None
+        packet = {
+            "from": TEST_PACKET_FROM_ID,
+            "to": TEST_PACKET_FROM_ID,
+            "decoded": {"text": "post-drain packet", "portnum": TEXT_MESSAGE_APP},
+            "channel": 0,
+            "id": TEST_PACKET_ID,
+            "rxTime": 100_050.0,
+        }
+        mock_interface = MagicMock()
+        mock_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
+
+        with patch.object(mu, "_relay_startup_drain_expiry_timer", MagicMock()):
+            with (
+                patch("mmrelay.meshtastic_utils.config", self.mock_config),
+                patch("mmrelay.meshtastic_utils.time.time", return_value=100_100.0),
+                patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_005.0),
+                patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+            ):
+                on_meshtastic_message(packet, mock_interface)
+
+        assert mu._relay_startup_drain_deadline_monotonic_secs == 1_000.0
+        log_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        assert not any("Startup drain window has ended" in c for c in log_calls)
 
     def test_on_meshtastic_message_clears_drain_at_exact_deadline(self):
         """Drain window should clear when packet arrives exactly at the deadline."""
@@ -2797,6 +2959,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         mu.RELAY_START_TIME = 100_000.0
         mu._relay_rx_time_clock_skew_secs = None
         mu._relay_startup_drain_deadline_monotonic_secs = 1_000.0
+        mu._relay_startup_drain_expiry_timer = None
 
         packet1 = {
             "from": TEST_PACKET_FROM_ID,
@@ -3914,8 +4077,8 @@ class TestGetDeviceMetadata(unittest.TestCase):
             mu._metadata_future_lock = original_lock
             mu._metadata_executor_degraded = original_degraded
 
-        self.assertTrue(degraded_flag.check_states)
-        self.assertTrue(all(degraded_flag.check_states))
+        assert degraded_flag.check_states
+        assert all(degraded_flag.check_states)
 
     def test_get_device_metadata_raise_on_error_reraises_non_io_value_error(self):
         """Non-I/O ValueError failures from getMetadata() should propagate."""
@@ -4835,6 +4998,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         ]
 
         with (
+            patch("mmrelay.meshtastic_utils._ble_interface_create_timeout_secs", 45.0),
             patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
             patch("bleak.BleakClient") as mock_bleak_client,
         ):
@@ -4858,6 +5022,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
                 if "BLE interface creation timed out after" in str(call)
             ]
             self.assertEqual(len(error_calls), MAX_TIMEOUT_RETRIES_INFINITE + 1)
+            assert all(call.args[1] == 45.0 for call in error_calls)
 
             last_error_call = str(error_calls[-1])
             self.assertIn(TEST_BLE_MAC, last_error_call)

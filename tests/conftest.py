@@ -372,6 +372,26 @@ def _cancel_and_drain_future_like(future_obj: Any, *, timeout: float = 0.2) -> N
     _drain_future_result_safely(future_obj, timeout=timeout)
 
 
+def _cancel_and_join_timer_like(timer_obj: Any, *, timeout: float = 0.2) -> None:
+    """
+    Best-effort timer cancellation and brief join for deterministic teardown.
+    """
+    if timer_obj is None:
+        return
+
+    cancel_fn = getattr(timer_obj, "cancel", None)
+    if callable(cancel_fn):
+        with contextlib.suppress(RuntimeError, TypeError):
+            cancel_fn()
+
+    is_alive_fn = getattr(timer_obj, "is_alive", None)
+    join_fn = getattr(timer_obj, "join", None)
+    if callable(is_alive_fn) and callable(join_fn):
+        with contextlib.suppress(RuntimeError, TypeError):
+            if is_alive_fn():
+                join_fn(timeout=timeout)
+
+
 # Now that mocks are in place, we can import the application code
 import mmrelay.meshtastic_utils as mu  # noqa: E402
 from tests.constants import TEST_BOT_USER_ID, TEST_ROOM_ID, TEST_USER_ID  # noqa: E402
@@ -486,6 +506,18 @@ nio_mock.MegolmEvent = MockMegolmEvent
 nio_mock.UploadResponse = MagicMock()
 nio_mock.WhoamiError = MockWhoamiError
 nio_mock.SyncError = MockSyncError
+
+
+class MockRoomSendError(Exception):
+    def __init__(
+        self, message: str = "Room send error", status_code: str | None = None
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+
+
+nio_mock.RoomSendError = MockRoomSendError
 
 
 # Mock ToDevice response classes for isinstance checks
@@ -757,7 +789,13 @@ def cleanup_asyncmock_objects(request):
     asyncmock_patterns = [
         "test_async_patterns",
         "test_matrix_utils",
+        "test_matrix_utils_auth",
+        "test_matrix_utils_core",
         "test_matrix_utils_edge_cases",
+        "test_matrix_utils_invite",
+        "test_matrix_utils_media",
+        "test_matrix_utils_relay",
+        "test_matrix_utils_replies",
         "test_mesh_relay_plugin",
         "test_map_plugin",
         "test_meshtastic_utils",
@@ -999,6 +1037,9 @@ def reset_meshtastic_globals():
         "_relay_startup_drain_deadline_monotonic_secs": getattr(
             mu, "_relay_startup_drain_deadline_monotonic_secs", None
         ),
+        "_relay_startup_drain_expiry_timer": getattr(
+            mu, "_relay_startup_drain_expiry_timer", None
+        ),
         "_relay_reconnect_prestart_bootstrap_deadline_monotonic_secs": getattr(
             mu, "_relay_reconnect_prestart_bootstrap_deadline_monotonic_secs", None
         ),
@@ -1064,6 +1105,9 @@ def reset_meshtastic_globals():
     mu._relay_connection_started_monotonic_secs = time.monotonic()
     mu._relay_rx_time_clock_skew_secs = None
     mu._relay_startup_drain_deadline_monotonic_secs = None
+    startup_drain_timer = getattr(mu, "_relay_startup_drain_expiry_timer", None)
+    _cancel_and_join_timer_like(startup_drain_timer, timeout=0.2)
+    mu._relay_startup_drain_expiry_timer = None
     mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = None
     mu._startup_packet_drain_applied = False
     mu._health_probe_request_deadlines = {}
@@ -1108,6 +1152,9 @@ def reset_meshtastic_globals():
         _cancel_and_drain_future_like(
             getattr(mu, "_metadata_future", None), timeout=0.2
         )
+        startup_drain_timer = getattr(mu, "_relay_startup_drain_expiry_timer", None)
+        _cancel_and_join_timer_like(startup_drain_timer, timeout=0.2)
+        mu._relay_startup_drain_expiry_timer = None
         mu.reconnect_task = None
         mu.reconnect_task_future = None
         mu._metadata_future = None

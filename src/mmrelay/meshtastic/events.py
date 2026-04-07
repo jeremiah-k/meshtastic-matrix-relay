@@ -1,3 +1,4 @@
+import threading
 from typing import Any, Iterable
 
 from meshtastic.mesh_interface import BROADCAST_NUM
@@ -20,6 +21,7 @@ from mmrelay.constants.messages import (
 )
 
 __all__ = [
+    "_schedule_startup_drain_deadline_cleanup",
     "on_lost_meshtastic_connection",
     "on_meshtastic_message",
     "reconnect",
@@ -167,6 +169,58 @@ def _schedule_reconnect_after_disconnect() -> None:
         facade.reconnecting = False
         facade.logger.error(
             "Cannot schedule reconnect because the event loop is unavailable"
+        )
+
+
+def _schedule_startup_drain_deadline_cleanup(startup_drain_deadline: float) -> None:
+    """
+    Clear and log startup drain expiry on deadline, independent of packet arrival.
+
+    This keeps startup-drain state authoritative even when no inbound packet
+    arrives immediately after the drain window closes.
+    """
+
+    def _cleanup() -> None:
+        should_log_drain_end = False
+        reschedule_deadline: float | None = None
+        with facade._relay_rx_time_clock_skew_lock:
+            if facade._relay_startup_drain_expiry_timer is timer:
+                facade._relay_startup_drain_expiry_timer = None
+
+            current_deadline = facade._relay_startup_drain_deadline_monotonic_secs
+            if current_deadline != startup_drain_deadline:
+                return
+            if current_deadline is None:
+                return
+            if current_deadline > facade.time.monotonic():
+                reschedule_deadline = current_deadline
+            else:
+                facade._relay_startup_drain_deadline_monotonic_secs = None
+                should_log_drain_end = True
+        if reschedule_deadline is not None:
+            _schedule_startup_drain_deadline_cleanup(reschedule_deadline)
+            return
+        if should_log_drain_end:
+            facade.logger.debug("Startup drain window has ended — accepting packets")
+
+    delay_secs = max(0.0, startup_drain_deadline - facade.time.monotonic())
+    timer = threading.Timer(delay_secs, _cleanup)
+    timer.daemon = True
+    previous_timer = None
+    with facade._relay_rx_time_clock_skew_lock:
+        previous_timer = facade._relay_startup_drain_expiry_timer
+        facade._relay_startup_drain_expiry_timer = timer
+    if previous_timer is not None:
+        previous_timer.cancel()
+    try:
+        timer.start()
+    except Exception as exc:  # noqa: BLE001 - best-effort timer setup
+        with facade._relay_rx_time_clock_skew_lock:
+            if facade._relay_startup_drain_expiry_timer is timer:
+                facade._relay_startup_drain_expiry_timer = None
+        facade.logger.debug(
+            "Failed to schedule startup drain expiry cleanup timer",
+            exc_info=exc,
         )
 
 
@@ -429,15 +483,27 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 remaining_drain_secs,
             )
             return
+        should_log_drain_end = False
         with facade._relay_rx_time_clock_skew_lock:
+            drain_expiry_timer = facade._relay_startup_drain_expiry_timer
+            timer_still_active = False
+            if drain_expiry_timer is not None:
+                timer_is_alive = getattr(drain_expiry_timer, "is_alive", None)
+                if callable(timer_is_alive):
+                    try:
+                        timer_still_active = bool(timer_is_alive())
+                    except (RuntimeError, TypeError):
+                        timer_still_active = False
             if (
                 facade._relay_startup_drain_deadline_monotonic_secs is not None
                 and facade._relay_startup_drain_deadline_monotonic_secs <= now_monotonic
+                and not timer_still_active
             ):
+                facade._relay_startup_drain_expiry_timer = None
                 facade._relay_startup_drain_deadline_monotonic_secs = None
-                facade.logger.debug(
-                    "Startup drain window has ended — accepting packets"
-                )
+                should_log_drain_end = True
+        if should_log_drain_end:
+            facade.logger.debug("Startup drain window has ended — accepting packets")
 
     # Seed clock skew from the first non-health-probe packet with a valid
     # rxTime so that the cutoff works even when health checks are disabled.

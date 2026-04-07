@@ -9,6 +9,7 @@ import os
 import sys
 import types
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 # Add src to path for imports
@@ -311,6 +312,46 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         self.assertEqual(
             result,
             "Network connectivity issue or server unreachable",
+        )
+
+    def test_bytes_input_direct_utf8(self):
+        """Test _get_detailed_matrix_error_message with valid UTF-8 bytes input (lines 229-231)."""
+        # Test with valid UTF-8 bytes passed directly to function
+        result = _get_detailed_matrix_error_message(b"Error message")
+        self.assertEqual(result, "Error message")
+
+    def test_bytes_input_invalid_utf8(self):
+        """Test _get_detailed_matrix_error_message with invalid UTF-8 bytes input (lines 232-233)."""
+        # Test with invalid UTF-8 bytes passed directly to function
+        result = _get_detailed_matrix_error_message(b"\xff\xfe\xfd")
+        self.assertEqual(
+            result, "Network connectivity issue or server unreachable (binary data)"
+        )
+
+    def test_transport_response_status_non_int(self):
+        """Test transport_response with non-int status_code (lines 280-283)."""
+        # Create mock with transport_response that has non-integer status_code
+        mock_response = MagicMock()
+        mock_response.message = None
+        mock_response.status_code = None
+        mock_response.transport_response = SimpleNamespace(status_code="bad")
+
+        result = _get_detailed_matrix_error_message(mock_response)
+
+        self.assertEqual(result, "Network connectivity issue or server unreachable")
+
+    def test_generic_exception_during_processing(self):
+        """Test fallback for unexpected exceptions like ValueError (lines 305-310)."""
+
+        # Create class that raises ValueError on any attribute access
+        class ExplodingResponse:
+            def __getattr__(self, _name):
+                raise ValueError("boom")
+
+        result = _get_detailed_matrix_error_message(ExplodingResponse())
+        self.assertEqual(
+            result,
+            "Unable to determine specific error - likely a network connectivity issue",
         )
 
 
