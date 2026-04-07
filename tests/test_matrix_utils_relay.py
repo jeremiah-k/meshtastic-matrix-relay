@@ -1,15 +1,33 @@
 import asyncio
-import re
+import contextlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import nio
 import pytest
 
+from mmrelay.constants.formats import (
+    DETECTION_SENSOR_APP,
+    MATRIX_SUPPRESS_KEY,
+    TEXT_MESSAGE_APP,
+)
+from mmrelay.constants.network import (
+    MATRIX_CLOCK_ROLLBACK_DISABLE_MS,
+    MATRIX_STALE_STARTUP_EVENT_DROP_MS,
+    MATRIX_STARTUP_STALE_FILTER_WINDOW_MS,
+    MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS,
+)
 from mmrelay.matrix_utils import (
     NioLocalTransportError,
     _send_matrix_message_with_retry,
+    bot_command,
     matrix_relay,
+    on_room_message,
+)
+from tests.constants import (
+    TEST_BOT_USER_ID,
+    TEST_ROOM_ID,
+    TEST_USER_ID,
 )
 
 RoomSendError = nio.RoomSendError
@@ -803,29 +821,6 @@ async def test_matrix_relay_logs_unexpected_exception():
 # ============================================================================
 # on_room_message tests migrated from test_matrix_utils.py
 # ============================================================================
-
-import contextlib
-
-from mmrelay.constants.formats import (
-    DETECTION_SENSOR_APP,
-    MATRIX_SUPPRESS_KEY,
-    TEXT_MESSAGE_APP,
-)
-from mmrelay.constants.network import (
-    MATRIX_CLOCK_ROLLBACK_DISABLE_MS,
-    MATRIX_STALE_STARTUP_EVENT_DROP_MS,
-    MATRIX_STARTUP_STALE_FILTER_WINDOW_MS,
-    MATRIX_STARTUP_TIMESTAMP_TOLERANCE_MS,
-)
-from mmrelay.matrix_utils import (
-    bot_command,
-    on_room_message,
-)
-from tests.constants import (
-    TEST_BOT_USER_ID,
-    TEST_ROOM_ID,
-    TEST_USER_ID,
-)
 
 
 @contextlib.contextmanager

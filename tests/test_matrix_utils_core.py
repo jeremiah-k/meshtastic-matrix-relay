@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
+from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 from mmrelay.matrix_utils import (
     _add_truncated_vars,
     _can_auto_create_credentials,
@@ -709,9 +710,6 @@ def test_validate_prefix_format_attribute_error():
 
 
 # Migrated tests from test_matrix_utils.py
-
-
-from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 
 
 @patch("mmrelay.matrix_utils.config", {})

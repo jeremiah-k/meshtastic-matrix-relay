@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import ssl
-import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,8 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import mmrelay.matrix_utils as matrix_utils_module
-from mmrelay.constants.app import CREDENTIALS_FILENAME
 from mmrelay.matrix_utils import (
     NioLocalTransportError,
     NioLoginError,
