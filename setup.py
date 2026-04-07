@@ -66,7 +66,7 @@ setup(
     extras_require={
         "dev": [
             "pyright==1.1.408",
-            "mypy==1.19.1",
+            "mypy==1.20.0",
             "types-PyYAML==6.0.12.20250915",
             "types-Markdown==3.10.2.20260211",
         ],
