@@ -184,9 +184,4 @@ def classify_packet(portnum: Any, config: dict[str, Any] | None) -> str:
     if is_text_message:
         return PacketAction.RELAY
 
-    logger.debug(
-        "Packet %s classified as %s; skipping Matrix chat relay.",
-        portnum_name,
-        PacketAction.PLUGIN_ONLY,
-    )
     return PacketAction.PLUGIN_ONLY
