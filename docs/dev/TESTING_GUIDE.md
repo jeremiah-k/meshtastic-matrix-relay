@@ -645,14 +645,9 @@ Write tests into the appropriate split domain files:
 
 If no existing file matches, create a new one following the `test_matrix_utils_<domain>.py` naming convention.
 
-### Legacy File Status
+### Matrix Test File Organization
 
-Both legacy Matrix monoliths have been eliminated:
-
-- `tests/test_matrix_utils.py` — eliminated
-- `tests/test_matrix_utils_auth.py` — eliminated
-
-All Matrix tests now live in the split domain files listed above.
+All Matrix tests live in split domain files under `tests/`. Each file targets a specific area of Matrix functionality:
 
 **Rules:**
 
@@ -670,7 +665,7 @@ All Matrix tests now live in the split domain files listed above.
 - **`auth_credentials.py`** — credential loading and storage (separate from connect-time credential reload)
 - **`auth_e2ee.py`** — E2EE setup and decryption logic (separate from connect-time E2EE bootstrapping)
 
-If unsure where a new test belongs, follow the function's source module: tests for `mmrelay.matrix.relay` go in `test_matrix_utils_relay.py`, tests for `mmrelay.matrix.connect` go in `test_matrix_utils_connect.py`, etc.
+If unsure where a new test belongs, follow the function's source module: tests for `mmrelay.matrix.relay` go in `test_matrix_utils_relay.py`, tests for `mmrelay.matrix.sync_bootstrap` go in `test_matrix_utils_connect*.py`, etc.
 
 ### Patch targets
 
@@ -686,6 +681,8 @@ async def test_something(mock_client, mock_send):
 Patch a source submodule directly **only** when the test is specifically verifying source-module lookup behavior (e.g., testing that a submodule imports `RoomSendError` from nio directly rather than through the facade).
 
 Rationale: the decomposed submodules call each other through the facade (`facade.func_name`), so patches on `mmrelay.matrix_utils.X` intercept the actual call path.
+
+Note: The `asyncmock_patterns` list in `conftest.py` contains **filename-prefix patterns** used for GC cleanup (e.g., `test_matrix_utils_connect` matches `test_matrix_utils_connect.py`, `test_matrix_utils_connect_sync.py`, etc.). Entries should NOT be removed just because legacy monolith files were deleted — they match by prefix, not exact filename.
 
 ### nio mock classes
 

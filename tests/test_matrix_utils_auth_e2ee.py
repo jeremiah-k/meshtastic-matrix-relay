@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nio import ToDeviceError, ToDeviceResponse  # noqa: E402
+from nio import ToDeviceError, ToDeviceResponse
 
 import mmrelay.matrix_utils as matrix_utils_module
 from mmrelay.constants.app import CREDENTIALS_FILENAME
@@ -16,6 +16,8 @@ from mmrelay.matrix_utils import (
     login_matrix_bot,
     on_decryption_failure,
 )
+
+pytestmark = pytest.mark.asyncio
 
 
 async def test_on_decryption_failure():

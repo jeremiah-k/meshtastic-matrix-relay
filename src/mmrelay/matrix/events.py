@@ -235,15 +235,23 @@ async def on_room_message(
         return
 
     room_config = None
-    iterable: list[dict[str, Any]] | list[Any] = (
-        list(facade.matrix_rooms.values())
-        if facade.matrix_rooms and isinstance(facade.matrix_rooms, dict)
-        else list(facade.matrix_rooms or [])
-    )
-    for room_conf in iterable:
-        if isinstance(room_conf, dict) and room_conf.get("id") == room.room_id:
-            room_config = room_conf
-            break
+    rooms: Any = facade.matrix_rooms
+    if isinstance(rooms, dict):
+        direct = rooms.get(room.room_id)
+        if isinstance(direct, dict):
+            room_config = direct
+        else:
+            for key, room_conf in rooms.items():
+                if key == room.room_id or (
+                    isinstance(room_conf, dict) and room_conf.get("id") == room.room_id
+                ):
+                    room_config = room_conf if isinstance(room_conf, dict) else None
+                    break
+    else:
+        for room_conf in rooms or []:
+            if isinstance(room_conf, dict) and room_conf.get("id") == room.room_id:
+                room_config = room_conf
+                break
 
     if not room_config:
         return

@@ -324,7 +324,12 @@ def get_interaction_settings(config: dict[str, Any] | None) -> dict[str, bool]:
     Returns:
         dict[str, bool]: A mapping with keys `"reactions"` and `"replies"`. `"reactions"` is `True` when reactions are enabled, `"replies"` is `True` when replies are enabled; both are `False` by default.
     """
-    if config is None:
+    if not isinstance(config, dict):
+        if config is not None:
+            facade.logger.warning(
+                "Invalid top-level config type (%s); disabling reactions and replies.",
+                type(config).__name__,
+            )
         return {"reactions": False, "replies": False}
 
     meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC, {})

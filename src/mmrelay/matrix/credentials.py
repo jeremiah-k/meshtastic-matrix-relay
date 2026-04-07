@@ -116,7 +116,13 @@ async def _resolve_and_load_credentials(
         credentials = await facade.async_load_credentials()
     except asyncio.CancelledError:
         raise
-    except (OSError, ValueError, json.JSONDecodeError, TypeError) as exc:
+    except (
+        InvalidCredentialsPathTypeError,
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+        TypeError,
+    ) as exc:
         facade.logger.warning("Error loading credentials: %s", exc)
         credentials = None
 
@@ -202,6 +208,7 @@ async def _resolve_and_load_credentials(
                 try:
                     credentials = await facade.async_load_credentials()
                 except (
+                    InvalidCredentialsPathTypeError,
                     OSError,
                     ValueError,
                     json.JSONDecodeError,

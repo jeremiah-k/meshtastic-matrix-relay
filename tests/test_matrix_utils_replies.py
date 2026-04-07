@@ -11,6 +11,20 @@ from mmrelay.matrix_utils import (
 from tests.helpers import InlineExecutorLoop
 
 
+class DummyLoop:
+    def __init__(self, loop):
+        self._loop = loop
+
+    def is_running(self):
+        return True
+
+    def create_task(self, coro):
+        return self._loop.create_task(coro)
+
+    async def run_in_executor(self, _executor, func, *args):
+        return func(*args)
+
+
 @pytest.mark.asyncio
 async def test_handle_matrix_reply_returns_false_on_send_failure():
     mock_room = MagicMock()
@@ -309,19 +323,6 @@ async def test_send_reply_to_meshtastic_with_reply_id():
 
     real_loop = asyncio.get_running_loop()
 
-    class DummyLoop:
-        def __init__(self, loop):
-            self._loop = loop
-
-        def is_running(self):
-            return True
-
-        def create_task(self, coro):
-            return self._loop.create_task(coro)
-
-        async def run_in_executor(self, _executor, func, *args):
-            return func(*args)
-
     with (
         patch(
             "mmrelay.matrix_utils.config", {"meshtastic": {"broadcast_enabled": True}}
@@ -358,19 +359,6 @@ async def test_send_reply_to_meshtastic_no_reply_id():
     mock_event = MagicMock()
 
     real_loop = asyncio.get_running_loop()
-
-    class DummyLoop:
-        def __init__(self, loop):
-            self._loop = loop
-
-        def is_running(self):
-            return True
-
-        def create_task(self, coro):
-            return self._loop.create_task(coro)
-
-        async def run_in_executor(self, _executor, func, *args):
-            return func(*args)
 
     with (
         patch(

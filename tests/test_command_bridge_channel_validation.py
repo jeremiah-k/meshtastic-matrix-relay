@@ -1,62 +1,52 @@
 #!/usr/bin/env python3
 """Tests for meshtastic_channel validation in _get_meshtastic_interface_and_channel."""
 
-import asyncio
-import os
-import sys
-import unittest
 from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+import pytest
 
 from mmrelay.matrix_utils import _get_meshtastic_interface_and_channel
 
-
-def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+pytestmark = pytest.mark.asyncio
 
 
-class TestMeshtasticChannelValidation(unittest.TestCase):
-    """Ensure booleans are rejected and valid integers are accepted."""
-
-    @patch("mmrelay.matrix_utils.connect_meshtastic")
-    def test_boolean_true_rejected(self, mock_connect):
-        mock_connect.return_value = MagicMock()
-        result_iface, result_ch = _run(
-            _get_meshtastic_interface_and_channel({"meshtastic_channel": True}, "test")
-        )
-        self.assertIsNone(result_iface)
-        self.assertIsNone(result_ch)
-
-    @patch("mmrelay.matrix_utils.connect_meshtastic")
-    def test_boolean_false_rejected(self, mock_connect):
-        mock_connect.return_value = MagicMock()
-        result_iface, result_ch = _run(
-            _get_meshtastic_interface_and_channel({"meshtastic_channel": False}, "test")
-        )
-        self.assertIsNone(result_iface)
-        self.assertIsNone(result_ch)
-
-    @patch("mmrelay.matrix_utils.connect_meshtastic")
-    def test_integer_zero_accepted(self, mock_connect):
-        mock_iface = MagicMock()
-        mock_connect.return_value = mock_iface
-        result_iface, result_ch = _run(
-            _get_meshtastic_interface_and_channel({"meshtastic_channel": 0}, "test")
-        )
-        self.assertIs(result_iface, mock_iface)
-        self.assertEqual(result_ch, 0)
-
-    @patch("mmrelay.matrix_utils.connect_meshtastic")
-    def test_positive_integer_accepted(self, mock_connect):
-        mock_iface = MagicMock()
-        mock_connect.return_value = mock_iface
-        result_iface, result_ch = _run(
-            _get_meshtastic_interface_and_channel({"meshtastic_channel": 3}, "test")
-        )
-        self.assertIs(result_iface, mock_iface)
-        self.assertEqual(result_ch, 3)
+@patch("mmrelay.matrix_utils.connect_meshtastic")
+async def test_boolean_true_rejected(mock_connect):
+    mock_connect.return_value = MagicMock()
+    result_iface, result_ch = await _get_meshtastic_interface_and_channel(
+        {"meshtastic_channel": True}, "test"
+    )
+    assert result_iface is None
+    assert result_ch is None
 
 
-if __name__ == "__main__":
-    unittest.main()
+@patch("mmrelay.matrix_utils.connect_meshtastic")
+async def test_boolean_false_rejected(mock_connect):
+    mock_connect.return_value = MagicMock()
+    result_iface, result_ch = await _get_meshtastic_interface_and_channel(
+        {"meshtastic_channel": False}, "test"
+    )
+    assert result_iface is None
+    assert result_ch is None
+
+
+@patch("mmrelay.matrix_utils.connect_meshtastic")
+async def test_integer_zero_accepted(mock_connect):
+    mock_iface = MagicMock()
+    mock_connect.return_value = mock_iface
+    result_iface, result_ch = await _get_meshtastic_interface_and_channel(
+        {"meshtastic_channel": 0}, "test"
+    )
+    assert result_iface is mock_iface
+    assert result_ch == 0
+
+
+@patch("mmrelay.matrix_utils.connect_meshtastic")
+async def test_positive_integer_accepted(mock_connect):
+    mock_iface = MagicMock()
+    mock_connect.return_value = mock_iface
+    result_iface, result_ch = await _get_meshtastic_interface_and_channel(
+        {"meshtastic_channel": 3}, "test"
+    )
+    assert result_iface is mock_iface
+    assert result_ch == 3

@@ -30,6 +30,8 @@ from tests.constants import (
     TEST_USER_ID,
 )
 
+pytestmark = pytest.mark.asyncio
+
 RoomSendError = nio.RoomSendError
 
 

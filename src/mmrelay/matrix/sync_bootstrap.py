@@ -413,41 +413,39 @@ async def connect_matrix(
         MatrixSyncFailedDetailsError: If the initial Matrix sync fails with detailed error information.
     """
 
-    if passed_config is not None:
-        facade.config = passed_config  # type: ignore[assignment]
-        config_module.relay_config = passed_config
-
-    if facade.config is None:
-        facade.logger.error("No configuration available. Cannot connect to Matrix.")
-        return None
-
     if facade.matrix_client:
         return facade.matrix_client
 
+    local_config = passed_config if passed_config is not None else facade.config
+
+    if local_config is None:
+        facade.logger.error("No configuration available. Cannot connect to Matrix.")
+        return None
+
     matrix_section = (
-        facade.config.get("matrix") if isinstance(facade.config, dict) else None
+        local_config.get("matrix") if isinstance(local_config, dict) else None
     )
 
     auth_info = await facade._resolve_and_load_credentials(
-        facade.config if isinstance(facade.config, dict) else None,
+        local_config if isinstance(local_config, dict) else None,
         matrix_section,
     )
     if auth_info is None:
         return None
 
-    facade.matrix_homeserver = auth_info.homeserver
-    facade.matrix_access_token = auth_info.access_token
-    facade.bot_user_id = auth_info.user_id
+    local_homeserver = auth_info.homeserver
+    local_access_token = auth_info.access_token
+    local_bot_user_id = auth_info.user_id
     e2ee_device_id = auth_info.device_id
 
-    if not isinstance(facade.config, dict):
+    if not isinstance(local_config, dict):
         facade.logger.error(
             "Configuration is not a valid mapping. Cannot connect to Matrix."
         )
         return None
 
-    if "matrix_rooms" not in facade.config or not isinstance(
-        facade.config["matrix_rooms"], (dict, list)
+    if "matrix_rooms" not in local_config or not isinstance(
+        local_config["matrix_rooms"], (dict, list)
     ):
         facade.logger.error(
             "Configuration is missing 'matrix_rooms' section or it is not a valid format (list or dict)"
@@ -456,7 +454,7 @@ async def connect_matrix(
             "Please ensure your config.yaml includes a valid matrix_rooms configuration"
         )
         raise facade.MissingMatrixRoomsError()
-    facade.matrix_rooms = facade.config["matrix_rooms"]
+    local_matrix_rooms = local_config["matrix_rooms"]
 
     ssl_context = facade._create_ssl_context()
     if ssl_context is None:
@@ -465,33 +463,40 @@ async def connect_matrix(
         )
 
     e2ee_enabled, e2ee_store_path = await facade._configure_e2ee(
-        facade.config, matrix_section, e2ee_device_id
+        local_config, matrix_section, e2ee_device_id
     )
 
-    if not isinstance(facade.matrix_homeserver, str) or not facade.matrix_homeserver:
+    if not isinstance(local_homeserver, str) or not local_homeserver:
         facade.logger.error("Matrix homeserver is missing or invalid.")
         return None
-    if (
-        not isinstance(facade.matrix_access_token, str)
-        or not facade.matrix_access_token
-    ):
+    if not isinstance(local_access_token, str) or not local_access_token:
         facade.logger.error("Matrix access token is missing or invalid.")
         return None
-    if not isinstance(facade.bot_user_id, str) or not facade.bot_user_id:
+    if not isinstance(local_bot_user_id, str) or not local_bot_user_id:
         facade.logger.warning(
             "Matrix user ID is missing or invalid; will attempt whoami after login."
         )
-        facade.bot_user_id = ""
+        local_bot_user_id = ""
 
     async with facade._MATRIX_STARTUP_SYNC_LOCK:
         if facade.matrix_client:
             return facade.matrix_client
 
+        if passed_config is not None:
+            facade.config = passed_config  # type: ignore[assignment]
+            config_module.relay_config = passed_config
+        facade.matrix_homeserver = local_homeserver  # type: ignore[assignment]
+        facade.matrix_access_token = local_access_token  # type: ignore[assignment]
+        facade.bot_user_id = local_bot_user_id  # type: ignore[assignment]
+        facade.matrix_rooms = local_matrix_rooms  # type: ignore[assignment]
+
         facade._refresh_bot_start_timestamps()
 
+        effective_bot_user_id = local_bot_user_id
+
         client = facade._initialize_matrix_client(
-            homeserver=facade.matrix_homeserver,
-            user_id=facade.bot_user_id,
+            homeserver=local_homeserver,
+            user_id=local_bot_user_id,
             device_id=e2ee_device_id,
             e2ee_enabled=e2ee_enabled,
             e2ee_store_path=e2ee_store_path,
@@ -501,13 +506,15 @@ async def connect_matrix(
         try:
             await facade._perform_matrix_login(client, auth_info)
 
-            if auth_info.user_id and auth_info.user_id != facade.bot_user_id:
-                facade.bot_user_id = auth_info.user_id
+            if auth_info.user_id and auth_info.user_id != effective_bot_user_id:
+                effective_bot_user_id = auth_info.user_id
+                facade.bot_user_id = auth_info.user_id  # type: ignore[assignment]
 
-            if not facade.bot_user_id:
+            if not effective_bot_user_id:
                 resolved_user_id = client.user_id
                 if isinstance(resolved_user_id, str) and resolved_user_id:
-                    facade.bot_user_id = resolved_user_id
+                    effective_bot_user_id = resolved_user_id
+                    facade.bot_user_id = resolved_user_id  # type: ignore[assignment]
                 else:
                     facade.logger.error("Matrix user ID is missing or invalid.")
                     await facade._close_matrix_client_after_failure(
@@ -519,16 +526,15 @@ async def connect_matrix(
                 await facade._maybe_upload_e2ee_keys(client)
 
             facade.logger.debug("Performing initial sync to initialize rooms...")
-            sync_response = await _perform_initial_sync(
-                client, facade.matrix_homeserver
-            )
+            sync_response = await _perform_initial_sync(client, local_homeserver)
+            config_data = passed_config if passed_config is not None else facade.config
             await _post_sync_setup(
                 client,
                 sync_response,
-                facade.config,
-                facade.matrix_rooms,
-                facade.matrix_homeserver,
-                facade.bot_user_id,
+                config_data,  # type: ignore[arg-type]
+                local_matrix_rooms,
+                local_homeserver,
+                effective_bot_user_id,
                 e2ee_enabled,
             )
         except BaseException:

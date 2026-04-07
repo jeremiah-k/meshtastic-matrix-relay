@@ -359,13 +359,12 @@ async def matrix_relay(
                         if matrix_client
                         else None
                     )
-                    original_sender_display = f"{longname}/{original_meshnet}"
+                    meshnet_label = original_meshnet or "Mesh"
 
                     safe_original = html.escape(original_text or "")
-                    safe_sender_display = re.sub(
-                        r"([\\`*_{}[\]()#+.!-])", r"\\\1", original_sender_display
+                    quoted_text = (
+                        f"> <{bot_user_id}> [{meshnet_label}]: {original_text or ''}"
                     )
-                    quoted_text = f"> <{bot_user_id}> [{safe_sender_display}]: {original_text or ''}"
                     content["body"] = f"{quoted_text}\n\n{plain_body}"
 
                     content["format"] = "org.matrix.custom.html"
@@ -374,7 +373,7 @@ async def matrix_relay(
                     blockquote_content = (
                         f'<a href="{reply_link}">In reply to</a> '
                         f'<a href="{bot_link}">{bot_user_id}</a><br>'
-                        f"[{html.escape(original_sender_display)}]: {safe_original}"
+                        f"[{html.escape(meshnet_label)}]: {safe_original}"
                     )
                     content["formatted_body"] = (
                         f"<mx-reply><blockquote>{blockquote_content}</blockquote></mx-reply>{formatted_body}"

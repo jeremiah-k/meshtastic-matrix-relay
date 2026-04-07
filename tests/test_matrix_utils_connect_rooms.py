@@ -13,6 +13,8 @@ import pytest
 import mmrelay.matrix_utils as mx
 from mmrelay.matrix_utils import connect_matrix
 
+pytestmark = pytest.mark.asyncio
+
 
 @patch("mmrelay.matrix_utils.matrix_client", None)
 @patch("mmrelay.matrix_utils.AsyncClient")
@@ -89,9 +91,7 @@ async def test_connect_matrix_alias_resolution_exception(
         mock_client_instance.room_resolve_alias = mock_room_resolve_alias
 
         # Mock async close method for cleanup
-        async def mock_close():
-            """Simulate async client close."""
-            pass
+        async def mock_close(): ...
 
         mock_client_instance.close = mock_close
         mock_async_client.return_value = mock_client_instance
