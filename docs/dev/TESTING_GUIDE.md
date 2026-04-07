@@ -693,7 +693,11 @@ Rationale: the decomposed submodules call each other through the facade (`facade
 
 ### Shared state
 
-The facade owns global state (`matrix_client`, `matrix_rooms`, `bot_user_id`, `config`, `logger`, etc.). Use `reset_matrix_utils_globals` to restore Matrix facade globals (`matrix_client`, `matrix_rooms`, `bot_user_id`). Use `reset_meshtastic_globals` for Meshtastic-side globals. Note: `config` and `logger` are intentionally not reset by `reset_matrix_utils_globals` and must be restored manually in teardown or via a dedicated fixture.
+The facade owns global state (`matrix_client`, `matrix_rooms`, `bot_user_id`, `config`, `logger`, etc.).
+
+- **`reset_matrix_utils_globals`** restores: `matrix_client`, `matrix_rooms`, `bot_user_id`. Use this in fixtures/teardown to reset Matrix-side globals.
+- **`reset_meshtastic_globals`** restores Meshtastic-side globals.
+- **NOT reset by `reset_matrix_utils_globals`**: `config` and `logger` are intentionally preserved. If a test mutates `config` or `logger`, restore them manually in teardown or via a dedicated fixture.
 
 ## References
 

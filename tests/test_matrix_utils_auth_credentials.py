@@ -21,8 +21,8 @@ def test_get_e2ee_store_dir(mock_makedirs):
 
 
 @patch("mmrelay.config.get_credentials_path")
-@patch("os.path.exists")
-@patch("builtins.open")
+@patch("mmrelay.config.os.path.exists")
+@patch("mmrelay.config.open")
 @patch("mmrelay.config.json.load")
 def test_load_credentials_success(
     mock_json_load, _mock_open, mock_exists, mock_get_credentials_path
@@ -47,7 +47,7 @@ def test_load_credentials_success(
 
 
 @patch("mmrelay.config.get_credentials_path")
-@patch("os.path.exists")
+@patch("mmrelay.config.os.path.exists")
 def test_load_credentials_file_not_exists(mock_exists, mock_get_credentials_path):
     """Test credentials loading when file doesn't exist."""
     mock_get_credentials_path.return_value = Path("/test/config/credentials.json")
@@ -60,10 +60,10 @@ def test_load_credentials_file_not_exists(mock_exists, mock_get_credentials_path
 
 @patch("mmrelay.config.get_credentials_path")
 @patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
-@patch("builtins.open")
+@patch("mmrelay.config.open")
 @patch("mmrelay.config.json.dump")
-@patch("os.makedirs")
-@patch("os.path.exists", return_value=True)
+@patch("mmrelay.config.os.makedirs")
+@patch("mmrelay.config.os.path.exists", return_value=True)
 def test_save_credentials(
     _mock_exists,
     _mock_makedirs,

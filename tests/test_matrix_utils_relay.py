@@ -349,7 +349,7 @@ async def test_matrix_relay_markdown_processing(
 
     content = mock_client.room_send.call_args.kwargs["content"]
     assert content["formatted_body"] == "<strong>bold</strong>"
-    assert content["body"] == "bold"
+    assert content["body"] == "**bold**"
 
 
 @patch("mmrelay.matrix_utils.connect_matrix")

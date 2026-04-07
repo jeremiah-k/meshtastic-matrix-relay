@@ -44,6 +44,8 @@ __all__ = [
     "join_matrix_room",
 ]
 
+_NIO_PATCH_LOCK = asyncio.Lock()
+
 
 async def _perform_initial_sync(
     client: facade.AsyncClient, matrix_homeserver: str
@@ -197,7 +199,7 @@ async def _perform_initial_sync(
                             return []
                         return []
 
-                    async with facade._MATRIX_STARTUP_SYNC_LOCK:
+                    async with _NIO_PATCH_LOCK:
                         try:
                             # Class-level monkey-patch protected by the startup sync lock.
                             # A concurrent sync_forever() could theoretically observe the

@@ -898,7 +898,10 @@ async def test_connect_matrix_e2ee_store_missing_db_files_warns(
 
     with (
         patch("mmrelay.config.is_e2ee_enabled", return_value=True),
-        patch("importlib.import_module", side_effect=mock_import_side_effect),
+        patch(
+            "mmrelay.matrix_utils.importlib.import_module",
+            side_effect=mock_import_side_effect,
+        ),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
         ),
@@ -983,7 +986,10 @@ async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch, tmp_path):
     sleep_mock = AsyncMock()
     with (
         patch("mmrelay.config.is_e2ee_enabled", return_value=True),
-        patch("importlib.import_module", side_effect=mock_import_side_effect),
+        patch(
+            "mmrelay.matrix_utils.importlib.import_module",
+            side_effect=mock_import_side_effect,
+        ),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
         ),

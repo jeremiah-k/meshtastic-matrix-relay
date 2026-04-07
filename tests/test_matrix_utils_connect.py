@@ -54,7 +54,7 @@ async def test_connect_matrix_missing_required_fields_returns_none():
 
 @pytest.mark.asyncio
 async def test_connect_matrix_missing_matrix_rooms_raises():
-    """Missing matrix_rooms should raise ValueError."""
+    """Missing matrix_rooms should raise MissingMatrixRoomsError."""
     config = {
         "matrix": {
             "homeserver": "https://example.org",

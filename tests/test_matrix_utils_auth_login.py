@@ -486,7 +486,7 @@ async def test_login_matrix_bot_type_error_specific_message(mock_input, mock_get
 
     with (
         patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
-        patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
+        patch("mmrelay.matrix_utils._create_ssl_context", return_value=None),
         patch("mmrelay.config.load_config", return_value={}),
         patch("mmrelay.config.is_e2ee_enabled", return_value=False),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),

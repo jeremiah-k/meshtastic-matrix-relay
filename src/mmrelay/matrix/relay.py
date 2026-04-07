@@ -317,7 +317,7 @@ async def matrix_relay(
                     attributes={"a": ["href"]},
                     strip=True,
                 )
-                plain_body = re.sub(r"</?[^>]*>", "", formatted_body)
+                plain_body = message
             except ImportError:
                 formatted_body = html.escape(message).replace("\n", "<br/>")
                 plain_body = message
