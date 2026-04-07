@@ -30,6 +30,7 @@ from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.network import (
     BLE_CONNECT_TIMEOUT_SECS,
     BLE_DISCONNECT_SETTLE_SECS,
+    BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
     CONNECTION_TYPE_BLE,
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
@@ -786,7 +787,7 @@ class TestMeshtasticUtils(unittest.TestCase):
             noProto=False,
             debugOut=None,
             noNodes=False,
-            timeout=DEFAULT_MESHTASTIC_TIMEOUT,
+            timeout=int(BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS),
         )
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
