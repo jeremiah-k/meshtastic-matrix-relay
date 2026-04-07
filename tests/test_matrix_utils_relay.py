@@ -1059,6 +1059,45 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
         assert "Hello from remote mesh" in queued_kwargs["text"]
 
 
+async def test_on_room_message_dict_keyed_matrix_rooms_uses_direct_room_lookup(
+    mock_room,
+    mock_event,
+):
+    """Dict-keyed room mappings should resolve room config by room_id."""
+    test_config = {
+        "meshtastic": {
+            "message_interactions": {"reactions": False, "replies": False},
+            "meshnet_name": "test_mesh",
+        },
+        "matrix_rooms": {mock_room.room_id: {"meshtastic_channel": 0}},
+        "matrix": {"bot_user_id": TEST_BOT_USER_ID},
+    }
+    mock_event.source = {
+        "content": {
+            "body": "Hello, world!",
+            MATRIX_SUPPRESS_KEY: True,
+        }
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", TEST_BOT_USER_ID),
+        patch("mmrelay.matrix_utils.bot_start_time", 1000),
+        patch("mmrelay.matrix_utils.bot_start_monotonic_secs", 10.0),
+        patch("mmrelay.matrix_utils.time.time", return_value=2.0),
+        patch("mmrelay.matrix_utils.time.monotonic", return_value=11.0),
+        patch(
+            "mmrelay.matrix_utils.get_interaction_settings",
+            return_value={"reactions": False, "replies": False},
+        ) as mock_get_interaction_settings,
+        patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False),
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_get_interaction_settings.assert_called_once_with(test_config)
+
+
 async def test_on_room_message_ignore_bot(
     mock_room,
     mock_event,

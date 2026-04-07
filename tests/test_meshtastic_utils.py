@@ -4835,6 +4835,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         ]
 
         with (
+            patch("mmrelay.meshtastic_utils._ble_interface_create_timeout_secs", 45.0),
             patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
             patch("bleak.BleakClient") as mock_bleak_client,
         ):
@@ -4858,6 +4859,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
                 if "BLE interface creation timed out after" in str(call)
             ]
             self.assertEqual(len(error_calls), MAX_TIMEOUT_RETRIES_INFINITE + 1)
+            self.assertTrue(all(call.args[1] == 45.0 for call in error_calls))
 
             last_error_call = str(error_calls[-1])
             self.assertIn(TEST_BLE_MAC, last_error_call)

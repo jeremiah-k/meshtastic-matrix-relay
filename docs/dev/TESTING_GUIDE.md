@@ -74,7 +74,7 @@ def test_handle_auth_logout_keyboard_interrupt(self, mock_print, mock_logout):
 
 ## Standardized Async Patterns
 
-The project has standardized async testing patterns and no longer requires test environment detection (e.g., `MMRELAY_TESTING` environment variable).
+Use standardized async testing patterns and avoid test-environment detection branches (for example, `MMRELAY_TESTING`).
 
 ### Key Principles
 
@@ -92,12 +92,12 @@ Some code paths use `asyncio.to_thread()` or `loop.run_in_executor()`. In tests,
 3. **Avoid KeyboardInterrupt control flow**: Do not raise `KeyboardInterrupt` inside async tasks; prefer explicit shutdown events for deterministic cleanup.
 4. **Cleanup isolation**: When a test reaches `main()` cleanup, patch `shutdown_plugins` and `stop_message_queue` to no-ops unless the test is explicitly validating cleanup behavior.
 
-### Migration from Old Patterns
+### Legacy Pattern Cleanup
 
-If you encounter code using old test environment detection patterns:
+If you encounter code that still uses test-environment detection patterns:
 
 ```python
-# ❌ OLD PATTERN - No longer needed
+# ❌ Avoid
 if os.getenv("MMRELAY_TESTING"):
     # Test-specific behavior
 else:
@@ -107,7 +107,7 @@ else:
 Replace with consistent behavior:
 
 ```python
-# ✅ NEW PATTERN - Consistent behavior
+# ✅ Preferred
 async def function_that_works_everywhere():
     # Same logic for test and production
     return await asyncio.to_thread(blocking_operation)
@@ -160,6 +160,33 @@ class TestFeatureName(unittest.TestCase):
         # Act
         # Assert
 ```
+
+### Matrix Test Layout and Patch Targets
+
+Matrix tests are maintained as split domain files. Keep that structure stable.
+
+- Add tests to the existing domain file for the behavior under test.
+- Do not recreate catch-all Matrix test files (for example, a new omnibus `test_matrix_utils*.py` that mixes unrelated domains).
+- Keep connect/bootstrap, credentials, room mapping, relay/event, and prefix behavior in separate files.
+
+Patch target policy for Matrix tests:
+
+- Default to patching through `mmrelay.matrix_utils.*` (facade patching).
+- Patch `mmrelay.matrix.<module>.*` directly only when the test is explicitly about source-module lookup/type behavior.
+
+Source-module to test-file mapping:
+
+- `mmrelay.matrix.sync_bootstrap` (`connect_matrix`, sync/bootstrap ordering): `tests/test_matrix_utils_connect.py`, `tests/test_matrix_utils_connect_credentials.py`, `tests/test_matrix_utils_connect_e2ee.py`, `tests/test_matrix_utils_connect_rooms.py`, `tests/test_matrix_utils_connect_sync.py`
+- `mmrelay.matrix.credentials`: `tests/test_matrix_utils_connect_credentials.py`, `tests/test_matrix_utils_auth_credentials.py`
+- `mmrelay.matrix.events` (`on_room_message`, invite/member handlers): `tests/test_matrix_utils_relay.py`, `tests/test_matrix_utils_invite.py`
+- `mmrelay.matrix.prefixes`: `tests/test_matrix_utils_core.py` (behavioral policy tests), `tests/test_prefix_customization.py` (format/compatibility scenarios)
+- `mmrelay.matrix.command_bridge`: `tests/test_command_bridge_channel_validation.py`, `tests/test_matrix_utils_detection.py`
+
+Matrix/Meshtastic global-state reset policy:
+
+- Use `reset_matrix_utils_globals` when a test mutates Matrix facade globals (`matrix_client`, `matrix_rooms`, `bot_user_id`, related startup state).
+- Use `reset_meshtastic_globals` when a test mutates Meshtastic globals, executors, or reconnect/shutdown flags.
+- For cross-boundary tests that mutate both sides, use both fixtures.
 
 ### Global State Management
 

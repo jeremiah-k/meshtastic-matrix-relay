@@ -443,6 +443,7 @@ async def connect_matrix(
             "Configuration is not a valid mapping. Cannot connect to Matrix."
         )
         return None
+    local_config_dict = local_config
 
     if "matrix_rooms" not in local_config or not isinstance(
         local_config["matrix_rooms"], (dict, list)
@@ -482,14 +483,6 @@ async def connect_matrix(
         if facade.matrix_client:
             return facade.matrix_client
 
-        if passed_config is not None:
-            facade.config = passed_config  # type: ignore[assignment]
-            config_module.relay_config = passed_config
-        facade.matrix_homeserver = local_homeserver  # type: ignore[assignment]
-        facade.matrix_access_token = local_access_token  # type: ignore[assignment]
-        facade.bot_user_id = local_bot_user_id  # type: ignore[assignment]
-        facade.matrix_rooms = local_matrix_rooms  # type: ignore[assignment]
-
         facade._refresh_bot_start_timestamps()
 
         effective_bot_user_id = local_bot_user_id
@@ -508,13 +501,11 @@ async def connect_matrix(
 
             if auth_info.user_id and auth_info.user_id != effective_bot_user_id:
                 effective_bot_user_id = auth_info.user_id
-                facade.bot_user_id = auth_info.user_id  # type: ignore[assignment]
 
             if not effective_bot_user_id:
                 resolved_user_id = client.user_id
                 if isinstance(resolved_user_id, str) and resolved_user_id:
                     effective_bot_user_id = resolved_user_id
-                    facade.bot_user_id = resolved_user_id  # type: ignore[assignment]
                 else:
                     facade.logger.error("Matrix user ID is missing or invalid.")
                     await facade._close_matrix_client_after_failure(
@@ -527,11 +518,10 @@ async def connect_matrix(
 
             facade.logger.debug("Performing initial sync to initialize rooms...")
             sync_response = await _perform_initial_sync(client, local_homeserver)
-            config_data = passed_config if passed_config is not None else facade.config
             await _post_sync_setup(
                 client,
                 sync_response,
-                config_data,  # type: ignore[arg-type]
+                local_config_dict,
                 local_matrix_rooms,
                 local_homeserver,
                 effective_bot_user_id,
@@ -543,6 +533,13 @@ async def connect_matrix(
             )
             raise
 
+        if passed_config is not None:
+            facade.config = local_config_dict  # type: ignore[assignment]
+            config_module.relay_config = local_config_dict
+        facade.matrix_homeserver = local_homeserver  # type: ignore[assignment]
+        facade.matrix_access_token = local_access_token  # type: ignore[assignment]
+        facade.bot_user_id = effective_bot_user_id  # type: ignore[assignment]
+        facade.matrix_rooms = local_matrix_rooms  # type: ignore[assignment]
         facade.matrix_client = client
         return client
 

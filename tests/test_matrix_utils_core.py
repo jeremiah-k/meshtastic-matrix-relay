@@ -130,6 +130,15 @@ def test_get_interaction_settings_none_config():
     assert result == expected
 
 
+def test_get_interaction_settings_invalid_top_level_config_type() -> None:
+    """Non-dict top-level config values should disable interactions."""
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        result = get_interaction_settings(True)  # type: ignore[arg-type]
+
+    assert result == {"reactions": False, "replies": False}
+    mock_logger.warning.assert_called_once()
+
+
 def test_get_interaction_settings_invalid_meshtastic_section_type() -> None:
     """Invalid meshtastic config types should disable interactions."""
     config = {"meshtastic": False}

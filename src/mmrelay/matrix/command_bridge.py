@@ -165,11 +165,6 @@ async def _get_meshtastic_interface_and_channel(
     """
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
-    meshtastic_interface = await facade._connect_meshtastic()
-    if not meshtastic_interface:
-        meshtastic_logger.error(f"Failed to connect to Meshtastic. Cannot {purpose}.")
-        return None, None
-
     meshtastic_channel = room_config.get("meshtastic_channel")
     if meshtastic_channel is None:
         meshtastic_logger.error(
@@ -184,6 +179,11 @@ async def _get_meshtastic_interface_and_channel(
         meshtastic_logger.error(
             f"Invalid meshtastic_channel value {meshtastic_channel!r} in room config; must be a non-negative integer."
         )
+        return None, None
+
+    meshtastic_interface = await facade._connect_meshtastic()
+    if not meshtastic_interface:
+        meshtastic_logger.error(f"Failed to connect to Meshtastic. Cannot {purpose}.")
         return None, None
 
     return meshtastic_interface, meshtastic_channel

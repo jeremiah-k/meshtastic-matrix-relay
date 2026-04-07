@@ -454,7 +454,10 @@ def _connect_meshtastic_impl(
         BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
         "_ble_interface_create_timeout_secs",
     )
-    ble_create_timeout_secs = max(configured_timeout_secs, create_timeout_floor_secs)
+    # Keep the BLE constructor watchdog independent from generic operation timeout.
+    # meshtastic.timeout defaults to 300s and is used for mesh operations; reusing it
+    # here can stall startup for minutes when BlueZ/DBus creation hangs.
+    ble_create_timeout_secs = create_timeout_floor_secs
 
     while (
         not successful

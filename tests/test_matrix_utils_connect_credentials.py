@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from mmrelay.config import InvalidCredentialsPathTypeError
 from mmrelay.constants.app import CREDENTIALS_FILENAME
 from mmrelay.matrix_utils import connect_matrix
 
@@ -114,6 +115,69 @@ async def test_connect_matrix_credentials_load_exception_uses_config(
     assert any(
         "Ignoring invalid credentials file" in str(call.args[0])
         or "Ignoring credentials.json missing required keys" in str(call.args[0])
+        for call in mock_logger.warning.call_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_invalid_credentials_path_type_error_falls_back_to_config_auth(
+    monkeypatch,
+):
+    """Invalid credentials path type should be treated as recoverable and use config auth."""
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.sync = AsyncMock(return_value=SimpleNamespace())
+    mock_client.should_upload_keys = False
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+    mock_client.close = AsyncMock()
+    mock_client.restore_login = MagicMock()
+
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._resolve_aliases_in_mapping",
+        AsyncMock(return_value=None),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._display_room_channel_mappings",
+        lambda *_args, **_kwargs: None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.AsyncClient",
+        lambda *_args, **_kwargs: mock_client,
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+
+    config = {
+        "matrix": {
+            "homeserver": "https://example.org",
+            "access_token": "token",
+            "bot_user_id": "@bot:example.org",
+        },
+        "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+    }
+
+    with (
+        patch(
+            "mmrelay.matrix_utils.async_load_credentials",
+            new=AsyncMock(side_effect=InvalidCredentialsPathTypeError()),
+        ),
+        patch(
+            "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
+        ),
+        patch("mmrelay.e2ee_utils.get_room_encryption_warnings", return_value=[]),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        client = await connect_matrix(config)
+
+    assert client is mock_client
+    assert any(
+        "Error loading credentials" in str(call.args[0])
         for call in mock_logger.warning.call_args_list
     )
 

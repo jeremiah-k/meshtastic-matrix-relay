@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from nio import SyncError
 
+import mmrelay.config as config_module
 import mmrelay.matrix_utils as matrix_utils_module
 from mmrelay.matrix_utils import NioLocalTransportError, connect_matrix
 
@@ -387,3 +388,95 @@ async def test_connect_matrix_sync_validation_error_retry_failure_closes_client(
 
     assert call_count["count"] == 2
     assert mock_client.close.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_failure_does_not_publish_partial_shared_state(
+    monkeypatch,
+):
+    """Failed setup should not publish new facade/config globals before success."""
+    existing_config = {
+        "matrix": {
+            "homeserver": "https://old.example.org",
+            "access_token": "old_token",
+            "bot_user_id": "@old:example.org",
+        },
+        "matrix_rooms": [{"id": "!old:example.org", "meshtastic_channel": 7}],
+    }
+    new_config = {
+        "matrix": {
+            "homeserver": "https://new.example.org",
+            "access_token": "new_token",
+            "bot_user_id": "@new:example.org",
+        },
+        "matrix_rooms": [{"id": "!new:example.org", "meshtastic_channel": 1}],
+    }
+
+    mock_client = MagicMock()
+    mock_client.close = AsyncMock()
+    mock_client.user_id = "@resolved:example.org"
+    mock_client.sync = AsyncMock(side_effect=RuntimeError("sync failed"))
+
+    monkeypatch.setattr("mmrelay.matrix_utils.config", existing_config, raising=False)
+    monkeypatch.setattr("mmrelay.config.relay_config", existing_config, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_homeserver",
+        "https://old.example.org",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_access_token", "old_token", raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.bot_user_id", "@old:example.org", raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms",
+        existing_config["matrix_rooms"],
+        raising=False,
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._resolve_and_load_credentials",
+        AsyncMock(
+            return_value=matrix_utils_module.MatrixAuthInfo(
+                homeserver="https://new.example.org",
+                access_token="new_token",
+                user_id="@new:example.org",
+                device_id=None,
+                credentials=None,
+                credentials_path=None,
+            )
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._configure_e2ee",
+        AsyncMock(return_value=(False, None)),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._initialize_matrix_client",
+        lambda **_kwargs: mock_client,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._perform_matrix_login",
+        AsyncMock(return_value=None),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
+    )
+
+    with pytest.raises(RuntimeError, match="sync failed"):
+        await connect_matrix(new_config)
+
+    assert matrix_utils_module.config is existing_config
+    assert config_module.relay_config is existing_config
+    assert matrix_utils_module.matrix_homeserver == "https://old.example.org"
+    assert matrix_utils_module.matrix_access_token == "old_token"
+    assert matrix_utils_module.bot_user_id == "@old:example.org"
+    assert matrix_utils_module.matrix_rooms == existing_config["matrix_rooms"]
+    assert matrix_utils_module.matrix_client is None
+    mock_client.close.assert_awaited_once()
