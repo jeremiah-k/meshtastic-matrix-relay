@@ -96,7 +96,7 @@ async def test_handle_detection_sensor_packet_missing_channel():
             config, room_config, full_display_name, text
         )
 
-        mock_connect.assert_called_once()
+        mock_connect.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -122,7 +122,7 @@ async def test_handle_detection_sensor_packet_invalid_channel():
             config, room_config, full_display_name, text
         )
 
-        mock_connect.assert_called_once()
+        mock_connect.assert_not_called()
 
 
 @pytest.mark.asyncio

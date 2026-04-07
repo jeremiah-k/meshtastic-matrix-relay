@@ -1017,6 +1017,9 @@ def reset_meshtastic_globals():
         "_relay_startup_drain_deadline_monotonic_secs": getattr(
             mu, "_relay_startup_drain_deadline_monotonic_secs", None
         ),
+        "_relay_startup_drain_expiry_timer": getattr(
+            mu, "_relay_startup_drain_expiry_timer", None
+        ),
         "_relay_reconnect_prestart_bootstrap_deadline_monotonic_secs": getattr(
             mu, "_relay_reconnect_prestart_bootstrap_deadline_monotonic_secs", None
         ),
@@ -1082,6 +1085,11 @@ def reset_meshtastic_globals():
     mu._relay_connection_started_monotonic_secs = time.monotonic()
     mu._relay_rx_time_clock_skew_secs = None
     mu._relay_startup_drain_deadline_monotonic_secs = None
+    startup_drain_timer = getattr(mu, "_relay_startup_drain_expiry_timer", None)
+    if startup_drain_timer is not None:
+        with contextlib.suppress(Exception):
+            startup_drain_timer.cancel()
+    mu._relay_startup_drain_expiry_timer = None
     mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = None
     mu._startup_packet_drain_applied = False
     mu._health_probe_request_deadlines = {}
@@ -1126,6 +1134,11 @@ def reset_meshtastic_globals():
         _cancel_and_drain_future_like(
             getattr(mu, "_metadata_future", None), timeout=0.2
         )
+        startup_drain_timer = getattr(mu, "_relay_startup_drain_expiry_timer", None)
+        if startup_drain_timer is not None:
+            with contextlib.suppress(Exception):
+                startup_drain_timer.cancel()
+        mu._relay_startup_drain_expiry_timer = None
         mu.reconnect_task = None
         mu.reconnect_task_future = None
         mu._metadata_future = None

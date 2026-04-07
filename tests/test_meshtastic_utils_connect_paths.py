@@ -549,6 +549,9 @@ def test_connect_meshtastic_arms_startup_drain_after_setup_completes():
             side_effect=_subscribe_side_effect,
         ),
         patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+        patch(
+            "mmrelay.meshtastic_utils._schedule_startup_drain_deadline_cleanup"
+        ) as mock_schedule_startup_drain_cleanup,
         patch("mmrelay.meshtastic_utils.time.time", return_value=100_000.0),
         patch(
             "mmrelay.meshtastic_utils.time.monotonic",
@@ -562,9 +565,11 @@ def test_connect_meshtastic_arms_startup_drain_after_setup_completes():
 
     assert result is mock_client
     assert startup_deadline_seen_during_metadata is None
-    assert startup_deadline_seen_at_subscribe == (1_030.0 + STARTUP_PACKET_DRAIN_SECS)
-    assert mu._relay_startup_drain_deadline_monotonic_secs == (
-        1_030.0 + STARTUP_PACKET_DRAIN_SECS
+    expected_startup_deadline = 1_030.0 + STARTUP_PACKET_DRAIN_SECS
+    assert startup_deadline_seen_at_subscribe == expected_startup_deadline
+    assert mu._relay_startup_drain_deadline_monotonic_secs == expected_startup_deadline
+    mock_schedule_startup_drain_cleanup.assert_called_once_with(
+        expected_startup_deadline
     )
     mock_submit_coro.assert_not_called()
 
