@@ -21,6 +21,7 @@ from mmrelay.constants.messages import (
 from mmrelay.meshtastic.packet_routing import (
     PacketAction,
     _get_portnum_name,
+    _is_text_message_portnum,
     classify_packet,
 )
 
@@ -30,17 +31,6 @@ __all__ = [
     "on_meshtastic_message",
     "reconnect",
 ]
-
-
-def _is_text_message_portnum(portnum: Any) -> bool:
-    return (
-        portnum
-        in (
-            PORTNUM_TEXT_MESSAGE_APP,
-            TEXT_MESSAGE_APP,
-        )
-        or _get_portnum_name(portnum) == TEXT_MESSAGE_APP
-    )
 
 
 def _get_iterable_matrix_rooms() -> Iterable[Any]:

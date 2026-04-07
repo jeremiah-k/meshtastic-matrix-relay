@@ -20,6 +20,7 @@ from mmrelay.log_utils import get_logger
 __all__ = [
     "CHAT_ELIGIBLE_PORTNUMS",
     "PacketAction",
+    "_is_text_message_portnum",
     "classify_packet",
 ]
 
@@ -32,6 +33,17 @@ class PacketAction:
 
 CHAT_ELIGIBLE_PORTNUMS = frozenset({TEXT_MESSAGE_APP})
 logger = get_logger("Meshtastic")
+
+
+def _is_text_message_portnum(portnum: Any) -> bool:
+    return (
+        portnum
+        in (
+            PORTNUM_TEXT_MESSAGE_APP,
+            TEXT_MESSAGE_APP,
+        )
+        or _get_portnum_name(portnum) == TEXT_MESSAGE_APP
+    )
 
 
 def _get_portnum_name(portnum: Any, packet: dict[str, Any] | None = None) -> str:
@@ -120,6 +132,7 @@ def classify_packet(portnum: Any, config: dict[str, Any] | None) -> str:
         )
         or portnum_name == DETECTION_SENSOR_APP
     )
+
     is_text_message = (
         portnum
         in (
