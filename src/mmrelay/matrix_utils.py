@@ -8,6 +8,7 @@ import asyncio
 import io
 import logging
 import os
+import ssl
 import time
 
 # Globals imported but only for facade's own use (not accessed by submodules):
@@ -182,6 +183,12 @@ WHOAMI_USER_ID_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
     TypeError,
     ValueError,
     RuntimeError,
+)
+# Exception tuple for login operations including SSL and OS-level errors.
+LOGIN_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *NIO_COMM_EXCEPTIONS,
+    ssl.SSLError,
+    OSError,
 )
 
 logger = get_logger(name="Matrix")

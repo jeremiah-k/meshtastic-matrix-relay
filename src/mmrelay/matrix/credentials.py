@@ -91,6 +91,7 @@ def _get_bot_user_id(facade_module: Any, homeserver: str, raw_user_id: Any) -> s
 async def _resolve_and_load_credentials(
     config_data: dict[str, Any] | None,
     matrix_section: Any,
+    config_path_override: str | None = None,
 ) -> facade.MatrixAuthInfo | None:
     """
     Resolve Matrix authentication information from saved credentials, automatic login, or provided configuration.
@@ -100,6 +101,7 @@ async def _resolve_and_load_credentials(
     Parameters:
         config_data (dict[str, Any] | None): Full application configuration; required when falling back to non-file-based config or when prompting for interactive flows.
         matrix_section (Any): The parsed `matrix` section from the configuration (expected to be a mapping when present); may contain access_token, homeserver, bot_user_id/user_id, or password.
+        config_path_override (str | None): Optional filesystem path to the configuration file that produced `config_data`; used to locate config-adjacent credentials. Pass `None` when `config_data` is purely in-memory.
 
     Returns:
         MatrixAuthInfo | None: A MatrixAuthInfo populated with homeserver, access token, user id, optional device id, original credentials dict, and credentials_path when available; otherwise `None` when authentication cannot be resolved.
@@ -115,7 +117,7 @@ async def _resolve_and_load_credentials(
     try:
         credentials = await facade.async_load_credentials(
             config_override=config_data if isinstance(config_data, dict) else None,
-            config_path_override=facade.config_module.config_path,
+            config_path_override=config_path_override,
         )
     except asyncio.CancelledError:
         raise
@@ -213,7 +215,7 @@ async def _resolve_and_load_credentials(
                         config_override=(
                             config_data if isinstance(config_data, dict) else None
                         ),
-                        config_path_override=facade.config_module.config_path,
+                        config_path_override=config_path_override,
                     )
                 except (
                     InvalidCredentialsPathTypeError,

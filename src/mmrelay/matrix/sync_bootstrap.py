@@ -426,9 +426,14 @@ async def connect_matrix(
         local_config.get("matrix") if isinstance(local_config, dict) else None
     )
 
+    effective_config_path = (
+        facade.config_module.config_path if passed_config is None else None
+    )
+
     auth_info = await facade._resolve_and_load_credentials(
         local_config if isinstance(local_config, dict) else None,
         matrix_section,
+        config_path_override=effective_config_path,
     )
     if auth_info is None:
         return None
@@ -1096,7 +1101,7 @@ async def login_matrix_bot(
             await client.close()
             return False
 
-    except (*NIO_COMM_EXCEPTIONS, ssl.SSLError, OSError):
+    except facade.LOGIN_EXCEPTIONS:
         facade.logger.exception("Error during login")
         try:
             if client is not None:
