@@ -2,7 +2,7 @@
 
 ## Document Status
 
-- **Phase**: Phase 1 + Phase 2 complete
+- **Phase**: Phase 1 + Phase 2 + follow-up hardening
 - **Date**: 2026-04-07
 - **Scope**: Meshtastic -> Matrix inbound routing (`on_meshtastic_message`)
 - **Primary issue**: text-bearing non-chat portnums (example: `RANGE_TEST_APP`) are being relayed as normal chat
@@ -67,18 +67,22 @@ This provides a chat allowlist posture while keeping plugin visibility broad.
 
 For packets where `decoded.text` exists:
 
-1. Resolve channel as today.
-2. Resolve sender names and build `formatted_message` as today.
-3. Classify packet using centralized routing policy.
+1. Classify packet using centralized routing policy.
+2. If action is `DROP`, return immediately.
+3. Resolve sender names and build `formatted_message`.
 4. Run plugin pipeline (plugins still receive `formatted_message`, `longname`, `meshnet_name`).
 5. Branch by policy action:
-   - `PLUGIN_ONLY`: log and return (no Matrix relay).
-   - `RELAY`: continue current DM/plugin/channel-mapped checks, then relay.
-   - `DROP`: return.
+   - `PLUGIN_ONLY`: return (no Matrix relay).
+   - `RELAY`: apply channel deduction/mapping checks, then relay to Matrix.
 
 For packets with no text:
 
 - Keep existing non-text plugin path unchanged.
+
+Important behavior guarantee:
+
+- `PLUGIN_ONLY` text packets do **not** require a channel/mapped room to reach plugins.
+- Channel deduction/mapping is a relay-only concern.
 
 ---
 
@@ -133,7 +137,11 @@ Intentional behavior tightening:
 - `disabled_portnums` takes precedence over `chat_portnums` when both list the same portnum.
 - Detection sensor gate still applies even when listed in `chat_portnums` (disabled detection sensor blocks relay regardless).
 - Keep defaults unchanged for backward compatibility.
-- Config surface accepts lists of portnum names (strings). Unknown/invalid names are silently filtered.
+- Config surface accepts strings and lists under `chat_portnums` / `disabled_portnums`.
+- Current resolver behavior:
+  - unknown numeric / non-string entries are filtered out,
+  - arbitrary non-empty strings are accepted as provided and matched by name at runtime,
+  - typos in string names are not rejected by strict enum validation in this phase.
 
 Config shape:
 
@@ -149,6 +157,13 @@ meshtastic:
 
 - Per-portnum diagnostic room routing only if real use cases emerge.
 - Finer-grained action vocabulary if needed beyond RELAY / PLUGIN_ONLY / DROP.
+
+### Follow-up hardening (applied)
+
+- Routing classification is performed before relay-only channel gating in the text pipeline.
+- `DROP` short-circuits early.
+- `PLUGIN_ONLY` delivery reaches plugins even when packet channel cannot be deduced.
+- Reaction/reply Matrix interaction paths are explicitly limited to `TEXT_MESSAGE_APP` semantics.
 
 ---
 
