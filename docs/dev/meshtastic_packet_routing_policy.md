@@ -182,12 +182,12 @@ Required assertions:
 
 Phase 2 additional assertions:
 
-7. `chat_portnums` override promotes a non-chat portnum to relay.
-8. `chat_portnums` accepts a single string value (not just a list).
-9. `disabled_portnums` drops a packet entirely (no relay, no plugins).
-10. `disabled_portnums` does not affect TEXT_MESSAGE_APP unless explicitly listed.
-11. `disabled_portnums` takes precedence over `chat_portnums`.
-12. Detection sensor gate still applies even with `chat_portnums` override.
+1. `chat_portnums` override promotes a non-chat portnum to relay.
+2. `chat_portnums` accepts a single string value (not just a list).
+3. `disabled_portnums` drops a packet entirely (no relay, no plugins).
+4. `disabled_portnums` does not affect TEXT_MESSAGE_APP unless explicitly listed.
+5. `disabled_portnums` takes precedence over `chat_portnums`.
+6. Detection sensor gate still applies even with `chat_portnums` override.
 
 Run only targeted pytest module(s) for this change set.
 

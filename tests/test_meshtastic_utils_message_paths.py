@@ -557,9 +557,12 @@ def test_on_meshtastic_message_non_text_plugin_exception(reset_meshtastic_global
     mock_logger.exception.assert_any_call("Plugin %s failed", "boom")
 
 
-def _base_config_with_routing(chat_portnums=None, disabled_portnums=None):
+def _base_config_with_routing(
+    chat_portnums: list[Any] | str | None = None,
+    disabled_portnums: list[Any] | str | None = None,
+) -> dict[str, Any]:
     config = _base_config()
-    routing = {}
+    routing: dict[str, Any] = {}
     if chat_portnums is not None:
         routing["chat_portnums"] = chat_portnums
     if disabled_portnums is not None:
@@ -590,14 +593,21 @@ def test_on_meshtastic_message_chat_portnums_override_promotes_range_test(
 def test_on_meshtastic_message_chat_portnums_override_promotes_via_numeric_config(
     reset_meshtastic_globals,
 ):
-    config = _base_config_with_routing(chat_portnums=[1])
+    RANGE_TEST_NUM = 70
+    config = _base_config_with_routing(chat_portnums=[RANGE_TEST_NUM])
     _set_globals(config)
     packet = _base_packet()
-    packet["decoded"]["portnum"] = 1
+    packet["decoded"]["portnum"] = RANGE_TEST_NUM
 
-    with _patch_message_deps(plugins=[], patch_logger=False) as (
-        _mock_logger,
-        mock_relay,
+    with (
+        patch(
+            "mmrelay.meshtastic.packet_routing.portnums_pb2.PortNum.Name",
+            return_value="RANGE_TEST_APP",
+        ),
+        _patch_message_deps(plugins=[], patch_logger=False) as (
+            _mock_logger,
+            mock_relay,
+        ),
     ):
         on_meshtastic_message(packet, _make_interface())
 
@@ -782,6 +792,80 @@ def test_on_meshtastic_message_non_chat_text_with_no_channel_reaches_plugins(
         _mock_logger,
         mock_relay,
     ):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_not_called()
+    plugin.handle_meshtastic_message.assert_called_once()
+
+
+def test_on_meshtastic_message_disabled_text_message_reaction_does_not_relay(
+    reset_meshtastic_globals,
+):
+    config = _base_config_with_routing(disabled_portnums=["TEXT_MESSAGE_APP"])
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"].update({"emoji": EMOJI_FLAG_VALUE, "replyId": 42})
+
+    plugin = MagicMock()
+    plugin.plugin_name = "observer"
+    plugin.handle_meshtastic_message.return_value = False
+
+    with _patch_message_deps(
+        interaction_settings={"reactions": True, "replies": True},
+        plugins=[plugin],
+        patch_logger=False,
+    ) as (_mock_logger, mock_relay):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_not_called()
+    plugin.handle_meshtastic_message.assert_not_called()
+
+
+def test_on_meshtastic_message_disabled_text_message_reply_does_not_relay(
+    reset_meshtastic_globals,
+):
+    config = _base_config_with_routing(disabled_portnums=["TEXT_MESSAGE_APP"])
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"]["replyId"] = 77
+
+    plugin = MagicMock()
+    plugin.plugin_name = "observer"
+    plugin.handle_meshtastic_message.return_value = False
+
+    with _patch_message_deps(
+        interaction_settings={"reactions": True, "replies": True},
+        plugins=[plugin],
+        patch_logger=False,
+    ) as (_mock_logger, mock_relay):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_not_called()
+    plugin.handle_meshtastic_message.assert_not_called()
+
+
+def test_on_meshtastic_message_plugin_only_packet_with_replyId_does_not_leak_to_matrix(
+    reset_meshtastic_globals,
+):
+    config = _base_config()
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"]["portnum"] = "RANGE_TEST_APP"
+    packet["decoded"]["replyId"] = 42
+    packet["decoded"]["emoji"] = EMOJI_FLAG_VALUE
+
+    plugin = MagicMock()
+    plugin.plugin_name = "observer"
+    plugin.handle_meshtastic_message.return_value = False
+
+    with _patch_message_deps(
+        interaction_settings={"reactions": True, "replies": True},
+        plugins=[plugin],
+        patch_logger=False,
+    ) as (_mock_logger, mock_relay):
         on_meshtastic_message(packet, _make_interface())
 
     assert mock_relay is not None

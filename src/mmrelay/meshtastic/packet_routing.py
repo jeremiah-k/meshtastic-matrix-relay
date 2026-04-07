@@ -34,8 +34,10 @@ CHAT_ELIGIBLE_PORTNUMS = frozenset({TEXT_MESSAGE_APP})
 logger = get_logger("Meshtastic")
 
 
-def _get_portnum_name(portnum: Any) -> str:
+def _get_portnum_name(portnum: Any, packet: dict[str, Any] | None = None) -> str:
     if portnum is None:
+        if packet and packet.get("encrypted"):
+            return "ENCRYPTED"
         return "UNKNOWN (None)"
 
     if isinstance(portnum, str):
@@ -59,7 +61,10 @@ def _resolve_portnum_set(portnums: Any) -> frozenset[str]:
     if portnums is None:
         return frozenset()
     if isinstance(portnums, str):
-        return frozenset({portnums})
+        stripped = portnums.strip()
+        if not stripped:
+            return frozenset()
+        return frozenset({stripped})
     if isinstance(portnums, (list, tuple, set, frozenset)):
         resolved: set[str] = set()
         for entry in portnums:

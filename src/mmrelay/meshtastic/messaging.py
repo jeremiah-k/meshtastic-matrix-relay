@@ -97,19 +97,22 @@ def _get_packet_details(
     return details
 
 
-def _get_portnum_name(portnum: Any) -> str:
+def _get_portnum_name(portnum: Any, packet: dict[str, Any] | None = None) -> str:
     """
     Get a human-readable name for a Meshtastic port identifier.
 
-    Accepts an integer enum value, a string name, or None. For a valid enum integer returns the enum name; for a non-empty string returns it unchanged; for None, an empty string, an unknown integer, or an unexpected type returns a descriptive "UNKNOWN (...)" string.
+    Accepts an integer enum value, a string name, or None. For a valid enum integer returns the enum name; for a non-empty string returns it unchanged; for None, an empty string, an unknown integer, or an unexpected type returns a descriptive "UNKNOWN (...)" string. If portnum is None but the packet contains an 'encrypted' field, returns "ENCRYPTED".
 
     Parameters:
         portnum (Any): The port identifier to convert; may be an int enum value, a string name, or None.
+        packet (dict | None): Optional raw packet dict; used to detect encrypted packets when portnum is None.
 
     Returns:
         str: The resolved port name or an `UNKNOWN (...)` description for invalid or missing inputs.
     """
     if portnum is None:
+        if packet and packet.get("encrypted"):
+            return "ENCRYPTED"
         return "UNKNOWN (None)"
 
     if isinstance(portnum, str):

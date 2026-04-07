@@ -18,7 +18,11 @@ from mmrelay.constants.messages import (
     PORTNUM_DETECTION_SENSOR_APP,
     PORTNUM_TEXT_MESSAGE_APP,
 )
-from mmrelay.meshtastic.packet_routing import PacketAction, classify_packet
+from mmrelay.meshtastic.packet_routing import (
+    PacketAction,
+    _get_portnum_name,
+    classify_packet,
+)
 
 __all__ = [
     "_schedule_startup_drain_deadline_cleanup",
@@ -26,6 +30,17 @@ __all__ = [
     "on_meshtastic_message",
     "reconnect",
 ]
+
+
+def _is_text_message_portnum(portnum: Any) -> bool:
+    return (
+        portnum
+        in (
+            PORTNUM_TEXT_MESSAGE_APP,
+            TEXT_MESSAGE_APP,
+        )
+        or _get_portnum_name(portnum) == TEXT_MESSAGE_APP
+    )
 
 
 def _get_iterable_matrix_rooms() -> Iterable[Any]:
@@ -458,7 +473,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             "[HEALTH_CHECK] Metadata probe response requestId=%s from=%s port=%s",
             facade._extract_packet_request_id(packet),
             packet.get("fromId") or packet.get("from"),
-            facade._get_portnum_name(portnum),
+            facade._get_portnum_name(portnum, packet),
         )
         return
 
@@ -567,7 +582,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         portnum = (
             decoded.get("portnum") if decoded and isinstance(decoded, dict) else None
         )
-        portnum_name = facade._get_portnum_name(portnum)
+        portnum_name = facade._get_portnum_name(portnum, packet)
         from_id = packet.get("fromId") or packet.get("from")
         from_display = ""
         if from_id is not None:
@@ -625,9 +640,20 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     if not isinstance(decoded, dict):
         decoded = {}
 
-    # Filter packets based on interaction settings
-    if decoded.get("portnum") in (TEXT_MESSAGE_APP, PORTNUM_TEXT_MESSAGE_APP):
-        # Filter out reactions if reactions are disabled
+    # Classify packet BEFORE any Matrix relay branches so that DROP packets
+    # never reach Matrix via reply/reaction paths, and PLUGIN_ONLY packets
+    # cannot leak into Matrix interaction relay.
+    action = classify_packet(decoded.get("portnum"), facade.config)
+    if action == PacketAction.DROP:
+        facade.logger.debug(
+            "Packet %s classified as %s; skipping plugin and Matrix relay pipelines.",
+            _get_portnum_name(decoded.get("portnum"), packet),
+            PacketAction.DROP,
+        )
+        return
+
+    # Filter out reactions if reactions are disabled (only for text-message portnums)
+    if _is_text_message_portnum(decoded.get("portnum")):
         if (
             not interactions["reactions"]
             and decoded.get("replyId") is not None
@@ -679,8 +705,16 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     meshnet_name = facade.config[CONFIG_SECTION_MESHTASTIC][CONFIG_KEY_MESHNET_NAME]
 
     # Reaction handling (Meshtastic -> Matrix)
-    # If replyId and emoji_flag are present and reactions are enabled, we relay as text reactions in Matrix
-    if replyId and emoji_flag and interactions["reactions"]:
+    # Only for RELAY-classified TEXT_MESSAGE_APP packets.
+    # Non-chat portnums (even if promoted to RELAY via config) must not
+    # use Matrix interaction relay.
+    if (
+        action == PacketAction.RELAY
+        and _is_text_message_portnum(decoded.get("portnum"))
+        and replyId
+        and emoji_flag
+        and interactions["reactions"]
+    ):
         longname = facade._get_name_safely(facade.get_longname, sender)
         shortname = facade._get_name_safely(facade.get_shortname, sender)
         orig = facade.get_message_map_by_meshtastic_id(replyId)
@@ -737,8 +771,14 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             )
 
     # Reply handling (Meshtastic -> Matrix)
-    # If replyId is present but emoji is not (or not 1), this is a reply
-    if replyId and not emoji_flag and interactions["replies"]:
+    # Only for RELAY-classified TEXT_MESSAGE_APP packets.
+    if (
+        action == PacketAction.RELAY
+        and _is_text_message_portnum(decoded.get("portnum"))
+        and replyId
+        and not emoji_flag
+        and interactions["replies"]
+    ):
         longname = facade._get_name_safely(facade.get_longname, sender)
         shortname = facade._get_name_safely(facade.get_shortname, sender)
         orig = facade.get_message_map_by_meshtastic_id(replyId)
@@ -788,18 +828,6 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
 
     # Normal text messages or detection sensor messages
     if text:
-        # Classify packet BEFORE channel deduction so that PLUGIN_ONLY packets
-        # reach plugins even when channel cannot be determined, and DROP packets
-        # short-circuit immediately.
-        action = classify_packet(decoded.get("portnum"), facade.config)
-        if action == PacketAction.DROP:
-            facade.logger.debug(
-                "Packet %s classified as %s; skipping plugin and Matrix relay pipelines.",
-                facade._get_portnum_name(decoded.get("portnum")),
-                PacketAction.DROP,
-            )
-            return
-
         # Channel deduction and mapping are only relevant for RELAY packets.
         # PLUGIN_ONLY packets skip all channel logic and go straight to plugins.
         channel: int | None = None
