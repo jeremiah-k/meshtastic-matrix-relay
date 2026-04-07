@@ -772,7 +772,10 @@ def apply_env_config_overrides(config: dict[str, Any] | None) -> dict[str, Any]:
     return config
 
 
-def load_credentials() -> dict[str, Any] | None:
+def load_credentials(
+    config_override: Mapping[str, Any] | None = None,
+    config_path_override: str | None = None,
+) -> dict[str, Any] | None:
     """
     Locate and load Matrix credentials from candidate credentials.json files.
 
@@ -782,8 +785,14 @@ def load_credentials() -> dict[str, Any] | None:
         Parsed credentials mapping containing at least the keys 'homeserver' and 'access_token' if a valid credentials.json is found; `user_id` may be absent in legacy credentials and can be recovered later via Matrix whoami.
     """
     try:
-        explicit_path = get_explicit_credentials_path(relay_config)
-        config_paths = [config_path] if config_path else None
+        config_for_paths = (
+            config_override if isinstance(config_override, MappingABC) else relay_config
+        )
+        effective_config_path = (
+            config_path_override if config_path_override is not None else config_path
+        )
+        explicit_path = get_explicit_credentials_path(config_for_paths)
+        config_paths = [effective_config_path] if effective_config_path else None
         candidate_paths = get_credentials_search_paths(
             explicit_path=explicit_path,
             config_paths=config_paths,
@@ -885,7 +894,10 @@ def load_credentials() -> dict[str, Any] | None:
     return None
 
 
-async def async_load_credentials() -> dict[str, Any] | None:
+async def async_load_credentials(
+    config_override: Mapping[str, Any] | None = None,
+    config_path_override: str | None = None,
+) -> dict[str, Any] | None:
     """
     Locate and load Matrix credentials from configured candidate paths.
 
@@ -895,7 +907,11 @@ async def async_load_credentials() -> dict[str, Any] | None:
         dict[str, Any]: Loaded credentials containing at minimum `homeserver` and `access_token`; `user_id` and `device_id` may be absent.
         None: If no readable/valid credentials file is found.
     """
-    return await asyncio.to_thread(load_credentials)
+    return await asyncio.to_thread(
+        load_credentials,
+        config_override,
+        config_path_override,
+    )
 
 
 def save_credentials(

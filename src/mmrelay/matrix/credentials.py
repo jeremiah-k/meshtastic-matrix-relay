@@ -113,7 +113,10 @@ async def _resolve_and_load_credentials(
     )
 
     try:
-        credentials = await facade.async_load_credentials()
+        credentials = await facade.async_load_credentials(
+            config_override=config_data if isinstance(config_data, dict) else None,
+            config_path_override=facade.config_module.config_path,
+        )
     except asyncio.CancelledError:
         raise
     except (
@@ -206,7 +209,12 @@ async def _resolve_and_load_credentials(
                     "Automatic login successful! Credentials saved to credentials.json"
                 )
                 try:
-                    credentials = await facade.async_load_credentials()
+                    credentials = await facade.async_load_credentials(
+                        config_override=(
+                            config_data if isinstance(config_data, dict) else None
+                        ),
+                        config_path_override=facade.config_module.config_path,
+                    )
                 except (
                     InvalidCredentialsPathTypeError,
                     OSError,
@@ -267,6 +275,14 @@ async def _resolve_and_load_credentials(
 
     if config_data is None:
         facade.logger.error("No configuration available. Cannot connect to Matrix.")
+        return None
+
+    if not isinstance(config_data, dict):
+        facade.logger.error(
+            "Configuration is invalid (expected top-level mapping, got %s).",
+            type(config_data).__name__,
+        )
+        facade.logger.error(msg_require_auth_login())
         return None
 
     if "matrix" not in config_data:

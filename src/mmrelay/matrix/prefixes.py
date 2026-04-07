@@ -127,6 +127,13 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str | None) -> str | No
 
     # Normalize user ID
     localpart, *serverpart = bot_user_id.lstrip("@").split(":", 1)
+    localpart = localpart.strip()
+    if not localpart:
+        return None
+    localpart = localpart.rstrip(":")
+    if not localpart:
+        return None
+
     if serverpart and serverpart[0]:
         # Already has a server part; drop any brackets/port consistently
         raw_server = serverpart[0]
@@ -136,10 +143,14 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str | None) -> str | No
             raw_server,
         )
         canonical_server = _canonical_server(server)
-        return f"@{localpart}:{canonical_server or domain}"
+        if not canonical_server:
+            return None
+        return f"@{localpart}:{canonical_server}"
 
     # No server part, add the derived domain
-    return f"@{localpart.rstrip(':')}:{domain}"
+    if not domain:
+        return None
+    return f"@{localpart}:{domain}"
 
 
 def _get_msgs_to_keep_config(config_override: dict[str, Any] | None = None) -> int:

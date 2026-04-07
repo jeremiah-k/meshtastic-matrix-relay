@@ -1016,7 +1016,9 @@ async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch, tmp_path):
 
         await connect_matrix(config)
 
-    sleep_mock.assert_awaited_once()
+    sleep_mock.assert_awaited_once_with(
+        matrix_utils_module.E2EE_KEY_SHARING_DELAY_SECONDS
+    )
 
 
 async def test_connect_matrix_e2ee_missing_nio_crypto():
@@ -1039,6 +1041,11 @@ async def test_connect_matrix_e2ee_missing_nio_crypto():
         patch("mmrelay.matrix_utils.logger") as mock_logger,
         patch("mmrelay.matrix_utils._create_ssl_context"),
         patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
+        patch(
+            "mmrelay.matrix_utils.async_load_credentials",
+            new=AsyncMock(return_value=None),
+        ),
+        patch("mmrelay.matrix_utils.os.path.isfile", return_value=False),
     ):
         # Mock importlib to simulate missing nio.crypto
         def mock_import_side_effect(module_name):
@@ -1096,6 +1103,11 @@ async def test_connect_matrix_e2ee_missing_sqlite_store():
         patch("mmrelay.matrix_utils.logger") as mock_logger,
         patch("mmrelay.matrix_utils._create_ssl_context"),
         patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
+        patch(
+            "mmrelay.matrix_utils.async_load_credentials",
+            new=AsyncMock(return_value=None),
+        ),
+        patch("mmrelay.matrix_utils.os.path.isfile", return_value=False),
     ):
         # Mock importlib to simulate missing nio.store.SqliteStore
         def mock_import_side_effect(module_name):

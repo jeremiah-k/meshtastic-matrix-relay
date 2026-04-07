@@ -123,6 +123,29 @@ def test_connect_meshtastic_waiter_times_out_when_attempt_stuck():
     assert elapsed < 0.2
 
 
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_rollback_connect_attempt_state_cancels_startup_drain_timer():
+    """Rollback should cancel and clear the startup-drain expiry timer."""
+    timer = MagicMock()
+    mu._relay_startup_drain_expiry_timer = timer
+    mu._relay_startup_drain_deadline_monotonic_secs = 1_234.5
+    mu._startup_packet_drain_applied = True
+
+    result = mu._rollback_connect_attempt_state(
+        client=None,
+        client_assigned_for_this_connect=False,
+        startup_drain_armed_for_this_connect=True,
+        startup_drain_applied_for_this_connect=True,
+        reconnect_bootstrap_armed_for_this_connect=False,
+    )
+
+    assert result is False
+    timer.cancel.assert_called_once()
+    assert mu._relay_startup_drain_expiry_timer is None
+    assert mu._relay_startup_drain_deadline_monotonic_secs is None
+    assert mu._startup_packet_drain_applied is False
+
+
 def test_connect_meshtastic_network_alias_warns_and_uses_tcp(reset_meshtastic_globals):
     mock_client = MagicMock()
     mock_client.getMyNodeInfo.return_value = {

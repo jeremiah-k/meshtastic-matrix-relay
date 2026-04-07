@@ -372,6 +372,26 @@ def _cancel_and_drain_future_like(future_obj: Any, *, timeout: float = 0.2) -> N
     _drain_future_result_safely(future_obj, timeout=timeout)
 
 
+def _cancel_and_join_timer_like(timer_obj: Any, *, timeout: float = 0.2) -> None:
+    """
+    Best-effort timer cancellation and brief join for deterministic teardown.
+    """
+    if timer_obj is None:
+        return
+
+    cancel_fn = getattr(timer_obj, "cancel", None)
+    if callable(cancel_fn):
+        with contextlib.suppress(RuntimeError, TypeError):
+            cancel_fn()
+
+    is_alive_fn = getattr(timer_obj, "is_alive", None)
+    join_fn = getattr(timer_obj, "join", None)
+    if callable(is_alive_fn) and callable(join_fn):
+        with contextlib.suppress(RuntimeError, TypeError):
+            if is_alive_fn():
+                join_fn(timeout=timeout)
+
+
 # Now that mocks are in place, we can import the application code
 import mmrelay.meshtastic_utils as mu  # noqa: E402
 from tests.constants import TEST_BOT_USER_ID, TEST_ROOM_ID, TEST_USER_ID  # noqa: E402
@@ -491,7 +511,7 @@ nio_mock.SyncError = MockSyncError
 class MockRoomSendError(Exception):
     def __init__(
         self, message: str = "Room send error", status_code: str | None = None
-    ):
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.status_code = status_code
@@ -1086,9 +1106,7 @@ def reset_meshtastic_globals():
     mu._relay_rx_time_clock_skew_secs = None
     mu._relay_startup_drain_deadline_monotonic_secs = None
     startup_drain_timer = getattr(mu, "_relay_startup_drain_expiry_timer", None)
-    if startup_drain_timer is not None:
-        with contextlib.suppress(Exception):
-            startup_drain_timer.cancel()
+    _cancel_and_join_timer_like(startup_drain_timer, timeout=0.2)
     mu._relay_startup_drain_expiry_timer = None
     mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = None
     mu._startup_packet_drain_applied = False
@@ -1135,9 +1153,7 @@ def reset_meshtastic_globals():
             getattr(mu, "_metadata_future", None), timeout=0.2
         )
         startup_drain_timer = getattr(mu, "_relay_startup_drain_expiry_timer", None)
-        if startup_drain_timer is not None:
-            with contextlib.suppress(Exception):
-                startup_drain_timer.cancel()
+        _cancel_and_join_timer_like(startup_drain_timer, timeout=0.2)
         mu._relay_startup_drain_expiry_timer = None
         mu.reconnect_task = None
         mu.reconnect_task_future = None

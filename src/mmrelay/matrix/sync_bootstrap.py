@@ -40,8 +40,8 @@ __all__ = [
     "_perform_initial_sync",
     "_post_sync_setup",
     "connect_matrix",
-    "login_matrix_bot",
     "join_matrix_room",
+    "login_matrix_bot",
 ]
 
 _NIO_PATCH_LOCK = asyncio.Lock()
@@ -396,7 +396,7 @@ async def _post_sync_setup(
 
 async def connect_matrix(
     passed_config: dict[str, Any] | None = None,
-) -> "facade.AsyncClient | None":
+) -> facade.AsyncClient | None:
     """
     Create and initialize a Matrix AsyncClient using available credentials, optional end-to-end encryption, and an initial sync so the client has populated room state.
 
@@ -620,17 +620,16 @@ async def login_matrix_bot(
                     facade.logger.info(
                         f"Server discovery failed, using original URL: {homeserver}"
                     )
+                elif hasattr(discovery_response, "homeserver_url"):
+                    actual_homeserver = discovery_response.homeserver_url
+                    facade.logger.info(
+                        f"Server discovery successful: {actual_homeserver}"
+                    )
+                    homeserver = actual_homeserver
                 else:
-                    if hasattr(discovery_response, "homeserver_url"):
-                        actual_homeserver = discovery_response.homeserver_url
-                        facade.logger.info(
-                            f"Server discovery successful: {actual_homeserver}"
-                        )
-                        homeserver = actual_homeserver
-                    else:
-                        facade.logger.warning(
-                            f"Server discovery returned unexpected response type, using original URL: {homeserver}"
-                        )
+                    facade.logger.warning(
+                        f"Server discovery returned unexpected response type, using original URL: {homeserver}"
+                    )
             except TypeError as e:
                 facade.logger.warning(
                     f"Server discovery error: {e}, using original URL: {homeserver}"
@@ -726,7 +725,7 @@ async def login_matrix_bot(
 
                 def _load_direct(path: str) -> dict[str, Any] | None:
                     try:
-                        with open(path, "r", encoding="utf-8") as f:
+                        with open(path, encoding="utf-8") as f:
                             return cast(dict[str, Any], json.load(f))
                     except (OSError, json.JSONDecodeError, TypeError, ValueError):
                         return None
@@ -1097,7 +1096,7 @@ async def login_matrix_bot(
             await client.close()
             return False
 
-    except NIO_COMM_EXCEPTIONS + (ssl.SSLError, OSError):
+    except (*NIO_COMM_EXCEPTIONS, ssl.SSLError, OSError):
         facade.logger.exception("Error during login")
         try:
             if client is not None:
@@ -1152,15 +1151,12 @@ async def join_matrix_room(
             )
             return
 
-        try:
-            mapping = facade.matrix_rooms
-        except NameError:
-            mapping = None
+        mapping = getattr(facade, "matrix_rooms", None)
 
         if mapping:
             try:
                 facade._update_room_id_in_mapping(mapping, room_id_or_alias, room_id)
-            except Exception:
+            except Exception:  # noqa: BLE001 - broad catch keeps join resilience
                 facade.logger.debug(
                     "Non-fatal error updating matrix_rooms for alias '%s'",
                     room_id_or_alias,
@@ -1197,5 +1193,5 @@ async def join_matrix_room(
             )
     except NIO_COMM_EXCEPTIONS:
         facade.logger.exception(f"Error joining room '{room_id}'")
-    except Exception:
+    except Exception:  # noqa: BLE001 - broad catch keeps join resilience
         facade.logger.exception(f"Unexpected error joining room '{room_id}'")

@@ -188,6 +188,7 @@ def _rollback_connect_attempt_state(
     Returns the updated value for client_assigned_for_this_connect (always False after cleanup).
     """
     _lock_ctx = contextlib.nullcontext() if lock_held else facade.meshtastic_lock
+    startup_drain_timer_to_cancel: Any = None
     if client is not None and (
         client_assigned_for_this_connect or client is facade.meshtastic_iface
     ):
@@ -217,6 +218,8 @@ def _rollback_connect_attempt_state(
     ):
         with facade._relay_rx_time_clock_skew_lock:
             if startup_drain_armed_for_this_connect:
+                startup_drain_timer_to_cancel = facade._relay_startup_drain_expiry_timer
+                facade._relay_startup_drain_expiry_timer = None
                 facade._relay_startup_drain_deadline_monotonic_secs = None
                 if startup_drain_applied_for_this_connect:
                     facade._startup_packet_drain_applied = False
@@ -224,6 +227,9 @@ def _rollback_connect_attempt_state(
                 facade._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
                     None
                 )
+    if startup_drain_timer_to_cancel is not None:
+        with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+            startup_drain_timer_to_cancel.cancel()
 
     return False
 
@@ -543,13 +549,15 @@ def _connect_meshtastic_impl(
                             ble_init_sig = inspect.signature(
                                 facade.meshtastic.ble_interface.BLEInterface.__init__
                             )
+                            create_timeout_secs = ble_create_timeout_secs
+                            create_timeout_arg = max(1, math.ceil(create_timeout_secs))
                             ble_kwargs = {
                                 "address": ble_address,
                                 "noProto": False,
                                 "debugOut": None,
                                 "noNodes": False,
-                                # Preserve user-configured Meshtastic reply timeout.
-                                "timeout": configured_timeout_arg,
+                                # Use the same timeout budget for constructor and watchdog.
+                                "timeout": create_timeout_arg,
                             }
 
                             # Configure auto_reconnect only when supported.
@@ -605,11 +613,6 @@ def _connect_meshtastic_impl(
                                 return facade.meshtastic.ble_interface.BLEInterface(
                                     **kwargs
                                 )
-
-                            # Use the larger of configured connect timeout and the safety floor.
-                            # This keeps stale-worker detection and future.result() budget aligned
-                            # with the actual BLEInterface constructor timeout.
-                            create_timeout_secs = ble_create_timeout_secs
 
                             # Guard against overlapping BLE tasks: if a previous BLE operation is
                             # still running (often due to a hung BlueZ/DBus call), we skip queuing

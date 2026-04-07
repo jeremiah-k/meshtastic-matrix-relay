@@ -623,6 +623,19 @@ def test_normalize_bot_user_id_trailing_colon():
     assert result == "@relaybot:example.com"
 
 
+def test_normalize_bot_user_id_rejects_empty_localpart():
+    """Malformed IDs with empty localpart should be rejected."""
+    homeserver = "https://example.com"
+
+    assert _normalize_bot_user_id(homeserver, "@") is None
+    assert _normalize_bot_user_id(homeserver, "@:example.com") is None
+
+
+def test_normalize_bot_user_id_rejects_missing_server_derivation():
+    """When no usable homeserver domain can be derived, normalization should fail."""
+    assert _normalize_bot_user_id("", "relaybot") is None
+
+
 def test_get_valid_device_id_valid_string():
     """
     Test that _get_valid_device_id returns stripped string for valid input.

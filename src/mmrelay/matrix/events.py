@@ -762,5 +762,5 @@ async def on_invite(room: MatrixRoom, event: InviteMemberEvent) -> None:
             facade.logger.debug(f"Bot is already in room '{room_id}', no action needed")
     except facade.NIO_COMM_EXCEPTIONS:
         facade.logger.exception(f"Error joining room '{room_id}'")
-    except Exception:
+    except Exception:  # noqa: BLE001 - broad catch for invite-join resilience
         facade.logger.exception(f"Unexpected error joining room '{room_id}'")

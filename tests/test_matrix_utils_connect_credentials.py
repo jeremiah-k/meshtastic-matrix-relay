@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import mmrelay.matrix_utils as matrix_utils_module
 from mmrelay.config import InvalidCredentialsPathTypeError
 from mmrelay.constants.app import CREDENTIALS_FILENAME
 from mmrelay.matrix_utils import connect_matrix
@@ -23,7 +24,7 @@ from mmrelay.matrix_utils import connect_matrix
 )
 @patch("mmrelay.matrix_utils.async_load_credentials", new_callable=AsyncMock)
 async def test_connect_matrix_auto_login_reload_json_decode_error(
-    mock_load_credentials, mock_login_bot, mock_logger
+    mock_load_credentials, _mock_login_bot, mock_logger
 ):
     mock_load_credentials.side_effect = json.JSONDecodeError("test", "", 0)
 
@@ -369,5 +370,50 @@ async def test_connect_matrix_auto_login_failure():
     assert result is None
     assert any(
         "Automatic login failed" in call.args[0]
+        for call in mock_logger.error.call_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_passed_config_is_forwarded_to_credentials_lookup():
+    """connect_matrix(passed_config=...) should forward that config to credential lookup."""
+    config = {
+        "credentials_path": "~/passed-credentials.json",
+        "matrix_rooms": [],
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.matrix_client", None),
+        patch(
+            "mmrelay.matrix_utils.async_load_credentials",
+            new=AsyncMock(return_value=None),
+        ) as mock_load_credentials,
+        patch("mmrelay.matrix_utils.logger"),
+    ):
+        result = await connect_matrix(config)
+
+    assert result is None
+    assert mock_load_credentials.await_count == 1
+    assert mock_load_credentials.await_args.kwargs["config_override"] is config
+
+
+@pytest.mark.asyncio
+async def test_resolve_and_load_credentials_rejects_non_mapping_config():
+    """Non-dict top-level config should be handled as invalid configuration."""
+    with (
+        patch(
+            "mmrelay.matrix_utils.async_load_credentials",
+            new=AsyncMock(return_value=None),
+        ),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        result = await matrix_utils_module._resolve_and_load_credentials(  # type: ignore[arg-type]
+            config_data=123,
+            matrix_section=None,
+        )
+
+    assert result is None
+    assert any(
+        "Configuration is invalid" in str(call.args[0])
         for call in mock_logger.error.call_args_list
     )

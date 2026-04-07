@@ -116,7 +116,10 @@ async def test_connect_matrix_sync_timeout_retry_then_success(monkeypatch):
     )
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
     monkeypatch.setattr(
-        "mmrelay.matrix_utils.MATRIX_INITIAL_SYNC_MAX_ATTEMPTS", 0, raising=False
+        # One timeout + one retry success requires 2 total attempts.
+        "mmrelay.matrix_utils.MATRIX_INITIAL_SYNC_MAX_ATTEMPTS",
+        2,
+        raising=False,
     )
     mock_sleep = AsyncMock()
     monkeypatch.setattr("mmrelay.matrix_utils.asyncio.sleep", mock_sleep)
@@ -321,9 +324,9 @@ async def test_connect_matrix_sync_validation_error_retries_with_invite_safe_fil
         "Retrying initial sync without invites to tolerate invalid invite_state payloads."
     )
 
-    # Verify client attributes were set with invite-safe filter
-    assert hasattr(mock_client, "mmrelay_sync_filter")
-    assert hasattr(mock_client, "mmrelay_first_sync_filter")
+    # Verify invite-safe filter attributes were set explicitly on the client.
+    assert "mmrelay_sync_filter" in mock_client.__dict__
+    assert "mmrelay_first_sync_filter" in mock_client.__dict__
 
 
 @pytest.mark.asyncio

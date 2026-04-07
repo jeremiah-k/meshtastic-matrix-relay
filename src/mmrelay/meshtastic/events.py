@@ -483,15 +483,27 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 remaining_drain_secs,
             )
             return
+        should_log_drain_end = False
         with facade._relay_rx_time_clock_skew_lock:
+            drain_expiry_timer = facade._relay_startup_drain_expiry_timer
+            timer_still_active = False
+            if drain_expiry_timer is not None:
+                timer_is_alive = getattr(drain_expiry_timer, "is_alive", None)
+                if callable(timer_is_alive):
+                    try:
+                        timer_still_active = bool(timer_is_alive())
+                    except (RuntimeError, TypeError):
+                        timer_still_active = False
             if (
                 facade._relay_startup_drain_deadline_monotonic_secs is not None
                 and facade._relay_startup_drain_deadline_monotonic_secs <= now_monotonic
+                and not timer_still_active
             ):
+                facade._relay_startup_drain_expiry_timer = None
                 facade._relay_startup_drain_deadline_monotonic_secs = None
-                facade.logger.debug(
-                    "Startup drain window has ended — accepting packets"
-                )
+                should_log_drain_end = True
+        if should_log_drain_end:
+            facade.logger.debug("Startup drain window has ended — accepting packets")
 
     # Seed clock skew from the first non-health-probe packet with a valid
     # rxTime so that the cutoff works even when health checks are disabled.

@@ -402,7 +402,7 @@ async def test_send_reply_to_meshtastic_returns_when_interface_missing(monkeypat
         "mmrelay.matrix_utils.config", {"meshtastic": {}}, raising=False
     )
 
-    await send_reply_to_meshtastic(
+    result = await send_reply_to_meshtastic(
         reply_message="Test reply",
         full_display_name="Alice",
         room_config={"meshtastic_channel": 0},
@@ -414,6 +414,7 @@ async def test_send_reply_to_meshtastic_returns_when_interface_missing(monkeypat
         reply_id=123,
     )
 
+    assert result is False
     mock_queue.assert_not_called()
 
 
@@ -443,7 +444,7 @@ async def test_send_reply_to_meshtastic_structured_reply_queue_size(monkeypatch)
         "mmrelay.matrix_utils.config", {"meshtastic": {}}, raising=False
     )
 
-    await send_reply_to_meshtastic(
+    result = await send_reply_to_meshtastic(
         reply_message="Test reply",
         full_display_name="Alice",
         room_config={"meshtastic_channel": 0},
@@ -455,7 +456,9 @@ async def test_send_reply_to_meshtastic_structured_reply_queue_size(monkeypatch)
         reply_id=123,
     )
 
+    assert result is True
     assert mock_queue.called
+    queue_state.get_queue_size.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -479,7 +482,7 @@ async def test_send_reply_to_meshtastic_structured_reply_failure(monkeypatch):
         "mmrelay.matrix_utils.config", {"meshtastic": {}}, raising=False
     )
 
-    await send_reply_to_meshtastic(
+    result = await send_reply_to_meshtastic(
         reply_message="Test reply",
         full_display_name="Alice",
         room_config={"meshtastic_channel": 0},
@@ -491,6 +494,7 @@ async def test_send_reply_to_meshtastic_structured_reply_failure(monkeypatch):
         reply_id=123,
     )
 
+    assert result is False
     assert mock_queue.called
 
 
@@ -521,7 +525,7 @@ async def test_send_reply_to_meshtastic_fallback_queue_size(monkeypatch):
         "mmrelay.matrix_utils.config", {"meshtastic": {}}, raising=False
     )
 
-    await send_reply_to_meshtastic(
+    result = await send_reply_to_meshtastic(
         reply_message="Test reply",
         full_display_name="Alice",
         room_config={"meshtastic_channel": 0},
@@ -533,7 +537,9 @@ async def test_send_reply_to_meshtastic_fallback_queue_size(monkeypatch):
         reply_id=None,
     )
 
+    assert result is True
     assert mock_queue.called
+    queue_state.get_queue_size.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -558,7 +564,7 @@ async def test_send_reply_to_meshtastic_fallback_failure(monkeypatch):
         "mmrelay.matrix_utils.config", {"meshtastic": {}}, raising=False
     )
 
-    await send_reply_to_meshtastic(
+    result = await send_reply_to_meshtastic(
         reply_message="Test reply",
         full_display_name="Alice",
         room_config={"meshtastic_channel": 0},
@@ -570,6 +576,7 @@ async def test_send_reply_to_meshtastic_fallback_failure(monkeypatch):
         reply_id=None,
     )
 
+    assert result is False
     assert mock_queue.called
 
 
