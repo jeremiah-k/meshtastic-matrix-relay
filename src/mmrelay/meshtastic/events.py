@@ -7,7 +7,6 @@ import mmrelay.meshtastic_utils as facade
 from mmrelay.constants.config import (
     CONFIG_KEY_MESHNET_NAME,
     CONFIG_SECTION_MESHTASTIC,
-    DEFAULT_DETECTION_SENSOR,
 )
 from mmrelay.constants.formats import (
     DETECTION_SENSOR_APP,
@@ -19,6 +18,7 @@ from mmrelay.constants.messages import (
     PORTNUM_DETECTION_SENSOR_APP,
     PORTNUM_TEXT_MESSAGE_APP,
 )
+from mmrelay.meshtastic.packet_routing import PacketAction, classify_packet
 
 __all__ = [
     "_schedule_startup_drain_deadline_cleanup",
@@ -836,18 +836,6 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 )
                 break
 
-        # If detection_sensor is disabled and this is a detection sensor packet, skip it
-        portnum = decoded.get("portnum")
-        if (
-            portnum == PORTNUM_DETECTION_SENSOR_APP or portnum == DETECTION_SENSOR_APP
-        ) and not facade.get_meshtastic_config_value(
-            facade.config, "detection_sensor", DEFAULT_DETECTION_SENSOR
-        ):
-            facade.logger.debug(
-                "Detection sensor packet received, but detection sensor processing is disabled."
-            )
-            return
-
         # Attempt to get longname/shortname from database or nodes
         longname = facade._get_name_or_none(facade.get_longname, sender)  # type: ignore[assignment]
         if longname is None:
@@ -894,6 +882,15 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         prefix = get_matrix_prefix(facade.config, longname, shortname, meshnet_name)
         formatted_message = f"{prefix}{text}"
 
+        action = classify_packet(decoded.get("portnum"), facade.config)
+        if action == PacketAction.DROP:
+            facade.logger.debug(
+                "Packet %s classified as %s; skipping plugin and Matrix relay pipelines.",
+                facade._get_portnum_name(decoded.get("portnum")),
+                PacketAction.DROP,
+            )
+            return
+
         # Plugin functionality - Check if any plugin handles this message before relaying
         found_matching_plugin = facade._run_meshtastic_plugins(
             packet=packet,
@@ -914,6 +911,9 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             facade.logger.debug(
                 "Message was handled by a plugin. Not relaying to Matrix."
             )
+            return
+
+        if action == PacketAction.PLUGIN_ONLY:
             return
 
         # Check if matrix_rooms is empty BEFORE attempting unmapped-channel logic

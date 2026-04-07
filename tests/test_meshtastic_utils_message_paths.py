@@ -266,6 +266,56 @@ def test_on_meshtastic_message_unknown_portnum_logs_debug(
     mock_logger.debug.assert_any_call("Unknown portnum 9999, cannot determine channel")
 
 
+def test_on_meshtastic_message_unknown_numeric_portnum_plugin_only(
+    reset_meshtastic_globals,
+):
+    config = _base_config()
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"]["portnum"] = 9999
+
+    plugin = MagicMock()
+    plugin.plugin_name = "observer"
+    plugin.handle_meshtastic_message.return_value = False
+
+    with _patch_message_deps(plugins=[plugin], patch_logger=False) as (
+        _mock_logger,
+        mock_relay,
+    ):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_not_called()
+    plugin.handle_meshtastic_message.assert_called_once()
+
+
+def test_on_meshtastic_message_range_test_app_plugin_only(
+    reset_meshtastic_globals,
+):
+    config = _base_config()
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"]["portnum"] = "RANGE_TEST_APP"
+
+    plugin = MagicMock()
+    plugin.plugin_name = "range-observer"
+    plugin.handle_meshtastic_message.return_value = False
+
+    with _patch_message_deps(plugins=[plugin], patch_logger=False) as (
+        _mock_logger,
+        mock_relay,
+    ):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_not_called()
+    plugin.handle_meshtastic_message.assert_called_once()
+    args = plugin.handle_meshtastic_message.call_args[0]
+    assert args[1] == "[p] Hello"
+    assert args[2] == "Long"
+    assert args[3] == "TestNet"
+
+
 def test_on_meshtastic_message_detection_sensor_disabled(
     reset_meshtastic_globals,
 ):
@@ -275,18 +325,35 @@ def test_on_meshtastic_message_detection_sensor_disabled(
     packet = _base_packet()
     packet["decoded"]["portnum"] = PORTNUM_DETECTION_SENSOR_APP
 
-    with (
-        patch(
-            "mmrelay.matrix_utils.get_interaction_settings",
-            return_value={"reactions": False, "replies": False},
-        ),
-        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    plugin = MagicMock()
+    plugin.plugin_name = "sensor-plugin"
+    plugin.handle_meshtastic_message.return_value = False
+
+    with _patch_message_deps(plugins=[plugin], patch_logger=False) as (
+        _mock_logger,
+        mock_relay,
     ):
         on_meshtastic_message(packet, _make_interface())
 
-    mock_logger.debug.assert_any_call(
-        "Detection sensor packet received, but detection sensor processing is disabled."
-    )
+    assert mock_relay is not None
+    mock_relay.assert_not_called()
+    plugin.handle_meshtastic_message.assert_called_once()
+
+
+def test_on_meshtastic_message_detection_sensor_enabled_relays(
+    reset_meshtastic_globals,
+):
+    config = _base_config()
+    config["meshtastic"]["detection_sensor"] = True
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"]["portnum"] = PORTNUM_DETECTION_SENSOR_APP
+
+    with _patch_message_deps(patch_logger=False) as (_mock_logger, mock_relay):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_awaited_once()
 
 
 def test_on_meshtastic_message_saves_node_names_from_interface(
