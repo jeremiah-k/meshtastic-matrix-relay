@@ -12,6 +12,10 @@ from mmrelay.constants.messages import (
     PORTNUM_DETECTION_SENSOR_APP,
     PORTNUM_TEXT_MESSAGE_APP,
 )
+from mmrelay.meshtastic.packet_routing import (
+    _get_packet_routing_overrides,
+    _resolve_portnum_set,
+)
 from mmrelay.meshtastic_utils import on_meshtastic_message
 
 
@@ -548,3 +552,210 @@ def test_on_meshtastic_message_non_text_plugin_exception(reset_meshtastic_global
         on_meshtastic_message(packet, _make_interface())
 
     mock_logger.exception.assert_any_call("Plugin %s failed", "boom")
+
+
+def _base_config_with_routing(chat_portnums=None, disabled_portnums=None):
+    config = _base_config()
+    routing = {}
+    if chat_portnums is not None:
+        routing["chat_portnums"] = chat_portnums
+    if disabled_portnums is not None:
+        routing["disabled_portnums"] = disabled_portnums
+    if routing:
+        config["meshtastic"]["packet_routing"] = routing
+    return config
+
+
+def test_on_meshtastic_message_chat_portnums_override_promotes_range_test(
+    reset_meshtastic_globals,
+):
+    config = _base_config_with_routing(chat_portnums=["RANGE_TEST_APP"])
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"]["portnum"] = "RANGE_TEST_APP"
+
+    with _patch_message_deps(plugins=[], patch_logger=False) as (
+        _mock_logger,
+        mock_relay,
+    ):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_awaited_once()
+
+
+def test_on_meshtastic_message_chat_portnums_override_promotes_via_numeric_config(
+    reset_meshtastic_globals,
+):
+    config = _base_config_with_routing(chat_portnums=["RANGE_TEST_APP"])
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"]["portnum"] = "RANGE_TEST_APP"
+
+    with _patch_message_deps(plugins=[], patch_logger=False) as (
+        _mock_logger,
+        mock_relay,
+    ):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_awaited_once()
+
+
+def test_on_meshtastic_message_chat_portnums_string_value(
+    reset_meshtastic_globals,
+):
+    config = _base_config_with_routing(chat_portnums="RANGE_TEST_APP")
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"]["portnum"] = "RANGE_TEST_APP"
+
+    with _patch_message_deps(plugins=[], patch_logger=False) as (
+        _mock_logger,
+        mock_relay,
+    ):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_awaited_once()
+
+
+def test_on_meshtastic_message_disabled_portnums_drops_packet(
+    reset_meshtastic_globals,
+):
+    config = _base_config_with_routing(disabled_portnums=["RANGE_TEST_APP"])
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"]["portnum"] = "RANGE_TEST_APP"
+
+    plugin = MagicMock()
+    plugin.plugin_name = "observer"
+    plugin.handle_meshtastic_message.return_value = False
+
+    with _patch_message_deps(plugins=[plugin], patch_logger=False) as (
+        _mock_logger,
+        mock_relay,
+    ):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_not_called()
+    plugin.handle_meshtastic_message.assert_not_called()
+
+
+def test_on_meshtastic_message_disabled_portnums_does_not_affect_text_message(
+    reset_meshtastic_globals,
+):
+    config = _base_config_with_routing(disabled_portnums=["RANGE_TEST_APP"])
+    _set_globals(config)
+    packet = _base_packet()
+
+    with _patch_message_deps(plugins=[], patch_logger=False) as (
+        _mock_logger,
+        mock_relay,
+    ):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_awaited_once()
+
+
+def test_on_meshtastic_message_disabled_portnums_takes_precedence_over_chat(
+    reset_meshtastic_globals,
+):
+    config = _base_config_with_routing(
+        chat_portnums=["RANGE_TEST_APP"],
+        disabled_portnums=["RANGE_TEST_APP"],
+    )
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"]["portnum"] = "RANGE_TEST_APP"
+
+    plugin = MagicMock()
+    plugin.plugin_name = "observer"
+    plugin.handle_meshtastic_message.return_value = False
+
+    with _patch_message_deps(plugins=[plugin], patch_logger=False) as (
+        _mock_logger,
+        mock_relay,
+    ):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_not_called()
+    plugin.handle_meshtastic_message.assert_not_called()
+
+
+def test_on_meshtastic_message_chat_portnums_detection_sensor_still_gated(
+    reset_meshtastic_globals,
+):
+    config = _base_config_with_routing(chat_portnums=["DETECTION_SENSOR_APP"])
+    config["meshtastic"]["detection_sensor"] = False
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"]["portnum"] = PORTNUM_DETECTION_SENSOR_APP
+
+    plugin = MagicMock()
+    plugin.plugin_name = "sensor"
+    plugin.handle_meshtastic_message.return_value = False
+
+    with _patch_message_deps(plugins=[plugin], patch_logger=False) as (
+        _mock_logger,
+        mock_relay,
+    ):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_not_called()
+    plugin.handle_meshtastic_message.assert_called_once()
+
+
+def test_resolve_portnum_set_with_list():
+    result = _resolve_portnum_set(["TEXT_MESSAGE_APP", "RANGE_TEST_APP"])
+    assert result == frozenset({"TEXT_MESSAGE_APP", "RANGE_TEST_APP"})
+
+
+def test_resolve_portnum_set_with_string():
+    result = _resolve_portnum_set("RANGE_TEST_APP")
+    assert result == frozenset({"RANGE_TEST_APP"})
+
+
+def test_resolve_portnum_set_with_none():
+    result = _resolve_portnum_set(None)
+    assert result == frozenset()
+
+
+def test_resolve_portnum_set_with_empty_list():
+    result = _resolve_portnum_set([])
+    assert result == frozenset()
+
+
+def test_resolve_portnum_set_filters_unknown():
+    result = _resolve_portnum_set(["TEXT_MESSAGE_APP", None])
+    assert result == frozenset({"TEXT_MESSAGE_APP"})
+
+
+def test_get_packet_routing_overrides_empty_config():
+    chat, disabled = _get_packet_routing_overrides({})
+    assert chat == frozenset()
+    assert disabled == frozenset()
+
+
+def test_get_packet_routing_overrides_none_config():
+    chat, disabled = _get_packet_routing_overrides(None)
+    assert chat == frozenset()
+    assert disabled == frozenset()
+
+
+def test_get_packet_routing_overrides_with_values():
+    config = {
+        "meshtastic": {
+            "packet_routing": {
+                "chat_portnums": ["RANGE_TEST_APP"],
+                "disabled_portnums": ["TELEMETRY_APP"],
+            }
+        }
+    }
+    chat, disabled = _get_packet_routing_overrides(config)
+    assert chat == frozenset({"RANGE_TEST_APP"})
+    assert disabled == frozenset({"TELEMETRY_APP"})

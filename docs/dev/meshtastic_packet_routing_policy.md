@@ -2,7 +2,7 @@
 
 ## Document Status
 
-- **Phase**: Groundwork + Phase 1 implementation target
+- **Phase**: Phase 1 + Phase 2 complete
 - **Date**: 2026-04-07
 - **Scope**: Meshtastic -> Matrix inbound routing (`on_meshtastic_message`)
 - **Primary issue**: text-bearing non-chat portnums (example: `RANGE_TEST_APP`) are being relayed as normal chat
@@ -118,18 +118,37 @@ Intentional behavior tightening:
 
 ## 7. Phase Plan
 
-### Phase 1 (this groundwork)
+### Phase 1 (complete)
 
 - Add a dedicated packet routing helper module (Meshtastic subpackage).
 - Integrate it into `on_meshtastic_message` text path.
 - Move detection sensor gate from inline event logic into routing policy.
 - Add focused regression tests for routing outcomes.
 
-### Phase 2 (optional, after validating defaults)
+### Phase 2 (complete)
 
-- Add compact operator overrides under a small routing config surface.
+- Add compact operator overrides under `meshtastic.packet_routing` config section.
+- `chat_portnums`: list of additional portnum names to promote to chat relay.
+- `disabled_portnums`: list of portnum names to drop entirely (not relayed, not sent to plugins).
+- `disabled_portnums` takes precedence over `chat_portnums` when both list the same portnum.
+- Detection sensor gate still applies even when listed in `chat_portnums` (disabled detection sensor blocks relay regardless).
 - Keep defaults unchanged for backward compatibility.
-- Consider optional `DROP` routing and/or diagnostic room routing only if real use cases emerge.
+- Config surface accepts lists of portnum names (strings). Unknown/invalid names are silently filtered.
+
+Config shape:
+
+```yaml
+meshtastic:
+  packet_routing:
+    chat_portnums: # Additional portnums to relay like chat
+      - "RANGE_TEST_APP"
+    disabled_portnums: [] # Portnums to drop entirely
+```
+
+### Future considerations
+
+- Per-portnum diagnostic room routing only if real use cases emerge.
+- Finer-grained action vocabulary if needed beyond RELAY / PLUGIN_ONLY / DROP.
 
 ---
 
@@ -146,6 +165,15 @@ Required assertions:
 5. `DETECTION_SENSOR_APP` + `detection_sensor=true` -> relay allowed.
 6. Plugin-only text packets do not create Matrix relay side effects.
 
+Phase 2 additional assertions:
+
+7. `chat_portnums` override promotes a non-chat portnum to relay.
+8. `chat_portnums` accepts a single string value (not just a list).
+9. `disabled_portnums` drops a packet entirely (no relay, no plugins).
+10. `disabled_portnums` does not affect TEXT_MESSAGE_APP unless explicitly listed.
+11. `disabled_portnums` takes precedence over `chat_portnums`.
+12. Detection sensor gate still applies even with `chat_portnums` override.
+
 Run only targeted pytest module(s) for this change set.
 
 ---
@@ -156,6 +184,6 @@ If continuing this work:
 
 1. Keep routing policy decisions in one helper module; do not re-scatter checks in `events.py`.
 2. Preserve plugin argument shape for compatibility.
-3. Avoid introducing a large config schema in the same bugfix PR.
-4. Keep logs explicit when skipping Matrix relay due to policy classification.
-5. Add only targeted tests for changed behavior; leave full-suite validation to CI.
+3. Keep logs explicit when skipping Matrix relay due to policy classification.
+4. Add only targeted tests for changed behavior; leave full-suite validation to CI.
+5. Config overrides live under `meshtastic.packet_routing`; see `src/mmrelay/constants/config.py` for key constants.

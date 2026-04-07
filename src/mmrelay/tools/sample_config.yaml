@@ -86,6 +86,15 @@ meshtastic:
   # Additional configuration options (commented out with defaults)
   broadcast_enabled: true # Must be set to true to enable Matrix to Meshtastic messages
   #detection_sensor: true # Must be set to true to forward messages of Meshtastic's detection sensor module
+
+  # Packet routing policy overrides (all optional; defaults are safe out of the box)
+  # By default only TEXT_MESSAGE_APP packets are relayed to Matrix chat rooms.
+  # Other text-bearing portnums (e.g. RANGE_TEST_APP) are delivered to plugins
+  # but NOT sent to Matrix rooms. Use these overrides to adjust per portnum.
+  #packet_routing:
+  #  chat_portnums:                # Additional portnums to relay like chat messages
+  #    - "RANGE_TEST_APP"          # Example: relay range test packets to Matrix
+  #  disabled_portnums: []         # Portnums to drop entirely (not relayed, not sent to plugins)
   #message_delay: 2.2 # Delay in seconds between messages sent to mesh (minimum: 2.0 due to firmware)
   #timeout: 30 # Timeout in seconds for Meshtastic operations (default: 30, library default: 300)
   # Seconds between refreshes of cached long/short node-name tables from Meshtastic NodeDB.
