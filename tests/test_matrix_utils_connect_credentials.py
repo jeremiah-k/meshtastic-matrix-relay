@@ -153,6 +153,7 @@ async def test_connect_matrix_explicit_credentials_path_is_used(tmp_path):
     }
 
     with (
+        patch("mmrelay.config.relay_config", config),
         patch("mmrelay.config.os.getenv", return_value=None),
         patch(
             "mmrelay.config.os.path.expanduser",
