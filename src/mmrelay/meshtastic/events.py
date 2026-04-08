@@ -553,6 +553,25 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             )
         return
 
+    decoded = packet.get("decoded")
+    if not isinstance(decoded, dict):
+        decoded = {}
+
+    if facade.config is None:
+        facade.logger.error(
+            "No configuration available. Cannot process Meshtastic message."
+        )
+        return
+
+    action = classify_packet(decoded.get("portnum"), facade.config, packet)
+    if action == PacketAction.DROP:
+        facade.logger.debug(
+            "Packet %s classified as %s; skipping plugin and Matrix relay pipelines.",
+            _get_portnum_name(decoded.get("portnum"), packet),
+            PacketAction.DROP,
+        )
+        return
+
     # Full packet logging for debugging (when enabled in config)
     # Check if full packet logging is enabled - accepts boolean True or string "true"
     debug_settings: dict[str, Any] = (
@@ -565,7 +584,6 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         facade.logger.debug("Full packet: %s", packet)
 
     # Log that we received a message (without the full packet details)
-    decoded = packet.get("decoded")
     if decoded and isinstance(decoded, dict) and decoded.get("text"):
         facade.logger.info(f"Received Meshtastic message: {decoded.get('text')}")
     else:
@@ -613,34 +631,11 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         prefix = f"[{portnum_name}] " + " ".join(details)
         facade.logger.debug(prefix)
 
-    # Check if config is available
-    if facade.config is None:
-        facade.logger.error(
-            "No configuration available. Cannot process Meshtastic message."
-        )
-        return
-
     # Import the configuration helpers
     from mmrelay.matrix_utils import get_interaction_settings
 
     # Get interaction settings
     interactions = get_interaction_settings(facade.config)
-
-    decoded = packet.get("decoded")
-    if not isinstance(decoded, dict):
-        decoded = {}
-
-    # Classify packet BEFORE any Matrix relay branches so that DROP packets
-    # never reach Matrix via reply/reaction paths, and PLUGIN_ONLY packets
-    # cannot leak into Matrix interaction relay.
-    action = classify_packet(decoded.get("portnum"), facade.config, packet)
-    if action == PacketAction.DROP:
-        facade.logger.debug(
-            "Packet %s classified as %s; skipping plugin and Matrix relay pipelines.",
-            _get_portnum_name(decoded.get("portnum"), packet),
-            PacketAction.DROP,
-        )
-        return
 
     # Filter out reactions if reactions are disabled (only for text-message portnums)
     if _is_text_message_portnum(decoded.get("portnum")):

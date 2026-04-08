@@ -264,7 +264,7 @@ def classify_packet(
     if portnum_name in chat_overrides:
         if is_detection_sensor:
             detection_sensor_enabled = get_meshtastic_config_value(
-                config if isinstance(config, dict) else {},
+                dict(config) if isinstance(config, Mapping) else {},
                 "detection_sensor",
                 DEFAULT_DETECTION_SENSOR,
             )
@@ -285,7 +285,7 @@ def classify_packet(
 
     if is_detection_sensor:
         detection_sensor_enabled = get_meshtastic_config_value(
-            config if isinstance(config, dict) else {},
+            dict(config) if isinstance(config, Mapping) else {},
             "detection_sensor",
             DEFAULT_DETECTION_SENSOR,
         )
