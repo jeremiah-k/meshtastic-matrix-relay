@@ -337,8 +337,12 @@ print_logs_if_needed() {
 	LOGS_PRINTED=true
 	echo "===== MMRelay A log ====="
 	[[ -f ${MMRELAY_LOG_PATH_A} ]] && cat "${MMRELAY_LOG_PATH_A}" || true
+	echo "===== MMRelay A file log ====="
+	[[ -f ${MMRELAY_FILE_LOG_PATH_A} ]] && cat "${MMRELAY_FILE_LOG_PATH_A}" || true
 	echo "===== MMRelay B log ====="
 	[[ -f ${MMRELAY_LOG_PATH_B} ]] && cat "${MMRELAY_LOG_PATH_B}" || true
+	echo "===== MMRelay B file log ====="
+	[[ -f ${MMRELAY_FILE_LOG_PATH_B} ]] && cat "${MMRELAY_FILE_LOG_PATH_B}" || true
 	echo "===== meshtasticd A log ====="
 	[[ -f ${MESHTASTICD_LOG_PATH_A} ]] && cat "${MESHTASTICD_LOG_PATH_A}" || true
 	echo "===== meshtasticd B log ====="

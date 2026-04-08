@@ -230,7 +230,7 @@ LOW_BATTERY_THRESHOLD_PERCENT: Final[int] = 10
 
 # Regex patterns
 PING_EXPLICIT_COMMAND_REGEX: Final[re.Pattern[str]] = re.compile(
-    r"!(ping)", re.IGNORECASE
+    r"(?<!\w)!(ping)(?!\w)", re.IGNORECASE
 )
 PING_COMMAND_REGEX: Final[re.Pattern[str]] = re.compile(
     r"(?<!\w)([!?]*)(ping)([!?]*)(?!\w)", re.IGNORECASE

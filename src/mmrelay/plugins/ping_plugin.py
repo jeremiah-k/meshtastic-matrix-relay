@@ -1,8 +1,6 @@
 import asyncio
 from typing import Any
 
-from meshtastic.mesh_interface import BROADCAST_NUM
-
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (
     MatrixRoom,
@@ -68,7 +66,17 @@ class Plugin(BasePlugin):
 
     def get_mimic_mode(self) -> bool:
         mimic_mode = self.config.get("mimic_mode", False)
-        return isinstance(mimic_mode, bool) and mimic_mode
+        if isinstance(mimic_mode, bool):
+            return mimic_mode
+
+        # Keep invalid config warnings low-noise while still surfacing operator errors.
+        if not getattr(self, "_invalid_mimic_mode_warned", False):
+            self.logger.warning(
+                "Invalid ping.mimic_mode value %r; expected boolean. Defaulting to false.",
+                mimic_mode,
+            )
+            self._invalid_mimic_mode_warned = True
+        return False
 
     async def handle_meshtastic_message(
         self,
@@ -122,12 +130,7 @@ class Plugin(BasePlugin):
 
         my_id = meshtastic_client.myInfo.my_node_num
 
-        if to_id == my_id:
-            is_direct_message = True
-        elif to_id == BROADCAST_NUM:
-            is_direct_message = False
-        else:
-            is_direct_message = False
+        is_direct_message = to_id == my_id
 
         if not self.is_channel_enabled(channel, is_direct_message=is_direct_message):
             return False

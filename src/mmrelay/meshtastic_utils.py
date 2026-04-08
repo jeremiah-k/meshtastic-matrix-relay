@@ -206,6 +206,8 @@ _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs: float | None = None
 
 def get_startup_drain_complete_event() -> threading.Event | None:
     """Return the startup-drain completion event used by readiness coordination."""
+    # Defensive guard: tests intentionally monkeypatch facade globals and may
+    # temporarily replace this attribute with non-Event sentinels.
     event = _relay_startup_drain_complete_event
     return event if isinstance(event, threading.Event) else None
 

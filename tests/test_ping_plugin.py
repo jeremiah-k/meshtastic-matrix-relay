@@ -335,7 +335,8 @@ class TestPingPlugin(unittest.TestCase):
         asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_explicit_ping_works_with_mimic_mode_false(self, mock_connect):
+    @patch("asyncio.sleep")
+    def test_explicit_ping_works_with_mimic_mode_false(self, mock_sleep, mock_connect):
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
         mock_connect.return_value = mock_client
@@ -353,6 +354,7 @@ class TestPingPlugin(unittest.TestCase):
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertTrue(result)
+            mock_sleep.assert_called_once_with(1.0)
             mock_client.sendText.assert_called_once_with(text="pong", channelIndex=0)
 
         asyncio.run(run_test())
