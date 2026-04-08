@@ -2,6 +2,7 @@ import asyncio
 from typing import Any
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
+from meshtastic.mesh_interface import BROADCAST_NUM
 from nio import (
     MatrixRoom,
     ReactionEvent,
@@ -131,7 +132,17 @@ class Plugin(BasePlugin):
 
         my_id = meshtastic_client.myInfo.my_node_num
 
-        is_direct_message = to_id == my_id
+        if to_id == my_id:
+            is_direct_message = True
+        elif to_id is None or to_id == BROADCAST_NUM:
+            is_direct_message = False
+        else:
+            return False
+
+        from_id = packet.get("fromId")
+        if is_direct_message and not from_id:
+            self.logger.warning("Direct message missing fromId; cannot reply")
+            return True
 
         if not self.is_channel_enabled(channel, is_direct_message=is_direct_message):
             return False
@@ -155,12 +166,7 @@ class Plugin(BasePlugin):
 
         await asyncio.sleep(self.get_response_delay())
 
-        from_id = packet.get("fromId")
-
         if is_direct_message:
-            if not from_id:
-                self.logger.warning("Direct message missing fromId; cannot reply")
-                return True
             await asyncio.to_thread(
                 meshtastic_client.sendText,
                 text=reply_message,

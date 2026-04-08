@@ -733,8 +733,7 @@ class TestPingPluginEdgeCases(unittest.TestCase):
         asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    @patch("asyncio.sleep")
-    def test_direct_message_missing_fromId(self, mock_sleep, mock_connect):
+    def test_direct_message_missing_fromId(self, mock_connect):
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
         mock_connect.return_value = mock_client
@@ -746,14 +745,38 @@ class TestPingPluginEdgeCases(unittest.TestCase):
         }
 
         async def run_test() -> None:
+            with patch("asyncio.sleep") as mock_sleep:
+                result = await self.plugin.handle_meshtastic_message(
+                    packet, "formatted_message", "TestNode", "TestMesh"
+                )
+                self.assertTrue(result)
+                mock_sleep.assert_not_called()
+                mock_client.sendText.assert_not_called()
+                self.plugin.logger.warning.assert_called_once_with(
+                    "Direct message missing fromId; cannot reply"
+                )
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_packet_addressed_to_other_node_ignored(self, mock_connect):
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+
+        packet = {
+            "decoded": {"text": "!ping"},
+            "channel": 0,
+            "fromId": "!99999999",
+            "to": 987654321,
+        }
+
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
-            self.assertTrue(result)
+            self.assertFalse(result)
             mock_client.sendText.assert_not_called()
-            self.plugin.logger.warning.assert_called_once_with(
-                "Direct message missing fromId; cannot reply"
-            )
 
         asyncio.run(run_test())
 

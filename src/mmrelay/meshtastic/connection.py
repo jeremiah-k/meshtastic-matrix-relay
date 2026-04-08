@@ -1115,6 +1115,7 @@ def _connect_meshtastic_impl(
                                     facade._relay_connection_started_monotonic_secs
                                     + facade.RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS
                                 )
+                                reconnect_bootstrap_armed_for_this_connect = True
                                 timing_mode = "startup_pending_reconnect"
                             else:
                                 facade._relay_startup_drain_deadline_monotonic_secs = (
