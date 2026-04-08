@@ -86,6 +86,10 @@ class TestPingPlugin(unittest.TestCase):
         self.plugin.config = {"mimic_mode": False}
         self.assertFalse(self.plugin.get_mimic_mode())
 
+    def test_get_mimic_mode_non_boolean_disabled(self):
+        self.plugin.config = {"mimic_mode": "false"}
+        self.assertFalse(self.plugin.get_mimic_mode())
+
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_handle_meshtastic_message_missing_myinfo(self, mock_connect):
         mock_client = MagicMock()
@@ -265,6 +269,30 @@ class TestPingPlugin(unittest.TestCase):
 
         packet = {
             "decoded": {"text": "!!ping"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertFalse(result)
+            mock_client.sendText.assert_not_called()
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_explicit_ping_with_trailing_punctuation_ignored_by_default(
+        self, mock_connect
+    ):
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+
+        packet = {
+            "decoded": {"text": "!ping?"},
             "channel": 0,
             "fromId": "!12345678",
             "to": BROADCAST_NUM,

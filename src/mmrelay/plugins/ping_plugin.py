@@ -64,10 +64,11 @@ class Plugin(BasePlugin):
 
     @property
     def description(self) -> str:
-        return "Check connectivity with the relay or respond to pings over the mesh"
+        return "Check connectivity with the relay; optional mimic mode responds to mesh pings"
 
     def get_mimic_mode(self) -> bool:
-        return bool(self.config.get("mimic_mode", False))
+        mimic_mode = self.config.get("mimic_mode", False)
+        return isinstance(mimic_mode, bool) and mimic_mode
 
     async def handle_meshtastic_message(
         self,
@@ -100,7 +101,7 @@ class Plugin(BasePlugin):
             matched_text = match.group(2)
             post_punc = match.group(3)
         else:
-            explicit_match = PING_EXPLICIT_COMMAND_REGEX.search(message)
+            explicit_match = PING_EXPLICIT_COMMAND_REGEX.fullmatch(message)
             if not explicit_match:
                 return False
             matched_text = explicit_match.group(1)

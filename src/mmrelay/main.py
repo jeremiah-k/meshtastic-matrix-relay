@@ -222,7 +222,10 @@ async def _ready_heartbeat(shutdown_event: asyncio.Event) -> None:
             continue
 
 
-async def _wait_for_startup_drain_completion(shutdown_event: asyncio.Event) -> None:
+async def _wait_for_startup_drain_completion(
+    shutdown_event: asyncio.Event,
+    sync_task: asyncio.Task[Any] | None = None,
+) -> None:
     """
     Wait for Meshtastic startup drain completion or shutdown.
 
@@ -237,6 +240,8 @@ async def _wait_for_startup_drain_completion(shutdown_event: asyncio.Event) -> N
     if not isinstance(drain_complete_event, threading.Event):
         return
     while not drain_complete_event.is_set() and not shutdown_event.is_set():
+        if sync_task is not None and sync_task.done():
+            return
         try:
             await asyncio.wait_for(
                 shutdown_event.wait(),
@@ -1064,13 +1069,20 @@ async def main(config: dict[str, Any]) -> None:
                 )
 
                 if not startup_ready_published:
-                    await _wait_for_startup_drain_completion(shutdown_event)
+                    await _wait_for_startup_drain_completion(
+                        shutdown_event,
+                        sync_task=sync_task,
+                    )
                     if shutdown_event.is_set():
                         if not startup_ready_skipped_logged:
                             matrix_logger.warning(
                                 "Skipping readiness publication because shutdown was requested during startup"
                             )
                             startup_ready_skipped_logged = True
+                    elif sync_task.done():
+                        # Do not publish readiness after an early sync failure.
+                        # The sync outcome is handled by the standard loop below.
+                        pass
                     else:
                         _write_ready_file()
                         logger.info("Relay startup complete")
@@ -1099,7 +1111,7 @@ async def main(config: dict[str, Any]) -> None:
                     )
 
                 if shutdown_event.is_set():
-                    matrix_logger.info("Shutdown event detected. Stopping sync loop...")
+                    matrix_logger.info("Shutdown event detected. Stopping sync loop")
                     break
 
                 # Check if sync_task completed with an exception
