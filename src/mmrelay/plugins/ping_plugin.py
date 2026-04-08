@@ -94,7 +94,7 @@ class Plugin(BasePlugin):
         mimic_mode = self.get_mimic_mode()
 
         if mimic_mode:
-            match = PING_COMMAND_REGEX.search(message)
+            match = PING_COMMAND_REGEX.fullmatch(message)
             if not match:
                 return False
             pre_punc = match.group(1)
@@ -120,9 +120,9 @@ class Plugin(BasePlugin):
             self.logger.warning("Meshtastic client myInfo unavailable; skipping ping")
             return True
 
-        myId = meshtastic_client.myInfo.my_node_num
+        my_id = meshtastic_client.myInfo.my_node_num
 
-        if toId == myId:
+        if toId == my_id:
             is_direct_message = True
         elif toId == BROADCAST_NUM:
             is_direct_message = False

@@ -654,6 +654,7 @@ class TestMain(unittest.TestCase):
             startup_drain_complete_event.set()
 
         def _write_ready_side_effect() -> None:
+            assert startup_drain_complete_event.is_set()
             readiness_calls.append("ready")
             shutdown_event.set()
 
@@ -756,6 +757,7 @@ class TestMain(unittest.TestCase):
             shutdown_event.set()
 
         def _write_ready_side_effect() -> None:
+            assert startup_drain_complete_event.is_set()
             readiness_calls.append("ready")
 
         async def _run_main() -> None:

@@ -88,6 +88,11 @@ def reset_meshtastic_relay_state(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_startup_drain_expiry_timer",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
         "mmrelay.meshtastic_utils._relay_startup_drain_complete_event",
         startup_drain_complete_event,
         raising=False,

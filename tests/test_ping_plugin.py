@@ -87,8 +87,10 @@ class TestPingPlugin(unittest.TestCase):
         self.assertFalse(self.plugin.get_mimic_mode())
 
     def test_get_mimic_mode_non_boolean_disabled(self):
-        self.plugin.config = {"mimic_mode": "false"}
-        self.assertFalse(self.plugin.get_mimic_mode())
+        for mimic_mode_value in ("false", "true", 1):
+            with self.subTest(mimic_mode_value=mimic_mode_value):
+                self.plugin.config = {"mimic_mode": mimic_mode_value}
+                self.assertFalse(self.plugin.get_mimic_mode())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_handle_meshtastic_message_missing_myinfo(self, mock_connect):
@@ -524,7 +526,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("asyncio.sleep")
-    def test_mimic_ping_in_sentence(self, mock_sleep, mock_connect):
+    def test_mimic_ping_in_sentence_ignored(self, mock_sleep, mock_connect):
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
         mock_connect.return_value = mock_client
@@ -540,8 +542,8 @@ class TestPingPluginMimicMode(unittest.TestCase):
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
-            self.assertTrue(result)
-            mock_client.sendText.assert_called_once_with(text="pong", channelIndex=0)
+            self.assertFalse(result)
+            mock_client.sendText.assert_not_called()
 
         asyncio.run(run_test())
 
