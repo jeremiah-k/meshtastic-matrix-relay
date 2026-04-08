@@ -683,8 +683,8 @@ class TestMain(unittest.TestCase):
                 new_callable=AsyncMock,
             ) as mock_check_conn,
             patch(
-                "mmrelay.main.meshtastic_utils._relay_startup_drain_complete_event",
-                startup_drain_complete_event,
+                "mmrelay.main.meshtastic_utils.get_startup_drain_complete_event",
+                return_value=startup_drain_complete_event,
             ),
             patch(
                 "mmrelay.main._write_ready_file",
@@ -777,8 +777,8 @@ class TestMain(unittest.TestCase):
                 new_callable=AsyncMock,
             ) as mock_check_conn,
             patch(
-                "mmrelay.main.meshtastic_utils._relay_startup_drain_complete_event",
-                startup_drain_complete_event,
+                "mmrelay.main.meshtastic_utils.get_startup_drain_complete_event",
+                return_value=startup_drain_complete_event,
             ),
             patch(
                 "mmrelay.main._write_ready_file",

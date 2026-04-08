@@ -526,6 +526,29 @@ class TestPingPluginMimicMode(unittest.TestCase):
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("asyncio.sleep")
+    def test_mimic_case_and_punctuation_mixed(self, mock_sleep, mock_connect):
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+
+        packet = {
+            "decoded": {"text": "PiNg!?!"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            mock_client.sendText.assert_called_once_with(text="PoNg!?!", channelIndex=0)
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
     def test_mimic_ping_in_sentence_ignored(self, mock_sleep, mock_connect):
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
@@ -544,6 +567,36 @@ class TestPingPluginMimicMode(unittest.TestCase):
             )
             self.assertFalse(result)
             mock_client.sendText.assert_not_called()
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_mimic_ping_prose_variants_ignored(self, mock_sleep, mock_connect):
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+
+        async def run_test():
+            for message in (
+                "please ping",
+                "can you ping?",
+                "ping now",
+                "before ping after",
+            ):
+                with self.subTest(message=message):
+                    packet = {
+                        "decoded": {"text": message},
+                        "channel": 0,
+                        "fromId": "!12345678",
+                        "to": BROADCAST_NUM,
+                    }
+                    result = await self.plugin.handle_meshtastic_message(
+                        packet, "formatted_message", "TestNode", "TestMesh"
+                    )
+                    self.assertFalse(result)
+                    mock_client.sendText.assert_not_called()
+                    mock_client.sendText.reset_mock()
 
         asyncio.run(run_test())
 

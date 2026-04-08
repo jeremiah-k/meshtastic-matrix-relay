@@ -204,6 +204,12 @@ _startup_packet_drain_applied = False
 _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs: float | None = None
 
 
+def get_startup_drain_complete_event() -> threading.Event | None:
+    """Return the startup-drain completion event used by readiness coordination."""
+    event = _relay_startup_drain_complete_event
+    return event if isinstance(event, threading.Event) else None
+
+
 # Global variables for the Meshtastic connection and event loop management
 meshtastic_client = None
 # Session guard to reject callbacks emitted by stale interfaces after reconnect.

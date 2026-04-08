@@ -232,12 +232,8 @@ async def _wait_for_startup_drain_completion(
     Uses bounded waits so async tests remain deterministic under inline loop
     executor patches.
     """
-    drain_complete_event = getattr(
-        meshtastic_utils,
-        "_relay_startup_drain_complete_event",
-        None,
-    )
-    if not isinstance(drain_complete_event, threading.Event):
+    drain_complete_event = meshtastic_utils.get_startup_drain_complete_event()
+    if drain_complete_event is None:
         return
     while not drain_complete_event.is_set() and not shutdown_event.is_set():
         if sync_task is not None and sync_task.done():

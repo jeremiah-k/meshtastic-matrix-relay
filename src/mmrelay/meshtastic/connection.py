@@ -189,6 +189,7 @@ def _rollback_connect_attempt_state(
     """
     _lock_ctx = contextlib.nullcontext() if lock_held else facade.meshtastic_lock
     startup_drain_timer_to_cancel: Any = None
+    mark_startup_drain_complete = False
     if client is not None and (
         client_assigned_for_this_connect or client is facade.meshtastic_iface
     ):
@@ -221,13 +222,16 @@ def _rollback_connect_attempt_state(
                 startup_drain_timer_to_cancel = facade._relay_startup_drain_expiry_timer
                 facade._relay_startup_drain_expiry_timer = None
                 facade._relay_startup_drain_deadline_monotonic_secs = None
-                facade._relay_startup_drain_complete_event.set()
+                mark_startup_drain_complete = True
                 if startup_drain_applied_for_this_connect:
                     facade._startup_packet_drain_applied = False
             if reconnect_bootstrap_armed_for_this_connect:
                 facade._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
                     None
                 )
+    if mark_startup_drain_complete:
+        # Keep lock scope focused on state mutation; event signaling is non-blocking.
+        facade._relay_startup_drain_complete_event.set()
     if startup_drain_timer_to_cancel is not None:
         with contextlib.suppress(AttributeError, RuntimeError, TypeError):
             startup_drain_timer_to_cancel.cancel()
@@ -479,6 +483,7 @@ def _connect_meshtastic_impl(
         startup_drain_armed_for_this_connect = False
         startup_drain_applied_for_this_connect = False
         reconnect_bootstrap_armed_for_this_connect = False
+        signal_startup_drain_complete_for_this_connect = False
         client_assigned_for_this_connect = False
 
         client = None
@@ -1101,7 +1106,7 @@ def _connect_meshtastic_impl(
                                 facade._relay_connection_started_monotonic_secs
                                 + facade.RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS
                             )
-                            facade._relay_startup_drain_complete_event.set()
+                            signal_startup_drain_complete_for_this_connect = True
                             reconnect_bootstrap_armed_for_this_connect = True
                             timing_mode = "reconnect"
                         facade.logger.debug(
@@ -1112,6 +1117,9 @@ def _connect_meshtastic_impl(
                             facade._relay_startup_drain_deadline_monotonic_secs,
                             facade._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs,
                         )
+                if signal_startup_drain_complete_for_this_connect:
+                    # Signal completion after clock-skew state updates are committed.
+                    facade._relay_startup_drain_complete_event.set()
 
                 # Publish the active client only after per-connection timing state
                 # has been reset, so callbacks cannot observe stale skew windows.
