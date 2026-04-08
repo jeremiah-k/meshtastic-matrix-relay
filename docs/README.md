@@ -12,7 +12,7 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 
 ## Advanced Configuration
 
-- **[Advanced Configuration](ADVANCED_CONFIGURATION.md)** - Advanced features like message prefixes, debug logging, environment variables, and plugins
+- **[Advanced Configuration](ADVANCED_CONFIGURATION.md)** - Advanced features like message prefixes, packet routing overrides, health-check tuning, debug logging, and environment variables
 
 ## Release-Specific Documents
 
@@ -31,6 +31,7 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 ## Developer Documentation
 
 - **[Constants Reference](dev/CONSTANTS.md)** - Internal configuration constants and values
+- **[Meshtastic Packet Routing Policy](dev/meshtastic_packet_routing_policy.md)** - Inbound packet routing semantics and design notes
 - **[E2EE Implementation Notes](dev/archive/E2EE_IMPLEMENTATION_NOTES.md)** - Technical details of E2EE implementation
 
 ## Documentation Structure
@@ -49,6 +50,7 @@ docs/
 ├── ADVANCED_CONFIGURATION.md # Advanced configuration options
 └── dev/                     # Developer documentation
     ├── CONSTANTS.md         # Internal configuration constants
+    ├── meshtastic_packet_routing_policy.md # Packet routing policy internals
     ├── INNO_SETUP_GUIDE.md  # Windows installer build guide
     ├── TESTING_GUIDE.md     # Testing patterns and practices
     ├── RELEASE_1.3.md       # Release checklist (internal)

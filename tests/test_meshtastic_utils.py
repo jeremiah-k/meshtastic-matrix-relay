@@ -387,7 +387,9 @@ class TestMeshtasticUtils(unittest.TestCase):
             patch("mmrelay.plugin_loader.load_plugins") as mock_load_plugins,
             patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
             patch("mmrelay.matrix_utils.matrix_client", None),
-            patch("mmrelay.meshtastic_utils.portnums_pb2") as mock_portnums_pb2,
+            patch(
+                "mmrelay.meshtastic.packet_routing.portnums_pb2"
+            ) as mock_portnums_pb2,
         ):
             mock_load_plugins.return_value = []
             mock_portnums_pb2.PortNum.Name.return_value = "REMOTE_HARDWARE_APP"
@@ -399,7 +401,7 @@ class TestMeshtasticUtils(unittest.TestCase):
 
             # Verify _submit_coro was not called for non-text message
             mock_submit_coro.assert_not_called()
-            mock_portnums_pb2.PortNum.Name.assert_called_once_with(2)
+            mock_portnums_pb2.PortNum.Name.assert_called_with(2)
 
             # Verify debug log was called with packet type information
             log_output = "\n".join(cm.output)
@@ -1047,7 +1049,9 @@ class TestGetPortnumName(unittest.TestCase):
 
     def test_get_portnum_name_with_valid_int(self):
         """Test with a valid integer portnum."""
-        with patch("mmrelay.meshtastic_utils.portnums_pb2") as mock_portnums_pb2:
+        with patch(
+            "mmrelay.meshtastic.packet_routing.portnums_pb2"
+        ) as mock_portnums_pb2:
             mock_portnums_pb2.PortNum.Name.return_value = TEXT_MESSAGE_APP
             result = _get_portnum_name(1)
             self.assertEqual(result, TEXT_MESSAGE_APP)
@@ -1055,7 +1059,9 @@ class TestGetPortnumName(unittest.TestCase):
 
     def test_get_portnum_name_with_invalid_int(self):
         """Test with an invalid integer portnum."""
-        with patch("mmrelay.meshtastic_utils.portnums_pb2") as mock_portnums_pb2:
+        with patch(
+            "mmrelay.meshtastic.packet_routing.portnums_pb2"
+        ) as mock_portnums_pb2:
             mock_portnums_pb2.PortNum.Name.side_effect = ValueError
             result = _get_portnum_name(999)
             self.assertEqual(result, "UNKNOWN (portnum=999)")

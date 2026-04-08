@@ -66,26 +66,28 @@ meshtastic:
     reactions: false # Enable reaction relaying between platforms
     replies: false   # Enable reply relaying between platforms
 
-  # Connection health monitoring configuration
-  # NOTE: The startup/reconnect lines below are behavior notes, not config keys.
-  # Do not uncomment them; they are automatic runtime behavior:
-  # - First successful process connect uses a startup drain window to drop backlog safely.
-  # - Reconnects do NOT drain for 15s; they use a bounded one-shot pre-start bootstrap path.
-  # The actual options you can set are under health_check: below.
+  # Optional connection health monitoring overrides
   #health_check:
-  #  enabled: false                   # Enable/disable periodic health checks (default: false)
-  #  connect_probe_enabled: false     # One-shot metadata probe after connect.
-  #                                   # Defaults to health_check.enabled.
-  #                                   # Must be a boolean when set (invalid types fail config validation via check_config()).
-  #  heartbeat_interval: 60           # Interval in seconds between periodic health checks (default: 60)
-  #  initial_delay: 5                 # Delay in seconds before first periodic check (default: 5)
-  #  probe_timeout: 30                # Timeout in seconds for each metadata probe (default: 30)
-  #                                   # Note: BLE connections use real-time disconnection detection and skip probes
-  #                                   # Legacy: heartbeat_interval at meshtastic level still supported but deprecated
+  #  enabled: false                   # Enable periodic health checks (default: false)
+  #  connect_probe_enabled: false     # One-shot metadata probe after connect
+  #  heartbeat_interval: 60           # Seconds between periodic checks (default: 60)
+  #  initial_delay: 5                 # Seconds before first periodic check (default: 5)
+  #  probe_timeout: 30                # Timeout in seconds for each probe (default: 30)
+  # See docs/ADVANCED_CONFIGURATION.md for behavior and legacy-compatibility notes.
 
   # Additional configuration options (commented out with defaults)
   broadcast_enabled: true # Must be set to true to enable Matrix to Meshtastic messages
   #detection_sensor: true # Must be set to true to forward messages of Meshtastic's detection sensor module
+
+  # Optional packet-routing overrides
+  #packet_routing:
+  #  chat_portnums:
+  #    - "RANGE_TEST_APP"          # Additional portnums to treat as relay-eligible
+  #  disabled_portnums: []         # Drop completely: no plugins, no Matrix relay
+  #  encrypted_action: plugin_only # "plugin_only" (default) or "drop"
+  # Note: relay-eligible packets still need a usable channel for Matrix delivery.
+  # If channel is missing, plugins still run and only Matrix relay is skipped.
+  # See docs/ADVANCED_CONFIGURATION.md for behavior details.
   #message_delay: 2.2 # Delay in seconds between messages sent to mesh (minimum: 2.0 due to firmware)
   #timeout: 30 # Timeout in seconds for Meshtastic operations (default: 30, library default: 300)
   # Seconds between refreshes of cached long/short node-name tables from Meshtastic NodeDB.

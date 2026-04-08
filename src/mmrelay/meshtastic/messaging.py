@@ -1,6 +1,7 @@
 from typing import Any, cast
 
 import mmrelay.meshtastic_utils as facade
+from mmrelay.meshtastic.packet_routing import _get_portnum_name
 
 __all__ = [
     "_get_node_display_name",
@@ -95,35 +96,6 @@ def _get_packet_details(
         details["priority"] = priority
 
     return details
-
-
-def _get_portnum_name(portnum: Any) -> str:
-    """
-    Get a human-readable name for a Meshtastic port identifier.
-
-    Accepts an integer enum value, a string name, or None. For a valid enum integer returns the enum name; for a non-empty string returns it unchanged; for None, an empty string, an unknown integer, or an unexpected type returns a descriptive "UNKNOWN (...)" string.
-
-    Parameters:
-        portnum (Any): The port identifier to convert; may be an int enum value, a string name, or None.
-
-    Returns:
-        str: The resolved port name or an `UNKNOWN (...)` description for invalid or missing inputs.
-    """
-    if portnum is None:
-        return "UNKNOWN (None)"
-
-    if isinstance(portnum, str):
-        if portnum:
-            return portnum
-        return "UNKNOWN (empty string)"
-
-    if isinstance(portnum, int) and not isinstance(portnum, bool):
-        try:
-            return facade.portnums_pb2.PortNum.Name(portnum)  # type: ignore[arg-type]
-        except ValueError:
-            return f"UNKNOWN (portnum={portnum})"
-
-    return f"UNKNOWN (type={type(portnum).__name__})"
 
 
 def _get_node_display_name(
