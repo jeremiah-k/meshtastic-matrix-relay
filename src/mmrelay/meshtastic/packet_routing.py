@@ -105,7 +105,7 @@ def _resolve_portnum_set(
         resolved: set[str] = set()
         dropped_invalid_value = False
         for entry in portnums:
-            item: object = entry
+            item = entry
             if isinstance(item, str):
                 item = item.strip()
                 if not item:
@@ -143,7 +143,7 @@ def _get_packet_routing_overrides(
     if not isinstance(meshtastic_section, Mapping):
         return frozenset(), frozenset()
     routing_section = meshtastic_section.get(CONFIG_KEY_PACKET_ROUTING, {})
-    if not isinstance(routing_section, dict):
+    if not isinstance(routing_section, Mapping):
         _warn_once(
             "packet_routing:not_a_mapping",
             "Ignoring meshtastic.%s=%r (type=%s); expected a mapping.",
@@ -170,7 +170,7 @@ def _get_encrypted_action(config: Mapping[str, object] | None) -> str:
     if not isinstance(meshtastic_section, Mapping):
         return DEFAULT_ENCRYPTED_ACTION
     routing_section = meshtastic_section.get(CONFIG_KEY_PACKET_ROUTING, {})
-    if not isinstance(routing_section, dict):
+    if not isinstance(routing_section, Mapping):
         _warn_once(
             "encrypted_action:packet_routing_not_a_mapping",
             "Ignoring meshtastic.%s=%r (type=%s); expected a mapping.",

@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 from mmrelay.constants.config import (
     DEFAULT_ENCRYPTED_ACTION,
 )
@@ -251,7 +253,7 @@ class TestResolvePortnumSet:
 
 class TestGetPacketRoutingOverrides:
     def test_non_dict_config(self):
-        chat, disabled = _get_packet_routing_overrides("not a dict")  # type: ignore[arg-type]
+        chat, disabled = _get_packet_routing_overrides(cast(Any, "not a dict"))
         assert chat == frozenset()
         assert disabled == frozenset()
 
@@ -289,7 +291,7 @@ class TestGetPacketRoutingOverrides:
 
 class TestGetEncryptedAction:
     def test_non_dict_config_returns_default(self):
-        result = _get_encrypted_action("not_a_dict")  # type: ignore[arg-type]
+        result = _get_encrypted_action(cast(Any, "not_a_dict"))
         assert result == DEFAULT_ENCRYPTED_ACTION
 
     def test_non_dict_meshtastic_section_returns_default(self):
