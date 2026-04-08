@@ -136,6 +136,9 @@ plugins:
     active: true
     #require_bot_mention: true  # Override global setting for this plugin only
     #channels: [2,3,5] # List of channels the plugin will respond to; DMs are always processed if the plugin is active
+    #mimic_mode: false  # When true, the plugin responds to bare "ping" in mesh messages
+                        # (e.g., "how far does the ping go?" → "pong"), not just explicit !ping.
+                        # Default is false; only !ping triggers a response.
   weather:
     active: true
     #require_bot_mention: true  # Override global setting for this plugin only
