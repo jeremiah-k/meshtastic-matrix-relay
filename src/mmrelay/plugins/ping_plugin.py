@@ -148,13 +148,13 @@ class Plugin(BasePlugin):
 
         await asyncio.sleep(self.get_response_delay())
 
-        fromId = packet.get("fromId")
+        from_id = packet.get("fromId")
 
         if is_direct_message:
             await asyncio.to_thread(
                 meshtastic_client.sendText,
                 text=reply_message,
-                destinationId=fromId,
+                destinationId=from_id,
             )
         else:
             await asyncio.to_thread(

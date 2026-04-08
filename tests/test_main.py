@@ -620,13 +620,13 @@ class TestMain(unittest.TestCase):
     def test_main_publishes_ready_after_sync_start_and_drain_completion(
         self,
         mock_stop_queue,
-        mock_refresh_node_names,
-        mock_join_room,
+        _mock_refresh_node_names,
+        _mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
-        mock_start_queue,
-        mock_load_plugins,
-        mock_init_db,
+        _mock_start_queue,
+        _mock_load_plugins,
+        _mock_init_db,
     ):
         """
         Ready publication should wait for sync startup and startup-drain completion.
@@ -667,8 +667,16 @@ class TestMain(unittest.TestCase):
             log_sequence.append(("matrix", rendered))
 
         async def _run_main() -> None:
-            asyncio.create_task(_release_startup_drain())
-            await main(self.mock_config)
+            release_startup_drain_task = asyncio.create_task(_release_startup_drain())
+            try:
+                await main(self.mock_config)
+            finally:
+                if release_startup_drain_task.done():
+                    await release_startup_drain_task
+                else:
+                    release_startup_drain_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await release_startup_drain_task
 
         with (
             patch(
@@ -726,13 +734,13 @@ class TestMain(unittest.TestCase):
     def test_main_sync_failure_before_drain_does_not_publish_ready(
         self,
         mock_stop_queue,
-        mock_refresh_node_names,
-        mock_join_room,
+        _mock_refresh_node_names,
+        _mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
-        mock_start_queue,
-        mock_load_plugins,
-        mock_init_db,
+        _mock_start_queue,
+        _mock_load_plugins,
+        _mock_init_db,
     ):
         """
         Early sync failures should be handled before startup drain completes.
@@ -761,8 +769,16 @@ class TestMain(unittest.TestCase):
             readiness_calls.append("ready")
 
         async def _run_main() -> None:
-            asyncio.create_task(_request_shutdown())
-            await main(self.mock_config)
+            request_shutdown_task = asyncio.create_task(_request_shutdown())
+            try:
+                await main(self.mock_config)
+            finally:
+                if request_shutdown_task.done():
+                    await request_shutdown_task
+                else:
+                    request_shutdown_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await request_shutdown_task
 
         with (
             patch(

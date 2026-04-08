@@ -548,8 +548,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
         asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    @patch("asyncio.sleep")
-    def test_mimic_ping_in_sentence_ignored(self, mock_sleep, mock_connect):
+    def test_mimic_ping_in_sentence_ignored(self, mock_connect):
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
         mock_connect.return_value = mock_client
@@ -571,8 +570,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
         asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    @patch("asyncio.sleep")
-    def test_mimic_ping_prose_variants_ignored(self, mock_sleep, mock_connect):
+    def test_mimic_ping_prose_variants_ignored(self, mock_connect):
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
         mock_connect.return_value = mock_client
