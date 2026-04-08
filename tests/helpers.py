@@ -224,11 +224,11 @@ def reset_meshtastic_utils_globals(*, shutdown_executors: bool = False) -> None:
         module._health_probe_request_deadlines = {}  # type: ignore[attr-defined]
     if hasattr(module, "_relay_startup_drain_complete_event"):
         old_event = module._relay_startup_drain_complete_event  # type: ignore[attr-defined]
-        if hasattr(old_event, "set"):
-            with contextlib.suppress(Exception):
-                old_event.set()
-        module._relay_startup_drain_complete_event = threading.Event()  # type: ignore[attr-defined]
-        module._relay_startup_drain_complete_event.set()  # type: ignore[attr-defined]
+        if isinstance(old_event, threading.Event):
+            old_event.set()
+        else:
+            module._relay_startup_drain_complete_event = threading.Event()  # type: ignore[attr-defined]
+            module._relay_startup_drain_complete_event.set()  # type: ignore[attr-defined]
     if hasattr(module, "_ble_future_watchdog_secs"):
         module._ble_future_watchdog_secs = getattr(  # type: ignore[attr-defined]
             module, "BLE_FUTURE_WATCHDOG_SECS", module._ble_future_watchdog_secs

@@ -1103,14 +1103,30 @@ def _connect_meshtastic_impl(
                             startup_drain_pending_for_this_connect = True
                             timing_mode = "startup_pending"
                         else:
-                            facade._relay_startup_drain_deadline_monotonic_secs = None
-                            facade._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
-                                facade._relay_connection_started_monotonic_secs
-                                + facade.RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS
+                            existing_deadline = (
+                                facade._relay_startup_drain_deadline_monotonic_secs
                             )
-                            signal_startup_drain_complete_for_this_connect = True
-                            reconnect_bootstrap_armed_for_this_connect = True
-                            timing_mode = "reconnect"
+                            active_startup_drain = (
+                                existing_deadline is not None
+                                and existing_deadline > facade.time.monotonic()
+                            )
+                            if active_startup_drain:
+                                facade._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
+                                    facade._relay_connection_started_monotonic_secs
+                                    + facade.RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS
+                                )
+                                timing_mode = "startup_pending_reconnect"
+                            else:
+                                facade._relay_startup_drain_deadline_monotonic_secs = (
+                                    None
+                                )
+                                facade._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
+                                    facade._relay_connection_started_monotonic_secs
+                                    + facade.RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS
+                                )
+                                signal_startup_drain_complete_for_this_connect = True
+                                reconnect_bootstrap_armed_for_this_connect = True
+                                timing_mode = "reconnect"
                         facade.logger.debug(
                             "Initialized connection timing state mode=%s start=%.3f monotonic_start=%.3f startup_drain_deadline=%s reconnect_bootstrap_deadline=%s",
                             timing_mode,

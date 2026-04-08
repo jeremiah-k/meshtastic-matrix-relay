@@ -137,7 +137,10 @@ class Plugin(BasePlugin):
             return False
 
         self.logger.info(
-            f"Processing message from {longname} on channel {channel} with plugin '{self.plugin_name}'"
+            "Processing message from %s on channel %s with plugin '%s'",
+            longname,
+            channel,
+            self.plugin_name,
         )
 
         total_punc_length = len(pre_punc) + len(post_punc)
@@ -155,6 +158,9 @@ class Plugin(BasePlugin):
         from_id = packet.get("fromId")
 
         if is_direct_message:
+            if not from_id:
+                self.logger.warning("Direct message missing fromId; cannot reply")
+                return True
             await asyncio.to_thread(
                 meshtastic_client.sendText,
                 text=reply_message,

@@ -728,6 +728,45 @@ def test_connect_meshtastic_resets_timing_before_get_my_node_info_on_reconnect()
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_meshtastic_preserves_active_startup_drain_on_reconnect():
+    """Reconnect during an active startup-drain window should not signal drain complete."""
+    mock_client = MagicMock()
+    mock_client.myInfo.my_node_num = 456
+    mock_client.localNode.nodeNum = 456
+    mock_client.getMyNodeInfo.return_value = {
+        "user": {"shortName": "Node", "hwModel": "HW"}
+    }
+
+    mu.subscribed_to_messages = True
+    mu.subscribed_to_connection_lost = True
+    mu._startup_packet_drain_applied = True
+    mu._relay_startup_drain_deadline_monotonic_secs = 1_200.0
+    mu._relay_startup_drain_complete_event.clear()
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+            return_value=mock_client,
+        ),
+        patch(
+            "mmrelay.meshtastic_utils._get_device_metadata",
+            return_value={"firmware_version": "unknown", "success": False},
+        ),
+        patch("mmrelay.meshtastic_utils.logger"),
+        patch("mmrelay.meshtastic_utils.time.time", return_value=100_000.0),
+        patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_000.0),
+    ):
+        config = {
+            "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "127.0.0.1"}
+        }
+        result = connect_meshtastic(passed_config=config)
+
+    assert result is mock_client
+    assert mu._relay_startup_drain_deadline_monotonic_secs == 1_200.0
+    assert mu._relay_startup_drain_complete_event.is_set() is False
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_connect_meshtastic_schedules_one_shot_probe_when_periodic_health_disabled():
     """Connect should schedule one-shot probe when explicitly enabled, even with periodic checks off."""
     mock_client = MagicMock()

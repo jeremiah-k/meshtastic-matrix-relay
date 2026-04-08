@@ -732,6 +732,31 @@ class TestPingPluginEdgeCases(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_direct_message_missing_fromId(self, mock_sleep, mock_connect):
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+
+        packet = {
+            "decoded": {"text": "!ping"},
+            "channel": 1,
+            "to": 123456789,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            mock_client.sendText.assert_not_called()
+            self.plugin.logger.warning.assert_called_once_with(
+                "Direct message missing fromId; cannot reply"
+            )
+
+        asyncio.run(run_test())
+
 
 if __name__ == "__main__":
     unittest.main()
