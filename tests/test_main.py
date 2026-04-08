@@ -656,11 +656,12 @@ class TestMain(unittest.TestCase):
         def _write_ready_side_effect() -> None:
             assert startup_drain_complete_event.is_set()
             readiness_calls.append("ready")
-            shutdown_event.set()
 
         def _capture_main_info(message: str, *args: Any, **_kwargs: Any) -> None:
             rendered = message % args if args else message
             log_sequence.append(("main", rendered))
+            if rendered == "Relay startup complete":
+                shutdown_event.set()
 
         def _capture_matrix_info(message: str, *args: Any, **_kwargs: Any) -> None:
             rendered = message % args if args else message

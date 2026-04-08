@@ -1213,6 +1213,7 @@ def _connect_meshtastic_impl(
                 # Arm startup drain only once setup completes, so the full drain
                 # interval is available when receive handling becomes active.
                 startup_drain_deadline: float | None = None
+                clear_startup_drain_complete_event = False
                 if startup_drain_pending_for_this_connect:
                     with facade._relay_rx_time_clock_skew_lock:
                         if not facade._startup_packet_drain_applied:
@@ -1226,11 +1227,14 @@ def _connect_meshtastic_impl(
                             facade._startup_packet_drain_applied = True
                             startup_drain_applied_for_this_connect = True
                             startup_drain_armed_for_this_connect = True
-                            startup_drain_complete_event = (
-                                facade.get_startup_drain_complete_event()
-                            )
-                            if startup_drain_complete_event is not None:
-                                startup_drain_complete_event.clear()
+                            clear_startup_drain_complete_event = True
+                    if clear_startup_drain_complete_event:
+                        # Keep lock scope focused on shared timing state updates.
+                        startup_drain_complete_event = (
+                            facade.get_startup_drain_complete_event()
+                        )
+                        if startup_drain_complete_event is not None:
+                            startup_drain_complete_event.clear()
                     if (
                         startup_drain_armed_for_this_connect
                         and startup_drain_deadline is not None

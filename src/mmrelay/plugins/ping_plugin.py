@@ -59,6 +59,7 @@ def match_case(source: str, target: str) -> str:
 class Plugin(BasePlugin):
     plugin_name = "ping"
     is_core_plugin = True
+    _invalid_mimic_mode_warned: bool = False
 
     @property
     def description(self) -> str:
@@ -70,7 +71,7 @@ class Plugin(BasePlugin):
             return mimic_mode
 
         # Keep invalid config warnings low-noise while still surfacing operator errors.
-        if not getattr(self, "_invalid_mimic_mode_warned", False):
+        if not self._invalid_mimic_mode_warned:
             self.logger.warning(
                 "Invalid ping.mimic_mode value %r; expected boolean. Defaulting to false.",
                 mimic_mode,

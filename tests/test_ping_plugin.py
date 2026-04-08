@@ -432,6 +432,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertTrue(result)
+            mock_sleep.assert_called_once_with(1.0)
             mock_client.sendText.assert_called_once_with(text="pong", channelIndex=0)
 
         asyncio.run(run_test())

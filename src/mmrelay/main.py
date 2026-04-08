@@ -1081,12 +1081,27 @@ async def main(config: dict[str, Any]) -> None:
                         pass
                     else:
                         await asyncio.to_thread(_write_ready_file)
-                        logger.info("Relay startup complete")
-                        startup_ready_published = True
-                        if _ready_heartbeat_seconds > 0 and ready_task is None:
-                            ready_task = asyncio.create_task(
-                                _ready_heartbeat(shutdown_event)
-                            )
+                        if shutdown_event.is_set():
+                            # Avoid publishing stale readiness if shutdown raced
+                            # with ready-file creation.
+                            await asyncio.to_thread(_remove_ready_file)
+                            if not startup_ready_skipped_logged:
+                                matrix_logger.warning(
+                                    "Skipping readiness publication because shutdown was requested during startup"
+                                )
+                                startup_ready_skipped_logged = True
+                        elif sync_task.done():
+                            # Sync failed while ready-file write was in flight.
+                            # Remove stale readiness marker and let failure
+                            # handling below process the sync outcome.
+                            await asyncio.to_thread(_remove_ready_file)
+                        else:
+                            logger.info("Relay startup complete")
+                            startup_ready_published = True
+                            if _ready_heartbeat_seconds > 0 and ready_task is None:
+                                ready_task = asyncio.create_task(
+                                    _ready_heartbeat(shutdown_event)
+                                )
 
                 shutdown_task = asyncio.create_task(shutdown_event.wait())
 
