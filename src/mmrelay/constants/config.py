@@ -51,6 +51,7 @@ CONFIG_KEY_HEALTH_CHECK: Final[str] = "health_check"
 CONFIG_KEY_PACKET_ROUTING: Final[str] = "packet_routing"
 CONFIG_KEY_CHAT_PORTNUMS: Final[str] = "chat_portnums"
 CONFIG_KEY_DISABLED_PORTNUMS: Final[str] = "disabled_portnums"
+CONFIG_KEY_ENCRYPTED_ACTION: Final[str] = "encrypted_action"
 CONFIG_KEY_ENABLED: Final[str] = "enabled"
 CONFIG_KEY_HEARTBEAT_INTERVAL: Final[str] = "heartbeat_interval"
 CONFIG_KEY_CONNECT_PROBE_ENABLED: Final[str] = "connect_probe_enabled"
@@ -94,6 +95,7 @@ DEFAULT_LOG_LEVEL: Final[str] = "info"
 DEFAULT_PREFIX_ENABLED: Final[bool] = True
 DEFAULT_BROADCAST_ENABLED: Final[bool] = True
 DEFAULT_DETECTION_SENSOR: Final[bool] = True
+DEFAULT_ENCRYPTED_ACTION: Final[str] = "plugin_only"
 DEFAULT_HEALTH_CHECK_ENABLED: Final[bool] = False
 DEFAULT_HEARTBEAT_INTERVAL: Final[int] = 60
 # Default refresh cadence in seconds. Setting this to 0.0 disables periodic

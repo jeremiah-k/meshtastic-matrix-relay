@@ -151,7 +151,15 @@ meshtastic:
     chat_portnums: # Additional portnums to relay like chat
       - "RANGE_TEST_APP"
     disabled_portnums: [] # Portnums to drop entirely
+    encrypted_action: plugin_only # "plugin_only" (default) or "drop"
 ```
+
+**Encrypted packets** are handled by a dedicated policy (`encrypted_action`) separate
+from portnum overrides, because the actual application portnum is unknown when a
+packet is encrypted. The values `chat_portnums` and `disabled_portnums` apply only
+to real, observable portnums. Encrypted packets are never eligible for chat relay
+because the payload text cannot be read. The label "ENCRYPTED" appears in logs for
+observability but is not a portnum and cannot be used in override lists.
 
 **Note on `chat_portnums` and channel requirements:**
 Listing a portnum in `chat_portnums` promotes it to RELAY eligibility at the routing
@@ -197,6 +205,14 @@ Phase 2 additional assertions:
 4. `disabled_portnums` does not affect TEXT_MESSAGE_APP unless explicitly listed.
 5. `disabled_portnums` takes precedence over `chat_portnums`.
 6. Detection sensor gate still applies even with `chat_portnums` override.
+
+Encrypted packet assertions:
+
+1. Encrypted packet defaults to `plugin_only` when no `encrypted_action` is configured.
+2. Encrypted packet drops when `encrypted_action: drop` is configured.
+3. Encrypted packets never become normal Matrix chat relay regardless of config.
+4. `chat_portnums`/`disabled_portnums` do not match encrypted packets by name.
+5. Logging still uses "ENCRYPTED" as the display label for encrypted packets.
 
 Run only targeted pytest module(s) for this change set.
 

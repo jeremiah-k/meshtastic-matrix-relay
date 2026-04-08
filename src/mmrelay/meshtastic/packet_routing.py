@@ -6,9 +6,11 @@ from mmrelay.config import get_meshtastic_config_value
 from mmrelay.constants.config import (
     CONFIG_KEY_CHAT_PORTNUMS,
     CONFIG_KEY_DISABLED_PORTNUMS,
+    CONFIG_KEY_ENCRYPTED_ACTION,
     CONFIG_KEY_PACKET_ROUTING,
     CONFIG_SECTION_MESHTASTIC,
     DEFAULT_DETECTION_SENSOR,
+    DEFAULT_ENCRYPTED_ACTION,
 )
 from mmrelay.constants.formats import DETECTION_SENSOR_APP, TEXT_MESSAGE_APP
 from mmrelay.constants.messages import (
@@ -69,6 +71,10 @@ def _get_portnum_name(portnum: Any, packet: dict[str, Any] | None = None) -> str
     return f"UNKNOWN (type={type(portnum).__name__})"
 
 
+def _is_encrypted_packet(packet: dict[str, Any] | None) -> bool:
+    return bool(packet and packet.get("encrypted"))
+
+
 def _resolve_portnum_set(portnums: Any) -> frozenset[str]:
     if portnums is None:
         return frozenset()
@@ -105,6 +111,23 @@ def _get_packet_routing_overrides(
     return chat_portnums, disabled_portnums
 
 
+def _get_encrypted_action(config: dict[str, Any] | None) -> str:
+    if not isinstance(config, dict):
+        return DEFAULT_ENCRYPTED_ACTION
+    meshtastic_section = config.get(CONFIG_SECTION_MESHTASTIC, {})
+    if not isinstance(meshtastic_section, dict):
+        return DEFAULT_ENCRYPTED_ACTION
+    routing_section = meshtastic_section.get(CONFIG_KEY_PACKET_ROUTING, {})
+    if not isinstance(routing_section, dict):
+        return DEFAULT_ENCRYPTED_ACTION
+    action = routing_section.get(CONFIG_KEY_ENCRYPTED_ACTION)
+    if isinstance(action, str):
+        action = action.strip().lower()
+        if action in (PacketAction.PLUGIN_ONLY, PacketAction.DROP):
+            return action
+    return DEFAULT_ENCRYPTED_ACTION
+
+
 def classify_packet(
     portnum: Any,
     config: dict[str, Any] | None,
@@ -115,7 +138,18 @@ def classify_packet(
 
     Returns one of PacketAction.RELAY, PacketAction.PLUGIN_ONLY, or
     PacketAction.DROP.
+
+    Encrypted packets are handled by a dedicated policy (encrypted_action)
+    separate from portnum overrides, because the actual portnum is unknown.
     """
+    if _is_encrypted_packet(packet):
+        action = _get_encrypted_action(config)
+        logger.debug(
+            "Encrypted packet classified as %s via encrypted_action policy.",
+            action,
+        )
+        return action
+
     portnum_name = _get_portnum_name(portnum, packet)
 
     chat_overrides, disabled_overrides = _get_packet_routing_overrides(config)
