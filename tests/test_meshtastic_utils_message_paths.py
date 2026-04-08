@@ -13,8 +13,11 @@ from mmrelay.constants.messages import (
     PORTNUM_TEXT_MESSAGE_APP,
 )
 from mmrelay.meshtastic.packet_routing import (
+    PacketAction,
     _get_packet_routing_overrides,
+    _get_portnum_name,
     _resolve_portnum_set,
+    classify_packet,
 )
 from mmrelay.meshtastic_utils import on_meshtastic_message
 
@@ -871,3 +874,96 @@ def test_on_meshtastic_message_plugin_only_packet_with_replyId_does_not_leak_to_
     assert mock_relay is not None
     mock_relay.assert_not_called()
     plugin.handle_meshtastic_message.assert_called_once()
+
+
+def test_classify_packet_encrypted_with_disabled_override_drops(
+    reset_meshtastic_globals,
+):
+    config = _base_config_with_routing(disabled_portnums=["ENCRYPTED"])
+    packet = {"encrypted": True}
+    action = classify_packet(None, config, packet)
+    assert action == PacketAction.DROP
+
+
+def test_classify_packet_encrypted_without_override_is_plugin_only(
+    reset_meshtastic_globals,
+):
+    config = _base_config()
+    packet = {"encrypted": True}
+    action = classify_packet(None, config, packet)
+    assert action == PacketAction.PLUGIN_ONLY
+
+
+def test_classify_packet_encrypted_with_chat_override_relays(reset_meshtastic_globals):
+    config = _base_config_with_routing(chat_portnums=["ENCRYPTED"])
+    packet = {"encrypted": True, "decoded": {"text": "secret"}}
+    action = classify_packet(None, config, packet)
+    assert action == PacketAction.RELAY
+
+
+def test_classify_packet_without_packet_kwarg_still_works(reset_meshtastic_globals):
+    config = _base_config()
+    action = classify_packet(TEXT_MESSAGE_APP, config)
+    assert action == PacketAction.RELAY
+
+
+def test_on_meshtastic_message_chat_portnums_promoted_no_channel_runs_plugins(
+    reset_meshtastic_globals,
+):
+    config = _base_config_with_routing(chat_portnums=["RANGE_TEST_APP"])
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"]["portnum"] = "RANGE_TEST_APP"
+    packet["decoded"]["text"] = "range test payload"
+    packet.pop("channel", None)
+
+    plugin = MagicMock()
+    plugin.plugin_name = "observer"
+    plugin.handle_meshtastic_message.return_value = False
+
+    with _patch_message_deps(plugins=[plugin], patch_logger=False) as (
+        mock_logger,
+        mock_relay,
+    ):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_not_called()
+    plugin.handle_meshtastic_message.assert_called_once()
+
+
+def test_on_meshtastic_message_encrypted_disabled_override_drops_before_plugins(
+    reset_meshtastic_globals,
+):
+    config = _base_config_with_routing(disabled_portnums=["ENCRYPTED"])
+    _set_globals(config)
+    packet = {
+        "fromId": 123,
+        "to": BROADCAST_NUM,
+        "id": 999,
+        "encrypted": True,
+    }
+
+    plugin = MagicMock()
+    plugin.plugin_name = "observer"
+    plugin.handle_meshtastic_message.return_value = False
+
+    with _patch_message_deps(plugins=[plugin], patch_logger=False) as (
+        mock_logger,
+        mock_relay,
+    ):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_not_called()
+    plugin.handle_meshtastic_message.assert_not_called()
+
+
+def test_get_portnum_name_encrypted_with_packet():
+    result = _get_portnum_name(None, {"encrypted": True})
+    assert result == "ENCRYPTED"
+
+
+def test_get_portnum_name_none_without_packet():
+    result = _get_portnum_name(None)
+    assert result == "UNKNOWN (None)"

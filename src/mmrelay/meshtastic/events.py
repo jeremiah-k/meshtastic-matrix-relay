@@ -633,7 +633,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     # Classify packet BEFORE any Matrix relay branches so that DROP packets
     # never reach Matrix via reply/reaction paths, and PLUGIN_ONLY packets
     # cannot leak into Matrix interaction relay.
-    action = classify_packet(decoded.get("portnum"), facade.config)
+    action = classify_packet(decoded.get("portnum"), facade.config, packet)
     if action == PacketAction.DROP:
         facade.logger.debug(
             "Packet %s classified as %s; skipping plugin and Matrix relay pipelines.",
@@ -820,6 +820,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     if text:
         # Channel deduction and mapping are only relevant for RELAY packets.
         # PLUGIN_ONLY packets skip all channel logic and go straight to plugins.
+        skip_matrix_relay = False
         channel: int | None = None
         channel_mapped = False
         matrix_rooms_configured = bool(facade.matrix_rooms)
@@ -835,32 +836,36 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 ):
                     channel = DEFAULT_CHANNEL_VALUE
                 else:
+                    portnum_name = _get_portnum_name(decoded.get("portnum"), packet)
                     facade.logger.debug(
-                        f"Unknown portnum {decoded.get('portnum')}, cannot determine channel"
+                        "Packet %s promoted to relay via config, but no channel "
+                        "could be determined; plugins will run, Matrix relay skipped.",
+                        portnum_name,
                     )
-                    return
+                    skip_matrix_relay = True
 
-            try:
-                channel = int(channel)
-            except (ValueError, TypeError):
-                facade.logger.warning(
-                    f"Invalid channel value {channel!r} (type: {type(channel).__name__}), "
-                    f"defaulting to {DEFAULT_CHANNEL_VALUE}"
-                )
-                channel = DEFAULT_CHANNEL_VALUE
-
-            for room in iterable_rooms:
-                if not isinstance(room, dict):
-                    continue
-                room_channel = facade._normalize_room_channel(room)
-                if room_channel is None:
-                    continue
-                if room_channel == channel:
-                    channel_mapped = True
-                    facade.logger.debug(
-                        f"Channel {channel} mapped to Matrix room {room.get('id', 'unknown')}"
+            if not skip_matrix_relay:
+                try:
+                    channel = int(channel)  # type: ignore[arg-type]
+                except (ValueError, TypeError):
+                    facade.logger.warning(
+                        f"Invalid channel value {channel!r} (type: {type(channel).__name__}), "
+                        f"defaulting to {DEFAULT_CHANNEL_VALUE}"
                     )
-                    break
+                    channel = DEFAULT_CHANNEL_VALUE
+
+                for room in iterable_rooms:
+                    if not isinstance(room, dict):
+                        continue
+                    room_channel = facade._normalize_room_channel(room)
+                    if room_channel is None:
+                        continue
+                    if room_channel == channel:
+                        channel_mapped = True
+                        facade.logger.debug(
+                            f"Channel {channel} mapped to Matrix room {room.get('id', 'unknown')}"
+                        )
+                        break
 
         # Resolve sender names (needed for both plugin delivery and Matrix relay)
         longname = facade._get_name_or_none(facade.get_longname, sender)  # type: ignore[assignment]
@@ -929,7 +934,10 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         if action == PacketAction.PLUGIN_ONLY:
             return
 
-        # Only RELAY packets reach here
+        if skip_matrix_relay:
+            return
+
+        # Only RELAY packets with valid channels reach here
         if not matrix_rooms_configured:
             facade.logger.warning(
                 f"matrix_rooms is empty - cannot relay message from {longname}. "

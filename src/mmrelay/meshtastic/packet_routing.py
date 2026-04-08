@@ -105,14 +105,18 @@ def _get_packet_routing_overrides(
     return chat_portnums, disabled_portnums
 
 
-def classify_packet(portnum: Any, config: dict[str, Any] | None) -> str:
+def classify_packet(
+    portnum: Any,
+    config: dict[str, Any] | None,
+    packet: dict[str, Any] | None = None,
+) -> str:
     """
     Classify an inbound packet for chat relay routing.
 
     Returns one of PacketAction.RELAY, PacketAction.PLUGIN_ONLY, or
     PacketAction.DROP.
     """
-    portnum_name = _get_portnum_name(portnum)
+    portnum_name = _get_portnum_name(portnum, packet)
 
     chat_overrides, disabled_overrides = _get_packet_routing_overrides(config)
 
