@@ -8,12 +8,10 @@ from meshtastic.mesh_interface import BROADCAST_NUM
 import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.config import CONFIG_KEY_MESHNET_NAME
 from mmrelay.constants.formats import (
-    DETECTION_SENSOR_APP,
     EMOJI_FLAG_VALUE,
     TEXT_MESSAGE_APP,
 )
 from mmrelay.constants.messages import (
-    DEFAULT_CHANNEL_VALUE,
     PORTNUM_DETECTION_SENSOR_APP,
     PORTNUM_TEXT_MESSAGE_APP,
 )
@@ -946,7 +944,7 @@ def test_on_meshtastic_message_chat_portnums_promoted_no_channel_runs_plugins(
     plugin.handle_meshtastic_message.return_value = False
 
     with _patch_message_deps(plugins=[plugin], patch_logger=False) as (
-        mock_logger,
+        _mock_logger,
         mock_relay,
     ):
         on_meshtastic_message(packet, _make_interface())
@@ -973,7 +971,7 @@ def test_on_meshtastic_message_encrypted_action_drop_drops_before_plugins(
     plugin.handle_meshtastic_message.return_value = False
 
     with _patch_message_deps(plugins=[plugin], patch_logger=False) as (
-        mock_logger,
+        _mock_logger,
         mock_relay,
     ):
         on_meshtastic_message(packet, _make_interface())
@@ -1000,7 +998,7 @@ def test_on_meshtastic_message_encrypted_default_runs_plugins(
     plugin.handle_meshtastic_message.return_value = False
 
     with _patch_message_deps(plugins=[plugin], patch_logger=False) as (
-        mock_logger,
+        _mock_logger,
         mock_relay,
     ):
         on_meshtastic_message(packet, _make_interface())
@@ -1028,7 +1026,7 @@ def test_on_meshtastic_message_text_app_malformed_channel_defaults_to_zero(
     packet = _base_packet()
     packet["channel"] = "abc"
 
-    with _patch_message_deps(patch_logger=False) as (mock_logger, mock_relay):
+    with _patch_message_deps(patch_logger=False) as (_mock_logger, mock_relay):
         on_meshtastic_message(packet, _make_interface())
 
     assert mock_relay is not None

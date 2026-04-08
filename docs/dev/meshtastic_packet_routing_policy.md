@@ -154,8 +154,8 @@ meshtastic:
     encrypted_action: plugin_only # "plugin_only" (default) or "drop"
 ```
 
-**Encrypted packets** are handled by a dedicated policy (`encrypted_action`) separate
-from portnum overrides, because the actual application portnum is unknown when a
+**Encrypted packets** are handled according to the `encrypted_action` configuration option,
+separate from portnum overrides, because the actual application portnum is unknown when a
 packet is encrypted. The values `chat_portnums` and `disabled_portnums` apply only
 to real, observable portnums. Encrypted packets are never eligible for chat relay
 because the payload text cannot be read. The label "ENCRYPTED" appears in logs for

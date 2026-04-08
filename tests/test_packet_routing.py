@@ -251,7 +251,7 @@ class TestResolvePortnumSet:
 
 class TestGetPacketRoutingOverrides:
     def test_non_dict_config(self):
-        chat, disabled = _get_packet_routing_overrides("not a dict")
+        chat, disabled = _get_packet_routing_overrides("not a dict")  # type: ignore[arg-type]
         assert chat == frozenset()
         assert disabled == frozenset()
 
@@ -289,7 +289,7 @@ class TestGetPacketRoutingOverrides:
 
 class TestGetEncryptedAction:
     def test_non_dict_config_returns_default(self):
-        result = _get_encrypted_action("not_a_dict")
+        result = _get_encrypted_action("not_a_dict")  # type: ignore[arg-type]
         assert result == DEFAULT_ENCRYPTED_ACTION
 
     def test_non_dict_meshtastic_section_returns_default(self):
@@ -405,7 +405,7 @@ class TestGetEncryptedAction:
             pr._warned_packet_routing_issues.update(original)
 
 
-class TestClassifyPacketDetectionSensor:
+class TestClassifyPacket:
     def test_detection_sensor_enabled_without_chat_overrides(self):
         from mmrelay.constants.messages import PORTNUM_DETECTION_SENSOR_APP
 

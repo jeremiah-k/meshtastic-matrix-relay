@@ -123,7 +123,7 @@ meshtastic:
 
 - `chat_portnums` and `disabled_portnums` apply only to observable portnums.
 - `ENCRYPTED` is a log/display label, not a valid override value.
-- `chat_portnums` only makes a packet relay-eligible. Matrix delivery still needs a usable channel. If channel info is missing, plugins still run and only the Matrix relay leg is skipped.
+- `chat_portnums` only makes a packet relay-eligible; Matrix delivery still requires a usable channel. If channel info is missing, plugins still run but the Matrix relay leg is skipped.
 
 For implementation details, rationale, and edge cases, see
 [`docs/dev/meshtastic_packet_routing_policy.md`](dev/meshtastic_packet_routing_policy.md).

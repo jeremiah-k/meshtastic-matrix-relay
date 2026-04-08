@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from typing import Any, cast
 
 from meshtastic.protobuf import portnums_pb2
@@ -37,14 +38,14 @@ logger = get_logger("Meshtastic")
 _warned_packet_routing_issues: set[str] = set()
 
 
-def _warn_once(key: str, message: str, *args: Any) -> None:
+def _warn_once(key: str, message: str, *args: object) -> None:
     if key in _warned_packet_routing_issues:
         return
     _warned_packet_routing_issues.add(key)
     logger.warning(message, *args)
 
 
-def _is_text_message_portnum(portnum: Any) -> bool:
+def _is_text_message_portnum(portnum: object) -> bool:
     return (
         portnum
         in (
@@ -55,7 +56,9 @@ def _is_text_message_portnum(portnum: Any) -> bool:
     )
 
 
-def _get_portnum_name(portnum: Any, packet: dict[str, Any] | None = None) -> str:
+def _get_portnum_name(
+    portnum: object, packet: Mapping[str, object] | None = None
+) -> str:
     if portnum is None:
         if packet and packet.get("encrypted"):
             return "ENCRYPTED"
@@ -78,12 +81,12 @@ def _get_portnum_name(portnum: Any, packet: dict[str, Any] | None = None) -> str
     return f"UNKNOWN (type={type(portnum).__name__})"
 
 
-def _is_encrypted_packet(packet: dict[str, Any] | None) -> bool:
+def _is_encrypted_packet(packet: Mapping[str, object] | None) -> bool:
     return bool(packet and packet.get("encrypted"))
 
 
 def _resolve_portnum_set(
-    portnums: Any,
+    portnums: object,
     setting_name: str = "portnums",
 ) -> frozenset[str]:
     if portnums is None:
@@ -102,12 +105,13 @@ def _resolve_portnum_set(
         resolved: set[str] = set()
         dropped_invalid_value = False
         for entry in portnums:
-            if isinstance(entry, str):
-                entry = entry.strip()
-                if not entry:
+            item: object = entry
+            if isinstance(item, str):
+                item = item.strip()
+                if not item:
                     dropped_invalid_value = True
                     continue
-            name = _get_portnum_name(entry)
+            name = _get_portnum_name(item)
             if not name.startswith("UNKNOWN"):
                 resolved.add(name)
             else:
@@ -131,15 +135,22 @@ def _resolve_portnum_set(
 
 
 def _get_packet_routing_overrides(
-    config: dict[str, Any] | None,
+    config: Mapping[str, object] | None,
 ) -> tuple[frozenset[str], frozenset[str]]:
-    if not isinstance(config, dict):
+    if not isinstance(config, Mapping):
         return frozenset(), frozenset()
     meshtastic_section = config.get(CONFIG_SECTION_MESHTASTIC, {})
-    if not isinstance(meshtastic_section, dict):
+    if not isinstance(meshtastic_section, Mapping):
         return frozenset(), frozenset()
     routing_section = meshtastic_section.get(CONFIG_KEY_PACKET_ROUTING, {})
     if not isinstance(routing_section, dict):
+        _warn_once(
+            "packet_routing:not_a_mapping",
+            "Ignoring meshtastic.%s=%r (type=%s); expected a mapping.",
+            CONFIG_KEY_PACKET_ROUTING,
+            routing_section,
+            type(routing_section).__name__,
+        )
         return frozenset(), frozenset()
     chat_portnums = _resolve_portnum_set(
         routing_section.get(CONFIG_KEY_CHAT_PORTNUMS),
@@ -152,14 +163,21 @@ def _get_packet_routing_overrides(
     return chat_portnums, disabled_portnums
 
 
-def _get_encrypted_action(config: dict[str, Any] | None) -> str:
-    if not isinstance(config, dict):
+def _get_encrypted_action(config: Mapping[str, object] | None) -> str:
+    if not isinstance(config, Mapping):
         return DEFAULT_ENCRYPTED_ACTION
     meshtastic_section = config.get(CONFIG_SECTION_MESHTASTIC, {})
-    if not isinstance(meshtastic_section, dict):
+    if not isinstance(meshtastic_section, Mapping):
         return DEFAULT_ENCRYPTED_ACTION
     routing_section = meshtastic_section.get(CONFIG_KEY_PACKET_ROUTING, {})
     if not isinstance(routing_section, dict):
+        _warn_once(
+            "encrypted_action:packet_routing_not_a_mapping",
+            "Ignoring meshtastic.%s=%r (type=%s); expected a mapping.",
+            CONFIG_KEY_PACKET_ROUTING,
+            routing_section,
+            type(routing_section).__name__,
+        )
         return DEFAULT_ENCRYPTED_ACTION
     action = routing_section.get(CONFIG_KEY_ENCRYPTED_ACTION)
     if action is None:
@@ -191,9 +209,9 @@ def _get_encrypted_action(config: dict[str, Any] | None) -> str:
 
 
 def classify_packet(
-    portnum: Any,
-    config: dict[str, Any] | None,
-    packet: dict[str, Any] | None = None,
+    portnum: object,
+    config: Mapping[str, object] | None,
+    packet: Mapping[str, object] | None = None,
 ) -> str:
     """
     Classify an inbound packet for chat relay routing.

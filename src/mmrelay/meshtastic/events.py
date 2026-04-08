@@ -873,18 +873,19 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                         )
                         skip_matrix_relay = True
 
-                for room in iterable_rooms:
-                    if not isinstance(room, dict):
-                        continue
-                    room_channel = facade._normalize_room_channel(room)
-                    if room_channel is None:
-                        continue
-                    if room_channel == channel:
-                        channel_mapped = True
-                        facade.logger.debug(
-                            f"Channel {channel} mapped to Matrix room {room.get('id', 'unknown')}"
-                        )
-                        break
+                if not skip_matrix_relay:
+                    for room in iterable_rooms:
+                        if not isinstance(room, dict):
+                            continue
+                        room_channel = facade._normalize_room_channel(room)
+                        if room_channel is None:
+                            continue
+                        if room_channel == channel:
+                            channel_mapped = True
+                            facade.logger.debug(
+                                f"Channel {channel} mapped to Matrix room {room.get('id', 'unknown')}"
+                            )
+                            break
 
         # Resolve sender names (needed for both plugin delivery and Matrix relay)
         longname = facade._get_name_or_none(facade.get_longname, sender)  # type: ignore[assignment]
