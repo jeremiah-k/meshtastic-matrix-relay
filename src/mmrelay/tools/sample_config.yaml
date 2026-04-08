@@ -80,20 +80,14 @@ meshtastic:
   #detection_sensor: true # Must be set to true to forward messages of Meshtastic's detection sensor module
 
   # Optional packet-routing overrides
-  # Defaults are usually fine:
-  # - only TEXT_MESSAGE_APP relays to Matrix chat rooms
-  # - other packet types go to plugins only
-  # - encrypted packets use encrypted_action because their portnum is unknown
   #packet_routing:
   #  chat_portnums:
-  #    - "RANGE_TEST_APP"          # Additional portnums to treat like chat
+  #    - "RANGE_TEST_APP"          # Additional portnums to treat as relay-eligible
   #  disabled_portnums: []         # Drop completely: no plugins, no Matrix relay
   #  encrypted_action: plugin_only # "plugin_only" (default) or "drop"
-  #
-  # Note: chat_portnums only makes a packet relay-eligible.
-  # Matrix delivery still requires a usable channel; otherwise plugins still run
-  # and only the Matrix relay leg is skipped.
-  # See docs/ADVANCED_CONFIGURATION.md for examples and behavior details.
+  # Note: relay-eligible packets still need a usable channel for Matrix delivery.
+  # If channel is missing, plugins still run and only Matrix relay is skipped.
+  # See docs/ADVANCED_CONFIGURATION.md for behavior details.
   #message_delay: 2.2 # Delay in seconds between messages sent to mesh (minimum: 2.0 due to firmware)
   #timeout: 30 # Timeout in seconds for Meshtastic operations (default: 30, library default: 300)
   # Seconds between refreshes of cached long/short node-name tables from Meshtastic NodeDB.

@@ -22,7 +22,6 @@ from mmrelay.log_utils import get_logger
 __all__ = [
     "CHAT_ELIGIBLE_PORTNUMS",
     "PacketAction",
-    "_is_text_message_portnum",
     "classify_packet",
 ]
 
@@ -35,6 +34,14 @@ class PacketAction:
 
 CHAT_ELIGIBLE_PORTNUMS = frozenset({TEXT_MESSAGE_APP})
 logger = get_logger("Meshtastic")
+_warned_packet_routing_issues: set[str] = set()
+
+
+def _warn_once(key: str, message: str, *args: Any) -> None:
+    if key in _warned_packet_routing_issues:
+        return
+    _warned_packet_routing_issues.add(key)
+    logger.warning(message, *args)
 
 
 def _is_text_message_portnum(portnum: Any) -> bool:
@@ -75,21 +82,46 @@ def _is_encrypted_packet(packet: dict[str, Any] | None) -> bool:
     return bool(packet and packet.get("encrypted"))
 
 
-def _resolve_portnum_set(portnums: Any) -> frozenset[str]:
+def _resolve_portnum_set(
+    portnums: Any,
+    setting_name: str = "portnums",
+) -> frozenset[str]:
     if portnums is None:
         return frozenset()
     if isinstance(portnums, str):
         stripped = portnums.strip()
         if not stripped:
+            _warn_once(
+                f"{setting_name}:empty_string",
+                "Ignoring empty string in meshtastic.packet_routing.%s.",
+                setting_name,
+            )
             return frozenset()
         return frozenset({stripped})
     if isinstance(portnums, (list, tuple, set, frozenset)):
         resolved: set[str] = set()
+        dropped_invalid_value = False
         for entry in portnums:
             name = _get_portnum_name(entry)
             if not name.startswith("UNKNOWN"):
                 resolved.add(name)
+            else:
+                dropped_invalid_value = True
+        if dropped_invalid_value:
+            _warn_once(
+                f"{setting_name}:invalid_entries",
+                "Ignoring unsupported values in meshtastic.packet_routing.%s; "
+                "use valid portnum names or numeric PortNum values.",
+                setting_name,
+            )
         return frozenset(resolved)
+    _warn_once(
+        f"{setting_name}:invalid_type",
+        "Ignoring meshtastic.packet_routing.%s with unsupported type %s; "
+        "expected a string or list-like value.",
+        setting_name,
+        type(portnums).__name__,
+    )
     return frozenset()
 
 
@@ -104,9 +136,13 @@ def _get_packet_routing_overrides(
     routing_section = meshtastic_section.get(CONFIG_KEY_PACKET_ROUTING, {})
     if not isinstance(routing_section, dict):
         return frozenset(), frozenset()
-    chat_portnums = _resolve_portnum_set(routing_section.get(CONFIG_KEY_CHAT_PORTNUMS))
+    chat_portnums = _resolve_portnum_set(
+        routing_section.get(CONFIG_KEY_CHAT_PORTNUMS),
+        CONFIG_KEY_CHAT_PORTNUMS,
+    )
     disabled_portnums = _resolve_portnum_set(
-        routing_section.get(CONFIG_KEY_DISABLED_PORTNUMS)
+        routing_section.get(CONFIG_KEY_DISABLED_PORTNUMS),
+        CONFIG_KEY_DISABLED_PORTNUMS,
     )
     return chat_portnums, disabled_portnums
 
@@ -121,10 +157,31 @@ def _get_encrypted_action(config: dict[str, Any] | None) -> str:
     if not isinstance(routing_section, dict):
         return DEFAULT_ENCRYPTED_ACTION
     action = routing_section.get(CONFIG_KEY_ENCRYPTED_ACTION)
+    if action is None:
+        return DEFAULT_ENCRYPTED_ACTION
     if isinstance(action, str):
         action = action.strip().lower()
         if action in (PacketAction.PLUGIN_ONLY, PacketAction.DROP):
             return action
+        _warn_once(
+            "encrypted_action:invalid_value",
+            "Invalid meshtastic.packet_routing.%s=%r; using default %r. "
+            "Valid values: %r, %r.",
+            CONFIG_KEY_ENCRYPTED_ACTION,
+            action,
+            DEFAULT_ENCRYPTED_ACTION,
+            PacketAction.PLUGIN_ONLY,
+            PacketAction.DROP,
+        )
+        return DEFAULT_ENCRYPTED_ACTION
+    _warn_once(
+        "encrypted_action:invalid_type",
+        "Ignoring meshtastic.packet_routing.%s with unsupported type %s; "
+        "using default %r.",
+        CONFIG_KEY_ENCRYPTED_ACTION,
+        type(action).__name__,
+        DEFAULT_ENCRYPTED_ACTION,
+    )
     return DEFAULT_ENCRYPTED_ACTION
 
 

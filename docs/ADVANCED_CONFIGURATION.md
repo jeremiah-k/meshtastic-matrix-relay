@@ -101,7 +101,7 @@ This ensures your relay keeps working even with configuration mistakes.
 Use `meshtastic.packet_routing` to adjust inbound packet policy without changing
 core relay/plugin architecture.
 
-### Default Behavior
+### Routing Defaults
 
 - `TEXT_MESSAGE_APP` packets are relay-eligible for Matrix chat.
 - Non-chat packet types go to plugins only.
@@ -155,7 +155,7 @@ This feature allows enabling debug logging for specific external libraries to he
 
 > **Note**: This feature is subject to change while we refine it based on user feedback and testing.
 
-### Configuration
+### Debug Logging Configuration
 
 Add to your `config.yaml`:
 
