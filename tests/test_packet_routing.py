@@ -1,12 +1,4 @@
-import pytest
-
 from mmrelay.constants.config import (
-    CONFIG_KEY_CHAT_PORTNUMS,
-    CONFIG_KEY_DISABLED_PORTNUMS,
-    CONFIG_KEY_ENCRYPTED_ACTION,
-    CONFIG_KEY_PACKET_ROUTING,
-    CONFIG_SECTION_MESHTASTIC,
-    DEFAULT_DETECTION_SENSOR,
     DEFAULT_ENCRYPTED_ACTION,
 )
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
@@ -31,7 +23,6 @@ class TestWarnOnce:
         original = pr._warned_packet_routing_issues.copy()
         try:
             pr._warned_packet_routing_issues.clear()
-            messages = []
             from unittest.mock import patch
 
             with patch.object(pr.logger, "warning") as mock_warn:
@@ -392,7 +383,6 @@ class TestGetEncryptedAction:
 
 class TestClassifyPacketDetectionSensor:
     def test_detection_sensor_enabled_without_chat_overrides(self):
-        from mmrelay.constants.formats import DETECTION_SENSOR_APP
         from mmrelay.constants.messages import PORTNUM_DETECTION_SENSOR_APP
 
         config = {
