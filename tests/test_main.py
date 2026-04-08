@@ -607,6 +607,111 @@ class TestMain(unittest.TestCase):
         )
         mock_stop_queue.assert_called_once()
 
+    @patch("mmrelay.main.initialize_database")
+    @patch("mmrelay.main.load_plugins")
+    @patch("mmrelay.main.start_message_queue")
+    @patch("mmrelay.main.connect_meshtastic")
+    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
+    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+    @patch(
+        "mmrelay.main.meshtastic_utils.refresh_node_name_tables", new_callable=AsyncMock
+    )
+    @patch("mmrelay.main.stop_message_queue")
+    def test_main_publishes_ready_after_sync_start_and_drain_completion(
+        self,
+        mock_stop_queue,
+        mock_refresh_node_names,
+        mock_join_room,
+        mock_connect_matrix,
+        mock_connect_meshtastic,
+        mock_start_queue,
+        mock_load_plugins,
+        mock_init_db,
+    ):
+        """
+        Ready publication should wait for sync startup and startup-drain completion.
+        """
+        shutdown_event = _OnePassEvent()
+        startup_drain_complete_event = threading.Event()
+        readiness_calls: list[str] = []
+        log_sequence: list[tuple[str, str]] = []
+
+        mock_matrix_client = AsyncMock()
+        mock_matrix_client.add_event_callback = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+
+        async def _sync_forever_wait(*_args: Any, **_kwargs: Any) -> None:
+            await asyncio.sleep(0)
+            assert not readiness_calls
+            await shutdown_event.wait()
+
+        mock_matrix_client.sync_forever = AsyncMock(side_effect=_sync_forever_wait)
+        mock_connect_matrix.return_value = mock_matrix_client
+        mock_connect_meshtastic.return_value = MagicMock()
+
+        async def _release_startup_drain() -> None:
+            await asyncio.sleep(0.01)
+            startup_drain_complete_event.set()
+
+        def _write_ready_side_effect() -> None:
+            readiness_calls.append("ready")
+            shutdown_event.set()
+
+        def _capture_main_info(message: str, *args: Any, **_kwargs: Any) -> None:
+            rendered = message % args if args else message
+            log_sequence.append(("main", rendered))
+
+        def _capture_matrix_info(message: str, *args: Any, **_kwargs: Any) -> None:
+            rendered = message % args if args else message
+            log_sequence.append(("matrix", rendered))
+
+        async def _run_main() -> None:
+            asyncio.create_task(_release_startup_drain())
+            await main(self.mock_config)
+
+        with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_make_patched_get_running_loop(),
+            ),
+            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
+            patch("mmrelay.main.asyncio.Event", return_value=shutdown_event),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                new_callable=AsyncMock,
+            ) as mock_check_conn,
+            patch(
+                "mmrelay.main.meshtastic_utils._relay_startup_drain_complete_event",
+                startup_drain_complete_event,
+            ),
+            patch(
+                "mmrelay.main._write_ready_file",
+                side_effect=_write_ready_side_effect,
+            ) as mock_write_ready,
+            patch("mmrelay.main._ready_heartbeat_seconds", 0),
+            patch("mmrelay.main.logger") as mock_main_logger,
+            patch("mmrelay.main.matrix_logger") as mock_matrix_logger,
+            patch("mmrelay.main.shutdown_plugins"),
+        ):
+            mock_queue = MagicMock()
+            mock_queue.ensure_processor_started = MagicMock()
+            mock_get_queue.return_value = mock_queue
+            mock_check_conn.return_value = True
+            mock_main_logger.info.side_effect = _capture_main_info
+            mock_matrix_logger.info.side_effect = _capture_matrix_info
+
+            asyncio.run(_run_main())
+
+        mock_write_ready.assert_called_once()
+        self.assertEqual(readiness_calls, ["ready"])
+        self.assertIn(("matrix", "Starting Matrix sync loop"), log_sequence)
+        self.assertIn(("main", "Relay startup complete"), log_sequence)
+        sync_start_index = log_sequence.index(("matrix", "Starting Matrix sync loop"))
+        ready_index = log_sequence.index(("main", "Relay startup complete"))
+        self.assertLess(sync_start_index, ready_index)
+        mock_stop_queue.assert_called_once()
+
     def test_main_with_message_map_wipe(self):
         """
         Test that the message map wipe function is called when the configuration enables wiping on restart.

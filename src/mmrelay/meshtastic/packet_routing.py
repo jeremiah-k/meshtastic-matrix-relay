@@ -300,12 +300,6 @@ def classify_packet(
         if detection_sensor_enabled:
             return PacketAction.RELAY
 
-        logger.debug(
-            "Packet %s classified as %s; skipping Matrix chat relay because "
-            "meshtastic.detection_sensor is disabled.",
-            portnum_name,
-            PacketAction.PLUGIN_ONLY,
-        )
         return PacketAction.PLUGIN_ONLY
 
     if is_text_message:

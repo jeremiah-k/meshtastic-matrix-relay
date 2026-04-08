@@ -194,6 +194,9 @@ _relay_rx_time_clock_skew_lock = threading.Lock()
 _relay_startup_drain_deadline_monotonic_secs: float | None = None
 # Timer used to decouple startup-drain expiry from packet arrival.
 _relay_startup_drain_expiry_timer: threading.Timer | None = None
+# Signals whether startup drain has completed for readiness publication.
+_relay_startup_drain_complete_event = threading.Event()
+_relay_startup_drain_complete_event.set()
 # Only apply startup drain on the first successful process-lifetime connect.
 _startup_packet_drain_applied = False
 # On reconnects, allow exactly one bounded pre-start skew bootstrap packet

@@ -221,6 +221,7 @@ def _rollback_connect_attempt_state(
                 startup_drain_timer_to_cancel = facade._relay_startup_drain_expiry_timer
                 facade._relay_startup_drain_expiry_timer = None
                 facade._relay_startup_drain_deadline_monotonic_secs = None
+                facade._relay_startup_drain_complete_event.set()
                 if startup_drain_applied_for_this_connect:
                     facade._startup_packet_drain_applied = False
             if reconnect_bootstrap_armed_for_this_connect:
@@ -1100,6 +1101,7 @@ def _connect_meshtastic_impl(
                                 facade._relay_connection_started_monotonic_secs
                                 + facade.RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS
                             )
+                            facade._relay_startup_drain_complete_event.set()
                             reconnect_bootstrap_armed_for_this_connect = True
                             timing_mode = "reconnect"
                         facade.logger.debug(
@@ -1210,6 +1212,7 @@ def _connect_meshtastic_impl(
                             facade._startup_packet_drain_applied = True
                             startup_drain_applied_for_this_connect = True
                             startup_drain_armed_for_this_connect = True
+                            facade._relay_startup_drain_complete_event.clear()
                     if (
                         startup_drain_armed_for_this_connect
                         and startup_drain_deadline is not None
