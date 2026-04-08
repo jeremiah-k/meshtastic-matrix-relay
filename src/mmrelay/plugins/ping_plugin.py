@@ -112,7 +112,7 @@ class Plugin(BasePlugin):
 
         meshtastic_client = await asyncio.to_thread(connect_meshtastic)
 
-        toId = packet.get("to")
+        to_id = packet.get("to")
         if not meshtastic_client:
             self.logger.warning("Meshtastic client unavailable; skipping ping")
             return True
@@ -122,9 +122,9 @@ class Plugin(BasePlugin):
 
         my_id = meshtastic_client.myInfo.my_node_num
 
-        if toId == my_id:
+        if to_id == my_id:
             is_direct_message = True
-        elif toId == BROADCAST_NUM:
+        elif to_id == BROADCAST_NUM:
             is_direct_message = False
         else:
             is_direct_message = False

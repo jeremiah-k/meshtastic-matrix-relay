@@ -2486,6 +2486,7 @@ database:
     wipe_on_restart: false
 logging:
   level: debug
+  log_to_file: true
 EOF_CONFIG
 
 # MMRelay B - Connects to Mesh B
@@ -2526,6 +2527,7 @@ database:
     wipe_on_restart: false
 logging:
   level: debug
+  log_to_file: true
 EOF_CONFIG
 
 # =============================================================================

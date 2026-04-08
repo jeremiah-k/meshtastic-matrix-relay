@@ -231,7 +231,9 @@ def _rollback_connect_attempt_state(
                 )
     if mark_startup_drain_complete:
         # Keep lock scope focused on state mutation; event signaling is non-blocking.
-        facade._relay_startup_drain_complete_event.set()
+        startup_drain_complete_event = facade.get_startup_drain_complete_event()
+        if startup_drain_complete_event is not None:
+            startup_drain_complete_event.set()
     if startup_drain_timer_to_cancel is not None:
         with contextlib.suppress(AttributeError, RuntimeError, TypeError):
             startup_drain_timer_to_cancel.cancel()
@@ -1119,7 +1121,11 @@ def _connect_meshtastic_impl(
                         )
                 if signal_startup_drain_complete_for_this_connect:
                     # Signal completion after clock-skew state updates are committed.
-                    facade._relay_startup_drain_complete_event.set()
+                    startup_drain_complete_event = (
+                        facade.get_startup_drain_complete_event()
+                    )
+                    if startup_drain_complete_event is not None:
+                        startup_drain_complete_event.set()
 
                 # Publish the active client only after per-connection timing state
                 # has been reset, so callbacks cannot observe stale skew windows.
@@ -1220,7 +1226,11 @@ def _connect_meshtastic_impl(
                             facade._startup_packet_drain_applied = True
                             startup_drain_applied_for_this_connect = True
                             startup_drain_armed_for_this_connect = True
-                            facade._relay_startup_drain_complete_event.clear()
+                            startup_drain_complete_event = (
+                                facade.get_startup_drain_complete_event()
+                            )
+                            if startup_drain_complete_event is not None:
+                                startup_drain_complete_event.clear()
                     if (
                         startup_drain_armed_for_this_connect
                         and startup_drain_deadline is not None

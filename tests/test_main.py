@@ -748,6 +748,8 @@ class TestMain(unittest.TestCase):
         shutdown_event = _OnePassEvent()
         startup_drain_complete_event = threading.Event()
         readiness_calls: list[str] = []
+        shutdown_backstop_fired = False
+        sync_failure_logged = False
 
         mock_matrix_client = AsyncMock()
         mock_matrix_client.add_event_callback = MagicMock()
@@ -761,7 +763,14 @@ class TestMain(unittest.TestCase):
         mock_connect_meshtastic.return_value = MagicMock()
 
         async def _request_shutdown() -> None:
-            await asyncio.sleep(0.2)
+            nonlocal shutdown_backstop_fired
+            await asyncio.sleep(1.0)
+            shutdown_backstop_fired = True
+            shutdown_event.set()
+
+        def _capture_sync_failure(*_args: Any, **_kwargs: Any) -> None:
+            nonlocal sync_failure_logged
+            sync_failure_logged = True
             shutdown_event.set()
 
         def _write_ready_side_effect() -> None:
@@ -809,6 +818,7 @@ class TestMain(unittest.TestCase):
             mock_queue.ensure_processor_started = MagicMock()
             mock_get_queue.return_value = mock_queue
             mock_check_conn.return_value = True
+            mock_matrix_logger.exception.side_effect = _capture_sync_failure
 
             asyncio.run(_run_main())
 
@@ -820,6 +830,8 @@ class TestMain(unittest.TestCase):
                 for call in mock_matrix_logger.exception.call_args_list
             )
         )
+        self.assertTrue(sync_failure_logged)
+        self.assertFalse(shutdown_backstop_fired)
         mock_stop_queue.assert_called_once()
 
     def test_main_with_message_map_wipe(self):

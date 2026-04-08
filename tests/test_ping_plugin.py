@@ -106,7 +106,7 @@ class TestPingPlugin(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -132,7 +132,7 @@ class TestPingPlugin(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -160,7 +160,7 @@ class TestPingPlugin(unittest.TestCase):
             "to": 123456789,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -168,6 +168,7 @@ class TestPingPlugin(unittest.TestCase):
             self.plugin.is_channel_enabled.assert_called_once_with(
                 1, is_direct_message=True
             )
+            mock_sleep.assert_called_once_with(1.0)
             mock_client.sendText.assert_called_once_with(
                 text="pong", destinationId="!12345678"
             )
@@ -188,11 +189,12 @@ class TestPingPlugin(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertTrue(result)
+            mock_sleep.assert_called_once_with(1.0)
             mock_client.sendText.assert_called_once_with(text="PONG", channelIndex=0)
 
         asyncio.run(run_test())
@@ -210,7 +212,7 @@ class TestPingPlugin(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -232,7 +234,7 @@ class TestPingPlugin(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -254,7 +256,7 @@ class TestPingPlugin(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -276,7 +278,7 @@ class TestPingPlugin(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -300,7 +302,7 @@ class TestPingPlugin(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -323,7 +325,7 @@ class TestPingPlugin(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -346,7 +348,7 @@ class TestPingPlugin(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -368,7 +370,7 @@ class TestPingPlugin(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -391,7 +393,7 @@ class TestPingPlugin(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -423,7 +425,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -446,11 +448,12 @@ class TestPingPluginMimicMode(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertTrue(result)
+            mock_sleep.assert_called_once_with(1.0)
             mock_client.sendText.assert_called_once_with(text="PONG", channelIndex=0)
 
         asyncio.run(run_test())
@@ -469,11 +472,12 @@ class TestPingPluginMimicMode(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertTrue(result)
+            mock_sleep.assert_called_once_with(1.0)
             mock_client.sendText.assert_called_once_with(text="Pong", channelIndex=0)
 
         asyncio.run(run_test())
@@ -492,11 +496,12 @@ class TestPingPluginMimicMode(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertTrue(result)
+            mock_sleep.assert_called_once_with(1.0)
             mock_client.sendText.assert_called_once_with(text="!pong!", channelIndex=0)
 
         asyncio.run(run_test())
@@ -515,11 +520,12 @@ class TestPingPluginMimicMode(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertTrue(result)
+            mock_sleep.assert_called_once_with(1.0)
             mock_client.sendText.assert_called_once_with(text="Pong...", channelIndex=0)
 
         asyncio.run(run_test())
@@ -538,11 +544,12 @@ class TestPingPluginMimicMode(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertTrue(result)
+            mock_sleep.assert_called_once_with(1.0)
             mock_client.sendText.assert_called_once_with(text="PoNg!?!", channelIndex=0)
 
         asyncio.run(run_test())
@@ -560,7 +567,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -575,7 +582,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
         mock_client.myInfo.my_node_num = 123456789
         mock_connect.return_value = mock_client
 
-        async def run_test():
+        async def run_test() -> None:
             for message in (
                 "please ping",
                 "can you ping?",
@@ -612,7 +619,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
             "to": 123456789,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -620,6 +627,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
             self.plugin.is_channel_enabled.assert_called_once_with(
                 1, is_direct_message=True
             )
+            mock_sleep.assert_called_once_with(1.0)
             mock_client.sendText.assert_called_once_with(
                 text="pong", destinationId="!12345678"
             )
@@ -638,7 +646,7 @@ class TestPingPluginMatrixHandling(unittest.TestCase):
         room = MagicMock()
         event = MagicMock()
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_room_message(room, event, "full_message")
             self.assertFalse(result)
             self.plugin.matches.assert_called_once_with(event)
@@ -652,7 +660,7 @@ class TestPingPluginMatrixHandling(unittest.TestCase):
         room.room_id = "!test:matrix.org"
         event = MagicMock()
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_room_message(room, event, "bot: !ping")
             self.assertTrue(result)
             self.plugin.matches.assert_called_once_with(event)
@@ -673,7 +681,7 @@ class TestPingPluginEdgeCases(unittest.TestCase):
     def test_handle_meshtastic_message_no_decoded(self):
         packet = {"channel": 0, "fromId": "!12345678", "to": BROADCAST_NUM}
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -689,7 +697,7 @@ class TestPingPluginEdgeCases(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
@@ -711,15 +719,15 @@ class TestPingPluginEdgeCases(unittest.TestCase):
             "to": BROADCAST_NUM,
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertTrue(result)
+            mock_sleep.assert_called_once_with(1.0)
             mock_client.sendText.assert_called_once_with(text="pong", channelIndex=0)
 
         asyncio.run(run_test())
-        mock_sleep.assert_called()
 
 
 if __name__ == "__main__":

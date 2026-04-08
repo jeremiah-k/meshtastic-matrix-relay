@@ -70,8 +70,14 @@ TEST_PACKET_RX_TIME = 1234567890
 @pytest.fixture(autouse=True)
 def reset_meshtastic_relay_state(monkeypatch):
     """Reset all Meshtastic relay module globals to prevent cross-test leakage."""
+    import mmrelay.meshtastic_utils as mu
+
     startup_drain_complete_event = threading.Event()
     startup_drain_complete_event.set()
+    startup_drain_timer = getattr(mu, "_relay_startup_drain_expiry_timer", None)
+    if startup_drain_timer is not None:
+        with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+            startup_drain_timer.cancel()
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._relay_active_client_id",
         None,

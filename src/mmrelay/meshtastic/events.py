@@ -41,6 +41,12 @@ def _get_iterable_matrix_rooms() -> Iterable[Any]:
     )
 
 
+def _signal_startup_drain_complete() -> None:
+    startup_drain_complete_event = facade.get_startup_drain_complete_event()
+    if startup_drain_complete_event is not None:
+        startup_drain_complete_event.set()
+
+
 def _derive_disconnect_detection_source(
     interface: Any, detection_source: str, topic: Any
 ) -> str:
@@ -206,7 +212,7 @@ def _schedule_startup_drain_deadline_cleanup(startup_drain_deadline: float) -> N
             _schedule_startup_drain_deadline_cleanup(reschedule_deadline)
             return
         if should_log_drain_end:
-            facade._relay_startup_drain_complete_event.set()
+            _signal_startup_drain_complete()
             facade.logger.debug("Startup drain window has ended - accepting packets")
 
     delay_secs = max(0.0, startup_drain_deadline - facade.time.monotonic())
@@ -224,7 +230,7 @@ def _schedule_startup_drain_deadline_cleanup(startup_drain_deadline: float) -> N
         with facade._relay_rx_time_clock_skew_lock:
             if facade._relay_startup_drain_expiry_timer is timer:
                 facade._relay_startup_drain_expiry_timer = None
-        facade._relay_startup_drain_complete_event.set()
+        _signal_startup_drain_complete()
         facade.logger.debug(
             "Failed to schedule startup drain expiry cleanup timer",
             exc_info=exc,
@@ -510,7 +516,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 facade._relay_startup_drain_deadline_monotonic_secs = None
                 should_log_drain_end = True
         if should_log_drain_end:
-            facade._relay_startup_drain_complete_event.set()
+            _signal_startup_drain_complete()
             facade.logger.debug("Startup drain window has ended - accepting packets")
 
     # Seed clock skew from the first non-health-probe packet with a valid

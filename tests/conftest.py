@@ -1111,8 +1111,15 @@ def reset_meshtastic_globals():
     startup_drain_timer = getattr(mu, "_relay_startup_drain_expiry_timer", None)
     _cancel_and_join_timer_like(startup_drain_timer, timeout=0.2)
     mu._relay_startup_drain_expiry_timer = None
-    mu._relay_startup_drain_complete_event = threading.Event()
-    mu._relay_startup_drain_complete_event.set()
+    startup_drain_complete_event = getattr(
+        mu, "_relay_startup_drain_complete_event", None
+    )
+    if isinstance(startup_drain_complete_event, threading.Event):
+        startup_drain_complete_event.set()
+    else:
+        startup_drain_complete_event = threading.Event()
+        startup_drain_complete_event.set()
+        mu._relay_startup_drain_complete_event = startup_drain_complete_event
     mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = None
     mu._startup_packet_drain_applied = False
     mu._health_probe_request_deadlines = {}

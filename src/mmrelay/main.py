@@ -1080,7 +1080,7 @@ async def main(config: dict[str, Any]) -> None:
                         # The sync outcome is handled by the standard loop below.
                         pass
                     else:
-                        _write_ready_file()
+                        await asyncio.to_thread(_write_ready_file)
                         logger.info("Relay startup complete")
                         startup_ready_published = True
                         if _ready_heartbeat_seconds > 0 and ready_task is None:
