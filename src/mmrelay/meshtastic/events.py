@@ -848,11 +848,30 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 try:
                     channel = int(channel)  # type: ignore[arg-type]
                 except (ValueError, TypeError):
-                    facade.logger.warning(
-                        f"Invalid channel value {channel!r} (type: {type(channel).__name__}), "
-                        f"defaulting to {DEFAULT_CHANNEL_VALUE}"
-                    )
-                    channel = DEFAULT_CHANNEL_VALUE
+                    if decoded.get("portnum") in (
+                        PORTNUM_TEXT_MESSAGE_APP,
+                        PORTNUM_DETECTION_SENSOR_APP,
+                        TEXT_MESSAGE_APP,
+                        DETECTION_SENSOR_APP,
+                    ):
+                        facade.logger.warning(
+                            "Invalid channel value %r (type: %s) for %s, "
+                            "defaulting to channel %s",
+                            channel,
+                            type(channel).__name__,
+                            _get_portnum_name(decoded.get("portnum"), packet),
+                            DEFAULT_CHANNEL_VALUE,
+                        )
+                        channel = DEFAULT_CHANNEL_VALUE
+                    else:
+                        facade.logger.warning(
+                            "Invalid channel value %r (type: %s) for promoted %s; "
+                            "plugins will run, Matrix relay skipped.",
+                            channel,
+                            type(channel).__name__,
+                            _get_portnum_name(decoded.get("portnum"), packet),
+                        )
+                        skip_matrix_relay = True
 
                 for room in iterable_rooms:
                     if not isinstance(room, dict):

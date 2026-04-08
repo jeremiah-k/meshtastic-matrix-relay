@@ -104,7 +104,8 @@ core relay/plugin architecture.
 ### Routing Defaults
 
 - `TEXT_MESSAGE_APP` packets are relay-eligible for Matrix chat.
-- Non-chat packet types go to plugins only.
+- `DETECTION_SENSOR_APP` packets are relay-eligible when `meshtastic.detection_sensor` is enabled; otherwise they go to plugins only.
+- All other non-chat packet types go to plugins only.
 - Encrypted packets follow `encrypted_action` because their real portnum is not observable.
 
 ### Configuration

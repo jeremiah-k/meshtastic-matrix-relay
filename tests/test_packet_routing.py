@@ -224,6 +224,30 @@ class TestResolvePortnumSet:
             pr._warned_packet_routing_issues.clear()
             pr._warned_packet_routing_issues.update(original)
 
+    def test_resolve_portnum_set_list_strips_whitespace(self):
+        result = _resolve_portnum_set([" RANGE_TEST_APP "])
+        assert result == frozenset({"RANGE_TEST_APP"})
+
+    def test_resolve_portnum_set_list_whitespace_only_warns(self):
+        from unittest.mock import patch
+
+        import mmrelay.meshtastic.packet_routing as pr
+
+        original = pr._warned_packet_routing_issues.copy()
+        try:
+            pr._warned_packet_routing_issues.clear()
+            with patch.object(pr.logger, "warning") as mock_warn:
+                result = _resolve_portnum_set(["  "])
+                assert result == frozenset()
+                assert mock_warn.call_count == 1
+        finally:
+            pr._warned_packet_routing_issues.clear()
+            pr._warned_packet_routing_issues.update(original)
+
+    def test_resolve_portnum_set_list_strips_whitespace_multiple(self):
+        result = _resolve_portnum_set([" TEXT_MESSAGE_APP ", "TELEMETRY_APP"])
+        assert result == frozenset({"TEXT_MESSAGE_APP", "TELEMETRY_APP"})
+
 
 class TestGetPacketRoutingOverrides:
     def test_non_dict_config(self):

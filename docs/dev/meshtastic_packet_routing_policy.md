@@ -48,7 +48,7 @@ Introduce a dedicated Meshtastic packet routing policy layer:
 
 - **RELAY**: eligible for normal Matrix room relay (still subject to existing DM/plugin/channel checks)
 - **PLUGIN_ONLY**: send through plugin pipeline, skip Matrix chat relay
-- **DROP**: reserved action for future policy extensions (not required for initial behavior change)
+- **DROP**: discards the packet entirely — no Matrix relay, no plugin pipeline. Actively used by `disabled_portnums` and `encrypted_action: drop`.
 
 Default Phase 1 policy:
 

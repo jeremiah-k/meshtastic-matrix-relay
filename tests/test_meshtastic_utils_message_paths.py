@@ -7,8 +7,13 @@ from meshtastic.mesh_interface import BROADCAST_NUM
 
 import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.config import CONFIG_KEY_MESHNET_NAME
-from mmrelay.constants.formats import EMOJI_FLAG_VALUE, TEXT_MESSAGE_APP
+from mmrelay.constants.formats import (
+    DETECTION_SENSOR_APP,
+    EMOJI_FLAG_VALUE,
+    TEXT_MESSAGE_APP,
+)
 from mmrelay.constants.messages import (
+    DEFAULT_CHANNEL_VALUE,
     PORTNUM_DETECTION_SENSOR_APP,
     PORTNUM_TEXT_MESSAGE_APP,
 )
@@ -1013,3 +1018,48 @@ def test_get_portnum_name_encrypted_with_packet():
 def test_get_portnum_name_none_without_packet():
     result = _get_portnum_name(None)
     assert result == "UNKNOWN (None)"
+
+
+def test_on_meshtastic_message_text_app_malformed_channel_defaults_to_zero(
+    reset_meshtastic_globals,
+):
+    config = _base_config()
+    _set_globals(config)
+    packet = _base_packet()
+    packet["channel"] = "abc"
+
+    with _patch_message_deps(patch_logger=False) as (mock_logger, mock_relay):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_awaited_once()
+
+
+def test_on_meshtastic_message_promoted_non_chat_malformed_channel_skips_relay(
+    reset_meshtastic_globals,
+):
+    config = _base_config_with_routing(chat_portnums=["RANGE_TEST_APP"])
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"]["portnum"] = "RANGE_TEST_APP"
+    packet["decoded"]["text"] = "range test payload"
+    packet["channel"] = "abc"
+
+    plugin = MagicMock()
+    plugin.plugin_name = "observer"
+    plugin.handle_meshtastic_message.return_value = False
+
+    with _patch_message_deps(plugins=[plugin]) as (mock_logger, mock_relay):
+        on_meshtastic_message(packet, _make_interface())
+
+    assert mock_relay is not None
+    mock_relay.assert_not_called()
+    plugin.handle_meshtastic_message.assert_called_once()
+    assert mock_logger is not None
+    mock_logger.warning.assert_any_call(
+        "Invalid channel value %r (type: %s) for promoted %s; "
+        "plugins will run, Matrix relay skipped.",
+        "abc",
+        "str",
+        "RANGE_TEST_APP",
+    )

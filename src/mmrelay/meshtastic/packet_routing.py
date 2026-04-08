@@ -102,6 +102,11 @@ def _resolve_portnum_set(
         resolved: set[str] = set()
         dropped_invalid_value = False
         for entry in portnums:
+            if isinstance(entry, str):
+                entry = entry.strip()
+                if not entry:
+                    dropped_invalid_value = True
+                    continue
             name = _get_portnum_name(entry)
             if not name.startswith("UNKNOWN"):
                 resolved.add(name)
