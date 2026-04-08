@@ -166,9 +166,9 @@ Listing a portnum in `chat_portnums` promotes it to RELAY eligibility at the rou
 layer, but successful Matrix delivery still requires a usable channel. Only
 `TEXT_MESSAGE_APP` and `DETECTION_SENSOR_APP` packets receive an automatic channel
 default (channel 0) when the packet lacks an explicit `channel` field. A promoted
-non-chat packet without `packet["channel"]` will be logged and skipped before Matrix
-relay. If you promote a portnum that does not carry channel information, ensure the
-packets include a channel field or are inherently single-channel.
+non-chat packet without `packet["channel"]` still reaches plugins, and only the
+Matrix relay leg is skipped. If you promote a portnum that does not carry channel
+information, ensure packets include a channel field or are inherently single-channel.
 
 ### Future considerations
 

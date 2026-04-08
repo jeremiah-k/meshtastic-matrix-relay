@@ -144,10 +144,11 @@ def classify_packet(
     """
     if _is_encrypted_packet(packet):
         action = _get_encrypted_action(config)
-        logger.debug(
-            "Encrypted packet classified as %s via encrypted_action policy.",
-            action,
-        )
+        if action == PacketAction.DROP:
+            logger.debug(
+                "Encrypted packet classified as %s via encrypted_action policy.",
+                action,
+            )
         return action
 
     portnum_name = _get_portnum_name(portnum, packet)

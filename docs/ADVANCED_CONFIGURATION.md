@@ -96,6 +96,59 @@ If you specify an invalid format (like `{invalid_variable}`), MMRelay will:
 
 This ensures your relay keeps working even with configuration mistakes.
 
+## Meshtastic Packet Routing Overrides
+
+Use `meshtastic.packet_routing` to adjust inbound packet policy without changing
+core relay/plugin architecture.
+
+### Default Behavior
+
+- `TEXT_MESSAGE_APP` packets are relay-eligible for Matrix chat.
+- Non-chat packet types go to plugins only.
+- Encrypted packets follow `encrypted_action` because their real portnum is not observable.
+
+### Configuration
+
+```yaml
+meshtastic:
+  packet_routing:
+    chat_portnums:
+      - "RANGE_TEST_APP" # Additional portnums to treat like chat
+    disabled_portnums: [] # Drop completely: no plugins, no Matrix relay
+    encrypted_action: plugin_only # "plugin_only" (default) or "drop"
+```
+
+### Notes
+
+- `chat_portnums` and `disabled_portnums` apply only to observable portnums.
+- `ENCRYPTED` is a log/display label, not a valid override value.
+- `chat_portnums` only makes a packet relay-eligible. Matrix delivery still needs a usable channel. If channel info is missing, plugins still run and only the Matrix relay leg is skipped.
+
+For implementation details, rationale, and edge cases, see
+[`docs/dev/meshtastic_packet_routing_policy.md`](dev/meshtastic_packet_routing_policy.md).
+
+## Meshtastic Health Check Overrides
+
+Health-check tuning is optional. Defaults are appropriate for most deployments.
+
+```yaml
+meshtastic:
+  health_check:
+    enabled: false
+    connect_probe_enabled: false
+    heartbeat_interval: 60
+    initial_delay: 5
+    probe_timeout: 30
+```
+
+Behavior notes:
+
+- `connect_probe_enabled` defaults to `health_check.enabled` when unset.
+- First process connect uses a startup drain window to avoid relaying backlogged packets.
+- Reconnects use a bounded pre-start bootstrap path; they do not re-run the startup drain window.
+- BLE connections use disconnect detection and skip periodic metadata probes.
+- Legacy `meshtastic.heartbeat_interval` is still supported for compatibility, but `health_check` is preferred.
+
 ## Component Debug Logging
 
 This feature allows enabling debug logging for specific external libraries to help with troubleshooting connection and communication issues.
