@@ -463,7 +463,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             "[HEALTH_CHECK] Metadata probe response requestId=%s from=%s port=%s",
             facade._extract_packet_request_id(packet),
             packet.get("fromId") or packet.get("from"),
-            facade._get_portnum_name(portnum, packet),
+            _get_portnum_name(portnum, packet),
         )
         return
 
@@ -590,7 +590,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         portnum = (
             decoded.get("portnum") if decoded and isinstance(decoded, dict) else None
         )
-        portnum_name = facade._get_portnum_name(portnum, packet)
+        portnum_name = _get_portnum_name(portnum, packet)
         from_id = packet.get("fromId") or packet.get("from")
         from_display = ""
         if from_id is not None:
