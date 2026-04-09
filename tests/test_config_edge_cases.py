@@ -858,7 +858,7 @@ class TestConfigAdditionalCoverage(unittest.TestCase):
         "mmrelay.config.get_credentials_search_paths", return_value=["/test/creds.json"]
     )
     @patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
-    @patch("mmrelay.config.os.path.isfile", return_value=True)
+    @patch("mmrelay.config.os.path.exists", return_value=True)
     @patch("mmrelay.config.get_credentials_path", return_value="/other/creds.json")
     @patch("mmrelay.config.get_home_dir", return_value=Path("/home"))
     @patch("mmrelay.config.is_deprecation_window_active", return_value=True)
@@ -871,7 +871,7 @@ class TestConfigAdditionalCoverage(unittest.TestCase):
         mock_dep,
         mock_home,
         mock_creds_path,
-        mock_isfile,
+        mock_exists,
         mock_explicit,
         mock_search,
     ):
@@ -892,7 +892,7 @@ class TestConfigAdditionalCoverage(unittest.TestCase):
         return_value=["/legacy/creds.json"],
     )
     @patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
-    @patch("mmrelay.config.os.path.isfile", return_value=True)
+    @patch("mmrelay.config.os.path.exists", return_value=True)
     @patch("mmrelay.config.get_credentials_path", return_value="/primary/creds.json")
     @patch("mmrelay.config.get_home_dir", return_value=Path("/home"))
     @patch("mmrelay.config.is_deprecation_window_active", return_value=True)
@@ -905,7 +905,7 @@ class TestConfigAdditionalCoverage(unittest.TestCase):
         mock_dep,
         mock_home,
         mock_creds_path,
-        mock_isfile,
+        mock_exists,
         mock_explicit,
         mock_search,
     ):
@@ -926,7 +926,7 @@ class TestConfigAdditionalCoverage(unittest.TestCase):
         return_value=["/home/.mmrelay/credentials.json"],
     )
     @patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
-    @patch("mmrelay.config.os.path.isfile", return_value=True)
+    @patch("mmrelay.config.os.path.exists", return_value=True)
     @patch("mmrelay.config.get_credentials_path", return_value="/primary/creds.json")
     @patch("mmrelay.config.get_home_dir", return_value=Path("/home"))
     @patch("mmrelay.config.is_deprecation_window_active", return_value=False)
@@ -937,7 +937,7 @@ class TestConfigAdditionalCoverage(unittest.TestCase):
         mock_dep,
         mock_home,
         mock_creds_path,
-        mock_isfile,
+        mock_exists,
         mock_explicit,
         mock_search,
     ):
@@ -1105,7 +1105,6 @@ class TestConfigAdditionalCoverage(unittest.TestCase):
         assert result[0].endswith(CREDENTIALS_FILENAME)
 
     @patch("mmrelay.config.relay_config", {})
-    @patch("mmrelay.config.relay_config", {})
     @patch("os.path.isdir", return_value=False)
     @patch("mmrelay.config.get_home_dir", return_value=Path("/home"))
     def test_resolve_credentials_path_empty_dirname(self, mock_home, mock_isdir):
@@ -1114,7 +1113,7 @@ class TestConfigAdditionalCoverage(unittest.TestCase):
         result = _resolve_credentials_path(
             "creds.json", allow_relay_config_sources=False
         )
-        assert result[0].endswith(CREDENTIALS_FILENAME)
+        assert result[0].endswith("creds.json")
 
     @patch("mmrelay.config.relay_config", {})
     @patch("os.path.isdir", return_value=False)

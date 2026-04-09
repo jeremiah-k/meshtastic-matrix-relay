@@ -1,4 +1,6 @@
+import threading
 from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from unittest.mock import patch
 
 import pytest
@@ -118,7 +120,7 @@ class TestWaitForResult:
         from mmrelay.meshtastic.async_utils import _wait_for_result
 
         fut = Future()
-        with pytest.raises(Exception):
+        with pytest.raises(FuturesTimeoutError):
             _wait_for_result(fut, timeout=0.01)
 
     def test_concurrent_future_success(self):
@@ -149,8 +151,12 @@ class TestFireAndForget:
         async def coro():
             pass
 
-        with patch.object(mu, "_submit_coro", return_value=None):
-            _fire_and_forget(coro())
+        c = coro()
+        try:
+            with patch.object(mu, "_submit_coro", return_value=None):
+                _fire_and_forget(c)
+        finally:
+            c.close()
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")

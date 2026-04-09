@@ -148,12 +148,24 @@ class TestOnLostMeshtasticConnection:
         mock_loop.is_running.return_value = True
         mu.event_loop = mock_loop
 
+        scheduled_reconnect_task = MagicMock()
+
+        def _schedule_coroutine(coro, _loop):
+            coro.close()
+            return scheduled_reconnect_task
+
         with (
             patch.object(mu, "_disconnect_ble_interface"),
             patch.object(mu, "reset_executor_degraded_state"),
+            patch.object(
+                mu.asyncio,
+                "run_coroutine_threadsafe",
+                side_effect=_schedule_coroutine,
+            ),
         ):
             on_lost_meshtastic_connection()
         assert mu.reconnecting is True
+        assert mu.reconnect_task is scheduled_reconnect_task
         mu.reconnecting = False
 
 

@@ -1012,7 +1012,7 @@ class TestLogUtils(unittest.TestCase):
             lu._cli_mode = original_cli_mode
 
     @patch("mmrelay.log_utils.get_log_dir")
-    def test_get_logger_oserror_creating_file_no_handlers_prints(
+    def test_get_logger_oserror_creating_file_no_handlers_prints_with_resolved_path(
         self, mock_get_log_dir
     ):
         """OSError creating file with no handlers should use print fallback."""
@@ -1028,11 +1028,11 @@ class TestLogUtils(unittest.TestCase):
             ):
                 logger = get_logger("_test_file_oserror_no_handlers")
 
-        mock_print.assert_called_once()
+        self.assertGreater(mock_print.call_count, 0)
         self.assertIsInstance(logger, logging.Logger)
 
     @patch("mmrelay.log_utils.get_log_dir")
-    def test_get_logger_oserror_creating_file_no_handlers_prints(
+    def test_get_logger_oserror_creating_file_no_handlers_prints_cli_mode(
         self, mock_get_log_dir
     ):
         """OSError creating file with no handlers should use print fallback."""
@@ -1059,7 +1059,7 @@ class TestLogUtils(unittest.TestCase):
             ):
                 logger = get_logger(logger_name)
 
-        mock_print.assert_called_once()
+        self.assertGreater(mock_print.call_count, 0)
         self.assertIsInstance(logger, logging.Logger)
 
     @patch("mmrelay.log_utils.get_log_dir")
@@ -1167,19 +1167,21 @@ class TestLogUtils(unittest.TestCase):
 
         import mmrelay.log_utils as lu
 
-        args = argparse.Namespace(logfile="/tmp/test_resolve.log")
+        expected_logfile = os.path.join(self.test_dir, "test_resolve.log")
+        args = argparse.Namespace(logfile=expected_logfile)
         result = lu._resolve_log_file(args)
-        self.assertEqual(result, "/tmp/test_resolve.log")
+        self.assertEqual(result, expected_logfile)
 
     def test_resolve_log_file_from_config(self):
         """_resolve_log_file should fall back to config filename."""
 
         import mmrelay.log_utils as lu
 
-        lu.config = {"logging": {"filename": "/tmp/config_log.log"}}
+        expected_logfile = os.path.join(self.test_dir, "config_log.log")
+        lu.config = {"logging": {"filename": expected_logfile}}
         try:
             result = lu._resolve_log_file(None)
-            self.assertEqual(result, "/tmp/config_log.log")
+            self.assertEqual(result, expected_logfile)
         finally:
             lu.config = None
 

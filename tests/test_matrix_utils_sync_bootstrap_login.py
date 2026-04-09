@@ -5,11 +5,16 @@ and various error handling branches.
 """
 
 import asyncio
+import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from mmrelay.matrix_utils import login_matrix_bot
+
+TEST_CREDS_PATH = str(Path(tempfile.gettempdir()) / "creds.json")
+TEST_E2EE_STORE_PATH = str(Path(tempfile.gettempdir()) / "e2ee_store")
 
 
 def _make_login_bot_mocks():
@@ -49,7 +54,7 @@ async def test_login_matrix_bot_timeout_error(mock_logger, mock_async_client, mo
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
     ):
@@ -83,7 +88,7 @@ async def test_login_matrix_bot_type_error_known_issue(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
     ):
@@ -117,7 +122,7 @@ async def test_login_matrix_bot_type_error_other(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
     ):
@@ -148,7 +153,7 @@ async def test_login_matrix_bot_ssl_error(mock_logger, mock_async_client, mock_s
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
     ):
@@ -183,7 +188,7 @@ async def test_login_matrix_bot_generic_exception(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
     ):
@@ -218,7 +223,7 @@ async def test_login_matrix_bot_no_access_token_401(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
     ):
@@ -257,7 +262,7 @@ async def test_login_matrix_bot_login_failed_404(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
     ):
@@ -296,7 +301,7 @@ async def test_login_matrix_bot_login_failed_429(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
     ):
@@ -334,7 +339,7 @@ async def test_login_matrix_bot_login_failed_500(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
     ):
@@ -373,7 +378,7 @@ async def test_login_matrix_bot_login_failed_no_status_code(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
     ):
@@ -412,7 +417,7 @@ async def test_login_matrix_bot_m_forbidden_status(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
     ):
@@ -448,7 +453,7 @@ async def test_login_matrix_bot_whoami_fallback(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.save_credentials"),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
@@ -509,7 +514,7 @@ async def test_login_matrix_bot_discovery_timeout(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.save_credentials"),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
@@ -547,7 +552,7 @@ async def test_login_matrix_bot_discovery_exception(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.save_credentials"),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
@@ -583,7 +588,7 @@ async def test_login_matrix_bot_discovery_info_success(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.save_credentials"),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
@@ -618,7 +623,7 @@ async def test_login_matrix_bot_discovery_info_error_response(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.save_credentials"),
         patch(
@@ -656,12 +661,12 @@ async def test_login_matrix_bot_e2ee_store_path_creation(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.save_credentials"),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=True),
         patch(
-            "mmrelay.matrix_utils.get_e2ee_store_dir", return_value="/tmp/e2ee_store"
+            "mmrelay.matrix_utils.get_e2ee_store_dir", return_value=TEST_E2EE_STORE_PATH
         ),
         patch("os.makedirs") as mock_makedirs,
     ):
@@ -674,7 +679,7 @@ async def test_login_matrix_bot_e2ee_store_path_creation(
         )
 
     assert result is True
-    mock_makedirs.assert_any_call("/tmp/e2ee_store", exist_ok=True)
+    mock_makedirs.assert_any_call(TEST_E2EE_STORE_PATH, exist_ok=True)
 
 
 @pytest.mark.asyncio
@@ -698,7 +703,7 @@ async def test_login_matrix_bot_existing_device_id_reuse(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("os.path.exists", return_value=True),
         patch("builtins.open", MagicMock()),
@@ -735,7 +740,7 @@ async def test_login_matrix_bot_ssl_context_none_warning(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.save_credentials"),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
@@ -769,7 +774,7 @@ async def test_login_matrix_bot_homeserver_with_no_scheme(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.save_credentials"),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
@@ -810,7 +815,7 @@ async def test_login_matrix_bot_interactive_prompt(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.save_credentials"),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
@@ -839,7 +844,7 @@ async def test_login_matrix_bot_user_id_required_property_error(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
     ):
@@ -879,7 +884,7 @@ async def test_login_matrix_bot_whoami_no_user_id_fallback(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.save_credentials"),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
@@ -922,7 +927,7 @@ async def test_login_matrix_bot_whoami_exception_fallback(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.save_credentials"),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
@@ -958,13 +963,13 @@ async def test_login_matrix_bot_e2ee_not_supported(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.save_credentials"),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=True),
         patch(
             "mmrelay.matrix_utils.get_e2ee_store_dir",
-            side_effect=E2EENotSupportedError("no e2ee"),
+            side_effect=E2EENotSupportedError(),
         ),
     ):
         result = await login_matrix_bot(
@@ -994,7 +999,7 @@ async def test_login_matrix_bot_e2ee_os_error(mock_logger, mock_async_client, mo
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.save_credentials"),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=True),
@@ -1038,7 +1043,7 @@ async def test_login_matrix_bot_discovery_has_homeserver_url(
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.save_credentials"),
         patch(
@@ -1074,7 +1079,7 @@ async def test_login_matrix_bot_logout_others(mock_logger, mock_async_client, mo
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=TEST_CREDS_PATH,
         ),
         patch("mmrelay.matrix_utils.save_credentials"),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
