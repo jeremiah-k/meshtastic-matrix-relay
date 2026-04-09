@@ -949,6 +949,258 @@ class TestLogUtils(unittest.TestCase):
             self.assertIn("bleak", captured_output)
             self.assertIn(test_message, captured_output)
 
+    def test_configure_component_debug_logging_non_dict_warns(self):
+        """Non-dict debug settings should log a warning."""
+        import mmrelay.log_utils
+        from mmrelay.constants.app import APP_DISPLAY_NAME
+
+        mmrelay.log_utils.config = {"logging": {"debug": "not_a_dict"}}
+
+        logger_name = f"mmrelay.test.{self.id()}"
+        test_logger = logging.getLogger(logger_name)
+        test_logger.handlers.clear()
+        test_logger.setLevel(logging.DEBUG)
+
+        main_logger = logging.getLogger(APP_DISPLAY_NAME)
+        main_logger.handlers.clear()
+        test_handler = logging.StreamHandler()
+        test_handler.setLevel(logging.DEBUG)
+        main_logger.addHandler(test_handler)
+        main_logger.setLevel(logging.DEBUG)
+
+        with self.assertLogs(APP_DISPLAY_NAME, level="WARNING"):
+            configure_component_debug_logging()
+
+    def test_configure_component_debug_logging_non_bool_non_string_uses_debug(self):
+        """Non-bool, non-string component config should fall back to DEBUG."""
+        import mmrelay.log_utils
+
+        mmrelay.log_utils.config = {"logging": {"debug": {"matrix_nio": 42}}}
+
+        configure_component_debug_logging()
+
+        self.assertEqual(logging.getLogger("nio").level, logging.DEBUG)
+
+    @patch("mmrelay.log_utils.get_log_dir")
+    def test_get_logger_oserror_makedirs_no_handlers_prints(self, mock_get_log_dir):
+        """OSError creating log dir with no handlers in CLI mode should use print."""
+        import mmrelay.log_utils as lu
+
+        original_cli_mode = lu._cli_mode
+        lu._cli_mode = True
+        lu.config = {"logging": {"log_to_file": True}}
+        mock_get_log_dir.return_value = self.test_dir
+
+        logger_name = "_test_oserror_no_handlers"
+        logging.getLogger(logger_name).handlers.clear()
+        lu._registered_logger_names.discard(logger_name)
+        lu._logger_config_generations.pop(logger_name, None)
+
+        try:
+            with (
+                patch(
+                    "mmrelay.log_utils.os.makedirs",
+                    side_effect=PermissionError("denied"),
+                ),
+                patch("builtins.print") as mock_print,
+            ):
+                logger = get_logger(logger_name)
+
+            mock_print.assert_called_once()
+            self.assertIsInstance(logger, logging.Logger)
+        finally:
+            lu._cli_mode = original_cli_mode
+
+    @patch("mmrelay.log_utils.get_log_dir")
+    def test_get_logger_oserror_creating_file_no_handlers_prints_with_resolved_path(
+        self, mock_get_log_dir
+    ):
+        """OSError creating file with no handlers should use print fallback."""
+        import mmrelay.log_utils as lu
+
+        lu.config = {"logging": {"log_to_file": True}}
+        mock_get_log_dir.return_value = self.test_dir
+
+        with patch("builtins.print") as mock_print:
+            with patch(
+                "mmrelay.log_utils.RotatingFileHandler",
+                side_effect=OSError("cannot create file"),
+            ):
+                logger = get_logger("_test_file_oserror_no_handlers")
+
+        self.assertGreater(mock_print.call_count, 0)
+        self.assertIsInstance(logger, logging.Logger)
+
+    @patch("mmrelay.log_utils.get_log_dir")
+    def test_get_logger_oserror_creating_file_no_handlers_prints_cli_mode(
+        self, mock_get_log_dir
+    ):
+        """OSError creating file with no handlers should use print fallback."""
+        import mmrelay.log_utils as lu
+
+        lu.config = {"logging": {"log_to_file": True}}
+        mock_get_log_dir.return_value = self.test_dir
+
+        logger_name = "_test_file_oserror_no_h"
+        logging.getLogger(logger_name).handlers.clear()
+
+        with (
+            patch("mmrelay.log_utils._should_log_to_file", return_value=True),
+            patch(
+                "mmrelay.log_utils._resolve_log_file",
+                return_value=os.path.join(self.test_dir, "test.log"),
+            ),
+            patch("mmrelay.log_utils.os.makedirs"),
+            patch("builtins.print") as mock_print,
+        ):
+            with patch(
+                "mmrelay.log_utils.RotatingFileHandler",
+                side_effect=OSError("cannot create file"),
+            ):
+                logger = get_logger(logger_name)
+
+        self.assertGreater(mock_print.call_count, 0)
+        self.assertIsInstance(logger, logging.Logger)
+
+    @patch("mmrelay.log_utils.get_log_dir")
+    def test_get_logger_oserror_creating_file_no_handlers_prints(
+        self, mock_get_log_dir
+    ):
+        """OSError creating file with no handlers in CLI mode should use print."""
+
+        import mmrelay.log_utils as lu
+
+        lu.config = {"logging": {"log_to_file": True}}
+        mock_get_log_dir.return_value = self.test_dir
+        original_cli_mode = lu._cli_mode
+        lu._cli_mode = True
+
+        logger_name = "_test_file_oserror_no_h"
+        logging.getLogger(logger_name).handlers.clear()
+        lu._registered_logger_names.discard(logger_name)
+        lu._logger_config_generations.pop(logger_name, None)
+
+        try:
+            with patch("builtins.print") as mock_print:
+                with patch(
+                    "mmrelay.log_utils.RotatingFileHandler",
+                    side_effect=OSError("cannot create file"),
+                ):
+                    logger = get_logger(logger_name)
+
+            mock_print.assert_called_once()
+            self.assertIsInstance(logger, logging.Logger)
+        finally:
+            lu._cli_mode = original_cli_mode
+
+    @patch("mmrelay.log_utils.get_log_dir")
+    def test_get_logger_generic_exception_creating_file(self, mock_get_log_dir):
+        """Non-OSError exception creating file with no handlers should use print."""
+        import mmrelay.log_utils as lu
+
+        lu.config = {"logging": {"log_to_file": True}}
+        mock_get_log_dir.return_value = self.test_dir
+        original_cli_mode = lu._cli_mode
+        lu._cli_mode = True
+
+        logger_name = "_test_generic_exc_file"
+        logging.getLogger(logger_name).handlers.clear()
+        lu._registered_logger_names.discard(logger_name)
+        lu._logger_config_generations.pop(logger_name, None)
+
+        try:
+            with patch("builtins.print") as mock_print:
+                with patch(
+                    "mmrelay.log_utils.RotatingFileHandler",
+                    side_effect=RuntimeError("unexpected"),
+                ):
+                    logger = get_logger(logger_name)
+
+            mock_print.assert_called_once()
+            self.assertIsInstance(logger, logging.Logger)
+        finally:
+            lu._cli_mode = original_cli_mode
+
+    def test_get_log_dir_raises_typeerror_for_non_string(self):
+        """get_log_dir should raise LogsDirTypeError for non-string result."""
+        from mmrelay.log_utils import LogsDirTypeError, get_log_dir
+
+        with patch("mmrelay.paths.resolve_all_paths", return_value={"logs_dir": 123}):
+            with self.assertRaises(LogsDirTypeError):
+                get_log_dir()
+
+    def test_cli_logging_mode(self):
+        """cli_logging_mode should suppress console output temporarily."""
+
+        import mmrelay.log_utils as lu
+
+        lu.config = {"logging": {"log_to_file": False}}
+        lu._registered_logger_names.add("_test_cli_logger")
+        logging.getLogger("_test_cli_logger").handlers.clear()
+
+        logger = get_logger("_test_cli_logger")
+        pre_mode = lu._cli_mode
+        len(logger.handlers)
+
+        with lu.cli_logging_mode():
+            self.assertTrue(lu._cli_mode)
+
+        self.assertEqual(lu._cli_mode, pre_mode)
+
+    @patch("mmrelay.log_utils.get_log_dir")
+    def test_should_log_to_file_cli_mode_default_off(self, mock_get_log_dir):
+        """_should_log_to_file defaults off in CLI mode."""
+
+        import mmrelay.log_utils as lu
+
+        lu._cli_mode = True
+        lu.config = {}
+        try:
+            result = lu._should_log_to_file(None)
+            self.assertFalse(result)
+        finally:
+            lu._cli_mode = False
+
+    def test_resolve_log_file_from_args(self):
+        """_resolve_log_file should use CLI args.logfile when provided."""
+        import argparse
+
+        import mmrelay.log_utils as lu
+
+        expected_logfile = os.path.join(self.test_dir, "test_resolve.log")
+        args = argparse.Namespace(logfile=expected_logfile)
+        result = lu._resolve_log_file(args)
+        self.assertEqual(result, expected_logfile)
+
+    def test_resolve_log_file_from_config(self):
+        """_resolve_log_file should fall back to config filename."""
+
+        import mmrelay.log_utils as lu
+
+        expected_logfile = os.path.join(self.test_dir, "config_log.log")
+        lu.config = {"logging": {"filename": expected_logfile}}
+        try:
+            result = lu._resolve_log_file(None)
+            self.assertEqual(result, expected_logfile)
+        finally:
+            lu.config = None
+
+    @patch("mmrelay.log_utils.get_log_dir")
+    def test_get_logger_file_logging_with_no_args(self, mock_get_log_dir):
+        """File logging should work with args=None."""
+        import mmrelay.log_utils as lu
+
+        mock_get_log_dir.return_value = self.test_dir
+        lu.config = {"logging": {"log_to_file": True}}
+
+        logger = get_logger("_test_file_no_args")
+        file_handlers = [
+            h
+            for h in logger.handlers
+            if isinstance(h, logging.handlers.RotatingFileHandler)
+        ]
+        self.assertGreater(len(file_handlers), 0)
+
     @patch("mmrelay.runtime_utils.is_running_as_service")
     def test_rich_import_when_not_running_as_service(self, mock_is_running_as_service):
         """

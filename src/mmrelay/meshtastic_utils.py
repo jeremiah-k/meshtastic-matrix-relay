@@ -194,11 +194,22 @@ _relay_rx_time_clock_skew_lock = threading.Lock()
 _relay_startup_drain_deadline_monotonic_secs: float | None = None
 # Timer used to decouple startup-drain expiry from packet arrival.
 _relay_startup_drain_expiry_timer: threading.Timer | None = None
+# Signals whether startup drain has completed for readiness publication.
+_relay_startup_drain_complete_event = threading.Event()
+_relay_startup_drain_complete_event.set()
 # Only apply startup drain on the first successful process-lifetime connect.
 _startup_packet_drain_applied = False
 # On reconnects, allow exactly one bounded pre-start skew bootstrap packet
 # without enabling a full reconnect drain window.
 _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs: float | None = None
+
+
+def get_startup_drain_complete_event() -> threading.Event | None:
+    """Return the startup-drain completion event used by readiness coordination."""
+    # Defensive guard: tests intentionally monkeypatch facade globals and may
+    # temporarily replace this attribute with non-Event sentinels.
+    event = _relay_startup_drain_complete_event
+    return event if isinstance(event, threading.Event) else None
 
 
 # Global variables for the Meshtastic connection and event loop management

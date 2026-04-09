@@ -656,6 +656,157 @@ class TestMeshRelayPlugin(unittest.TestCase):
         self.assertEqual(len(rooms), 1)
         self.assertEqual(rooms[0]["id"], TEST_ROOM_ID_1)
 
+    def test_matches_legacy_dict_packet_upgraded(self):
+        """matches() should serialize dict meshtastic_packet to JSON string (line 233)."""
+        event = MagicMock()
+        event.source = {
+            "content": {
+                MATRIX_SUPPRESS_KEY: True,
+                MATRIX_PACKET_KEY: {"decoded": {"portnum": 1}},
+            }
+        }
+
+        result = self.plugin.matches(event)
+
+        self.assertTrue(result)
+        self.assertIsInstance(event.source["content"][MATRIX_PACKET_KEY], str)
+
+    def test_matches_legacy_body_with_no_packet_data(self):
+        """matches() returns False for legacy body with no packet data (line 242->256)."""
+        event = MagicMock()
+        event.source = {
+            "content": {
+                "body": "Processed TEXT_MESSAGE_APP radio packet",
+            }
+        }
+
+        result = self.plugin.matches(event)
+        self.assertFalse(result)
+
+    def test_matches_legacy_body_with_meshtastic_packet_string(self):
+        """matches() should use meshtastic_packet string when present (line 248-249)."""
+        packet_json = '{"decoded":{"portnum":1,"payload":"QQ=="}}'
+        event = MagicMock()
+        event.source = {
+            "content": {
+                "body": "Processed TEXT_MESSAGE_APP radio packet",
+                "meshtastic_packet": packet_json,
+            }
+        }
+
+        result = self.plugin.matches(event)
+        self.assertTrue(result)
+        self.assertEqual(event.source["content"][MATRIX_PACKET_KEY], packet_json)
+
+    def test_matches_legacy_body_with_json_in_body(self):
+        """matches() should extract JSON payload from body (lines 251-255)."""
+        event = MagicMock()
+        event.source = {
+            "content": {
+                "body": "Processed TEXT_MESSAGE_APP radio packet",
+            }
+        }
+
+        result = self.plugin.matches(event)
+        self.assertFalse(result)
+
+    @patch("mmrelay.plugins.mesh_relay_plugin.config")
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_handle_room_message_packet_not_dict(
+        self, mock_connect_meshtastic, mock_config
+    ):
+        """handle_room_message rejects non-dict packets (lines 308-309)."""
+        self.plugin.matches = MagicMock(return_value=True)
+        mock_config.get.return_value = [
+            {"id": "!test:matrix.org", "meshtastic_channel": 0}
+        ]
+        mock_connect_meshtastic.return_value = MagicMock()
+
+        room = MagicMock()
+        room.room_id = "!test:matrix.org"
+        event = MagicMock()
+        event.source = {"content": {MATRIX_PACKET_KEY: '"not a dict"'}}
+
+        async def run_test():
+            result = await self.plugin.handle_room_message(room, event, "full_message")
+            self.assertFalse(result)
+            self.plugin.logger.error.assert_called_once_with(
+                "Embedded packet must be a JSON object"
+            )
+
+        import asyncio
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.mesh_relay_plugin.config")
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_handle_room_message_decoded_not_dict(
+        self, mock_connect_meshtastic, mock_config
+    ):
+        """handle_room_message rejects packets with non-dict decoded (lines 321-322)."""
+        self.plugin.matches = MagicMock(return_value=True)
+        mock_config.get.return_value = [
+            {"id": "!test:matrix.org", "meshtastic_channel": 0}
+        ]
+        mock_connect_meshtastic.return_value = MagicMock()
+
+        room = MagicMock()
+        room.room_id = "!test:matrix.org"
+        event = MagicMock()
+        event.source = {
+            "content": {MATRIX_PACKET_KEY: '{"decoded": "not_a_dict", "toId": "!dest"}'}
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_room_message(room, event, "full_message")
+            self.assertFalse(result)
+            self.plugin.logger.error.assert_called_once_with(
+                "Embedded packet decoded field must be a JSON object"
+            )
+
+        import asyncio
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.mesh_relay_plugin.config")
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_handle_room_message_send_packet_attribute_error(
+        self, mock_connect_meshtastic, mock_config
+    ):
+        """handle_room_message handles missing _sendPacket (lines 346-350)."""
+        self.plugin.matches = MagicMock(return_value=True)
+        mock_config.get.return_value = [
+            {"id": "!test:matrix.org", "meshtastic_channel": 0}
+        ]
+        mock_client = MagicMock()
+        mock_client._sendPacket.side_effect = AttributeError("missing method")
+        mock_connect_meshtastic.return_value = mock_client
+
+        room = MagicMock()
+        room.room_id = "!test:matrix.org"
+        event = MagicMock()
+        event.source = {
+            "content": {
+                MATRIX_PACKET_KEY: '{"decoded": {"portnum": 1, "payload": "QQ=="}, "toId": "!dest"}'
+            }
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_room_message(room, event, "full_message")
+            self.assertFalse(result)
+            self.plugin.logger.exception.assert_called_once()
+
+        import asyncio
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.mesh_relay_plugin.config")
+    def test_iter_room_configs_none(self, mock_config):
+        """_iter_room_configs returns empty list when config is None (line 233)."""
+        with patch("mmrelay.plugins.mesh_relay_plugin.config", None):
+            rooms = self.plugin._iter_room_configs()
+            self.assertEqual(rooms, [])
+
     @patch("mmrelay.matrix_utils.connect_matrix", new_callable=AsyncMock)
     def test_handle_meshtastic_message_no_matrix_client(self, mock_connect_matrix):
         """handle_meshtastic_message should fail fast when Matrix client is missing."""

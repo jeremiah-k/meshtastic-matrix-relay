@@ -1,9 +1,8 @@
 import asyncio
 from typing import Any
 
-from meshtastic.mesh_interface import BROADCAST_NUM
-
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
+from meshtastic.mesh_interface import BROADCAST_NUM
 from nio import (
     MatrixRoom,
     ReactionEvent,
@@ -18,7 +17,11 @@ from mmrelay.constants.messages import (
     PING_MATRIX_RESPONSE,
     PORTNUM_TEXT_MESSAGE_APP,
 )
-from mmrelay.constants.plugins import MAX_PUNCTUATION_LENGTH, PING_COMMAND_REGEX
+from mmrelay.constants.plugins import (
+    MAX_PUNCTUATION_LENGTH,
+    PING_COMMAND_REGEX,
+    PING_EXPLICIT_COMMAND_REGEX,
+)
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -57,16 +60,25 @@ def match_case(source: str, target: str) -> str:
 class Plugin(BasePlugin):
     plugin_name = "ping"
     is_core_plugin = True
+    _invalid_mimic_mode_warned: bool = False
 
     @property
     def description(self) -> str:
-        """
-        Short human-readable description of the plugin's purpose.
+        return "Check connectivity with the relay; optional mimic mode responds to mesh pings"
 
-        Returns:
-            A single-line string describing the plugin: "Check connectivity with the relay or respond to pings over the mesh"
-        """
-        return "Check connectivity with the relay or respond to pings over the mesh"
+    def get_mimic_mode(self) -> bool:
+        mimic_mode = self.config.get("mimic_mode", False)
+        if isinstance(mimic_mode, bool):
+            return mimic_mode
+
+        # Keep invalid config warnings low-noise while still surfacing operator errors.
+        if not self._invalid_mimic_mode_warned:
+            self.logger.warning(
+                "Invalid ping.mimic_mode value %r; expected boolean. Defaulting to false.",
+                mimic_mode,
+            )
+            self._invalid_mimic_mode_warned = True
+        return False
 
     async def handle_meshtastic_message(
         self,
@@ -75,21 +87,6 @@ class Plugin(BasePlugin):
         longname: str,
         meshnet_name: str,
     ) -> bool:
-        """
-        Responds to an incoming Meshtastic "ping" message with a case-matched "pong" when permitted by addressing and channel rules.
-
-        Matches "ping" with optional surrounding punctuation (case-insensitive) in packet["decoded"]["text"]; if matched and the channel is enabled, sends a reply that preserves the punctuation and letter case pattern of the trigger, or "Pong..." when surrounding punctuation is excessively long. If the Meshtastic client or its `myInfo` is unavailable the function logs a warning and returns `True` to suppress further handling.
-
-        Parameters:
-            packet (dict[str, Any]): Incoming Meshtastic packet. Expected to contain `decoded["text"]`; may include `decoded["portnum"]`, `channel`, `to`, and `fromId`.
-            formatted_message (str): Preformatted representation of the message (kept for compatibility; not used).
-            longname (str): Human-readable sender identifier used for logging.
-            meshnet_name (str): Name of the mesh network where the message originated (kept for compatibility; not used).
-
-        Returns:
-            bool: `True` if the handler processed the packet or intentionally suppressed processing (e.g., client/myInfo unavailable); `False` if the packet was not handled (no match, disallowed port, or channel disabled).
-        """
-        # Keep parameter names for compatibility with keyword calls in tests.
         _ = formatted_message, meshnet_name
         if "decoded" not in packet or "text" not in packet["decoded"]:
             return False
@@ -102,21 +99,31 @@ class Plugin(BasePlugin):
             return False
 
         message = packet["decoded"]["text"].strip()
-        channel = packet.get(
-            "channel", DEFAULT_CHANNEL
-        )  # Default to channel 0 if not provided
+        raw_channel = packet.get("channel")
+        channel = DEFAULT_CHANNEL if raw_channel is None else raw_channel
 
-        # Updated regex to match optional punctuation before and after "ping"
-        match = PING_COMMAND_REGEX.search(message)
+        mimic_mode = self.get_mimic_mode()
 
-        if not match:
-            return False
+        if mimic_mode:
+            match = PING_COMMAND_REGEX.fullmatch(message)
+            if not match:
+                return False
+            pre_punc = match.group(1)
+            matched_text = match.group(2)
+            post_punc = match.group(3)
+        else:
+            explicit_match = PING_EXPLICIT_COMMAND_REGEX.fullmatch(message)
+            if not explicit_match:
+                return False
+            matched_text = explicit_match.group(1)
+            pre_punc = ""
+            post_punc = ""
 
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         meshtastic_client = await asyncio.to_thread(connect_meshtastic)
 
-        toId = packet.get("to")
+        to_id = packet.get("to")
         if not meshtastic_client:
             self.logger.warning("Meshtastic client unavailable; skipping ping")
             return True
@@ -124,56 +131,49 @@ class Plugin(BasePlugin):
             self.logger.warning("Meshtastic client myInfo unavailable; skipping ping")
             return True
 
-        myId = meshtastic_client.myInfo.my_node_num  # Get relay's own node number
+        my_id = meshtastic_client.myInfo.my_node_num
 
-        if toId == myId:
-            # Direct message to us
+        if to_id == my_id:
             is_direct_message = True
-        elif toId == BROADCAST_NUM:
+        elif to_id is None or to_id == BROADCAST_NUM:
             is_direct_message = False
         else:
-            # Some radios omit/zero-fill destination; treat as broadcast to avoid dropping valid pings
-            is_direct_message = False
+            return False
+
+        from_id = packet.get("fromId")
+        if is_direct_message and not from_id:
+            self.logger.warning("Direct message missing fromId; cannot reply")
+            return True
 
         if not self.is_channel_enabled(channel, is_direct_message=is_direct_message):
             return False
 
-        # Log that the plugin is processing the message
         self.logger.info(
-            f"Processing message from {longname} on channel {channel} with plugin '{self.plugin_name}'"
+            "Processing message from %s on channel %s with plugin '%s'",
+            longname,
+            channel,
+            self.plugin_name,
         )
-
-        # Extract matched text and punctuation
-        pre_punc = match.group(1)
-        matched_text = match.group(2)
-        post_punc = match.group(3)
 
         total_punc_length = len(pre_punc) + len(post_punc)
 
-        # Define base response
         base_response = match_case(matched_text, "pong")
 
-        # Construct reply message
         reply_message = (
             PING_FALLBACK_RESPONSE
             if total_punc_length > MAX_PUNCTUATION_LENGTH
             else pre_punc + base_response + post_punc
         )
 
-        # Wait for the response delay
         await asyncio.sleep(self.get_response_delay())
 
-        fromId = packet.get("fromId")
-
         if is_direct_message:
-            # Send reply as DM
             await asyncio.to_thread(
                 meshtastic_client.sendText,
                 text=reply_message,
-                destinationId=fromId,
+                destinationId=from_id,
             )
         else:
-            # Send reply back to the same channel
             await asyncio.to_thread(
                 meshtastic_client.sendText,
                 text=reply_message,

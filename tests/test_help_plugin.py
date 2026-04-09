@@ -354,6 +354,11 @@ class TestHelpPlugin(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    def test_get_matrix_commands_none_name(self):
+        """get_matrix_commands returns [] when plugin_name is None (line 75)."""
+        self.plugin.plugin_name = None
+        self.assertEqual(self.plugin.get_matrix_commands(), [])
+
     @patch("mmrelay.plugins.help_plugin.load_plugins")
     def test_handle_room_message_no_plugins(self, mock_load_plugins):
         """

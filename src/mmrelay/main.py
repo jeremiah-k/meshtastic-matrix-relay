@@ -97,6 +97,7 @@ _ready_heartbeat_seconds_raw = os.environ.get(
 )
 _PLUGIN_SHUTDOWN_TIMEOUT_SECONDS = PLUGIN_SHUTDOWN_TIMEOUT_SECONDS
 _MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS = MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS
+_STARTUP_DRAIN_WAIT_POLL_SECS = 0.1
 try:
     _ready_heartbeat_seconds = int(_ready_heartbeat_seconds_raw)
 except (TypeError, ValueError):
@@ -216,6 +217,31 @@ async def _ready_heartbeat(shutdown_event: asyncio.Event) -> None:
             await asyncio.wait_for(
                 shutdown_event.wait(),
                 timeout=_ready_heartbeat_seconds,
+            )
+        except asyncio.TimeoutError:
+            continue
+
+
+async def _wait_for_startup_drain_completion(
+    shutdown_event: asyncio.Event,
+    sync_task: asyncio.Task[Any] | None = None,
+) -> None:
+    """
+    Wait for Meshtastic startup drain completion or shutdown.
+
+    Uses bounded waits so async tests remain deterministic under inline loop
+    executor patches.
+    """
+    drain_complete_event = meshtastic_utils.get_startup_drain_complete_event()
+    if drain_complete_event is None:
+        return
+    while not drain_complete_event.is_set() and not shutdown_event.is_set():
+        if sync_task is not None and sync_task.done():
+            return
+        try:
+            await asyncio.wait_for(
+                shutdown_event.wait(),
+                timeout=_STARTUP_DRAIN_WAIT_POLL_SECS,
             )
         except asyncio.TimeoutError:
             continue
@@ -728,7 +754,7 @@ async def main(config: dict[str, Any]) -> None:
             await join_matrix_room(matrix_client, room["id"])
 
         # Register the message callback for Matrix
-        matrix_logger.info("Listening for inbound Matrix messages...")
+        matrix_logger.info("Listening for inbound Matrix messages")
         matrix_client.add_event_callback(
             cast(Any, on_room_message),
             cast(
@@ -1005,10 +1031,13 @@ async def main(config: dict[str, Any]) -> None:
         nodedb_refresh_interval_seconds = (
             meshtastic_utils.get_nodedb_refresh_interval_seconds(config)
         )
+        startup_ready_published = False
+        startup_ready_skipped_logged = False
         if shutdown_event.is_set():
             matrix_logger.warning(
                 "Skipping readiness publication because shutdown was requested during startup"
             )
+            startup_ready_skipped_logged = True
         else:
             node_name_refresh_task = asyncio.create_task(
                 _node_name_refresh_supervisor(
@@ -1018,19 +1047,11 @@ async def main(config: dict[str, Any]) -> None:
 
             # Ensure message queue processor is started now that event loop is running.
             get_message_queue().ensure_processor_started()
-
-            # Publish readiness only after startup wiring in this section is complete.
-            _write_ready_file()
-            logger.info("Relay startup complete")
-
-            # Start heartbeat AFTER readiness is confirmed
-            if _ready_heartbeat_seconds > 0:
-                ready_task = asyncio.create_task(_ready_heartbeat(shutdown_event))
         while not shutdown_event.is_set():
             sync_task: asyncio.Task[Any] | None = None
             shutdown_task: asyncio.Task[Any] | None = None
             try:
-                matrix_logger.info("Starting Matrix sync loop...")
+                matrix_logger.info("Starting Matrix sync loop")
                 sync_filter = getattr(matrix_client, "mmrelay_sync_filter", None)
                 first_sync_filter = getattr(
                     matrix_client, "mmrelay_first_sync_filter", None
@@ -1042,6 +1063,45 @@ async def main(config: dict[str, Any]) -> None:
                         first_sync_filter=first_sync_filter,
                     )
                 )
+
+                if not startup_ready_published:
+                    await _wait_for_startup_drain_completion(
+                        shutdown_event,
+                        sync_task=sync_task,
+                    )
+                    if shutdown_event.is_set():
+                        if not startup_ready_skipped_logged:
+                            matrix_logger.warning(
+                                "Skipping readiness publication because shutdown was requested during startup"
+                            )
+                            startup_ready_skipped_logged = True
+                    elif sync_task.done():
+                        # Do not publish readiness after an early sync failure.
+                        # The sync outcome is handled by the standard loop below.
+                        pass
+                    else:
+                        await asyncio.to_thread(_write_ready_file)
+                        if shutdown_event.is_set():
+                            # Avoid publishing stale readiness if shutdown raced
+                            # with ready-file creation.
+                            await asyncio.to_thread(_remove_ready_file)
+                            if not startup_ready_skipped_logged:
+                                matrix_logger.warning(
+                                    "Skipping readiness publication because shutdown was requested during startup"
+                                )
+                                startup_ready_skipped_logged = True
+                        elif sync_task.done():
+                            # Sync failed while ready-file write was in flight.
+                            # Remove stale readiness marker and let failure
+                            # handling below process the sync outcome.
+                            await asyncio.to_thread(_remove_ready_file)
+                        else:
+                            logger.info("Relay startup complete")
+                            startup_ready_published = True
+                            if _ready_heartbeat_seconds > 0 and ready_task is None:
+                                ready_task = asyncio.create_task(
+                                    _ready_heartbeat(shutdown_event)
+                                )
 
                 shutdown_task = asyncio.create_task(shutdown_event.wait())
 
@@ -1062,7 +1122,7 @@ async def main(config: dict[str, Any]) -> None:
                     )
 
                 if shutdown_event.is_set():
-                    matrix_logger.info("Shutdown event detected. Stopping sync loop...")
+                    matrix_logger.info("Shutdown event detected. Stopping sync loop")
                     break
 
                 # Check if sync_task completed with an exception

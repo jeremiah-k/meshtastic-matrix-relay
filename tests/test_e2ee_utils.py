@@ -340,3 +340,256 @@ def test_deprecation_window_not_active(
     paths_checked = [call[0][0] for call in calls]
     assert f"/primary/matrix/{CREDENTIALS_FILENAME}" in paths_checked
     assert not any("legacy" in path for path in paths_checked)
+
+
+# ---- Additional coverage tests for e2ee_utils.py uncovered lines ----
+
+
+class TestCheckCredentialsAvailable:
+    """Tests for _check_credentials_available edge cases."""
+
+    @patch("mmrelay.e2ee_utils.os.path.exists")
+    @patch("mmrelay.e2ee_utils.resolve_all_paths")
+    def test_paths_info_none_triggers_resolve(self, mock_resolve, mock_exists):
+        """When paths_info is None, resolve_all_paths should be called."""
+        mock_resolve.return_value = {
+            "credentials_path": "/found/creds.json",
+            "home": None,
+        }
+        mock_exists.return_value = True
+
+        result = _check_credentials_available(None, paths_info=None)
+        assert result is True
+        mock_resolve.assert_called_once()
+
+    @patch("mmrelay.e2ee_utils.os.path.exists")
+    @patch("mmrelay.e2ee_utils.resolve_all_paths")
+    def test_home_string_legacy_same_home_path(self, mock_resolve, mock_exists):
+        """When home is a string and primary not found, check legacy same-home location."""
+
+        def exists_side_effect(path):
+            if "primary" in path:
+                return False
+            if CREDENTIALS_FILENAME in path and "home_root" in path:
+                return True
+            return False
+
+        mock_resolve.return_value = {
+            "credentials_path": "/primary/matrix/credentials.json",
+            "home": "/home_root",
+        }
+        mock_exists.side_effect = exists_side_effect
+
+        result = _check_credentials_available(None)
+        assert result is True
+
+    @patch("mmrelay.e2ee_utils.os.path.exists")
+    @patch("mmrelay.e2ee_utils.resolve_all_paths")
+    @patch("mmrelay.e2ee_utils.is_deprecation_window_active", return_value=True)
+    def test_legacy_sources_during_deprecation_window(
+        self, mock_deprecation, mock_resolve, mock_exists
+    ):
+        """Credentials found in legacy source during deprecation window."""
+        mock_resolve.return_value = {
+            "credentials_path": "/primary/matrix/credentials.json",
+            "home": None,
+            "legacy_sources": ["/legacy1"],
+        }
+        mock_exists.side_effect = lambda p: "legacy1" in p and CREDENTIALS_FILENAME in p
+
+        result = _check_credentials_available(None)
+        assert result is True
+
+
+class MockRoom:
+    def __init__(self, room_id, display_name="Test", encrypted=False):
+        self.room_id = room_id
+        self.display_name = display_name
+        self.encrypted = encrypted
+
+
+class TestRoomEncryptionWarnings:
+    """Tests for get_room_encryption_warnings."""
+
+    def test_no_encrypted_rooms(self):
+        """No warnings when there are no encrypted rooms."""
+        from mmrelay.e2ee_utils import get_room_encryption_warnings
+
+        rooms = {"!r1:t": MockRoom("!r1:t", encrypted=False)}
+        status = {"overall_status": "disabled"}
+        result = get_room_encryption_warnings(rooms, status)
+        assert result == []
+
+    def test_unavailable_status_encrypted_rooms(self):
+        """Warning for encrypted rooms on unsupported platform."""
+        from mmrelay.e2ee_utils import get_room_encryption_warnings
+
+        rooms = {"!r1:t": MockRoom("!r1:t", encrypted=True)}
+        status = {"overall_status": "unavailable"}
+        result = get_room_encryption_warnings(rooms, status)
+        assert len(result) == 2
+        assert "will be blocked" in result[1]
+
+    def test_disabled_status_encrypted_rooms(self):
+        """Warning for encrypted rooms when E2EE is disabled."""
+        from mmrelay.e2ee_utils import get_room_encryption_warnings
+
+        rooms = {"!r1:t": MockRoom("!r1:t", encrypted=True)}
+        status = {"overall_status": "disabled"}
+        result = get_room_encryption_warnings(rooms, status)
+        assert len(result) == 2
+        assert "will be blocked" in result[1]
+
+    def test_incomplete_status_encrypted_rooms(self):
+        """Warning for encrypted rooms when E2EE is incomplete."""
+        from mmrelay.e2ee_utils import get_room_encryption_warnings
+
+        rooms = {"!r1:t": MockRoom("!r1:t", encrypted=True)}
+        status = {"overall_status": "incomplete"}
+        result = get_room_encryption_warnings(rooms, status)
+        assert len(result) == 2
+        assert "may be blocked" in result[1]
+
+
+class TestFormatRoomList:
+    """Tests for format_room_list."""
+
+    def test_incomplete_status_encrypted_room(self):
+        """Encrypted room with incomplete status should show incomplete warning."""
+        from mmrelay.e2ee_utils import format_room_list
+
+        rooms = {"!r1:t": MockRoom("!r1:t", "MyRoom", encrypted=True)}
+        status = {"overall_status": "incomplete"}
+        result = format_room_list(rooms, status)
+        assert len(result) == 1
+        assert "incomplete" in result[0].lower()
+
+
+class TestGetE2eeErrorMessage:
+    """Tests for get_e2ee_error_message."""
+
+    def test_ready_returns_empty(self):
+        """Ready status should return empty string."""
+        from mmrelay.e2ee_utils import get_e2ee_error_message
+
+        result = get_e2ee_error_message({"overall_status": "ready"})
+        assert result == ""
+
+    def test_platform_not_supported(self):
+        """Unavailable platform should return unavailable message."""
+        from mmrelay.e2ee_utils import get_e2ee_error_message
+
+        result = get_e2ee_error_message(
+            {"overall_status": "unavailable", "platform_supported": False}
+        )
+        assert "Windows" in result
+
+    def test_not_enabled(self):
+        """Disabled E2EE should return disabled message."""
+        from mmrelay.e2ee_utils import get_e2ee_error_message
+
+        result = get_e2ee_error_message(
+            {"overall_status": "disabled", "enabled": False, "platform_supported": True}
+        )
+        assert "disabled" in result.lower()
+
+    def test_missing_deps(self):
+        """Missing dependencies should return deps message."""
+        from mmrelay.e2ee_utils import get_e2ee_error_message
+
+        result = get_e2ee_error_message(
+            {
+                "overall_status": "incomplete",
+                "enabled": True,
+                "platform_supported": True,
+                "dependencies_installed": False,
+            }
+        )
+        assert "dependencies" in result.lower()
+
+    def test_missing_credentials(self):
+        """Missing credentials should return auth message."""
+        from mmrelay.e2ee_utils import get_e2ee_error_message
+
+        result = get_e2ee_error_message(
+            {
+                "overall_status": "incomplete",
+                "enabled": True,
+                "platform_supported": True,
+                "dependencies_installed": True,
+                "credentials_available": False,
+            }
+        )
+        assert "auth" in result.lower() or "credentials" in result.lower()
+
+    def test_generic_incomplete(self):
+        """Generic incomplete should return incomplete message."""
+        from mmrelay.e2ee_utils import get_e2ee_error_message
+
+        result = get_e2ee_error_message(
+            {
+                "overall_status": "incomplete",
+                "enabled": True,
+                "platform_supported": True,
+                "dependencies_installed": True,
+                "credentials_available": True,
+            }
+        )
+        assert "incomplete" in result.lower()
+
+
+class TestGetE2eeFixInstructions:
+    """Tests for get_e2ee_fix_instructions."""
+
+    def test_ready_status(self):
+        """Ready status should return confirmation."""
+        from mmrelay.e2ee_utils import get_e2ee_fix_instructions
+
+        result = get_e2ee_fix_instructions({"overall_status": "ready"})
+        assert len(result) == 1
+        assert "fully configured" in result[0]
+
+    def test_missing_deps_step(self):
+        """Missing deps should include install step."""
+        from mmrelay.e2ee_utils import get_e2ee_fix_instructions
+
+        result = get_e2ee_fix_instructions(
+            {
+                "overall_status": "incomplete",
+                "platform_supported": True,
+                "dependencies_installed": False,
+                "credentials_available": True,
+                "enabled": True,
+            }
+        )
+        assert any("Install E2EE" in step for step in result)
+
+    def test_missing_credentials_step(self):
+        """Missing credentials should include auth step."""
+        from mmrelay.e2ee_utils import get_e2ee_fix_instructions
+
+        result = get_e2ee_fix_instructions(
+            {
+                "overall_status": "incomplete",
+                "platform_supported": True,
+                "dependencies_installed": True,
+                "credentials_available": False,
+                "enabled": True,
+            }
+        )
+        assert any("Matrix authentication" in step for step in result)
+
+    def test_not_enabled_step(self):
+        """Not enabled should include config step."""
+        from mmrelay.e2ee_utils import get_e2ee_fix_instructions
+
+        result = get_e2ee_fix_instructions(
+            {
+                "overall_status": "disabled",
+                "platform_supported": True,
+                "dependencies_installed": True,
+                "credentials_available": True,
+                "enabled": False,
+            }
+        )
+        assert any("Enable E2EE" in step for step in result)

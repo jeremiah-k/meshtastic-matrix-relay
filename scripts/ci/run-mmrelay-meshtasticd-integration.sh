@@ -196,6 +196,8 @@ MMRELAY_CONFIG_PATH_A="${INSTANCE_A_DIR}/config.yaml"
 MMRELAY_CONFIG_PATH_B="${INSTANCE_B_DIR}/config.yaml"
 MMRELAY_HOME_DIR_A="${INSTANCE_A_DATA_DIR}/mmrelay-home"
 MMRELAY_HOME_DIR_B="${INSTANCE_B_DATA_DIR}/mmrelay-home"
+MMRELAY_FILE_LOG_PATH_A="${MMRELAY_HOME_DIR_A}/logs/mmrelay.log"
+MMRELAY_FILE_LOG_PATH_B="${MMRELAY_HOME_DIR_B}/logs/mmrelay.log"
 MMRELAY_DB_PATH_A="${MMRELAY_HOME_DIR_A}/database/meshtastic.sqlite"
 MMRELAY_DB_PATH_B="${MMRELAY_HOME_DIR_B}/database/meshtastic.sqlite"
 MATRIX_RUNTIME_JSON="${SHARED_DIR}/matrix-runtime.json"
@@ -335,8 +337,12 @@ print_logs_if_needed() {
 	LOGS_PRINTED=true
 	echo "===== MMRelay A log ====="
 	[[ -f ${MMRELAY_LOG_PATH_A} ]] && cat "${MMRELAY_LOG_PATH_A}" || true
+	echo "===== MMRelay A file log ====="
+	[[ -f ${MMRELAY_FILE_LOG_PATH_A} ]] && cat "${MMRELAY_FILE_LOG_PATH_A}" || true
 	echo "===== MMRelay B log ====="
 	[[ -f ${MMRELAY_LOG_PATH_B} ]] && cat "${MMRELAY_LOG_PATH_B}" || true
+	echo "===== MMRelay B file log ====="
+	[[ -f ${MMRELAY_FILE_LOG_PATH_B} ]] && cat "${MMRELAY_FILE_LOG_PATH_B}" || true
 	echo "===== meshtasticd A log ====="
 	[[ -f ${MESHTASTICD_LOG_PATH_A} ]] && cat "${MESHTASTICD_LOG_PATH_A}" || true
 	echo "===== meshtasticd B log ====="
@@ -565,7 +571,9 @@ write_observability_report() {
 		echo
 		echo "### Artifacts"
 		echo "- MMRelay A log: \`${MMRELAY_LOG_PATH_A}\`"
+		echo "- MMRelay A file log: \`${MMRELAY_FILE_LOG_PATH_A}\`"
 		echo "- MMRelay B log: \`${MMRELAY_LOG_PATH_B}\`"
+		echo "- MMRelay B file log: \`${MMRELAY_FILE_LOG_PATH_B}\`"
 		echo "- meshtasticd A live log snapshot: \`${mesh_log_a_live}\`"
 		echo "- meshtasticd B live log snapshot: \`${mesh_log_b_live}\`"
 		echo "- meshtasticd A final log: \`${MESHTASTICD_LOG_PATH_A}\`"
@@ -2484,6 +2492,7 @@ database:
     wipe_on_restart: false
 logging:
   level: debug
+  log_to_file: true
 EOF_CONFIG
 
 # MMRelay B - Connects to Mesh B
@@ -2524,6 +2533,7 @@ database:
     wipe_on_restart: false
 logging:
   level: debug
+  log_to_file: true
 EOF_CONFIG
 
 # =============================================================================
@@ -2550,7 +2560,7 @@ MMRELAY_PID_A=$!
 startup_offset_a=0
 wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_A}" \
-	"Listening for inbound Matrix messages..." \
+	"Relay startup complete" \
 	"${startup_offset_a}" \
 	$((10#${MMRELAY_READY_TIMEOUT_SECONDS}))
 echo "MMRelay A is ready (PID ${MMRELAY_PID_A})"
@@ -2566,7 +2576,7 @@ MMRELAY_PID_B=$!
 startup_offset_b=0
 wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_B}" \
-	"Listening for inbound Matrix messages..." \
+	"Relay startup complete" \
 	"${startup_offset_b}" \
 	$((10#${MMRELAY_READY_TIMEOUT_SECONDS}))
 echo "MMRelay B is ready (PID ${MMRELAY_PID_B})"
@@ -2863,13 +2873,13 @@ start_test "Test 7" "Test 7: dm-rcv-basic plugin initialization..."
 
 run_or_fail "dm-rcv-basic did not initialize in relay A" \
 	wait_for_log_pattern_since \
-	"${MMRELAY_LOG_PATH_A}" \
+	"${MMRELAY_FILE_LOG_PATH_A}" \
 	"initialized - forwarding DMs to room: ${ROOM_ID_DM_A}" \
 	0 \
 	45
 run_or_fail "dm-rcv-basic did not initialize in relay B" \
 	wait_for_log_pattern_since \
-	"${MMRELAY_LOG_PATH_B}" \
+	"${MMRELAY_FILE_LOG_PATH_B}" \
 	"initialized - forwarding DMs to room: ${ROOM_ID_DM_B}" \
 	0 \
 	45

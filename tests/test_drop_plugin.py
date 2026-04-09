@@ -466,7 +466,61 @@ class TestDropPlugin(unittest.TestCase):
 
         asyncio.run(run_test())
 
-    def test_handle_room_message_with_matching_command(self):
+    def test_get_position_no_nodes(self):
+        """get_position returns None when client has no nodes (line 44->52)."""
+        empty_client = MagicMock()
+        empty_client.nodes = None
+        self.assertIsNone(self.plugin.get_position(empty_client, "!12345678"))
+
+    def test_get_position_empty_nodes_dict(self):
+        """get_position returns None when nodes dict is empty (line 44->52)."""
+        empty_client = MagicMock()
+        empty_client.nodes = {}
+        self.assertIsNone(self.plugin.get_position(empty_client, "!12345678"))
+
+    @patch("mmrelay.plugins.drop_plugin.connect_meshtastic")
+    def test_handle_meshtastic_message_drop_no_from_id(self, mock_connect):
+        """Drop command without fromId should return False (lines 140-143)."""
+        mock_connect.return_value = self.mock_meshtastic_client
+
+        packet = {
+            "decoded": {
+                "portnum": TEXT_MESSAGE_APP,
+                "text": "!drop orphan message",
+            },
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "longname", "meshnet_name"
+            )
+            self.assertFalse(result)
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.drop_plugin.connect_meshtastic")
+    def test_handle_meshtastic_message_non_text_portnum(self, mock_connect):
+        """Non-TEXT_MESSAGE_APP packets should return False (line 165)."""
+        mock_connect.return_value = self.mock_meshtastic_client
+
+        packet = {
+            "fromId": "!12345678",
+            "decoded": {
+                "portnum": "TELEMETRY_APP",
+                "data": "some_data",
+            },
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "longname", "meshnet_name"
+            )
+            self.assertFalse(result)
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.drop_plugin.connect_meshtastic")
+    def test_handle_room_message_with_matching_command(self, mock_connect):
         """
         Test that Matrix room messages with matching commands are handled and processed by the plugin.
 

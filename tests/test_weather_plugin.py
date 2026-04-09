@@ -12,6 +12,7 @@ Tests the weather forecast functionality including:
 - Error handling for API failures
 """
 
+import asyncio
 import copy
 import os
 import sys
@@ -1303,6 +1304,277 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         result = await plugin.handle_meshtastic_message(
             mock_packet, "!weather", "Tester", "mesh"
         )
+        self.assertTrue(result)
+
+    def test_generate_forecast_daily_mode(self):
+        """Test daily forecast mode generates multi-day output."""
+        daily_data = {
+            "current_weather": {
+                "temperature": 20.0,
+                "weathercode": 0,
+                "is_day": 1,
+                "time": "2023-08-20T10:00",
+            },
+            "hourly": {
+                "time": [],
+                "temperature_2m": [],
+                "precipitation_probability": [],
+            },
+            "daily": {
+                "weathercode": [0, 1, 2],
+                "temperature_2m_max": [25.0, 27.0, 22.0],
+                "temperature_2m_min": [15.0, 17.0, 12.0],
+                "time": ["2023-08-20", "2023-08-21", "2023-08-22"],
+            },
+        }
+
+        with patch("requests.get") as mock_get:
+            mock_get.return_value = _make_ok_response(daily_data)
+            result = self.plugin.generate_forecast(
+                TEST_LAT_NYC, TEST_LON_NYC, mode="daily"
+            )
+            self.assertIn("25.0°C/15.0°C", result)
+            self.assertIn("|", result)
+
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    def test_generate_forecast_invalid_units_fallback(self, mock_get):
+        """Invalid units in config should fall back to metric."""
+        mock_get.return_value = _make_ok_response(self.sample_weather_data)
+        self.plugin.config = {"units": "kelvin"}
+        result = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
+        self.assertIn("°C", result)
+
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    def test_generate_forecast_daily_no_data(self, mock_get):
+        """Daily forecast with no data returns unavailable message."""
+        daily_data = {
+            "current_weather": {
+                "temperature": 20,
+                "weathercode": 0,
+                "is_day": 1,
+                "time": "2023-08-20T10:00",
+            },
+            "hourly": {
+                "time": [],
+                "temperature_2m": [],
+                "precipitation_probability": [],
+            },
+            "daily": {
+                "weathercode": [],
+                "temperature_2m_max": [],
+                "temperature_2m_min": [],
+                "time": [],
+            },
+        }
+        mock_get.return_value = _make_ok_response(daily_data)
+        result = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC, mode="daily")
+        self.assertEqual(result, "Weather data temporarily unavailable.")
+
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    def test_generate_forecast_daily_with_none_data(self, mock_get):
+        """Daily forecast with None values shows Data unavailable."""
+        daily_data = {
+            "current_weather": {
+                "temperature": 20,
+                "weathercode": 0,
+                "is_day": 1,
+                "time": "2023-08-20T10:00",
+            },
+            "hourly": {
+                "time": [],
+                "temperature_2m": [],
+                "precipitation_probability": [],
+            },
+            "daily": {
+                "weathercode": [None],
+                "temperature_2m_max": [None],
+                "temperature_2m_min": [None],
+                "time": ["2023-08-20"],
+            },
+        }
+        mock_get.return_value = _make_ok_response(daily_data)
+        result = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC, mode="daily")
+        self.assertIn("Data unavailable", result)
+
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    def test_geocode_location_success(self, mock_get):
+        """Successful geocoding should return coordinates."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "results": [{"latitude": 41.8781, "longitude": -87.6298}]
+        }
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        result = self.plugin._geocode_location("Chicago")
+        self.assertAlmostEqual(result[0], 41.8781)
+        self.assertAlmostEqual(result[1], -87.6298)
+
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    def test_geocode_location_empty_results(self, mock_get):
+        """Geocoding with empty results should return None."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"results": []}
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        result = self.plugin._geocode_location("NowhereXYZ")
+        self.assertIsNone(result)
+
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    def test_geocode_location_malformed_response(self, mock_get):
+        """Geocoding with malformed response should return None."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {}
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        result = self.plugin._geocode_location("Chicago")
+        self.assertIsNone(result)
+
+    def test_geocode_location_empty_query(self):
+        """Empty query should return None."""
+        result = self.plugin._geocode_location("")
+        self.assertIsNone(result)
+
+    def test_parse_mesh_command_non_string(self):
+        """Non-string message should return None."""
+        cmd, args = self.plugin._parse_mesh_command(12345)
+        self.assertIsNone(cmd)
+        self.assertIsNone(args)
+
+    def test_parse_location_override_empty(self):
+        """Empty arg_text should return None."""
+        self.assertIsNone(self.plugin._parse_location_override(""))
+
+    def test_determine_mesh_location_no_positions(self):
+        """Should return None when no nodes have positions."""
+        mock_client = MagicMock()
+        mock_client.nodes = {"n1": {}, "n2": {"position": {}}}
+        self.assertIsNone(self.plugin._determine_mesh_location(mock_client))
+
+    def test_determine_mesh_location_with_positions(self):
+        """Should return average position from nodes."""
+        mock_client = MagicMock()
+        mock_client.nodes = {
+            "n1": {"position": {"latitude": 10.0, "longitude": 10.0}},
+            "n2": {"position": {"latitude": 20.0, "longitude": 20.0}},
+        }
+        result = self.plugin._determine_mesh_location(mock_client)
+        self.assertAlmostEqual(result[0], 15.0)
+
+    def test_resolve_location_from_args_empty(self):
+        """Empty arg_text returns None."""
+        result = asyncio.run(self.plugin._resolve_location_from_args(""))
+        self.assertIsNone(result)
+
+    def test_resolve_location_from_args_none(self):
+        """None arg_text returns None."""
+        result = asyncio.run(self.plugin._resolve_location_from_args(None))
+        self.assertIsNone(result)
+
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    def test_resolve_location_from_args_geocode(self, mock_get):
+        """Should geocode free-form text."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "results": [{"latitude": 40.7, "longitude": -74.0}]
+        }
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        result = asyncio.run(self.plugin._resolve_location_from_args("NYC"))
+        self.assertAlmostEqual(result[0], 40.7)
+
+    def test_trim_to_max_bytes(self):
+        """Short strings should pass through unchanged."""
+        result = Plugin._trim_to_max_bytes("hello")
+        self.assertEqual(result, "hello")
+
+    def test_weather_code_day_prefix(self):
+        """DAY: prefix should return day text when is_day=True."""
+        result = Plugin._weather_code_to_text(1, 1)
+        self.assertIn("Mainly clear", _normalize_emoji(result))
+
+    def test_weather_code_both_prefix(self):
+        """BOTH: prefix should return text regardless of is_day."""
+        result = Plugin._weather_code_to_text(51, 0)
+        self.assertIn("Light drizzle", _normalize_emoji(result))
+
+    def test_weather_code_day_night_fallback(self):
+        """DAY-only entry without NIGHT part should fall back to day text at night."""
+        from mmrelay.constants.plugins import WEATHER_CODE_TEXT_MAPPING
+
+        for code, text in WEATHER_CODE_TEXT_MAPPING.items():
+            if text.startswith("DAY:") and "|NIGHT:" not in text:
+                result = Plugin._weather_code_to_text(code, 0)
+                self.assertNotIn("DAY:", result)
+                break
+
+    async def test_handle_room_message_no_match(self):
+        """Should return False when event doesn't match."""
+        self.plugin.matches = MagicMock(return_value=False)
+        result = await self.plugin.handle_room_message(
+            MagicMock(room_id="!r"), MagicMock(), "!help"
+        )
+        self.assertFalse(result)
+
+    async def test_handle_room_message_no_coords_no_mesh(self):
+        """Should send 'Cannot determine location' when no coords available."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.get_require_bot_mention = MagicMock(return_value=False)
+        self.plugin.send_matrix_message = AsyncMock()
+
+        mock_event = MagicMock()
+        mock_event.body = "!weather"
+        mock_event.source = {"content": {"formatted_body": ""}}
+
+        with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=None):
+            result = await self.plugin.handle_room_message(
+                MagicMock(room_id="!r"), mock_event, "!weather"
+            )
+        self.assertTrue(result)
+        self.assertIn(
+            "Cannot determine location",
+            self.plugin.send_matrix_message.call_args.args[1],
+        )
+
+    async def test_handle_room_message_mesh_location_fallback(self):
+        """Should use mesh location when no coords in args."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.get_require_bot_mention = MagicMock(return_value=False)
+        self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.generate_forecast = MagicMock(return_value="Sunny 25°C")
+
+        mock_client = MagicMock()
+        mock_client.nodes = {
+            "n1": {"position": {"latitude": 10.0, "longitude": 20.0}},
+        }
+
+        mock_event = MagicMock()
+        mock_event.body = "!weather"
+        mock_event.source = {"content": {"formatted_body": ""}}
+
+        with patch(
+            "mmrelay.meshtastic_utils.connect_meshtastic", return_value=mock_client
+        ):
+            result = await self.plugin.handle_room_message(
+                MagicMock(room_id="!r"), mock_event, "!weather"
+            )
+        self.assertTrue(result)
+        self.plugin.generate_forecast.assert_called_once()
+
+    async def test_handle_meshtastic_meshtastic_unavailable(self):
+        """Should return True when meshtastic client is unavailable."""
+        packet = {
+            "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
+            "channel": 0,
+        }
+
+        with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=None):
+            result = await self.plugin.handle_meshtastic_message(packet, "f", "l", "m")
         self.assertTrue(result)
 
 

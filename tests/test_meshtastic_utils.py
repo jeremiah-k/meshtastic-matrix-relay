@@ -14,6 +14,7 @@ import asyncio
 import contextlib
 import os
 import sys
+import threading
 import unittest
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from types import SimpleNamespace
@@ -66,9 +67,31 @@ from tests.constants import (
 TEST_PACKET_RX_TIME = 1234567890
 
 
+def _cancel_startup_drain_timer() -> None:
+    """Best-effort cancellation and join of the startup-drain expiry timer."""
+    import mmrelay.meshtastic_utils as _mu
+
+    _timer = getattr(_mu, "_relay_startup_drain_expiry_timer", None)
+    if _timer is None:
+        return
+    with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+        _timer.cancel()
+    _join = getattr(_timer, "join", None)
+    if callable(_join):
+        with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+            _join(0.2)
+    with contextlib.suppress(AttributeError):
+        _mu._relay_startup_drain_expiry_timer = None
+
+
 @pytest.fixture(autouse=True)
 def reset_meshtastic_relay_state(monkeypatch):
     """Reset all Meshtastic relay module globals to prevent cross-test leakage."""
+
+    _cancel_startup_drain_timer()
+
+    startup_drain_complete_event = threading.Event()
+    startup_drain_complete_event.set()
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._relay_active_client_id",
         None,
@@ -82,6 +105,16 @@ def reset_meshtastic_relay_state(monkeypatch):
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._relay_startup_drain_deadline_monotonic_secs",
         None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_startup_drain_expiry_timer",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_startup_drain_complete_event",
+        startup_drain_complete_event,
         raising=False,
     )
     monkeypatch.setattr(
@@ -114,6 +147,10 @@ def reset_meshtastic_relay_state(monkeypatch):
         {},
         raising=False,
     )
+
+    yield
+
+    _cancel_startup_drain_timer()
 
 
 @pytest.fixture
@@ -840,6 +877,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         mu.reconnecting = False
         mu._startup_packet_drain_applied = False
         mu._relay_startup_drain_deadline_monotonic_secs = None
+        mu._relay_startup_drain_complete_event.set()
 
         with (
             patch("mmrelay.meshtastic_utils.time.time", return_value=100.0),
@@ -852,6 +890,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         assert mu._relay_startup_drain_deadline_monotonic_secs == pytest.approx(
             1_000.0 + STARTUP_PACKET_DRAIN_SECS
         )
+        assert mu._relay_startup_drain_complete_event.is_set() is False
 
         with (
             patch("mmrelay.meshtastic_utils.time.time", return_value=200.0),
@@ -862,6 +901,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         assert result_second is second_client
         assert mu._startup_packet_drain_applied is True
         assert mu._relay_startup_drain_deadline_monotonic_secs is None
+        assert mu._relay_startup_drain_complete_event.is_set() is True
 
     @patch("mmrelay.meshtastic_utils.serial_port_exists")
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
@@ -907,6 +947,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         mu.subscribed_to_connection_lost = False
         mu._startup_packet_drain_applied = False
         mu._relay_startup_drain_deadline_monotonic_secs = None
+        mu._relay_startup_drain_complete_event.set()
 
         with (
             patch("mmrelay.meshtastic_utils.time.sleep"),
@@ -924,6 +965,27 @@ class TestMeshtasticUtils(unittest.TestCase):
         first_client.close.assert_called_once()
         assert mu._startup_packet_drain_applied is True
         assert mu._relay_startup_drain_deadline_monotonic_secs is not None
+        assert mu._relay_startup_drain_complete_event.is_set() is False
+
+    def test_rollback_connect_attempt_marks_startup_drain_complete(self):
+        """Rollback should set startup-drain completion state to avoid dead waits."""
+        import mmrelay.meshtastic_utils as mu
+
+        mu._relay_startup_drain_complete_event.clear()
+        mu._relay_startup_drain_expiry_timer = MagicMock()
+        mu._relay_startup_drain_deadline_monotonic_secs = 123.0
+        mu._startup_packet_drain_applied = True
+
+        result = mu._rollback_connect_attempt_state(
+            client=None,
+            client_assigned_for_this_connect=False,
+            startup_drain_armed_for_this_connect=True,
+            startup_drain_applied_for_this_connect=True,
+            reconnect_bootstrap_armed_for_this_connect=False,
+        )
+
+        assert result is False
+        assert mu._relay_startup_drain_complete_event.is_set() is True
 
     def test_send_text_reply_success(self):
         """
@@ -2355,6 +2417,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         mu.RELAY_START_TIME = 200_000.0
         mu._relay_startup_drain_deadline_monotonic_secs = 1_000.0
         mu._relay_startup_drain_expiry_timer = None
+        mu._relay_startup_drain_complete_event.clear()
         packet = {
             "from": TEST_PACKET_FROM_ID,
             "to": TEST_PACKET_FROM_ID,
@@ -2374,12 +2437,14 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             on_meshtastic_message(packet, mock_interface)
 
         assert mu._relay_startup_drain_deadline_monotonic_secs is None
+        assert mu._relay_startup_drain_complete_event.is_set() is True
 
     def test_startup_drain_expiry_timer_clears_deadline_and_logs(self):
         """Drain deadline should clear and log even when no packet arrives."""
         import mmrelay.meshtastic_utils as mu
 
         mu._relay_startup_drain_deadline_monotonic_secs = 1_010.0
+        mu._relay_startup_drain_complete_event.clear()
         created_timers = []
 
         class _FakeTimer:
@@ -2414,6 +2479,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
         assert mu._relay_startup_drain_deadline_monotonic_secs is None
         assert mu._relay_startup_drain_expiry_timer is None
+        assert mu._relay_startup_drain_complete_event.is_set() is True
         log_calls = [str(call) for call in mock_logger.debug.call_args_list]
         assert any("Startup drain window has ended" in c for c in log_calls)
 
@@ -2422,6 +2488,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         import mmrelay.meshtastic_utils as mu
 
         mu._relay_startup_drain_deadline_monotonic_secs = 1_010.0
+        mu._relay_startup_drain_complete_event.clear()
         created_timers = []
 
         class _FakeTimer:
@@ -2455,6 +2522,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
         assert mu._relay_startup_drain_deadline_monotonic_secs == 1_020.0
         assert mu._relay_startup_drain_expiry_timer is None
+        assert mu._relay_startup_drain_complete_event.is_set() is False
         log_calls = [str(call) for call in mock_logger.debug.call_args_list]
         assert not any("Startup drain window has ended" in c for c in log_calls)
 
@@ -2463,6 +2531,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         import mmrelay.meshtastic_utils as mu
 
         mu._relay_startup_drain_deadline_monotonic_secs = 1_010.0
+        mu._relay_startup_drain_complete_event.clear()
         created_timers = []
 
         class _FakeTimer:
@@ -2497,6 +2566,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
         assert mu._relay_startup_drain_deadline_monotonic_secs is None
         assert mu._relay_startup_drain_expiry_timer is None
+        assert mu._relay_startup_drain_complete_event.is_set() is True
         log_calls = [str(call) for call in mock_logger.debug.call_args_list]
         assert any("Startup drain window has ended" in c for c in log_calls)
 
@@ -2873,6 +2943,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         mu._relay_rx_time_clock_skew_secs = None
         mu._relay_startup_drain_deadline_monotonic_secs = 1_000.0
         mu._relay_startup_drain_expiry_timer = None
+        mu._relay_startup_drain_complete_event.clear()
         packet = {
             "from": TEST_PACKET_FROM_ID,
             "to": TEST_PACKET_FROM_ID,
@@ -2893,6 +2964,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             on_meshtastic_message(packet, mock_interface)
 
         assert mu._relay_startup_drain_deadline_monotonic_secs is None
+        assert mu._relay_startup_drain_complete_event.is_set() is True
         log_calls = [str(c) for c in mock_logger.debug.call_args_list]
         assert any("Startup drain window has ended" in c for c in log_calls)
 
@@ -2906,6 +2978,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         mu._relay_rx_time_clock_skew_secs = None
         mu._relay_startup_drain_deadline_monotonic_secs = 1_000.0
         mu._relay_startup_drain_expiry_timer = None
+        mu._relay_startup_drain_complete_event.clear()
         packet = {
             "from": TEST_PACKET_FROM_ID,
             "to": TEST_PACKET_FROM_ID,
@@ -2927,6 +3000,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
                 on_meshtastic_message(packet, mock_interface)
 
         assert mu._relay_startup_drain_deadline_monotonic_secs == 1_000.0
+        assert mu._relay_startup_drain_complete_event.is_set() is False
         log_calls = [str(c) for c in mock_logger.debug.call_args_list]
         assert not any("Startup drain window has ended" in c for c in log_calls)
 
@@ -2937,6 +3011,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         mu.RELAY_START_TIME = 100_000.0
         mu._relay_rx_time_clock_skew_secs = None
         mu._relay_startup_drain_deadline_monotonic_secs = 1_000.0
+        mu._relay_startup_drain_complete_event.clear()
         packet = {
             "from": TEST_PACKET_FROM_ID,
             "to": TEST_PACKET_FROM_ID,
@@ -2957,6 +3032,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             on_meshtastic_message(packet, mock_interface)
 
         assert mu._relay_startup_drain_deadline_monotonic_secs is None
+        assert mu._relay_startup_drain_complete_event.is_set() is True
 
     def test_on_meshtastic_message_drain_cleared_only_once_on_first_packet(self):
         """After drain window expires, subsequent packets should not re-clear the deadline."""
@@ -2966,6 +3042,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         mu._relay_rx_time_clock_skew_secs = None
         mu._relay_startup_drain_deadline_monotonic_secs = 1_000.0
         mu._relay_startup_drain_expiry_timer = None
+        mu._relay_startup_drain_complete_event.clear()
 
         packet1 = {
             "from": TEST_PACKET_FROM_ID,
@@ -3002,6 +3079,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             on_meshtastic_message(packet2, mock_interface)
 
         assert mu._relay_startup_drain_deadline_monotonic_secs is None
+        assert mu._relay_startup_drain_complete_event.is_set() is True
         drain_end_count = sum(
             1 for msg in debug_log_messages if "Startup drain window has ended" in msg
         )
@@ -5297,6 +5375,27 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             self.assertIsNone(result)
 
             mock_scan.assert_not_called()
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_none_startup_drain_event_is_safe_noop():
+    """Code paths that call .set()/.clear() on the startup drain event must handle None gracefully."""
+    import mmrelay.meshtastic_utils as mu
+
+    mu._relay_startup_drain_expiry_timer = MagicMock()
+    mu._relay_startup_drain_deadline_monotonic_secs = 123.0
+    mu._startup_packet_drain_applied = True
+    with patch.object(
+        mu, "get_startup_drain_complete_event", return_value=None
+    ) as mock_get_event:
+        mu._rollback_connect_attempt_state(
+            client=None,
+            client_assigned_for_this_connect=False,
+            startup_drain_armed_for_this_connect=True,
+            startup_drain_applied_for_this_connect=True,
+            reconnect_bootstrap_armed_for_this_connect=False,
+        )
+    mock_get_event.assert_called()
 
 
 if __name__ == "__main__":

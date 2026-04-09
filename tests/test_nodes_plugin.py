@@ -383,6 +383,34 @@ class TestNodesPlugin(unittest.TestCase):
         self.assertIn("?% ?V", response)  # Default values for null battery/voltage
         self.assertIn("/ ?", response)  # No last heard time
 
+    def test_get_relative_time_future_timestamp(self):
+        """Future timestamps should return 'Just now' (line 73)."""
+        future_ts = (datetime.now() + timedelta(hours=1)).timestamp()
+        result = get_relative_time(future_ts)
+        self.assertEqual(result, "Just now")
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_no_client(self, mock_connect):
+        """generate_response returns error when client is None (line 108)."""
+        mock_connect.return_value = None
+        response = self.plugin.generate_response()
+        self.assertEqual(response, "Unable to connect to Meshtastic device.")
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_zero_last_heard(self, mock_connect):
+        """lastHeard of 0 should render as '?' (line 143->151)."""
+        client = MagicMock()
+        client.nodes = {
+            "node_zero_lh": {
+                "user": {"shortName": "ZER", "longName": "Zero LH", "hwModel": "T"},
+                "lastHeard": 0,
+            }
+        }
+        mock_connect.return_value = client
+        response = self.plugin.generate_response()
+        self.assertIn("ZER Zero LH", response)
+        self.assertIn("/ ?", response)
+
     def test_handle_meshtastic_message_always_false(self):
         """
         Test that handle_meshtastic_message always returns False regardless of input.
