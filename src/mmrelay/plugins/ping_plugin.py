@@ -99,7 +99,8 @@ class Plugin(BasePlugin):
             return False
 
         message = packet["decoded"]["text"].strip()
-        channel = packet.get("channel", DEFAULT_CHANNEL)
+        raw_channel = packet.get("channel")
+        channel = DEFAULT_CHANNEL if raw_channel is None else raw_channel
 
         mimic_mode = self.get_mimic_mode()
 

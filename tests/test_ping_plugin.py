@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from meshtastic.mesh_interface import BROADCAST_NUM
 
-from mmrelay.constants.formats import TEXT_MESSAGE_APP
+from mmrelay.constants.formats import DEFAULT_CHANNEL, TEXT_MESSAGE_APP
 from mmrelay.plugins.ping_plugin import Plugin, match_case
 
 
@@ -91,6 +91,11 @@ class TestPingPlugin(unittest.TestCase):
             with self.subTest(mimic_mode_value=mimic_mode_value):
                 self.plugin.config = {"mimic_mode": mimic_mode_value}
                 self.assertFalse(self.plugin.get_mimic_mode())
+        self.plugin.logger.warning.assert_called_once_with(
+            "Invalid ping.mimic_mode value %r; expected boolean. Defaulting to false.",
+            "false",
+        )
+        self.assertTrue(self.plugin._invalid_mimic_mode_warned)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_handle_meshtastic_message_missing_myinfo(self, mock_connect):
@@ -759,15 +764,15 @@ class TestPingPluginEdgeCases(unittest.TestCase):
         asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_packet_addressed_to_other_node_ignored(self, mock_connect):
+    def test_packet_targeted_to_other_node_ignored(self, mock_connect):
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
         mock_connect.return_value = mock_client
 
         packet = {
             "decoded": {"text": "!ping"},
-            "channel": 0,
-            "fromId": "!99999999",
+            "channel": 1,
+            "fromId": "!12345678",
             "to": 987654321,
         }
 
@@ -776,7 +781,38 @@ class TestPingPluginEdgeCases(unittest.TestCase):
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertFalse(result)
+            self.plugin.is_channel_enabled.assert_not_called()
             mock_client.sendText.assert_not_called()
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_channel_none_coalesces_to_default_channel(self, mock_sleep, mock_connect):
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+
+        packet = {
+            "decoded": {"text": "!ping"},
+            "channel": None,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            self.plugin.is_channel_enabled.assert_called_once_with(
+                DEFAULT_CHANNEL, is_direct_message=False
+            )
+            mock_sleep.assert_called_once_with(1.0)
+            mock_client.sendText.assert_called_once_with(
+                text="pong",
+                channelIndex=DEFAULT_CHANNEL,
+            )
 
         asyncio.run(run_test())
 
