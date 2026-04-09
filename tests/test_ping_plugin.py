@@ -512,6 +512,37 @@ class TestPingPluginMimicMode(unittest.TestCase):
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("asyncio.sleep")
+    def test_mimic_mode_explicit_ping_uses_mimic_response(
+        self, mock_sleep, mock_connect
+    ):
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+
+        async def run_test() -> None:
+            for message, expected_response in (("!ping", "!pong"), ("!PING", "!PONG")):
+                with self.subTest(message=message, expected_response=expected_response):
+                    packet = {
+                        "decoded": {"text": message},
+                        "channel": 0,
+                        "fromId": "!12345678",
+                        "to": BROADCAST_NUM,
+                    }
+                    result = await self.plugin.handle_meshtastic_message(
+                        packet, "formatted_message", "TestNode", "TestMesh"
+                    )
+                    self.assertTrue(result)
+                    mock_sleep.assert_called_once_with(1.0)
+                    mock_client.sendText.assert_called_once_with(
+                        text=expected_response, channelIndex=0
+                    )
+                    mock_sleep.reset_mock()
+                    mock_client.sendText.reset_mock()
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
     def test_mimic_case_matching_upper(self, mock_sleep, mock_connect):
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
