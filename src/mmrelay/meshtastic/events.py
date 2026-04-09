@@ -227,15 +227,18 @@ def _schedule_startup_drain_deadline_cleanup(startup_drain_deadline: float) -> N
     try:
         timer.start()
     except Exception as exc:  # noqa: BLE001 - best-effort timer setup
+        should_signal_startup_drain_complete = False
         with facade._relay_rx_time_clock_skew_lock:
             if facade._relay_startup_drain_expiry_timer is timer:
                 facade._relay_startup_drain_expiry_timer = None
-            if (
-                facade._relay_startup_drain_deadline_monotonic_secs
-                == startup_drain_deadline
-            ):
-                facade._relay_startup_drain_deadline_monotonic_secs = None
-        _signal_startup_drain_complete()
+                if (
+                    facade._relay_startup_drain_deadline_monotonic_secs
+                    == startup_drain_deadline
+                ):
+                    facade._relay_startup_drain_deadline_monotonic_secs = None
+                    should_signal_startup_drain_complete = True
+        if should_signal_startup_drain_complete:
+            _signal_startup_drain_complete()
         facade.logger.debug(
             "Failed to schedule startup drain expiry cleanup timer",
             exc_info=exc,

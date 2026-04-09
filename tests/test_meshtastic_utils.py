@@ -68,13 +68,20 @@ TEST_PACKET_RX_TIME = 1234567890
 
 
 def _cancel_startup_drain_timer() -> None:
-    """Best-effort cancellation of the startup-drain expiry timer."""
+    """Best-effort cancellation and join of the startup-drain expiry timer."""
     import mmrelay.meshtastic_utils as _mu
 
     _timer = getattr(_mu, "_relay_startup_drain_expiry_timer", None)
-    if _timer is not None:
+    if _timer is None:
+        return
+    with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+        _timer.cancel()
+    _join = getattr(_timer, "join", None)
+    if callable(_join):
         with contextlib.suppress(AttributeError, RuntimeError, TypeError):
-            _timer.cancel()
+            _join(0.2)
+    with contextlib.suppress(AttributeError):
+        _mu._relay_startup_drain_expiry_timer = None
 
 
 @pytest.fixture(autouse=True)
@@ -5370,7 +5377,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             mock_scan.assert_not_called()
 
 
-def test_none_startup_drain_event_is_safe_noop(reset_meshtastic_globals):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_none_startup_drain_event_is_safe_noop():
     """Code paths that call .set()/.clear() on the startup drain event must handle None gracefully."""
     import mmrelay.meshtastic_utils as mu
 

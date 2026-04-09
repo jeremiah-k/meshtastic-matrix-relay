@@ -857,10 +857,16 @@ class TestMain(unittest.TestCase):
         _mock_init_db,
     ):
         """Ready publication should be a safe no-op when startup drain event is None."""
-        shutdown_event = _ImmediateEvent()
+        shutdown_event = _OnePassEvent()
         mock_matrix_client = AsyncMock()
         mock_matrix_client.add_event_callback = MagicMock()
         mock_matrix_client.close = AsyncMock()
+
+        async def _sync_forever_once(*_args, **_kwargs):
+            await asyncio.sleep(0)
+            shutdown_event.set()
+
+        mock_matrix_client.sync_forever = AsyncMock(side_effect=_sync_forever_once)
         mock_connect_matrix.return_value = mock_matrix_client
         mock_connect_meshtastic.return_value = MagicMock()
 
@@ -880,6 +886,7 @@ class TestMain(unittest.TestCase):
                 "mmrelay.main.meshtastic_utils.get_startup_drain_complete_event",
                 return_value=None,
             ),
+            patch("mmrelay.main._write_ready_file") as mock_write_ready,
             patch("mmrelay.main.shutdown_plugins"),
         ):
             mock_queue = MagicMock()
@@ -889,6 +896,7 @@ class TestMain(unittest.TestCase):
 
             asyncio.run(main(self.mock_config))
 
+        mock_write_ready.assert_called_once()
         mock_stop_queue.assert_called_once()
 
     def test_main_with_message_map_wipe(self):
