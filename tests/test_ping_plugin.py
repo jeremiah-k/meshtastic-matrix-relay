@@ -666,6 +666,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
             for message in (
                 "please ping",
                 "can you ping?",
+                "ping me",
                 "before ping after",
             ):
                 with self.subTest(message=message):
@@ -708,7 +709,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("asyncio.sleep")
-    def test_mimic_first_word_ping_with_trailing_text_matches(
+    def test_mimic_first_word_ping_with_trailing_text_ignored(
         self, mock_sleep, mock_connect
     ):
         mock_client = MagicMock()
@@ -726,15 +727,15 @@ class TestPingPluginMimicMode(unittest.TestCase):
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
-            self.assertTrue(result)
-            mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(text="pong", channelIndex=0)
+            self.assertFalse(result)
+            mock_sleep.assert_not_called()
+            mock_client.sendText.assert_not_called()
 
         asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("asyncio.sleep")
-    def test_mimic_first_word_wrapped_ping_with_trailing_text_preserved(
+    def test_mimic_first_word_wrapped_ping_with_trailing_text_ignored(
         self, mock_sleep, mock_connect
     ):
         mock_client = MagicMock()
@@ -752,25 +753,21 @@ class TestPingPluginMimicMode(unittest.TestCase):
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
-            self.assertTrue(result)
-            mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(
-                text="!!!!!POnG?!!!!", channelIndex=0
-            )
+            self.assertFalse(result)
+            mock_sleep.assert_not_called()
+            mock_client.sendText.assert_not_called()
 
         asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("asyncio.sleep")
-    def test_mimic_first_word_one_side_exceeds_max_uses_fallback(
-        self, mock_sleep, mock_connect
-    ):
+    def test_mimic_one_side_exceeds_max_uses_fallback(self, mock_sleep, mock_connect):
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
         mock_connect.return_value = mock_client
 
         packet = {
-            "decoded": {"text": "!!!!!!PING? status"},
+            "decoded": {"text": "!!!!!!PING?"},
             "channel": 0,
             "fromId": "!12345678",
             "to": BROADCAST_NUM,
