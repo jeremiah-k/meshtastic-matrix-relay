@@ -273,9 +273,12 @@ class TestMaybeResetBleExecutor:
     def test_below_threshold_returns(self):
         from mmrelay.meshtastic.executors import _maybe_reset_ble_executor
 
+        existing_executor = MagicMock()
+        existing_executor._shutdown = False
+        mu._ble_executor = existing_executor
         mu._ble_executor_degraded_addresses = set()
         _maybe_reset_ble_executor("AA:BB", timeout_count=1)
-        assert mu._ble_executor is not None
+        assert mu._ble_executor is existing_executor
 
     def test_at_threshold_recreates(self):
         from mmrelay.meshtastic.executors import _maybe_reset_ble_executor
