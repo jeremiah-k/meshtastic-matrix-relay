@@ -12,7 +12,7 @@ from nio import (
 
 from mmrelay.constants.database import DEFAULT_DISTANCE_KM_FALLBACK, DEFAULT_RADIUS_KM
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
-from mmrelay.constants.plugins import DROP_COMMAND_REGEX, SPECIAL_NODE_MESSAGES
+from mmrelay.constants.plugins import SPECIAL_NODE_MESSAGES
 from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.plugins.base_plugin import BasePlugin
 
@@ -129,11 +129,15 @@ class Plugin(BasePlugin):
         ):
             text = packet["decoded"].get("text") or ""
 
-            match = DROP_COMMAND_REGEX.search(text)
-            if not match:
+            parsed_drop = self.parse_mesh_bang_command(
+                text, ("drop",), allow_anywhere=True
+            )
+            if parsed_drop is None:
                 return False
 
-            drop_message = match.group(1)
+            _, drop_message = parsed_drop
+            if not drop_message:
+                return False
 
             dropping_from_id: str | None = packet.get("fromId")
             if not dropping_from_id:

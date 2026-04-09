@@ -1587,6 +1587,14 @@ class TestBasePlugin(unittest.TestCase):
             plugin.parse_mesh_bang_command("please use !weather 90210", ("weather",))
         )
 
+    def test_parse_mesh_bang_command_allow_anywhere(self):
+        """parse_mesh_bang_command should support embedded matching when requested."""
+        plugin = MockPlugin()
+        result = plugin.parse_mesh_bang_command(
+            "please use !weather 90210", ("weather",), allow_anywhere=True
+        )
+        self.assertEqual(result, ("weather", "90210"))
+
     def test_parse_mesh_bang_command_non_string_or_empty_commands(self):
         """parse_mesh_bang_command should return None for invalid inputs."""
         plugin = MockPlugin()

@@ -892,18 +892,21 @@ class BasePlugin(ABC):
         return args.strip()
 
     def parse_mesh_bang_command(
-        self, text: str, commands: Iterable[str]
+        self, text: str, commands: Iterable[str], *, allow_anywhere: bool = False
     ) -> tuple[str, str] | None:
         """
-        Parse a mesh command that starts with `!` and return the matched command plus args.
+        Parse a mesh command prefixed with `!` and return the matched command plus args.
 
-        Command matching is case-insensitive, but the returned command uses the canonical
-        command spelling provided in `commands` (first occurrence wins). Commands may be
-        passed with or without a leading `!`.
+        Command matching is case-insensitive, but the returned command uses the
+        canonical command spelling provided in `commands` (first occurrence wins).
+        Commands may be passed with or without a leading `!`.
 
         Parameters:
             text (str): Incoming mesh message text.
             commands (Iterable[str]): Supported command names.
+            allow_anywhere (bool): When `False` (default), command matching must
+                occur at the start of the message (ignoring leading whitespace).
+                When `True`, the command may appear anywhere in the message.
 
         Returns:
             tuple[str, str] | None: `(command, args)` with trimmed args (possibly empty),
@@ -935,7 +938,10 @@ class BasePlugin(ABC):
             return None
 
         cmd_pattern = "|".join(re.escape(cmd) for cmd in normalized_commands)
-        pattern = rf"^\s*!(?P<cmd>{cmd_pattern})\b(?:\s+(?P<args>.*))?$"
+        if allow_anywhere:
+            pattern = rf"^.*?!(?P<cmd>{cmd_pattern})\b(?:\s+(?P<args>.*))?$"
+        else:
+            pattern = rf"^\s*!(?P<cmd>{cmd_pattern})\b(?:\s+(?P<args>.*))?$"
         match = re.match(pattern, text, flags=re.IGNORECASE)
         if not match:
             return None

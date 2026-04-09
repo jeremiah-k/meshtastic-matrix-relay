@@ -158,6 +158,37 @@ class TestDropPlugin(unittest.TestCase):
         asyncio.run(run_test())
 
     @patch("mmrelay.plugins.drop_plugin.connect_meshtastic")
+    def test_handle_meshtastic_message_drop_embedded_command_valid(self, mock_connect):
+        """
+        Test that an embedded "!drop" command remains supported for backward compatibility.
+        """
+        mock_connect.return_value = self.mock_meshtastic_client
+
+        packet = {
+            "fromId": "!12345678",
+            "decoded": {
+                "portnum": TEXT_MESSAGE_APP,
+                "text": "please process !drop Embedded message",
+            },
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "longname", "meshnet_name"
+            )
+
+            self.assertTrue(result)
+            self.plugin.store_node_data.assert_called_once()
+            call_args = self.plugin.store_node_data.call_args
+            self.assertEqual(call_args[0][0], "!NODE_MSGS!")
+            stored_data = call_args[0][1]
+            self.assertEqual(stored_data["text"], "Embedded message")
+            self.assertEqual(stored_data["originator"], "!12345678")
+            self.assertEqual(stored_data["location"], (TEST_LAT_NYC, TEST_LON_NYC))
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.drop_plugin.connect_meshtastic")
     def test_handle_meshtastic_message_drop_no_position(self, mock_connect):
         """
         Test that dropping a message from a node without position data logs a debug message and does not store the message, but returns True.
