@@ -14,7 +14,7 @@ from nio import (
 from mmrelay.constants.formats import DEFAULT_CHANNEL, TEXT_MESSAGE_APP
 from mmrelay.constants.messages import (
     PING_FALLBACK_RESPONSE,
-    PING_MATRIX_RESPONSE,
+    PING_RESPONSE,
     PORTNUM_TEXT_MESSAGE_APP,
 )
 from mmrelay.constants.plugins import (
@@ -115,9 +115,6 @@ class Plugin(BasePlugin):
             explicit_match = PING_EXPLICIT_COMMAND_REGEX.fullmatch(message)
             if not explicit_match:
                 return False
-            matched_text = explicit_match.group(1)
-            pre_punc = ""
-            post_punc = ""
 
         from mmrelay.meshtastic_utils import connect_meshtastic
 
@@ -155,15 +152,18 @@ class Plugin(BasePlugin):
             self.plugin_name,
         )
 
-        total_punc_length = len(pre_punc) + len(post_punc)
+        if mimic_mode:
+            total_punc_length = len(pre_punc) + len(post_punc)
 
-        base_response = match_case(matched_text, "pong")
+            base_response = match_case(matched_text, "pong")
 
-        reply_message = (
-            PING_FALLBACK_RESPONSE
-            if total_punc_length > MAX_PUNCTUATION_LENGTH
-            else pre_punc + base_response + post_punc
-        )
+            reply_message = (
+                PING_FALLBACK_RESPONSE
+                if total_punc_length > MAX_PUNCTUATION_LENGTH
+                else pre_punc + base_response + post_punc
+            )
+        else:
+            reply_message = PING_RESPONSE
 
         await asyncio.sleep(self.get_response_delay())
 
@@ -225,5 +225,5 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        await self.send_matrix_message(room.room_id, PING_MATRIX_RESPONSE)
+        await self.send_matrix_message(room.room_id, PING_RESPONSE)
         return True

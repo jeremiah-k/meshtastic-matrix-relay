@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from meshtastic.mesh_interface import BROADCAST_NUM
 
 from mmrelay.constants.formats import DEFAULT_CHANNEL, TEXT_MESSAGE_APP
+from mmrelay.constants.messages import PING_RESPONSE
 from mmrelay.plugins.ping_plugin import Plugin, match_case
 
 
@@ -146,7 +147,9 @@ class TestPingPlugin(unittest.TestCase):
                 0, is_direct_message=False
             )
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(text="pong", channelIndex=0)
+            mock_client.sendText.assert_called_once_with(
+                text=PING_RESPONSE, channelIndex=0
+            )
             self.plugin.logger.info.assert_called_once()
 
         asyncio.run(run_test())
@@ -175,14 +178,16 @@ class TestPingPlugin(unittest.TestCase):
             )
             mock_sleep.assert_called_once_with(1.0)
             mock_client.sendText.assert_called_once_with(
-                text="pong", destinationId="!12345678"
+                text=PING_RESPONSE, destinationId="!12345678"
             )
 
         asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("asyncio.sleep")
-    def test_explicit_ping_case_matching(self, mock_sleep, mock_connect):
+    def test_explicit_ping_case_insensitive_normalized_response(
+        self, mock_sleep, mock_connect
+    ):
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
         mock_connect.return_value = mock_client
@@ -200,7 +205,9 @@ class TestPingPlugin(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(text="PONG", channelIndex=0)
+            mock_client.sendText.assert_called_once_with(
+                text=PING_RESPONSE, channelIndex=0
+            )
 
         asyncio.run(run_test())
 
@@ -360,7 +367,9 @@ class TestPingPlugin(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(text="pong", channelIndex=0)
+            mock_client.sendText.assert_called_once_with(
+                text=PING_RESPONSE, channelIndex=0
+            )
 
         asyncio.run(run_test())
 
@@ -732,7 +741,7 @@ class TestPingPluginMatrixHandling(unittest.TestCase):
             self.assertTrue(result)
             self.plugin.matches.assert_called_once_with(event)
             self.plugin.send_matrix_message.assert_called_once_with(
-                "!test:matrix.org", "pong!"
+                "!test:matrix.org", PING_RESPONSE
             )
 
         asyncio.run(run_test())
@@ -792,7 +801,9 @@ class TestPingPluginEdgeCases(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(text="pong", channelIndex=0)
+            mock_client.sendText.assert_called_once_with(
+                text=PING_RESPONSE, channelIndex=0
+            )
 
         asyncio.run(run_test())
 
@@ -869,7 +880,7 @@ class TestPingPluginEdgeCases(unittest.TestCase):
             )
             mock_sleep.assert_called_once_with(1.0)
             mock_client.sendText.assert_called_once_with(
-                text="pong",
+                text=PING_RESPONSE,
                 channelIndex=DEFAULT_CHANNEL,
             )
 
