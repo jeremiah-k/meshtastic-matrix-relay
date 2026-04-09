@@ -171,7 +171,6 @@ def test_log_write_future_error_after_cancellation_done_future():
 
     import os
     import tempfile
-    from concurrent.futures import CancelledError as ConcurrentCancelledError
 
     from mmrelay.db_runtime import DatabaseManager
 

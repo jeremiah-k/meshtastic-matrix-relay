@@ -366,7 +366,6 @@ class TestCheckCredentialsAvailable:
     @patch("mmrelay.e2ee_utils.resolve_all_paths")
     def test_home_string_legacy_same_home_path(self, mock_resolve, mock_exists):
         """When home is a string and primary not found, check legacy same-home location."""
-        call_count = {"n": 0}
 
         def exists_side_effect(path):
             if "primary" in path:

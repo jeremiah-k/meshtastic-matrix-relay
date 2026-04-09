@@ -703,7 +703,7 @@ class TestServiceNeedsUpdateEdgeCases(unittest.TestCase):
         mock_read.return_value = self._make_service_content(
             "ExecStart=env mmrelay --home /test",
             environment=[
-                f"Environment=PATH=%h/.local/bin:%h/.local/pipx/venvs/mmrelay/bin:/usr/bin"
+                "Environment=PATH=%h/.local/bin:%h/.local/pipx/venvs/mmrelay/bin:/usr/bin"
             ],
             unit_section=[
                 "After=network.target time-sync.target",

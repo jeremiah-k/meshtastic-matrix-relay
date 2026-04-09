@@ -1262,7 +1262,7 @@ class TestLogoutMatrixBot:
             mock_get_logger.return_value = mock_logger
             mock_async_client.return_value = mock_temp_client
 
-            result = await logout_matrix_bot(password="test_password")
+            await logout_matrix_bot(password="test_password")
 
             mock_logger.error.assert_any_call(
                 "Failed to fetch user_id from whoami response"
@@ -1299,7 +1299,7 @@ class TestLogoutMatrixBot:
             mock_get_logger.return_value = mock_logger
             mock_async_client.return_value = mock_temp_client
 
-            result = await logout_matrix_bot(password="test_password")
+            await logout_matrix_bot(password="test_password")
 
             mock_logger.warning.assert_any_call(
                 "Network error fetching user_id: net fail"
@@ -1332,7 +1332,7 @@ class TestLogoutMatrixBot:
             mock_get_logger.return_value = mock_logger
             mock_async_client.return_value = mock_temp_client
 
-            result = await logout_matrix_bot(password="test_password")
+            await logout_matrix_bot(password="test_password")
 
             mock_logger.debug.assert_any_call(
                 "Ignoring error while closing temporary Matrix client during logout",

@@ -619,7 +619,7 @@ def test_reset_message_queue_failed_state_function() -> None:
 
 def test_get_queue_status_function() -> None:
     """get_queue_status should return status from global queue."""
-    from mmrelay.message_queue import _message_queue, get_queue_status
+    from mmrelay.message_queue import get_queue_status
 
     status = get_queue_status()
     assert "running" in status

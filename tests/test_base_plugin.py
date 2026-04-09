@@ -1550,7 +1550,7 @@ class TestBasePlugin(unittest.TestCase):
             "mmrelay.matrix_utils.bot_command",
             side_effect=lambda cmd, msg, *_, **__: cmd == "test_plugin",
         ):
-            mock_event = MagicMock()
+            MagicMock()
             result = plugin.extract_command_args(
                 "test_plugin", "!test_plugin arg1 arg2"
             )
@@ -1560,7 +1560,7 @@ class TestBasePlugin(unittest.TestCase):
         """extract_command_args should return None when command doesn't match."""
         plugin = MockPlugin()
         with patch("mmrelay.matrix_utils.bot_command", return_value=False):
-            mock_event = MagicMock()
+            MagicMock()
             result = plugin.extract_command_args("test_plugin", "!other_cmd")
             self.assertIsNone(result)
 

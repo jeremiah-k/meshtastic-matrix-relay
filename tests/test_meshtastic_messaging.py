@@ -2,8 +2,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import mmrelay.meshtastic_utils as mu
-
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestGetNodeDisplayName:

@@ -6,12 +6,10 @@ OSError during auto-login, various config validation fallbacks, and _get_bot_use
 
 import asyncio
 import json
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from mmrelay.config import InvalidCredentialsPathTypeError
 from mmrelay.matrix_utils import _resolve_and_load_credentials
 
 

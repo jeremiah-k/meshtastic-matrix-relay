@@ -613,7 +613,6 @@ def test_score_home_credentials_and_store_and_plugins() -> None:
     from mmrelay.constants.app import (
         DATABASE_DIRNAME,
         DATABASE_FILENAME,
-        LEGACY_DATA_SUBDIR,
         LOG_FILENAME,
         LOGS_DIRNAME,
         MATRIX_DIRNAME,
@@ -969,7 +968,6 @@ def test_get_home_dir_windows_weak_installer_artifacts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Weak installer artifacts (score < 6) with empty platform should prefer platform home."""
-    from mmrelay.constants.config import DEFAULT_CONFIG_FILENAME
     from mmrelay.paths import get_home_dir
 
     with tempfile.TemporaryDirectory() as tmp_dir:

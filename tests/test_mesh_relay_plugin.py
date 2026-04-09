@@ -700,11 +700,10 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
     def test_matches_legacy_body_with_json_in_body(self):
         """matches() should extract JSON payload from body (lines 251-255)."""
-        json_payload = '{"decoded":{"portnum":1}}'
         event = MagicMock()
         event.source = {
             "content": {
-                "body": f"Processed TEXT_MESSAGE_APP radio packet",
+                "body": "Processed TEXT_MESSAGE_APP radio packet",
             }
         }
 

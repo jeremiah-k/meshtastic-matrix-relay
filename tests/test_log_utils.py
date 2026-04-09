@@ -1067,7 +1067,6 @@ class TestLogUtils(unittest.TestCase):
         self, mock_get_log_dir
     ):
         """OSError creating file with no handlers in CLI mode should use print."""
-        import argparse
 
         import mmrelay.log_utils as lu
 
@@ -1132,7 +1131,6 @@ class TestLogUtils(unittest.TestCase):
 
     def test_cli_logging_mode(self):
         """cli_logging_mode should suppress console output temporarily."""
-        import argparse
 
         import mmrelay.log_utils as lu
 
@@ -1142,7 +1140,7 @@ class TestLogUtils(unittest.TestCase):
 
         logger = get_logger("_test_cli_logger")
         pre_mode = lu._cli_mode
-        initial_handler_count = len(logger.handlers)
+        len(logger.handlers)
 
         with lu.cli_logging_mode():
             self.assertTrue(lu._cli_mode)
@@ -1152,7 +1150,6 @@ class TestLogUtils(unittest.TestCase):
     @patch("mmrelay.log_utils.get_log_dir")
     def test_should_log_to_file_cli_mode_default_off(self, mock_get_log_dir):
         """_should_log_to_file defaults off in CLI mode."""
-        import argparse
 
         import mmrelay.log_utils as lu
 
@@ -1176,7 +1173,6 @@ class TestLogUtils(unittest.TestCase):
 
     def test_resolve_log_file_from_config(self):
         """_resolve_log_file should fall back to config filename."""
-        import argparse
 
         import mmrelay.log_utils as lu
 

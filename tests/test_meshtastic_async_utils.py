@@ -1,7 +1,5 @@
-import asyncio
-import threading
 from concurrent.futures import Future
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -168,8 +166,6 @@ class TestRunBlockingWithTimeout:
             )
 
     def test_action_times_out(self):
-        import threading
-        import time
 
         from mmrelay.meshtastic.async_utils import _run_blocking_with_timeout
 

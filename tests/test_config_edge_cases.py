@@ -842,7 +842,7 @@ class TestConfigAdditionalCoverage(unittest.TestCase):
     ):
         from mmrelay.config import load_credentials
 
-        bad_creds = json.dumps({"homeserver": "https://m.org"}).encode()
+        json.dumps({"homeserver": "https://m.org"}).encode()
         with patch(
             "builtins.open",
             mock_open(
@@ -1009,7 +1009,7 @@ class TestConfigAdditionalCoverage(unittest.TestCase):
         module.__name__ = "mmrelay.meshtastic_utils"
 
         config = {"matrix_rooms": [{"room_id": "!test:matrix.org"}]}
-        result = set_config(module, config)
+        set_config(module, config)
         assert module.matrix_rooms == config["matrix_rooms"]
 
     def test_set_config_calls_setup_config(self):
