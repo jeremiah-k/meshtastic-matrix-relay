@@ -28,7 +28,7 @@ DISPLAY_NAME_DEFAULT_LENGTH: Final[int] = 5  # Default display name truncation
 
 # Ping plugin messages
 PING_FALLBACK_RESPONSE: Final[str] = "Pong..."
-PING_MATRIX_RESPONSE: Final[str] = "pong!"
+PING_RESPONSE: Final[str] = "pong!"
 
 # Help plugin messages
 MSG_NO_SUCH_COMMAND: Final[str] = "No such command: {command}"

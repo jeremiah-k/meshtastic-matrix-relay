@@ -1564,6 +1564,43 @@ class TestBasePlugin(unittest.TestCase):
             result = plugin.extract_command_args("test_plugin", "!other_cmd")
             self.assertIsNone(result)
 
+    def test_parse_mesh_bang_command_with_args(self):
+        """parse_mesh_bang_command should parse command and trailing args."""
+        plugin = MockPlugin()
+        result = plugin.parse_mesh_bang_command(
+            "   !weather  90210  ", ("weather", "hourly")
+        )
+        self.assertEqual(result, ("weather", "90210"))
+
+    def test_parse_mesh_bang_command_case_insensitive_and_canonical(self):
+        """parse_mesh_bang_command should return canonical command spelling."""
+        plugin = MockPlugin()
+        result = plugin.parse_mesh_bang_command(
+            "!BATTERYLEVEL node123", ("batteryLevel", "voltage")
+        )
+        self.assertEqual(result, ("batteryLevel", "node123"))
+
+    def test_parse_mesh_bang_command_no_match(self):
+        """parse_mesh_bang_command should return None when no command matches."""
+        plugin = MockPlugin()
+        self.assertIsNone(
+            plugin.parse_mesh_bang_command("please use !weather 90210", ("weather",))
+        )
+
+    def test_parse_mesh_bang_command_allow_anywhere(self):
+        """parse_mesh_bang_command should support embedded matching when requested."""
+        plugin = MockPlugin()
+        result = plugin.parse_mesh_bang_command(
+            "please use !weather 90210", ("weather",), allow_anywhere=True
+        )
+        self.assertEqual(result, ("weather", "90210"))
+
+    def test_parse_mesh_bang_command_non_string_or_empty_commands(self):
+        """parse_mesh_bang_command should return None for invalid inputs."""
+        plugin = MockPlugin()
+        self.assertIsNone(plugin.parse_mesh_bang_command(12345, ("weather",)))
+        self.assertIsNone(plugin.parse_mesh_bang_command("!weather", ()))
+
 
 if __name__ == "__main__":
     unittest.main()
