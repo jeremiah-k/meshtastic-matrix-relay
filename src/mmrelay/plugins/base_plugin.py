@@ -939,10 +939,11 @@ class BasePlugin(ABC):
 
         cmd_pattern = "|".join(re.escape(cmd) for cmd in normalized_commands)
         if allow_anywhere:
-            pattern = rf"^.*?!(?P<cmd>{cmd_pattern})\b(?:\s+(?P<args>.*))?$"
+            pattern = rf"(?:(?<=\s)|^)!(?P<cmd>{cmd_pattern})\b(?:\s+(?P<args>.*))?$"
+            match = re.search(pattern, text, flags=re.IGNORECASE)
         else:
             pattern = rf"^\s*!(?P<cmd>{cmd_pattern})\b(?:\s+(?P<args>.*))?$"
-        match = re.match(pattern, text, flags=re.IGNORECASE)
+            match = re.match(pattern, text, flags=re.IGNORECASE)
         if not match:
             return None
 

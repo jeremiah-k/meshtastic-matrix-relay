@@ -685,6 +685,28 @@ class TestPingPluginMimicMode(unittest.TestCase):
         asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_mimic_whitespace_only_ignored(self, mock_connect):
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+
+        packet = {
+            "decoded": {"text": "     "},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertFalse(result)
+            mock_client.sendText.assert_not_called()
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("asyncio.sleep")
     def test_mimic_first_word_ping_with_trailing_text_matches(
         self, mock_sleep, mock_connect

@@ -105,7 +105,8 @@ class Plugin(BasePlugin):
         mimic_mode = self.get_mimic_mode()
 
         if mimic_mode:
-            first_word = message.split(maxsplit=1)[0] if message else ""
+            words = message.split(maxsplit=1)
+            first_word = words[0] if words else ""
             match = PING_COMMAND_REGEX.fullmatch(first_word)
             if not match:
                 return False

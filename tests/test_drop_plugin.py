@@ -172,7 +172,7 @@ class TestDropPlugin(unittest.TestCase):
             },
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "longname", "meshnet_name"
             )
