@@ -554,5 +554,594 @@ class TestConfigEdgeCases(unittest.TestCase):
                 mock_logger.exception.assert_called()
 
 
+class TestConfigAdditionalCoverage(unittest.TestCase):
+    """Additional tests for config.py uncovered branches."""
+
+    def setUp(self):
+        import mmrelay.config
+
+        mmrelay.config.relay_config = {}
+        mmrelay.config.config_path = None
+
+    def test_credentials_path_error_message(self):
+        from mmrelay.config import CredentialsPathError
+
+        err = CredentialsPathError()
+        assert str(err) == "No candidate credentials paths available"
+
+    @patch("mmrelay.config.logger")
+    def test_emit_legacy_credentials_warning(self, mock_logger):
+        from mmrelay.config import _emit_legacy_credentials_warning
+
+        _emit_legacy_credentials_warning("/some/legacy/path")
+        mock_logger.warning.assert_called_once()
+        call_args = mock_logger.warning.call_args
+        assert "legacy location" in call_args[0][0]
+        assert "/some/legacy/path" in call_args[0][1]
+
+    def test_get_credentials_search_paths_empty_config_path(self):
+        from mmrelay.config import get_credentials_search_paths
+
+        paths = get_credentials_search_paths(config_paths=[])
+        assert isinstance(paths, list)
+
+    @patch("mmrelay.config.is_deprecation_window_active", return_value=True)
+    @patch("mmrelay.config.get_legacy_dirs", return_value=["/legacy/dir"])
+    def test_get_credentials_search_paths_deprecation_window(
+        self, mock_legacy, mock_dep
+    ):
+        from mmrelay.config import get_credentials_search_paths
+
+        paths = get_credentials_search_paths(config_paths=None, include_base_data=False)
+        assert any("legacy" in p for p in paths)
+
+    def test_get_explicit_credentials_path_non_string(self):
+        from mmrelay.config import (
+            InvalidCredentialsPathTypeError,
+            get_explicit_credentials_path,
+        )
+
+        with self.assertRaises(InvalidCredentialsPathTypeError):
+            get_explicit_credentials_path({"credentials_path": 123})
+
+    def test_get_explicit_credentials_path_matrix_section_non_string(self):
+        from mmrelay.config import (
+            InvalidCredentialsPathTypeError,
+            get_explicit_credentials_path,
+        )
+
+        with self.assertRaises(InvalidCredentialsPathTypeError):
+            get_explicit_credentials_path({"matrix": {"credentials_path": 456}})
+
+    def test_get_explicit_credentials_path_matrix_section_returns_path(self):
+        from mmrelay.config import get_explicit_credentials_path
+
+        result = get_explicit_credentials_path(
+            {"matrix": {"credentials_path": "/path/to/creds.json"}}
+        )
+        assert result == "/path/to/creds.json"
+
+    def test_get_explicit_credentials_path_matrix_section_empty_returns_none(self):
+        from mmrelay.config import get_explicit_credentials_path
+
+        result = get_explicit_credentials_path({"matrix": {"credentials_path": ""}})
+        assert result is None
+
+    def test_get_data_dir_creates_directory(self):
+        from mmrelay.config import get_data_dir
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_dir = os.path.join(tmpdir, "new_subdir")
+            with patch("mmrelay.config.get_home_dir", return_value=Path(test_dir)):
+                result = get_data_dir(create=True)
+                assert os.path.isdir(result)
+
+    @patch(
+        "mmrelay.config.relay_config", {"community_plugins": {"myplug": {"url": "x"}}}
+    )
+    @patch(
+        "mmrelay.config.get_unified_plugin_data_dir",
+        return_value=Path("/plugins/data/myplug"),
+    )
+    @patch("mmrelay.config.get_plugins_dir", return_value=Path("/plugins/data"))
+    @patch("os.makedirs")
+    def test_get_plugin_data_dir_infers_community_type(
+        self, mock_makedirs, mock_plugins, mock_unified
+    ):
+        from mmrelay.config import get_plugin_data_dir
+
+        result = get_plugin_data_dir("myplug")
+        assert "myplug" in result
+
+    @patch("mmrelay.config.relay_config", {"custom_plugins": {"myplug": {"url": "x"}}})
+    @patch(
+        "mmrelay.config.get_unified_plugin_data_dir",
+        return_value=Path("/plugins/data/myplug"),
+    )
+    @patch("mmrelay.config.get_plugins_dir", return_value=Path("/plugins/data"))
+    @patch("os.makedirs")
+    def test_get_plugin_data_dir_infers_custom_type(
+        self, mock_makedirs, mock_plugins, mock_unified
+    ):
+        from mmrelay.config import get_plugin_data_dir
+
+        result = get_plugin_data_dir("myplug")
+        assert "myplug" in result
+
+    @patch("mmrelay.config.relay_config", {})
+    @patch(
+        "mmrelay.config.get_unified_plugin_data_dir",
+        return_value=Path("/plugins/data/myplug"),
+    )
+    @patch("mmrelay.config.get_plugins_dir", return_value=Path("/plugins/data"))
+    @patch("os.makedirs")
+    def test_get_plugin_data_dir_infers_core_type(
+        self, mock_makedirs, mock_plugins, mock_unified
+    ):
+        from mmrelay.config import get_plugin_data_dir
+
+        result = get_plugin_data_dir("myplug")
+        assert "myplug" in result
+
+    @patch("sys.platform", "win32")
+    def test_get_fallback_store_dir_win32(self):
+        from mmrelay.config import _get_fallback_store_dir
+
+        with patch("mmrelay.config.get_home_dir", return_value=Path("C:/Users/test")):
+            result = _get_fallback_store_dir()
+            assert "matrix" in result
+            assert "store" in result
+
+    @patch(
+        "mmrelay.config.get_unified_store_dir", side_effect=OSError("permission denied")
+    )
+    @patch(
+        "mmrelay.config._get_fallback_store_dir", return_value="/home/fallback/store"
+    )
+    @patch("mmrelay.config.logger")
+    def test_get_e2ee_store_dir_oserror_fallback(
+        self, mock_logger, mock_fallback, mock_store
+    ):
+        from mmrelay.config import get_e2ee_store_dir
+
+        result = get_e2ee_store_dir()
+        assert result == "/home/fallback/store"
+        mock_logger.warning.assert_called()
+
+    def test_convert_env_float_exceeds_max(self):
+        from mmrelay.config import _convert_env_float
+
+        with self.assertRaises(ValueError) as ctx:
+            _convert_env_float("100", "TEST_VAR", max_value=10)
+        assert "must be <=" in str(ctx.exception)
+
+    @patch("sys.platform", "win32")
+    def test_is_e2ee_enabled_win32(self):
+        from mmrelay.config import is_e2ee_enabled
+
+        assert is_e2ee_enabled({"matrix": {"encryption": {"enabled": True}}}) is False
+
+    @patch("sys.platform", "linux")
+    @patch("os.path.isfile", return_value=True)
+    @patch(
+        "builtins.open",
+        new_callable=mock_open,
+        read_data="matrix:\n  encryption:\n    enabled: true\n",
+    )
+    @patch("mmrelay.config.get_config_paths", return_value=["/test/config.yaml"])
+    @patch("mmrelay.config.is_e2ee_enabled", return_value=True)
+    def test_check_e2ee_enabled_silently_found(
+        self, mock_e2ee, mock_paths, mock_file, mock_isfile
+    ):
+        from mmrelay.config import check_e2ee_enabled_silently
+
+        result = check_e2ee_enabled_silently()
+        assert result is True
+
+    @patch("sys.platform", "linux")
+    @patch("os.path.isfile", return_value=False)
+    @patch("mmrelay.config.get_config_paths", return_value=["/nonexistent/config.yaml"])
+    def test_check_e2ee_enabled_silently_no_config(self, mock_paths, mock_isfile):
+        from mmrelay.config import check_e2ee_enabled_silently
+
+        result = check_e2ee_enabled_silently()
+        assert result is False
+
+    @patch("sys.platform", "win32")
+    def test_check_e2ee_enabled_silently_win32(self):
+        from mmrelay.config import check_e2ee_enabled_silently
+
+        assert check_e2ee_enabled_silently() is False
+
+    def test_normalize_optional_dict_sections_with_none(self):
+        from mmrelay.config import _normalize_optional_dict_sections
+
+        config = {"meshtastic": None, "matrix": None}
+        _normalize_optional_dict_sections(config, ("meshtastic", "matrix"))
+        assert config["meshtastic"] == {}
+        assert config["matrix"] == {}
+
+    @patch(
+        "mmrelay.config.load_meshtastic_config_from_env",
+        return_value={"serial_port": "/dev/ttyUSB0"},
+    )
+    @patch("mmrelay.config.load_logging_config_from_env", return_value=None)
+    @patch("mmrelay.config.load_database_config_from_env", return_value=None)
+    @patch("mmrelay.config.load_matrix_config_from_env", return_value=None)
+    @patch("mmrelay.config.logger")
+    def test_apply_env_overrides_section_is_none(
+        self, mock_logger, mock_matrix, mock_db, mock_log, mock_mesh
+    ):
+        from mmrelay.config import apply_env_config_overrides
+
+        config = {"meshtastic": "not_a_dict"}
+        result = apply_env_config_overrides(config)
+        assert "meshtastic" in result
+
+    @patch("mmrelay.config.load_meshtastic_config_from_env", return_value=None)
+    @patch(
+        "mmrelay.config.load_logging_config_from_env", return_value={"level": "DEBUG"}
+    )
+    @patch("mmrelay.config.load_database_config_from_env", return_value=None)
+    @patch("mmrelay.config.load_matrix_config_from_env", return_value=None)
+    @patch("mmrelay.config.logger")
+    def test_apply_env_overrides_logging_section_none(
+        self, mock_logger, mock_matrix, mock_db, mock_log, mock_mesh
+    ):
+        from mmrelay.config import apply_env_config_overrides
+
+        config = {"logging": "not_a_dict"}
+        result = apply_env_config_overrides(config)
+        assert "logging" in result
+
+    @patch("mmrelay.config.load_meshtastic_config_from_env", return_value=None)
+    @patch("mmrelay.config.load_logging_config_from_env", return_value=None)
+    @patch("mmrelay.config.load_database_config_from_env", return_value={"path": "/db"})
+    @patch("mmrelay.config.load_matrix_config_from_env", return_value=None)
+    @patch("mmrelay.config.logger")
+    def test_apply_env_overrides_db_section_none(
+        self, mock_logger, mock_matrix, mock_db, mock_log, mock_mesh
+    ):
+        from mmrelay.config import apply_env_config_overrides
+
+        config = {"database": "not_a_dict"}
+        result = apply_env_config_overrides(config)
+        assert "database" in result
+
+    @patch("mmrelay.config.load_meshtastic_config_from_env", return_value=None)
+    @patch("mmrelay.config.load_logging_config_from_env", return_value=None)
+    @patch("mmrelay.config.load_database_config_from_env", return_value=None)
+    @patch(
+        "mmrelay.config.load_matrix_config_from_env",
+        return_value={"homeserver": "https://m.org"},
+    )
+    @patch("mmrelay.config.logger")
+    def test_apply_env_overrides_matrix_section_none(
+        self, mock_logger, mock_matrix, mock_db, mock_log, mock_mesh
+    ):
+        from mmrelay.config import apply_env_config_overrides
+
+        config = {"matrix": "not_a_dict"}
+        result = apply_env_config_overrides(config)
+        assert "matrix" in result
+
+    @patch("mmrelay.config.get_explicit_credentials_path", side_effect=OSError("fail"))
+    @patch("mmrelay.config.logger")
+    def test_load_credentials_path_error_returns_none(self, mock_logger, mock_explicit):
+        from mmrelay.config import load_credentials
+
+        result = load_credentials()
+        assert result is None
+        mock_logger.exception.assert_called()
+
+    @patch("mmrelay.config.get_credentials_search_paths", return_value=[])
+    @patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
+    @patch("mmrelay.config.os.path.isfile", return_value=True)
+    def test_load_credentials_missing_required_keys(
+        self, mock_isfile, mock_explicit, mock_search
+    ):
+        from mmrelay.config import load_credentials
+
+        bad_creds = json.dumps({"homeserver": "https://m.org"}).encode()
+        with patch(
+            "builtins.open",
+            mock_open(
+                read_data=json.dumps(
+                    {"homeserver": "https://m.org", "access_token": ""}
+                )
+            ),
+        ):
+            result = load_credentials(config_override={})
+            assert result is None
+
+    @patch(
+        "mmrelay.config.get_credentials_search_paths", return_value=["/test/creds.json"]
+    )
+    @patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
+    @patch("mmrelay.config.os.path.isfile", return_value=True)
+    @patch("mmrelay.config.get_credentials_path", return_value="/other/creds.json")
+    @patch("mmrelay.config.get_home_dir", return_value=Path("/home"))
+    @patch("mmrelay.config.is_deprecation_window_active", return_value=True)
+    @patch("mmrelay.config.get_legacy_dirs", return_value=[])
+    @patch("mmrelay.config.logger")
+    def test_load_credentials_invalid_device_id(
+        self,
+        mock_logger,
+        mock_legacy,
+        mock_dep,
+        mock_home,
+        mock_creds_path,
+        mock_isfile,
+        mock_explicit,
+        mock_search,
+    ):
+        from mmrelay.config import load_credentials
+
+        creds_data = {
+            "homeserver": "https://matrix.org",
+            "access_token": "tok123",
+            "device_id": "",
+        }
+        with patch("builtins.open", mock_open(read_data=json.dumps(creds_data))):
+            result = load_credentials(config_override={})
+            assert result is not None
+            assert result["device_id"] is None
+
+    @patch(
+        "mmrelay.config.get_credentials_search_paths",
+        return_value=["/legacy/creds.json"],
+    )
+    @patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
+    @patch("mmrelay.config.os.path.isfile", return_value=True)
+    @patch("mmrelay.config.get_credentials_path", return_value="/primary/creds.json")
+    @patch("mmrelay.config.get_home_dir", return_value=Path("/home"))
+    @patch("mmrelay.config.is_deprecation_window_active", return_value=True)
+    @patch("mmrelay.config.get_legacy_dirs", return_value=["/legacy"])
+    @patch("mmrelay.config.logger")
+    def test_load_credentials_legacy_dir_warning(
+        self,
+        mock_logger,
+        mock_legacy,
+        mock_dep,
+        mock_home,
+        mock_creds_path,
+        mock_isfile,
+        mock_explicit,
+        mock_search,
+    ):
+        from mmrelay.config import load_credentials
+
+        creds_data = {
+            "homeserver": "https://matrix.org",
+            "access_token": "tok123",
+        }
+        with patch("builtins.open", mock_open(read_data=json.dumps(creds_data))):
+            result = load_credentials(config_override={})
+            assert result is not None
+            warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+            assert any("legacy location" in w for w in warning_calls)
+
+    @patch(
+        "mmrelay.config.get_credentials_search_paths",
+        return_value=["/home/.mmrelay/credentials.json"],
+    )
+    @patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
+    @patch("mmrelay.config.os.path.isfile", return_value=True)
+    @patch("mmrelay.config.get_credentials_path", return_value="/primary/creds.json")
+    @patch("mmrelay.config.get_home_dir", return_value=Path("/home"))
+    @patch("mmrelay.config.is_deprecation_window_active", return_value=False)
+    @patch("mmrelay.config.logger")
+    def test_load_credentials_home_dir_legacy_warning(
+        self,
+        mock_logger,
+        mock_dep,
+        mock_home,
+        mock_creds_path,
+        mock_isfile,
+        mock_explicit,
+        mock_search,
+    ):
+        from mmrelay.config import load_credentials
+
+        creds_data = {
+            "homeserver": "https://matrix.org",
+            "access_token": "tok123",
+        }
+        with patch("builtins.open", mock_open(read_data=json.dumps(creds_data))):
+            result = load_credentials(config_override={})
+            assert result is not None
+
+    def test_load_config_search_finds_yaml(self):
+        from mmrelay.config import load_config
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_file = os.path.join(tmpdir, "config.yaml")
+            with open(config_file, "w") as f:
+                f.write("matrix:\n  homeserver: https://test.org\n")
+
+            result = load_config(config_paths=[config_file])
+            assert result.get("matrix", {}).get("homeserver") == "https://test.org"
+
+    def test_load_config_null_yaml_in_search(self):
+        from mmrelay.config import load_config
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_file = os.path.join(tmpdir, "config.yaml")
+            with open(config_file, "w") as f:
+                f.write("")
+
+            result = load_config(config_paths=[config_file])
+            assert result == {}
+
+    def test_load_config_yaml_error_in_search_continues(self):
+        from mmrelay.config import load_config
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bad_file = os.path.join(tmpdir, "bad.yaml")
+            with open(bad_file, "w") as f:
+                f.write("matrix: [bad: syntax")
+
+            good_file = os.path.join(tmpdir, "good.yaml")
+            with open(good_file, "w") as f:
+                f.write("matrix:\n  homeserver: https://test.org\n")
+
+            result = load_config(config_paths=[bad_file, good_file])
+            assert result.get("matrix", {}).get("homeserver") == "https://test.org"
+
+    @patch("os.path.isfile", return_value=False)
+    @patch("os.path.isdir", return_value=True)
+    @patch("mmrelay.config.get_config_paths", return_value=["/some/dir"])
+    @patch("mmrelay.config.logger")
+    def test_load_config_candidate_is_directory(
+        self, mock_logger, mock_paths, mock_isdir, mock_isfile
+    ):
+        from mmrelay.config import load_config
+
+        result = load_config()
+        assert result == {}
+        warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+        assert any("directory" in w for w in warning_calls)
+
+    def test_set_config_meshtastic_utils_with_rooms(self):
+        from mmrelay.config import set_config
+
+        module = MagicMock()
+        module.__name__ = "mmrelay.meshtastic_utils"
+
+        config = {"matrix_rooms": [{"room_id": "!test:matrix.org"}]}
+        result = set_config(module, config)
+        assert module.matrix_rooms == config["matrix_rooms"]
+
+    def test_set_config_calls_setup_config(self):
+        from mmrelay.config import set_config
+
+        module = MagicMock()
+        module.__name__ = "some_module"
+        module.setup_config = MagicMock()
+
+        set_config(module, {})
+        module.setup_config.assert_called_once()
+
+    def test_validate_yaml_syntax_style_warnings(self):
+        from mmrelay.config import validate_yaml_syntax
+
+        content = "key: yes\nother: no\n"
+        is_valid, message, parsed = validate_yaml_syntax(content, "test.yaml")
+        assert is_valid is True
+        assert message is not None
+        assert "Style warning" in message
+
+    def test_validate_yaml_syntax_equals_sign(self):
+        from mmrelay.config import validate_yaml_syntax
+
+        content = "key = value\n"
+        is_valid, message, parsed = validate_yaml_syntax(content, "test.yaml")
+        assert is_valid is False
+        assert message is not None and "=" in message
+
+    def test_validate_yaml_syntax_parse_error_with_mark(self):
+        from mmrelay.config import validate_yaml_syntax
+
+        content = "matrix:\n  rooms:\n    - invalid: [unmatched\n"
+        is_valid, message, parsed = validate_yaml_syntax(content, "test.yaml")
+        assert is_valid is False
+        assert parsed is None
+
+    def test_validate_yaml_syntax_error_with_syntax_issues(self):
+        from mmrelay.config import validate_yaml_syntax
+
+        content = "key = value\nother: yes\nbad: [\n"
+        is_valid, message, parsed = validate_yaml_syntax(content, "test.yaml")
+        assert is_valid is False
+        assert parsed is None
+
+    @patch("mmrelay.config.relay_config", {"credentials_path": "/custom/creds.json"})
+    @patch("os.path.isdir", return_value=False)
+    @patch("os.path.abspath", side_effect=lambda x: x)
+    @patch("os.path.expanduser", side_effect=lambda x: x)
+    def test_resolve_credentials_path_relay_config(
+        self, mock_expand, mock_abs, mock_isdir
+    ):
+        from mmrelay.config import _resolve_credentials_path
+
+        result = _resolve_credentials_path(None, allow_relay_config_sources=True)
+        assert result[0] == "/custom/creds.json"
+
+    @patch(
+        "mmrelay.config.relay_config", {"matrix": {"credentials_path": "/matrix/creds"}}
+    )
+    @patch("os.path.isdir", return_value=False)
+    @patch("os.path.abspath", side_effect=lambda x: x)
+    @patch("os.path.expanduser", side_effect=lambda x: x)
+    def test_resolve_credentials_path_matrix_section(
+        self, mock_expand, mock_abs, mock_isdir
+    ):
+        from mmrelay.config import _resolve_credentials_path
+
+        result = _resolve_credentials_path(None, allow_relay_config_sources=True)
+        assert result[0] == "/matrix/creds"
+
+    @patch("mmrelay.config.relay_config", {})
+    @patch("mmrelay.config.get_home_dir", return_value=Path("/home/user"))
+    def test_resolve_credentials_path_default(self, mock_home):
+        from mmrelay.config import _resolve_credentials_path
+
+        result = _resolve_credentials_path(None, allow_relay_config_sources=False)
+        assert "matrix" in result[1]
+        assert CREDENTIALS_FILENAME in result[0]
+
+    @patch("mmrelay.config.relay_config", {})
+    @patch("os.path.isdir", return_value=True)
+    @patch("os.path.abspath", side_effect=lambda x: x)
+    @patch("os.path.expanduser", side_effect=lambda x: x)
+    def test_resolve_credentials_path_directory_appends_filename(
+        self, mock_expand, mock_abs, mock_isdir
+    ):
+        from mmrelay.config import _resolve_credentials_path
+
+        result = _resolve_credentials_path(
+            "/some/dir", allow_relay_config_sources=False
+        )
+        assert result[0].endswith(CREDENTIALS_FILENAME)
+
+    @patch("mmrelay.config.relay_config", {})
+    @patch("mmrelay.config.relay_config", {})
+    @patch("os.path.isdir", return_value=False)
+    @patch("mmrelay.config.get_home_dir", return_value=Path("/home"))
+    def test_resolve_credentials_path_empty_dirname(self, mock_home, mock_isdir):
+        from mmrelay.config import _resolve_credentials_path
+
+        result = _resolve_credentials_path(
+            "creds.json", allow_relay_config_sources=False
+        )
+        assert result[0].endswith(CREDENTIALS_FILENAME)
+
+    @patch("mmrelay.config.relay_config", {})
+    @patch("os.path.isdir", return_value=False)
+    @patch(
+        "os.path.abspath",
+        side_effect=lambda x: "/abs/" + x if not x.startswith("/") else x,
+    )
+    @patch("os.path.expanduser", side_effect=lambda x: x)
+    @patch("os.getenv", return_value="/env/creds.json")
+    def test_resolve_credentials_path_env_var(
+        self, mock_env, mock_expand, mock_abs, mock_isdir
+    ):
+        from mmrelay.config import _resolve_credentials_path
+
+        result = _resolve_credentials_path(None, allow_relay_config_sources=True)
+        assert "env" in result[0]
+
+    def test_backward_compat_alias(self):
+        from mmrelay.config import (
+            get_candidate_credentials_paths,
+            get_credentials_search_paths,
+        )
+
+        result1 = get_candidate_credentials_paths(include_base_data=False)
+        result2 = get_credentials_search_paths(include_base_data=False)
+        assert result1 == result2
+
+
 if __name__ == "__main__":
     unittest.main()

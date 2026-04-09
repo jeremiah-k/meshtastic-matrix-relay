@@ -33,6 +33,7 @@ from mmrelay.plugins.map_plugin import (
     Plugin,
     TextLabel,
     get_map,
+    precision_bits_to_meters,
     textsize,
 )
 from tests.constants import TEST_LAT_SF, TEST_LON_SF
@@ -887,6 +888,296 @@ class TestMapPlugin(unittest.TestCase):
             call_kwargs = mock_matrix_client.room_send.call_args.kwargs
             self.assertEqual(call_kwargs["room_id"], mock_room.room_id)
             self.assertIn("failed", call_kwargs["content"]["body"].lower())
+
+        asyncio.run(run_test())
+
+
+class TestPrecisionBitsToMeters(unittest.TestCase):
+    def test_returns_none_for_zero(self):
+        self.assertIsNone(precision_bits_to_meters(0))
+
+    def test_returns_none_for_negative(self):
+        self.assertIsNone(precision_bits_to_meters(-5))
+
+    def test_returns_value_for_positive(self):
+        result = precision_bits_to_meters(12)
+        self.assertIsInstance(result, float)
+        self.assertGreater(result, 0)
+
+
+class TestGetMapEdgeCases(unittest.TestCase):
+    @patch("staticmaps.Context")
+    def test_get_map_no_valid_locations(self, mock_context_class):
+        mock_context = MagicMock()
+        mock_context_class.return_value = mock_context
+        mock_context.render_pillow.return_value = MagicMock()
+
+        get_map([{"lat": None, "lon": None, "label": "X"}])
+
+        mock_context.set_center.assert_not_called()
+
+    @patch("staticmaps.Context")
+    def test_get_map_empty_locations(self, mock_context_class):
+        mock_context = MagicMock()
+        mock_context_class.return_value = mock_context
+        mock_context.render_pillow.return_value = MagicMock()
+
+        get_map([])
+
+        mock_context.set_center.assert_not_called()
+        mock_context.render_pillow.assert_called_once_with(1000, 1000)
+
+    @patch("staticmaps.Context")
+    def test_get_map_precision_bits_non_numeric(self, mock_context_class):
+        mock_context = MagicMock()
+        mock_context_class.return_value = mock_context
+        mock_context.render_pillow.return_value = MagicMock()
+
+        get_map(
+            [
+                {
+                    "lat": TEST_LAT_SF,
+                    "lon": TEST_LON_SF,
+                    "label": "X",
+                    "precisionBits": "abc",
+                }
+            ]
+        )
+
+        mock_context.add_object.assert_called_once()
+
+    @patch("staticmaps.Context")
+    def test_get_map_precision_bits_zero(self, mock_context_class):
+        mock_context = MagicMock()
+        mock_context_class.return_value = mock_context
+        mock_context.render_pillow.return_value = MagicMock()
+
+        get_map(
+            [{"lat": TEST_LAT_SF, "lon": TEST_LON_SF, "label": "X", "precisionBits": 0}]
+        )
+
+        mock_context.add_object.assert_called_once()
+
+    @patch("staticmaps.Context")
+    def test_get_map_with_custom_zoom(self, mock_context_class):
+        mock_context = MagicMock()
+        mock_context_class.return_value = mock_context
+        mock_context.render_pillow.return_value = MagicMock()
+
+        get_map([], zoom=15)
+
+        mock_context.set_zoom.assert_called_once_with(15)
+
+    @patch("staticmaps.Context")
+    def test_get_map_with_custom_image_size(self, mock_context_class):
+        mock_context = MagicMock()
+        mock_context_class.return_value = mock_context
+        mock_context.render_pillow.return_value = MagicMock()
+
+        get_map([], image_size=(500, 400))
+
+        mock_context.render_pillow.assert_called_once_with(500, 400)
+
+
+class TestMapPluginHandleRoomMessage(unittest.TestCase):
+    def setUp(self):
+        self.plugin = Plugin()
+        self.plugin.config = {
+            "zoom": 10,
+            "image_width": 800,
+            "image_height": 600,
+        }
+
+    def test_get_matrix_commands_none_name(self):
+        self.plugin.plugin_name = None
+        self.assertEqual(self.plugin.get_matrix_commands(), [])
+
+    @patch("mmrelay.matrix_utils.send_image")
+    @patch("mmrelay.plugins.map_plugin.get_map")
+    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_handle_room_message_invalid_args(
+        self, mock_connect_matrix, mock_connect_mesh, mock_get_map, mock_send_image
+    ):
+        async def run_test():
+            mock_room = MagicMock()
+            mock_room.room_id = "!test:example.com"
+            mock_event = MagicMock()
+            mock_event.body = "!map bogus=xyz"
+
+            with patch.object(self.plugin, "matches", return_value=True):
+                result = await self.plugin.handle_room_message(
+                    mock_room, mock_event, "user: !map bogus=xyz"
+                )
+            self.assertFalse(result)
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.send_image")
+    @patch("mmrelay.plugins.map_plugin.get_map")
+    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_handle_room_message_config_zoom_out_of_range(
+        self, mock_connect_matrix, mock_connect_mesh, mock_get_map, mock_send_image
+    ):
+        async def run_test():
+            self.plugin.config["zoom"] = 50
+            mock_room = MagicMock()
+            mock_room.room_id = "!test:example.com"
+            mock_event = MagicMock()
+            mock_event.body = "!map"
+
+            mock_matrix_client = MagicMock()
+            mock_matrix_client.room_send = AsyncMock()
+            mock_connect_matrix.return_value = mock_matrix_client
+
+            mock_mesh = MagicMock()
+            mock_mesh.nodes = {
+                "n1": {
+                    "position": {"latitude": TEST_LAT_SF, "longitude": TEST_LON_SF},
+                    "user": {"shortName": "T"},
+                }
+            }
+            mock_connect_mesh.return_value = mock_mesh
+            mock_get_map.return_value = MagicMock()
+
+            with patch.object(self.plugin, "matches", return_value=True):
+                result = await self.plugin.handle_room_message(
+                    mock_room, mock_event, "!map"
+                )
+
+            self.assertTrue(result)
+            self.assertEqual(mock_get_map.call_args.kwargs["zoom"], DEFAULT_MAP_ZOOM)
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.send_image")
+    @patch("mmrelay.plugins.map_plugin.get_map")
+    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_handle_room_message_image_size_config_fallback(
+        self, mock_connect_matrix, mock_connect_mesh, mock_get_map, mock_send_image
+    ):
+        async def run_test():
+            self.plugin.config["image_width"] = "bad"
+            self.plugin.config["image_height"] = "bad"
+            mock_room = MagicMock()
+            mock_room.room_id = "!test:example.com"
+            mock_event = MagicMock()
+            mock_event.body = "!map"
+
+            mock_matrix_client = MagicMock()
+            mock_matrix_client.room_send = AsyncMock()
+            mock_connect_matrix.return_value = mock_matrix_client
+
+            mock_mesh = MagicMock()
+            mock_mesh.nodes = {
+                "n1": {
+                    "position": {"latitude": TEST_LAT_SF, "longitude": TEST_LON_SF},
+                    "user": {"shortName": "T"},
+                }
+            }
+            mock_connect_mesh.return_value = mock_mesh
+            mock_get_map.return_value = MagicMock()
+
+            with patch.object(self.plugin, "matches", return_value=True):
+                result = await self.plugin.handle_room_message(
+                    mock_room, mock_event, "!map"
+                )
+
+            self.assertTrue(result)
+            call_args = mock_get_map.call_args
+            self.assertEqual(call_args[1]["image_size"], (1000, 1000))
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.send_image")
+    @patch("mmrelay.plugins.map_plugin.get_map")
+    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_handle_room_message_matrix_unavailable(
+        self, mock_connect_matrix, mock_connect_mesh, mock_get_map, mock_send_image
+    ):
+        async def run_test():
+            mock_connect_matrix.return_value = None
+            self.plugin.send_matrix_message = AsyncMock()
+
+            mock_room = MagicMock()
+            mock_room.room_id = "!test:example.com"
+            mock_event = MagicMock()
+            mock_event.body = "!map"
+
+            with patch.object(self.plugin, "matches", return_value=True):
+                result = await self.plugin.handle_room_message(
+                    mock_room, mock_event, "!map"
+                )
+
+            self.assertTrue(result)
+            self.plugin.send_matrix_message.assert_awaited_once()
+            mock_get_map.assert_not_called()
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.send_image")
+    @patch("mmrelay.plugins.map_plugin.get_map")
+    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_handle_room_message_meshtastic_unavailable(
+        self, mock_connect_matrix, mock_connect_mesh, mock_get_map, mock_send_image
+    ):
+        async def run_test():
+            mock_matrix_client = MagicMock()
+            mock_matrix_client.room_send = AsyncMock()
+            mock_connect_matrix.return_value = mock_matrix_client
+
+            mock_connect_mesh.return_value = None
+            self.plugin.send_matrix_message = AsyncMock()
+
+            mock_room = MagicMock()
+            mock_room.room_id = "!test:example.com"
+            mock_event = MagicMock()
+            mock_event.body = "!map"
+
+            with patch.object(self.plugin, "matches", return_value=True):
+                result = await self.plugin.handle_room_message(
+                    mock_room, mock_event, "!map"
+                )
+
+            self.assertTrue(result)
+            self.plugin.send_matrix_message.assert_awaited_once()
+            mock_get_map.assert_not_called()
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.send_image")
+    @patch("mmrelay.plugins.map_plugin.get_map")
+    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_handle_room_message_meshtastic_no_nodes(
+        self, mock_connect_matrix, mock_connect_mesh, mock_get_map, mock_send_image
+    ):
+        async def run_test():
+            mock_matrix_client = MagicMock()
+            mock_matrix_client.room_send = AsyncMock()
+            mock_connect_matrix.return_value = mock_matrix_client
+
+            mock_mesh = MagicMock()
+            mock_mesh.nodes = None
+            mock_connect_mesh.return_value = mock_mesh
+            self.plugin.send_matrix_message = AsyncMock()
+
+            mock_room = MagicMock()
+            mock_room.room_id = "!test:example.com"
+            mock_event = MagicMock()
+            mock_event.body = "!map"
+
+            with patch.object(self.plugin, "matches", return_value=True):
+                result = await self.plugin.handle_room_message(
+                    mock_room, mock_event, "!map"
+                )
+
+            self.assertTrue(result)
+            self.plugin.send_matrix_message.assert_awaited_once()
 
         asyncio.run(run_test())
 

@@ -529,6 +529,227 @@ class TestHandleMatrixError:
             "Server logout failed due to network issues, proceeding with local cleanup."
         )
 
+    @patch("mmrelay.cli_utils._get_logger")
+    def test_handle_matrix_error_status_code_not_parseable(self, mock_get_logger):
+        """Non-integer status_code should fall through to 'other' category."""
+        from mmrelay.cli_utils import NioLoginError, _handle_matrix_error
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+
+        error = MagicMock(spec=NioLoginError)
+        error.status_code = "not_a_number"
+        error.errcode = None
+        error.message = "weird error"
+
+        result = _handle_matrix_error(error, "Test op")
+        assert result is True
+
+    @patch("mmrelay.cli_utils._get_logger")
+    def test_handle_matrix_error_credentials_non_verification(self, mock_get_logger):
+        """Credentials error with non-verification context uses 'invalid token' messaging."""
+        from mmrelay.cli_utils import NioLoginError, _handle_matrix_error
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+
+        error = MagicMock(spec=NioLoginError)
+        error.status_code = 401
+        error.errcode = "M_FORBIDDEN"
+
+        result = _handle_matrix_error(error, "Server logout", log_level="warning")
+        assert result is True
+        mock_logger.warning.assert_any_call(
+            "Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
+        )
+
+    @patch("mmrelay.cli_utils._get_logger")
+    def test_handle_matrix_error_network_verification(self, mock_get_logger):
+        """Network error with verification context shows connection advice."""
+        from mmrelay.cli_utils import NioLocalTransportError, _handle_matrix_error
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+
+        error = NioLocalTransportError("Connection refused")
+        result = _handle_matrix_error(error, "Password verification")
+        assert result is True
+        mock_logger.error.assert_any_call(
+            "Password verification failed: Network connection error."
+        )
+        mock_logger.error.assert_any_call(
+            "Please check your internet connection and Matrix server availability."
+        )
+
+    @patch("mmrelay.cli_utils._get_logger")
+    def test_handle_matrix_error_fallback_forbidden_string(self, mock_get_logger):
+        """Fallback string matching should classify 'forbidden' errors as credentials."""
+        from mmrelay.cli_utils import _handle_matrix_error
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+
+        error = RuntimeError("Access forbidden for this resource")
+        result = _handle_matrix_error(error, "Server logout", log_level="warning")
+        assert result is True
+        mock_logger.warning.assert_called_once_with(
+            "Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
+        )
+
+
+class TestCleanupLocalSessionDataEdgeCases:
+    """Additional tests for _cleanup_local_session_data edge cases."""
+
+    @patch("mmrelay.cli_utils._get_logger")
+    @patch("mmrelay.paths.resolve_all_paths", side_effect=OSError("path error"))
+    @patch("os.path.exists", return_value=False)
+    def test_cleanup_resolve_paths_oserror(
+        self, mock_exists, mock_resolve, mock_get_logger
+    ):
+        from mmrelay.cli_utils import _cleanup_local_session_data
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+        result = _cleanup_local_session_data()
+        assert result is True
+        mock_logger.debug.assert_any_call(
+            "Could not resolve paths for logout cleanup: %s", "OSError"
+        )
+
+    @patch("mmrelay.cli_utils._get_logger")
+    @patch(
+        "mmrelay.paths.resolve_all_paths",
+        return_value={
+            "credentials_path": f"/test/config/matrix/{CREDENTIALS_FILENAME}",
+            "store_dir": "N/A (Windows)",
+        },
+    )
+    @patch("os.path.exists", return_value=False)
+    def test_cleanup_windows_store_dir_skipped(
+        self, mock_exists, mock_resolve, mock_get_logger
+    ):
+        from mmrelay.cli_utils import _cleanup_local_session_data
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+        result = _cleanup_local_session_data()
+        assert result is True
+
+    @patch("mmrelay.cli_utils._get_logger")
+    @patch(
+        "mmrelay.paths.resolve_all_paths",
+        return_value={
+            "credentials_path": f"/test/config/matrix/{CREDENTIALS_FILENAME}",
+            "store_dir": "/test/store",
+        },
+    )
+    @patch("os.path.exists", return_value=False)
+    @patch("mmrelay.config.load_config", return_value={"matrix": "not_a_dict"})
+    def test_cleanup_matrix_config_not_dict(
+        self, mock_load, mock_exists, mock_resolve, mock_get_logger
+    ):
+        from mmrelay.cli_utils import _cleanup_local_session_data
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+        result = _cleanup_local_session_data()
+        assert result is True
+        mock_logger.warning.assert_any_call(
+            "Matrix configuration ('matrix') is not a dictionary; "
+            "cannot resolve E2EE store path from config."
+        )
+
+    @patch("mmrelay.cli_utils._get_logger")
+    @patch(
+        "mmrelay.paths.resolve_all_paths",
+        return_value={
+            "credentials_path": f"/test/config/matrix/{CREDENTIALS_FILENAME}",
+            "store_dir": "/test/store",
+        },
+    )
+    @patch("os.path.exists", return_value=False)
+    @patch(
+        "mmrelay.config.load_config",
+        return_value={
+            "matrix": {"e2ee": "not_a_dict", "encryption": "also_not_a_dict"}
+        },
+    )
+    def test_cleanup_section_config_not_dict(
+        self, mock_load, mock_exists, mock_resolve, mock_get_logger
+    ):
+        from mmrelay.cli_utils import _cleanup_local_session_data
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+        result = _cleanup_local_session_data()
+        assert result is True
+        warning_calls = [c.args[0] for c in mock_logger.warning.call_args_list]
+        assert any("is not a dictionary" in w for w in warning_calls)
+
+    @patch("mmrelay.cli_utils._get_logger")
+    @patch(
+        "mmrelay.paths.resolve_all_paths",
+        return_value={
+            "credentials_path": f"/test/config/matrix/{CREDENTIALS_FILENAME}",
+            "store_dir": "/test/store",
+        },
+    )
+    @patch("os.path.exists", return_value=False)
+    @patch("mmrelay.config.load_config", side_effect=ImportError("no module"))
+    def test_cleanup_config_import_error(
+        self, mock_load, mock_exists, mock_resolve, mock_get_logger
+    ):
+        from mmrelay.cli_utils import _cleanup_local_session_data
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+        result = _cleanup_local_session_data()
+        assert result is True
+        mock_logger.debug.assert_any_call(
+            "Could not resolve configured E2EE store path: %s", "ImportError"
+        )
+
+    @patch("mmrelay.cli_utils._get_logger")
+    @patch(
+        "mmrelay.paths.resolve_all_paths",
+        return_value={
+            "credentials_path": f"/test/config/matrix/{CREDENTIALS_FILENAME}",
+            "store_dir": "/test/store",
+        },
+    )
+    @patch("os.path.exists", return_value=False)
+    @patch(
+        "mmrelay.config.load_config",
+        return_value={"matrix": {"e2ee": {"store_path": "/custom/store"}}},
+    )
+    def test_cleanup_config_override_store_path(
+        self, mock_load, mock_exists, mock_resolve, mock_get_logger
+    ):
+        from mmrelay.cli_utils import _cleanup_local_session_data
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+        result = _cleanup_local_session_data()
+        assert result is True
+
+
+class TestGetLoggerRuntimeError:
+    """Test _get_logger RuntimeError edge case."""
+
+    def test_get_logger_raises_runtime_error_when_logger_none(self):
+        import mmrelay.cli_utils as mod
+
+        original = mod.logger
+        try:
+            mod.logger = None
+            with patch("mmrelay.cli_utils.get_logger", return_value=None):
+                from mmrelay.cli_utils import _get_logger
+
+                with pytest.raises(RuntimeError, match="Logger must be initialized"):
+                    _get_logger()
+        finally:
+            mod.logger = original
+
 
 class TestLogoutMatrixBot:
     """Test the logout_matrix_bot function."""
@@ -971,3 +1192,448 @@ class TestLogoutMatrixBot:
             assert result is False
             mock_logger.exception.assert_called_once()
             mock_print.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_logout_matrix_bot_no_active_session(self):
+        """Test logout when no credentials are found (lines 666-668)."""
+        from mmrelay.cli_utils import logout_matrix_bot
+
+        with (
+            patch("mmrelay.cli_utils.AsyncClient", MagicMock()),
+            patch(
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=None),
+            ),
+            patch("mmrelay.cli_utils._get_logger") as mock_get_logger,
+        ):
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+            result = await logout_matrix_bot(password="test_password")
+            assert result is True
+            mock_logger.info.assert_any_call(
+                "No active session found. Already logged out."
+            )
+
+    @pytest.mark.asyncio
+    async def test_logout_matrix_bot_no_active_session_empty_dict(self):
+        """Test logout when credentials is empty dict (lines 666-668)."""
+        from mmrelay.cli_utils import logout_matrix_bot
+
+        with (
+            patch("mmrelay.cli_utils.AsyncClient", MagicMock()),
+            patch(
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value={}),
+            ),
+            patch("mmrelay.cli_utils._get_logger") as mock_get_logger,
+        ):
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+            result = await logout_matrix_bot(password="test_password")
+            assert result is True
+            mock_logger.info.assert_any_call(
+                "No active session found. Already logged out."
+            )
+
+    @pytest.mark.asyncio
+    async def test_logout_matrix_bot_whoami_no_user_id(self, mock_credentials):
+        """Test logout when whoami response has no user_id (lines 711-712)."""
+        from mmrelay.cli_utils import logout_matrix_bot
+
+        mock_creds = mock_credentials()
+
+        mock_whoami_response = MagicMock()
+        mock_whoami_response.user_id = None
+
+        mock_temp_client = AsyncMock()
+        mock_temp_client.whoami.return_value = mock_whoami_response
+        mock_temp_client.close = AsyncMock()
+
+        with (
+            patch(
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_creds),
+            ),
+            patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
+            patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
+            patch("mmrelay.cli_utils._get_logger") as mock_get_logger,
+        ):
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+            mock_async_client.return_value = mock_temp_client
+
+            result = await logout_matrix_bot(password="test_password")
+
+            mock_logger.error.assert_any_call(
+                "Failed to fetch user_id from whoami response"
+            )
+
+    @pytest.mark.asyncio
+    async def test_logout_matrix_bot_whoami_network_error(self, mock_credentials):
+        """Test logout when whoami raises a network transport error (lines 731-732)."""
+        from mmrelay.cli_utils import logout_matrix_bot
+
+        mock_creds = mock_credentials()
+
+        class MockLocalTransportError(Exception):
+            pass
+
+        mock_temp_client = AsyncMock()
+        mock_temp_client.whoami.side_effect = MockLocalTransportError("net fail")
+        mock_temp_client.close = AsyncMock()
+
+        with (
+            patch(
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_creds),
+            ),
+            patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
+            patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
+            patch("mmrelay.cli_utils._get_logger") as mock_get_logger,
+            patch("mmrelay.cli_utils.NioLocalTransportError", MockLocalTransportError),
+            patch("mmrelay.cli_utils.NioRemoteTransportError", MockLocalTransportError),
+            patch("mmrelay.cli_utils.NioLocalProtocolError", MockLocalTransportError),
+            patch("mmrelay.cli_utils.NioRemoteProtocolError", MockLocalTransportError),
+        ):
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+            mock_async_client.return_value = mock_temp_client
+
+            result = await logout_matrix_bot(password="test_password")
+
+            mock_logger.warning.assert_any_call(
+                "Network error fetching user_id: net fail"
+            )
+
+    @pytest.mark.asyncio
+    async def test_logout_matrix_bot_whoami_close_failure(self, mock_credentials):
+        """Test logout when temp client close fails during whoami (lines 740-742)."""
+        from mmrelay.cli_utils import logout_matrix_bot
+
+        mock_creds = mock_credentials()
+
+        mock_whoami_response = MagicMock()
+        mock_whoami_response.user_id = None
+
+        mock_temp_client = AsyncMock()
+        mock_temp_client.whoami.return_value = mock_whoami_response
+        mock_temp_client.close.side_effect = Exception("close failed")
+
+        with (
+            patch(
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_creds),
+            ),
+            patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
+            patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
+            patch("mmrelay.cli_utils._get_logger") as mock_get_logger,
+        ):
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+            mock_async_client.return_value = mock_temp_client
+
+            result = await logout_matrix_bot(password="test_password")
+
+            mock_logger.debug.assert_any_call(
+                "Ignoring error while closing temporary Matrix client during logout",
+                exc_info=True,
+            )
+
+    @pytest.mark.asyncio
+    async def test_logout_matrix_bot_invalid_credentials_cleanup_fails(
+        self, mock_credentials
+    ):
+        """Test logout with invalid credentials and cleanup failure (line 758)."""
+        from mmrelay.cli_utils import logout_matrix_bot
+
+        mock_creds = mock_credentials()
+        del mock_creds["homeserver"]
+
+        with (
+            patch("mmrelay.cli_utils.AsyncClient", MagicMock()),
+            patch(
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_creds),
+            ),
+            patch("mmrelay.cli_utils._get_logger") as mock_get_logger,
+            patch("mmrelay.cli_utils._cleanup_local_session_data", return_value=False),
+            patch("builtins.print") as mock_print,
+        ):
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+            result = await logout_matrix_bot(password="test_password")
+            assert result is False
+            mock_print.assert_any_call("❌ Local cleanup completed with some errors.")
+
+    @pytest.mark.asyncio
+    async def test_logout_matrix_bot_password_login_error(self, mock_credentials):
+        """Test logout when password verification returns LoginError (lines 790-791)."""
+        from mmrelay.cli_utils import NioLoginError, logout_matrix_bot
+
+        mock_creds = mock_credentials(user_id="@test:matrix.org")
+
+        mock_login_error = MagicMock(spec=NioLoginError)
+        mock_login_error.status_code = 401
+        mock_login_error.errcode = "M_FORBIDDEN"
+        mock_login_error.message = "Bad password"
+
+        mock_temp_client = AsyncMock()
+        mock_temp_client.login.return_value = mock_login_error
+        mock_temp_client.close = AsyncMock()
+
+        with (
+            patch(
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_creds),
+            ),
+            patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
+            patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
+            patch("mmrelay.cli_utils._get_logger") as mock_get_logger,
+        ):
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+            mock_async_client.return_value = mock_temp_client
+
+            result = await logout_matrix_bot(password="wrong_password")
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_logout_matrix_bot_password_no_access_token(self, mock_credentials):
+        """Test logout when password verification response lacks access_token (lines 807-809)."""
+        from mmrelay.cli_utils import logout_matrix_bot
+
+        mock_creds = mock_credentials(user_id="@test:matrix.org")
+
+        mock_temp_client = AsyncMock()
+        mock_temp_client.login.return_value = MagicMock(spec=[])
+        mock_temp_client.close = AsyncMock()
+
+        with (
+            patch(
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_creds),
+            ),
+            patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
+            patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
+            patch("mmrelay.cli_utils._get_logger") as mock_get_logger,
+        ):
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+            mock_async_client.return_value = mock_temp_client
+
+            result = await logout_matrix_bot(password="test_password")
+            assert result is False
+            mock_logger.error.assert_any_call("Password verification failed.")
+
+    @pytest.mark.asyncio
+    async def test_logout_matrix_bot_password_verification_timeout(
+        self, mock_credentials
+    ):
+        """Test logout when password verification times out (lines 812-818)."""
+        from mmrelay.cli_utils import logout_matrix_bot
+
+        mock_creds = mock_credentials(user_id="@test:matrix.org")
+
+        mock_temp_client = AsyncMock()
+        mock_temp_client.login.side_effect = asyncio.TimeoutError()
+        mock_temp_client.close = AsyncMock()
+
+        with (
+            patch(
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_creds),
+            ),
+            patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
+            patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
+            patch("mmrelay.cli_utils._get_logger") as mock_get_logger,
+        ):
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+            mock_async_client.return_value = mock_temp_client
+
+            result = await logout_matrix_bot(password="test_password")
+            assert result is False
+            mock_logger.error.assert_any_call(
+                "Password verification timed out. Please check your network connection."
+            )
+
+    @pytest.mark.asyncio
+    async def test_logout_matrix_bot_password_close_oserror(self, mock_credentials):
+        """Test logout when closing temp client after password verification raises OSError (lines 823-834)."""
+        from mmrelay.cli_utils import logout_matrix_bot
+
+        mock_creds = mock_credentials(user_id="@test:matrix.org")
+
+        mock_temp_client = AsyncMock()
+        mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
+        mock_temp_client.logout = AsyncMock()
+        mock_temp_client.close.side_effect = OSError("close fail")
+
+        mock_main_client = AsyncMock()
+        mock_main_client.restore_login = MagicMock()
+        mock_main_client.logout.return_value = MagicMock(transport_response=True)
+        mock_main_client.close = AsyncMock()
+
+        with (
+            patch(
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_creds),
+            ),
+            patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
+            patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
+            patch("mmrelay.cli_utils._cleanup_local_session_data", return_value=True),
+            patch("mmrelay.cli_utils._get_logger") as mock_get_logger,
+        ):
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+            mock_async_client.side_effect = [mock_temp_client, mock_main_client]
+
+            result = await logout_matrix_bot(password="test_password")
+            assert result is True
+            mock_logger.debug.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_logout_matrix_bot_server_logout_returns_logout_error(
+        self, mock_credentials
+    ):
+        """Test logout when server returns LogoutError (line 860)."""
+        from mmrelay.cli_utils import NioLogoutError, logout_matrix_bot
+
+        mock_creds = mock_credentials(user_id="@test:matrix.org")
+
+        mock_logout_error = MagicMock(spec=NioLogoutError)
+        mock_logout_error.status_code = 401
+        mock_logout_error.errcode = "M_UNKNOWN_TOKEN"
+        mock_logout_error.message = "Token not recognized"
+
+        mock_temp_client = AsyncMock()
+        mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
+        mock_temp_client.logout = AsyncMock()
+        mock_temp_client.close = AsyncMock()
+
+        mock_main_client = AsyncMock()
+        mock_main_client.restore_login = MagicMock()
+        mock_main_client.logout.return_value = mock_logout_error
+        mock_main_client.close = AsyncMock()
+
+        with (
+            patch(
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_creds),
+            ),
+            patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
+            patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
+            patch("mmrelay.cli_utils._cleanup_local_session_data", return_value=True),
+            patch("mmrelay.cli_utils._get_logger") as mock_get_logger,
+        ):
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+            mock_async_client.side_effect = [mock_temp_client, mock_main_client]
+
+            result = await logout_matrix_bot(password="test_password")
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_logout_matrix_bot_server_logout_exception(self, mock_credentials):
+        """Test logout when server logout raises an exception (lines 873-875)."""
+        from mmrelay.cli_utils import logout_matrix_bot
+
+        mock_creds = mock_credentials(user_id="@test:matrix.org")
+
+        mock_temp_client = AsyncMock()
+        mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
+        mock_temp_client.logout = AsyncMock()
+        mock_temp_client.close = AsyncMock()
+
+        mock_main_client = AsyncMock()
+        mock_main_client.restore_login = MagicMock()
+        mock_main_client.logout.side_effect = Exception("server error")
+        mock_main_client.close = AsyncMock()
+
+        with (
+            patch(
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_creds),
+            ),
+            patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
+            patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
+            patch("mmrelay.cli_utils._cleanup_local_session_data", return_value=True),
+            patch("mmrelay.cli_utils._get_logger") as mock_get_logger,
+        ):
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+            mock_async_client.side_effect = [mock_temp_client, mock_main_client]
+
+            result = await logout_matrix_bot(password="test_password")
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_logout_matrix_bot_main_client_close_oserror(self, mock_credentials):
+        """Test logout when closing main client raises OSError (lines 877-887)."""
+        from mmrelay.cli_utils import logout_matrix_bot
+
+        mock_creds = mock_credentials(user_id="@test:matrix.org")
+
+        mock_temp_client = AsyncMock()
+        mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
+        mock_temp_client.logout = AsyncMock()
+        mock_temp_client.close = AsyncMock()
+
+        mock_main_client = AsyncMock()
+        mock_main_client.restore_login = MagicMock()
+        mock_main_client.logout.return_value = MagicMock(transport_response=True)
+        mock_main_client.close.side_effect = OSError("close fail")
+
+        with (
+            patch(
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_creds),
+            ),
+            patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
+            patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
+            patch("mmrelay.cli_utils._cleanup_local_session_data", return_value=True),
+            patch("mmrelay.cli_utils._get_logger") as mock_get_logger,
+        ):
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+            mock_async_client.side_effect = [mock_temp_client, mock_main_client]
+
+            result = await logout_matrix_bot(password="test_password")
+            assert result is True
+            mock_logger.debug.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_logout_matrix_bot_cleanup_with_errors(self, mock_credentials):
+        """Test logout when final local cleanup has errors (lines 894-896)."""
+        from mmrelay.cli_utils import logout_matrix_bot
+
+        mock_creds = mock_credentials(user_id="@test:matrix.org")
+
+        mock_temp_client = AsyncMock()
+        mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
+        mock_temp_client.logout = AsyncMock()
+        mock_temp_client.close = AsyncMock()
+
+        mock_main_client = AsyncMock()
+        mock_main_client.restore_login = MagicMock()
+        mock_main_client.logout.return_value = MagicMock(transport_response=True)
+        mock_main_client.close = AsyncMock()
+
+        with (
+            patch(
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_creds),
+            ),
+            patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
+            patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
+            patch("mmrelay.cli_utils._cleanup_local_session_data", return_value=False),
+            patch("mmrelay.cli_utils._get_logger") as mock_get_logger,
+            patch("builtins.print") as mock_print,
+        ):
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+            mock_async_client.side_effect = [mock_temp_client, mock_main_client]
+
+            result = await logout_matrix_bot(password="test_password")
+            assert result is False
+            mock_print.assert_any_call("⚠️  Logout completed with some errors.")

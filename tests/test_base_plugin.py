@@ -1401,6 +1401,169 @@ class TestBasePlugin(unittest.TestCase):
             "test_plugin", subdir="subdir", plugin_type="core"
         )
 
+    def test_is_core_plugin_inferred_from_type_error(self):
+        """Test is_core_plugin inference when inspect.getfile raises TypeError."""
+
+        class DynamicPlugin(BasePlugin):
+            plugin_name = "dynamic"
+            is_core_plugin = None
+
+            async def handle_meshtastic_message(
+                self, packet, formatted_message, longname, meshnet_name
+            ) -> bool:
+                return False
+
+            async def handle_room_message(self, _room, _event, _full_message) -> bool:
+                return False
+
+        with (
+            patch("mmrelay.plugins.base_plugin.config", {"plugins": {}}),
+            patch("mmrelay.plugins.base_plugin.inspect.getfile", side_effect=TypeError),
+        ):
+            plugin = DynamicPlugin()
+            self.assertFalse(plugin.is_core_plugin)
+
+    def test_config_plugin_none_treated_as_empty(self):
+        """Plugin config that is None should be treated as empty dict."""
+        config = {"plugins": {"test_plugin": None}}
+
+        with patch("mmrelay.plugins.base_plugin.config", config):
+            plugin = MockPlugin()
+            self.assertEqual(plugin.config, {})
+
+    def test_config_plugin_non_dict_logs_warning(self):
+        """Plugin config that is non-dict should log warning and use empty dict."""
+
+        class NonDictPlugin(BasePlugin):
+            plugin_name = "test_plugin"
+            is_core_plugin = True
+
+            async def handle_meshtastic_message(
+                self, packet, formatted_message, longname, meshnet_name
+            ) -> bool:
+                return False
+
+            async def handle_room_message(self, _room, _event, _full_message) -> bool:
+                return False
+
+        config = {"plugins": {"test_plugin": "invalid"}}
+        with patch("mmrelay.plugins.base_plugin.config", config):
+            plugin = NonDictPlugin()
+            self.assertIsInstance(plugin.config, dict)
+
+    def test_channels_not_list_wrapped(self):
+        """channels config as non-list should be wrapped in a list."""
+        config = {
+            "plugins": {"test_plugin": {"active": True, "channels": 0}},
+            "matrix": {"rooms": [{"id": "!r:matrix.org", "meshtastic_channel": 0}]},
+        }
+
+        with patch("mmrelay.plugins.base_plugin.config", config):
+            plugin = CoreMockPlugin()
+            self.assertEqual(plugin.channels, [0])
+
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_send_matrix_message_none_client(self, mock_connect):
+        """send_matrix_message should return None when Matrix client is unavailable."""
+        mock_connect.return_value = None
+
+        async def run_test():
+            result = await MockPlugin().send_matrix_message("!room:matrix.org", "test")
+            self.assertIsNone(result)
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_send_matrix_message_formatted(self, mock_connect):
+        """send_matrix_message with formatted=True should include HTML content."""
+        mock_client = AsyncMock()
+        mock_connect.return_value = mock_client
+
+        async def run_test():
+            plugin = MockPlugin()
+            await plugin.send_matrix_message(
+                "!room:matrix.org", "**bold**", formatted=True
+            )
+            call_kwargs = mock_client.room_send.call_args.kwargs
+            self.assertIn("formatted_body", call_kwargs["content"])
+            self.assertIn("format", call_kwargs["content"])
+
+        asyncio.run(run_test())
+
+    def test_get_matching_matrix_command_with_match(self):
+        """get_matching_matrix_command should return the matching command."""
+
+        class MultiCmdPlugin(BasePlugin):
+            plugin_name = "multi"
+            is_core_plugin = True
+
+            async def handle_meshtastic_message(
+                self, packet, formatted_message, longname, meshnet_name
+            ) -> bool:
+                return False
+
+            async def handle_room_message(self, _room, _event, _full_message) -> bool:
+                return False
+
+            def get_matrix_commands(self):
+                return ["cmd1", "cmd2"]
+
+        with patch("mmrelay.plugins.base_plugin.config", {"plugins": {}}):
+            plugin = MultiCmdPlugin()
+
+        mock_event = MagicMock()
+        with patch("mmrelay.matrix_utils.bot_command") as mock_bc:
+            mock_bc.side_effect = lambda cmd, *_, **__: cmd == "cmd2"
+            result = plugin.get_matching_matrix_command(mock_event)
+            self.assertEqual(result, "cmd2")
+
+    def test_get_matching_matrix_command_no_match(self):
+        """get_matching_matrix_command should return None when nothing matches."""
+
+        class MultiCmdPlugin2(BasePlugin):
+            plugin_name = "multi2"
+            is_core_plugin = True
+
+            async def handle_meshtastic_message(
+                self, packet, formatted_message, longname, meshnet_name
+            ) -> bool:
+                return False
+
+            async def handle_room_message(self, _room, _event, _full_message) -> bool:
+                return False
+
+            def get_matrix_commands(self):
+                return ["cmd1"]
+
+        with patch("mmrelay.plugins.base_plugin.config", {"plugins": {}}):
+            plugin = MultiCmdPlugin2()
+
+        mock_event = MagicMock()
+        with patch("mmrelay.matrix_utils.bot_command", return_value=False):
+            result = plugin.get_matching_matrix_command(mock_event)
+            self.assertIsNone(result)
+
+    def test_extract_command_args_with_match(self):
+        """extract_command_args should extract args from full message."""
+        plugin = MockPlugin()
+        with patch(
+            "mmrelay.matrix_utils.bot_command",
+            side_effect=lambda cmd, msg, *_, **__: cmd == "test_plugin",
+        ):
+            mock_event = MagicMock()
+            result = plugin.extract_command_args(
+                "test_plugin", "!test_plugin arg1 arg2"
+            )
+            self.assertEqual(result, "arg1 arg2")
+
+    def test_extract_command_args_no_match(self):
+        """extract_command_args should return None when command doesn't match."""
+        plugin = MockPlugin()
+        with patch("mmrelay.matrix_utils.bot_command", return_value=False):
+            mock_event = MagicMock()
+            result = plugin.extract_command_args("test_plugin", "!other_cmd")
+            self.assertIsNone(result)
+
 
 if __name__ == "__main__":
     unittest.main()

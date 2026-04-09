@@ -562,3 +562,503 @@ def test_get_diagnostics_maps_resolved_fields() -> None:
     assert diagnostics["matrix_dir"] == "/h/matrix"
     assert diagnostics["database_path"] == "/h/database/db.sqlite"
     assert diagnostics["sources_used"] == "CLI (--home)"
+
+
+def test_has_mmrelay_artifacts_oserror_on_directory_scan() -> None:
+    """OSError during scandir of a directory marker should be caught gracefully."""
+    import os as _os
+
+    from mmrelay.paths import _has_mmrelay_artifacts
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        root = Path(tmp_dir)
+        plugin_dir = root / "plugins"
+        plugin_dir.mkdir(parents=True, exist_ok=True)
+
+        original_scandir = _os.scandir
+
+        def _faulty_scandir(path):
+            if str(path) == str(plugin_dir):
+                raise OSError("permission denied")
+            return original_scandir(path)
+
+        with patch("os.scandir", side_effect=_faulty_scandir):
+            result = _has_mmrelay_artifacts(root)
+
+        assert result is False
+
+
+def test_dir_has_entries_oserror() -> None:
+    """_dir_has_entries returns False when scandir raises OSError."""
+    from mmrelay.paths import _dir_has_entries
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        p = Path(tmp_dir)
+        with patch("os.scandir", side_effect=OSError("fail")):
+            assert _dir_has_entries(p) is False
+
+
+def test_dir_has_entries_not_a_directory() -> None:
+    """_dir_has_entries returns False for non-directory paths."""
+    from mmrelay.paths import _dir_has_entries
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        file_path = Path(tmp_dir) / "file.txt"
+        file_path.write_text("hello")
+        assert _dir_has_entries(file_path) is False
+
+
+def test_score_home_credentials_and_store_and_plugins() -> None:
+    """_score_mmrelay_home_state should score credentials, store content, and plugins content."""
+    from mmrelay.constants.app import (
+        DATABASE_DIRNAME,
+        DATABASE_FILENAME,
+        LEGACY_DATA_SUBDIR,
+        LOG_FILENAME,
+        LOGS_DIRNAME,
+        MATRIX_DIRNAME,
+        PLUGINS_DIRNAME,
+        STORE_DIRNAME,
+    )
+    from mmrelay.constants.config import DEFAULT_CONFIG_FILENAME
+    from mmrelay.paths import _score_mmrelay_home_state
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        root = Path(tmp_dir)
+        (root / DEFAULT_CONFIG_FILENAME).write_text("test: true")
+        (root / MATRIX_DIRNAME / "credentials.json").parent.mkdir(parents=True)
+        (root / MATRIX_DIRNAME / "credentials.json").write_text("{}")
+        (root / DATABASE_DIRNAME).mkdir()
+        (root / DATABASE_DIRNAME / DATABASE_FILENAME).write_text("")
+        (root / MATRIX_DIRNAME / STORE_DIRNAME).mkdir(parents=True)
+        (root / MATRIX_DIRNAME / STORE_DIRNAME / "key.db").write_bytes(b"\x00")
+        (root / PLUGINS_DIRNAME).mkdir()
+        (root / PLUGINS_DIRNAME / "my_plugin.py").write_text("")
+        (root / LOGS_DIRNAME).mkdir()
+        (root / LOGS_DIRNAME / LOG_FILENAME).write_text("log")
+
+        score = _score_mmrelay_home_state(root)
+        assert score >= 6 + 6 + 6 + 3 + 2 + 1 + 1
+
+
+def test_score_home_nonexistent() -> None:
+    """_score_mmrelay_home_state returns 0 for nonexistent directory."""
+    from mmrelay.paths import _score_mmrelay_home_state
+
+    assert _score_mmrelay_home_state(Path("/nonexistent_dir_xyz_123")) == 0
+
+
+def test_get_e2ee_store_dir_on_windows() -> None:
+    """get_e2ee_store_dir should raise E2EENotSupportedError on Windows."""
+    from mmrelay.paths import E2EENotSupportedError, get_e2ee_store_dir
+
+    with patch("mmrelay.paths.sys.platform", "win32"):
+        with pytest.raises(E2EENotSupportedError):
+            get_e2ee_store_dir()
+
+
+def test_validate_plugin_name_empty() -> None:
+    """_validate_plugin_name raises ValueError for empty string."""
+    from mmrelay.paths import _validate_plugin_name
+
+    with pytest.raises(ValueError, match="Invalid plugin name"):
+        _validate_plugin_name("")
+
+
+def test_validate_plugin_name_dot() -> None:
+    """_validate_plugin_name raises ValueError for '.' name."""
+    from mmrelay.paths import _validate_plugin_name
+
+    with pytest.raises(ValueError, match="Invalid plugin name"):
+        _validate_plugin_name(".")
+
+
+def test_validate_plugin_name_dotdot() -> None:
+    """_validate_plugin_name raises ValueError for '..' name."""
+    from mmrelay.paths import _validate_plugin_name
+
+    with pytest.raises(ValueError, match="Invalid plugin name"):
+        _validate_plugin_name("..")
+
+
+def test_validate_plugin_name_absolute() -> None:
+    """_validate_plugin_name raises ValueError for absolute path."""
+    from mmrelay.paths import _validate_plugin_name
+
+    with pytest.raises(ValueError, match="Invalid plugin name"):
+        _validate_plugin_name("/etc/passwd")
+
+
+def test_validate_plugin_name_traversal() -> None:
+    """_validate_plugin_name raises ValueError for path traversal."""
+    from mmrelay.paths import _validate_plugin_name
+
+    with pytest.raises(ValueError, match="Invalid plugin name"):
+        _validate_plugin_name("../etc/passwd")
+
+
+def test_validate_plugin_subdir_traversal() -> None:
+    """_validate_plugin_subdir raises ValueError for path traversal."""
+    from mmrelay.paths import _validate_plugin_subdir
+
+    with pytest.raises(ValueError, match="Invalid plugin subdir"):
+        _validate_plugin_subdir("../../etc")
+
+
+def test_validate_plugin_subdir_dot_component() -> None:
+    """_validate_plugin_subdir raises ValueError for path with '..' component."""
+    from mmrelay.paths import _validate_plugin_subdir
+
+    with pytest.raises(ValueError, match="Invalid plugin subdir"):
+        _validate_plugin_subdir("foo/../bar")
+
+
+def test_get_plugin_code_dir_fallback_to_core() -> None:
+    """get_plugin_code_dir falls back to core when plugin not found in custom/community."""
+    from mmrelay.paths import get_plugin_code_dir
+
+    with (
+        patch("mmrelay.paths.get_custom_plugins_dir", return_value=Path("/custom")),
+        patch(
+            "mmrelay.paths.get_community_plugins_dir", return_value=Path("/community")
+        ),
+    ):
+        result = get_plugin_code_dir("nonexistent_plugin")
+        assert "plugins" in str(result)
+        assert "nonexistent_plugin" in str(result)
+
+
+def test_get_plugin_data_dir_core_type() -> None:
+    """get_plugin_data_dir with core type uses core plugins dir."""
+    from mmrelay.paths import get_plugin_data_dir
+
+    with patch("mmrelay.paths.get_core_plugins_dir", return_value=Path("/core")):
+        result = get_plugin_data_dir("test", plugin_type="core")
+        assert result == Path("/core/test/data")
+
+
+def test_get_plugin_data_dir_fallback_core() -> None:
+    """get_plugin_data_dir falls back to core when plugin not found."""
+    from mmrelay.paths import get_plugin_data_dir
+
+    with (
+        patch("mmrelay.paths.get_custom_plugins_dir", return_value=Path("/custom")),
+        patch(
+            "mmrelay.paths.get_community_plugins_dir", return_value=Path("/community")
+        ),
+        patch("mmrelay.paths.get_core_plugins_dir", return_value=Path("/core")),
+    ):
+        result = get_plugin_data_dir("nonexistent_plugin")
+        assert result == Path("/core/nonexistent_plugin/data")
+
+
+def test_get_legacy_dirs_platform_user_data_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Existing platform user data dir should be reported as a legacy dir."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        platform_data = Path(tmp_dir) / "platform_data"
+        platform_data.mkdir()
+        (platform_data / "config.yaml").write_text("test: true")
+
+        monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
+        monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
+
+        with (
+            patch("mmrelay.paths.get_home_dir", return_value=Path("/current/home")),
+            patch(
+                "mmrelay.paths.platformdirs.user_data_dir",
+                return_value=str(platform_data),
+            ),
+        ):
+            legacy = get_legacy_dirs()
+
+        assert platform_data in legacy
+
+
+def test_get_legacy_dirs_platform_user_data_runtime_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RuntimeError from platformdirs should be handled gracefully."""
+    monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
+    monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
+
+    with (
+        patch("mmrelay.paths.get_home_dir", return_value=Path("/current/home")),
+        patch(
+            "mmrelay.paths.platformdirs.user_data_dir",
+            side_effect=RuntimeError("fail"),
+        ),
+    ):
+        legacy = get_legacy_dirs()
+
+    assert isinstance(legacy, list)
+
+
+def test_get_legacy_dirs_windows_installer_path_oserror(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OSError when checking Windows installer path should be handled."""
+    monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
+    monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", "/fake/localappdata")
+
+    installer_path_str = str(
+        Path("/fake/localappdata") / "Programs" / WINDOWS_INSTALLER_DIR_NAME
+    )
+
+    original_exists = Path.exists
+
+    def _selective_exists(self):
+        if installer_path_str in str(self):
+            raise OSError("access denied")
+        return original_exists(self)
+
+    with (
+        patch("sys.platform", "win32"),
+        patch("mmrelay.paths.get_home_dir", return_value=Path("/current/home")),
+        patch("mmrelay.paths.platformdirs.user_data_dir", return_value="/platform"),
+        patch.object(Path, "exists", _selective_exists),
+    ):
+        legacy = get_legacy_dirs()
+
+    assert isinstance(legacy, list)
+
+
+def test_get_legacy_dirs_base_dir_same_as_home(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MMRELAY_BASE_DIR pointing to same dir as home should be excluded."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        home = Path(tmp_dir)
+        (home / "config.yaml").write_text("test: true")
+
+        monkeypatch.setenv("MMRELAY_BASE_DIR", str(home))
+        monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
+
+        with patch("mmrelay.paths.get_home_dir", return_value=home):
+            legacy = get_legacy_dirs()
+
+        assert home not in legacy
+
+
+def test_get_legacy_dirs_data_dir_same_as_home(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MMRELAY_DATA_DIR pointing to same dir as home should be excluded."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        home = Path(tmp_dir)
+        (home / "config.yaml").write_text("test: true")
+
+        monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
+        monkeypatch.setenv("MMRELAY_DATA_DIR", str(home))
+
+        with patch("mmrelay.paths.get_home_dir", return_value=home):
+            legacy = get_legacy_dirs()
+
+        assert home not in legacy
+
+
+def test_get_legacy_dirs_docker_path_same_as_home(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Docker legacy path equal to home should be excluded."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        home = Path(tmp_dir)
+        (home / "config.yaml").write_text("test: true")
+
+        monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
+        monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
+
+        with (
+            patch("mmrelay.paths.get_home_dir", return_value=home),
+            patch("mmrelay.paths.DOCKER_LEGACY_PATHS", [str(home)]),
+        ):
+            legacy = get_legacy_dirs()
+
+        assert home not in legacy
+
+
+def test_get_config_paths_platformdirs_runtime_error() -> None:
+    """RuntimeError from platformdirs in get_config_paths should be handled."""
+    with (
+        patch("mmrelay.paths.get_home_dir", return_value=Path("/home")),
+        patch.object(Path, "cwd", return_value=Path("/home")),
+        patch.object(Path, "home", return_value=Path("/home")),
+        patch(
+            "mmrelay.paths.platformdirs.user_data_dir",
+            side_effect=RuntimeError("fail"),
+        ),
+    ):
+        paths = get_config_paths()
+
+    assert isinstance(paths, list)
+
+
+def test_get_config_paths_platform_user_data_exists_and_differs() -> None:
+    """Platform user data dir that exists and differs from home should be included."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        platform_data = Path(tmp_dir) / "platform_data"
+        platform_data.mkdir()
+
+        with (
+            patch("mmrelay.paths.get_home_dir", return_value=Path("/home")),
+            patch.object(Path, "cwd", return_value=Path("/cwd")),
+            patch.object(Path, "home", return_value=Path("/home")),
+            patch(
+                "mmrelay.paths.platformdirs.user_data_dir",
+                return_value=str(platform_data),
+            ),
+        ):
+            paths = get_config_paths()
+
+        assert isinstance(paths, list)
+        assert any(str(platform_data) in str(p) for p in paths)
+
+
+def test_resolve_all_paths_home_source_data_dir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """resolve_all_paths should identify MMRELAY_DATA_DIR as home source."""
+    import mmrelay.paths as paths_module
+
+    paths_module._reset_deprecation_warning_flag()
+    monkeypatch.delenv("MMRELAY_HOME", raising=False)
+    monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
+    monkeypatch.setenv("MMRELAY_DATA_DIR", "/legacy/data")
+
+    try:
+        resolved = resolve_all_paths()
+        assert resolved["home_source"] == "MMRELAY_DATA_DIR env var"
+    finally:
+        paths_module._reset_deprecation_warning_flag()
+
+
+def test_resolve_all_paths_home_source_platform_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """resolve_all_paths should identify Platform defaults when no env vars or CLI overrides."""
+    import mmrelay.paths as paths_module
+
+    paths_module._reset_deprecation_warning_flag()
+    monkeypatch.delenv("MMRELAY_HOME", raising=False)
+    monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
+    monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
+    monkeypatch.delenv("MMRELAY_LOG_PATH", raising=False)
+
+    try:
+        resolved = resolve_all_paths()
+        assert resolved["home_source"] == "Platform defaults"
+    finally:
+        paths_module._reset_deprecation_warning_flag()
+
+
+def test_resolve_all_paths_cli_data_dir_source() -> None:
+    """resolve_all_paths should identify CLI --data-dir as home source."""
+    from mmrelay.paths import set_home_override
+
+    set_home_override("/data/home", source="--data-dir")
+    try:
+        resolved = resolve_all_paths()
+        assert resolved["home_source"] == "CLI (--data-dir)"
+    finally:
+        reset_home_override()
+
+
+def test_get_home_dir_windows_weak_installer_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Weak installer artifacts (score < 6) with empty platform should prefer platform home."""
+    from mmrelay.constants.config import DEFAULT_CONFIG_FILENAME
+    from mmrelay.paths import get_home_dir
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        root = Path(tmp_dir)
+        local_app_data = root / "LocalAppData"
+        installer_path = local_app_data / "Programs" / WINDOWS_INSTALLER_DIR_NAME
+        installer_logs = installer_path / "logs"
+        installer_logs.mkdir(parents=True, exist_ok=True)
+        (installer_logs / LOG_FILENAME).write_text("log\n", encoding="utf-8")
+
+        platform_home = root / "PlatformData" / "mmrelay"
+
+        monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+        monkeypatch.delenv("MMRELAY_HOME", raising=False)
+        monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
+        monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
+        with (
+            patch("sys.platform", "win32"),
+            patch(
+                "mmrelay.paths.platformdirs.user_data_dir",
+                return_value=str(platform_home),
+            ),
+        ):
+            result = get_home_dir()
+
+        assert result == platform_home
+
+
+def test_get_home_dir_windows_installer_with_score_above_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Installer with score >= 6 and empty platform should be preferred."""
+    from mmrelay.paths import get_home_dir
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        root = Path(tmp_dir)
+        local_app_data = root / "LocalAppData"
+        installer_path = local_app_data / "Programs" / WINDOWS_INSTALLER_DIR_NAME
+        installer_path.mkdir(parents=True, exist_ok=True)
+        (installer_path / DEFAULT_CONFIG_FILENAME).write_text(
+            "test: true\n", encoding="utf-8"
+        )
+
+        platform_home = root / "PlatformData" / "mmrelay"
+
+        monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+        monkeypatch.delenv("MMRELAY_HOME", raising=False)
+        monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
+        monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
+        with (
+            patch("sys.platform", "win32"),
+            patch(
+                "mmrelay.paths.platformdirs.user_data_dir",
+                return_value=str(platform_home),
+            ),
+        ):
+            result = get_home_dir()
+
+        assert result == installer_path
+
+
+def test_deprecation_window_not_active_when_home_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Deprecation window should not be active when MMRELAY_HOME is set."""
+    import mmrelay.paths as paths_module
+
+    paths_module._reset_deprecation_warning_flag()
+    monkeypatch.setenv("MMRELAY_HOME", "/home")
+    monkeypatch.setenv("MMRELAY_BASE_DIR", "/base")
+
+    try:
+        assert is_deprecation_window_active() is False
+    finally:
+        paths_module._reset_deprecation_warning_flag()
+
+
+def test_deprecation_window_not_active_no_legacy_vars(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Deprecation window should not be active when no legacy vars are set."""
+    import mmrelay.paths as paths_module
+
+    paths_module._reset_deprecation_warning_flag()
+    monkeypatch.delenv("MMRELAY_HOME", raising=False)
+    monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
+    monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
+
+    try:
+        assert is_deprecation_window_active() is False
+    finally:
+        paths_module._reset_deprecation_warning_flag()

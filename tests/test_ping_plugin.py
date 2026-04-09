@@ -409,6 +409,65 @@ class TestPingPlugin(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    def test_match_case_empty_source(self):
+        """Empty source returns empty string (line 40)."""
+        self.assertEqual(match_case("", "pong"), "")
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_handle_meshtastic_message_non_text_portnum(self, mock_connect):
+        """Non-text portnum should be rejected (line 99)."""
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+
+        packet = {
+            "decoded": {"portnum": "TELEMETRY_APP", "text": "!ping"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertFalse(result)
+
+        asyncio.run(run_test())
+
+    def test_get_matrix_commands_none_name(self):
+        """get_matrix_commands returns [] when plugin_name is None (line 192)."""
+        self.plugin.plugin_name = None
+        self.assertEqual(self.plugin.get_matrix_commands(), [])
+
+    def test_get_mesh_commands_none_name(self):
+        """get_mesh_commands returns [] when plugin_name is None (line 203)."""
+        self.plugin.plugin_name = None
+        self.assertEqual(self.plugin.get_mesh_commands(), [])
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_handle_meshtastic_message_no_client(self, mock_connect):
+        """Missing meshtastic client should return True (line 128-129)."""
+        mock_connect.return_value = None
+
+        packet = {
+            "decoded": {"text": "!ping"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            self.plugin.logger.warning.assert_called_once_with(
+                "Meshtastic client unavailable; skipping ping"
+            )
+
+        asyncio.run(run_test())
+
 
 class TestPingPluginMimicMode(unittest.TestCase):
     def setUp(self):

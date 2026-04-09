@@ -491,5 +491,399 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                     self.assertIn("--config %h/.mmrelay/config.yaml", written_content)
 
 
+class TestGetResolvedExecStartEmpty(unittest.TestCase):
+    """Test get_resolved_exec_start with empty suffix (line 161)."""
+
+    @patch("mmrelay.setup_utils.get_resolved_exec_cmd", return_value="mmrelay")
+    def test_empty_suffix(self, mock_cmd):
+        """Empty suffix should produce ExecStart without args."""
+        from mmrelay.setup_utils import get_resolved_exec_start
+
+        result = get_resolved_exec_start(args_suffix="   ")
+        self.assertEqual(result, "ExecStart=mmrelay")
+
+
+class TestServiceNeedsUpdateEdgeCases(unittest.TestCase):
+    """Test service_needs_update edge cases for uncovered branches."""
+
+    def _make_service_content(self, exec_start, environment=None, unit_section=None):
+        lines = ["[Unit]"]
+        if unit_section:
+            lines.extend(unit_section)
+        lines.append("Description=Test")
+        lines.append("[Service]")
+        lines.append("Type=simple")
+        lines.append(exec_start)
+        if environment:
+            for env in environment:
+                lines.append(env)
+        lines.append("[Install]")
+        lines.append("WantedBy=default.target")
+        return "\n".join(lines)
+
+    def _full_service(self, exec_start, **kwargs):
+        defaults = {
+            "environment": [
+                "Environment=PATH=%h/.local/bin:%h/.local/pipx/venvs/mmrelay/bin:/usr/bin"
+            ],
+            "unit_section": [
+                "After=network-online.target time-sync.target",
+                "Wants=network-online.target time-sync.target",
+            ],
+        }
+        for k, v in defaults.items():
+            kwargs.setdefault(k, v)
+        return self._make_service_content(exec_start, **kwargs)
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_template_service_path", return_value=None)
+    def test_missing_execstart_line(self, mock_path, mock_read):
+        """Service file missing ExecStart should need update (line 576)."""
+        from mmrelay.setup_utils import service_needs_update
+
+        mock_read.return_value = "[Unit]\nDescription=Test\n[Service]\nType=simple\n"
+        needs_update, reason = service_needs_update()
+        self.assertTrue(needs_update)
+        self.assertIn("missing ExecStart", reason)
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_template_service_path", return_value=None)
+    def test_empty_execstart_value(self, mock_path, mock_read):
+        """Empty ExecStart value should need update (line 580)."""
+        from mmrelay.setup_utils import service_needs_update
+
+        mock_read.return_value = self._make_service_content(
+            "ExecStart=",
+            unit_section=[
+                "After=network.target time-sync.target",
+                "Wants=time-sync.target",
+            ],
+        )
+        needs_update, reason = service_needs_update()
+        self.assertTrue(needs_update)
+        self.assertIn("empty ExecStart", reason)
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_template_service_path", return_value=None)
+    def test_invalid_execstart_shlex(self, mock_path, mock_read):
+        """Invalid ExecStart (unbalanced quotes) should need update (line 591-592)."""
+        from mmrelay.setup_utils import service_needs_update
+
+        mock_read.return_value = self._make_service_content(
+            'ExecStart=/usr/bin/mmrelay "unbalanced',
+            unit_section=[
+                "After=network.target time-sync.target",
+                "Wants=time-sync.target",
+            ],
+        )
+        needs_update, reason = service_needs_update()
+        self.assertTrue(needs_update)
+        self.assertIn("invalid ExecStart", reason)
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_template_service_path", return_value=None)
+    def test_legacy_config_flag(self, mock_path, mock_read):
+        """Service with --config flag should need update (line 599)."""
+        from mmrelay.setup_utils import service_needs_update
+
+        mock_read.return_value = self._make_service_content(
+            "ExecStart=mmrelay --config /etc/config.yaml --home /test",
+            unit_section=[
+                "After=network.target time-sync.target",
+                "Wants=time-sync.target",
+            ],
+        )
+        needs_update, reason = service_needs_update()
+        self.assertTrue(needs_update)
+        self.assertIn("legacy", reason)
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_template_service_path", return_value=None)
+    def test_home_flag_with_dash_value(self, mock_path, mock_read):
+        """--home followed by a flag-like value should not count as home flag (line 612->615)."""
+        from mmrelay.setup_utils import service_needs_update
+
+        mock_read.return_value = self._make_service_content(
+            "ExecStart=mmrelay --home --other-flag",
+            unit_section=[
+                "After=network.target time-sync.target",
+                "Wants=time-sync.target",
+            ],
+        )
+        needs_update, reason = service_needs_update()
+        self.assertTrue(needs_update)
+        self.assertIn("missing home", reason)
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_template_service_path", return_value=None)
+    def test_home_equals_empty_value(self, mock_path, mock_read):
+        """--home= with empty value should not count, but MMRELAY_HOME env should work (line 619-620)."""
+        from mmrelay.setup_utils import service_needs_update
+
+        mock_read.return_value = self._full_service(
+            "ExecStart=/usr/bin/mmrelay --home= ",
+            environment=["Environment=MMRELAY_HOME=/test"],
+        )
+        needs_update, reason = service_needs_update()
+        self.assertFalse(needs_update)
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_template_service_path", return_value=None)
+    def test_empty_environment_line(self, mock_path, mock_read):
+        """Empty Environment= line should be handled (line 624->626, 627)."""
+        from mmrelay.setup_utils import service_needs_update
+
+        mock_read.return_value = self._full_service(
+            "ExecStart=/usr/bin/mmrelay --home /test",
+            environment=["Environment=", "Environment=MMRELAY_HOME=/test"],
+        )
+        needs_update, reason = service_needs_update()
+        self.assertFalse(needs_update)
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_template_service_path", return_value=None)
+    def test_env_launcher_with_double_dash(self, mock_path, mock_read):
+        """env launcher with -- separator should skip it (line 660)."""
+        from mmrelay.setup_utils import service_needs_update
+
+        mock_read.return_value = self._full_service(
+            "ExecStart=env -- mmrelay --home /test",
+        )
+        needs_update, reason = service_needs_update()
+        self.assertFalse(needs_update)
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_template_service_path", return_value=None)
+    def test_env_launcher_with_flag(self, mock_path, mock_read):
+        """env launcher with -S flag should skip it (line 662)."""
+        from mmrelay.setup_utils import service_needs_update
+
+        mock_read.return_value = self._full_service(
+            "ExecStart=env -S mmrelay --home /test",
+        )
+        needs_update, reason = service_needs_update()
+        self.assertFalse(needs_update)
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_template_service_path", return_value=None)
+    def test_env_without_equals(self, mock_path, mock_read):
+        """Environment line token without '=' should be skipped (line 636)."""
+        from mmrelay.setup_utils import service_needs_update
+
+        mock_read.return_value = self._full_service(
+            "ExecStart=/usr/bin/mmrelay --home /test",
+            environment=["Environment=NOEQUALS MMRELAY_HOME=/test"],
+        )
+        needs_update, reason = service_needs_update()
+        self.assertFalse(needs_update)
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_template_service_path", return_value=None)
+    def test_unrecognizable_launcher(self, mock_path, mock_read):
+        """Non-mmrelay, non-absolute launcher should be flagged (line 710)."""
+        from mmrelay.setup_utils import service_needs_update
+
+        mock_read.return_value = self._make_service_content(
+            "ExecStart=unknown_launcher --home /test",
+            unit_section=[
+                "After=network.target time-sync.target",
+                "Wants=time-sync.target",
+            ],
+        )
+        needs_update, reason = service_needs_update()
+        self.assertTrue(needs_update)
+        self.assertIn("recognizable", reason)
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_template_service_path", return_value=None)
+    def test_path_with_percent_h_entry(self, mock_path, mock_read):
+        """PATH with %h entry should normalize correctly (line 728)."""
+        from mmrelay.setup_utils import service_needs_update
+
+        mock_read.return_value = self._make_service_content(
+            "ExecStart=env mmrelay --home /test",
+            environment=[
+                f"Environment=PATH=%h/.local/bin:%h/.local/pipx/venvs/mmrelay/bin:/usr/bin"
+            ],
+            unit_section=[
+                "After=network.target time-sync.target",
+                "Wants=time-sync.target",
+            ],
+        )
+        needs_update, reason = service_needs_update()
+        self.assertFalse(needs_update)
+
+    @patch("mmrelay.setup_utils.get_template_service_path")
+    def test_mtime_oserror(self, mock_get_path):
+        """OSError during stat check should trigger update (line 768-769)."""
+        from mmrelay.setup_utils import service_needs_update
+
+        with tempfile.NamedTemporaryFile(suffix=".service", delete=False) as f:
+            f.write(
+                b"[Unit]\nDescription=Test\nAfter=time-sync.target\nWants=time-sync.target\n"
+            )
+            f.write(
+                b"[Service]\nExecStart=/usr/bin/mmrelay --home /test\nType=simple\n"
+            )
+            f.write(b"[Install]\nWantedBy=default.target\n")
+            template_path = f.name
+
+        try:
+            mock_get_path.return_value = template_path
+
+            service_content = (
+                "[Unit]\nDescription=Test\nAfter=time-sync.target\nWants=time-sync.target\n"
+                "[Service]\nExecStart=/usr/bin/mmrelay --home /test\nType=simple\n"
+                "[Install]\nWantedBy=default.target\n"
+            )
+
+            with (
+                patch(
+                    "mmrelay.setup_utils.read_service_file",
+                    return_value=service_content,
+                ),
+                patch("os.path.exists", return_value=True),
+                patch("os.path.getmtime", side_effect=OSError("fail")),
+            ):
+                needs_update, reason = service_needs_update()
+                self.assertTrue(needs_update)
+                self.assertIn("Unable to stat", reason)
+        finally:
+            os.unlink(template_path)
+
+
+class TestCheckLingeringLoginctlNotFound(unittest.TestCase):
+    """Test check_lingering_enabled when loginctl is not found (line 833)."""
+
+    @patch("mmrelay.setup_utils.shutil.which", return_value=None)
+    @patch.dict(os.environ, {"USER": "testuser"}, clear=False)
+    def test_loginctl_not_found_returns_false(self, mock_which):
+        """check_lingering_enabled should return False when loginctl is not found."""
+        result = check_lingering_enabled()
+        self.assertFalse(result)
+
+
+class TestInstallServiceErrorPaths(unittest.TestCase):
+    """Test install_service error paths for uncovered branches."""
+
+    @patch("mmrelay.setup_utils.is_service_active", return_value=False)
+    @patch("mmrelay.setup_utils.start_service", return_value=False)
+    @patch("mmrelay.setup_utils.is_service_enabled", return_value=False)
+    @patch("mmrelay.setup_utils.check_lingering_enabled", return_value=True)
+    @patch("mmrelay.setup_utils.check_loginctl_available", return_value=False)
+    @patch("mmrelay.setup_utils.reload_daemon", return_value=True)
+    @patch("mmrelay.setup_utils.create_service_file", return_value=True)
+    @patch("mmrelay.setup_utils.service_needs_update", return_value=(True, "test"))
+    @patch("mmrelay.setup_utils.read_service_file", return_value=None)
+    @patch("mmrelay.setup_utils.show_service_status")
+    @patch("mmrelay.setup_utils.wait_for_service_start")
+    @patch("builtins.input", side_effect=["y", "y"])
+    def test_start_service_fails_warns(
+        self,
+        mock_input,
+        mock_wait,
+        mock_show,
+        mock_read,
+        mock_needs,
+        mock_create,
+        mock_reload,
+        mock_loginctl,
+        mock_linger,
+        mock_enabled,
+        mock_start,
+        mock_active,
+    ):
+        """install_service should log warning when start_service fails (line 1038)."""
+        with patch("mmrelay.setup_utils.log_service_commands"):
+            with patch("mmrelay.setup_utils.subprocess.run"):
+                result = install_service()
+        self.assertTrue(result)
+
+    @patch("mmrelay.setup_utils.is_service_active", return_value=False)
+    @patch("mmrelay.setup_utils.start_service", return_value=True)
+    @patch("mmrelay.setup_utils.is_service_enabled", return_value=False)
+    @patch("mmrelay.setup_utils.check_lingering_enabled", return_value=True)
+    @patch("mmrelay.setup_utils.check_loginctl_available", return_value=False)
+    @patch("mmrelay.setup_utils.reload_daemon", return_value=True)
+    @patch("mmrelay.setup_utils.create_service_file", return_value=True)
+    @patch("mmrelay.setup_utils.service_needs_update", return_value=(True, "test"))
+    @patch("mmrelay.setup_utils.read_service_file", return_value=None)
+    @patch("mmrelay.setup_utils.show_service_status")
+    @patch("mmrelay.setup_utils.wait_for_service_start")
+    @patch("builtins.input", side_effect=["y", "y"])
+    @patch("mmrelay.setup_utils.subprocess.run")
+    def test_enable_service_called_process_error(
+        self,
+        mock_run,
+        mock_input,
+        mock_wait,
+        mock_show,
+        mock_read,
+        mock_needs,
+        mock_create,
+        mock_reload,
+        mock_loginctl,
+        mock_linger,
+        mock_enabled,
+        mock_start,
+        mock_active,
+    ):
+        """install_service should handle CalledProcessError during enable (line 988-989)."""
+        mock_run.side_effect = subprocess.CalledProcessError(1, "enable")
+        with patch("mmrelay.setup_utils.log_service_commands"):
+            result = install_service()
+        self.assertTrue(result)
+
+    @patch("mmrelay.setup_utils.is_service_active", return_value=False)
+    @patch("mmrelay.setup_utils.start_service", return_value=True)
+    @patch("mmrelay.setup_utils.is_service_enabled", return_value=False)
+    @patch("mmrelay.setup_utils.check_lingering_enabled", return_value=True)
+    @patch("mmrelay.setup_utils.check_loginctl_available", return_value=False)
+    @patch("mmrelay.setup_utils.reload_daemon", return_value=True)
+    @patch("mmrelay.setup_utils.create_service_file", return_value=True)
+    @patch("mmrelay.setup_utils.service_needs_update", return_value=(True, "test"))
+    @patch("mmrelay.setup_utils.read_service_file", return_value=None)
+    @patch("mmrelay.setup_utils.show_service_status")
+    @patch("mmrelay.setup_utils.wait_for_service_start")
+    @patch("builtins.input", side_effect=["y", "y"])
+    @patch("mmrelay.setup_utils.subprocess.run")
+    def test_enable_service_oserror(
+        self,
+        mock_run,
+        mock_input,
+        mock_wait,
+        mock_show,
+        mock_read,
+        mock_needs,
+        mock_create,
+        mock_reload,
+        mock_loginctl,
+        mock_linger,
+        mock_enabled,
+        mock_start,
+        mock_active,
+    ):
+        """install_service should handle OSError during enable (line 990-991)."""
+        mock_run.side_effect = OSError("fail")
+        with patch("mmrelay.setup_utils.log_service_commands"):
+            result = install_service()
+        self.assertTrue(result)
+
+
+class TestStartServiceOSError(unittest.TestCase):
+    """Test start_service OSError path (line 1073-1075)."""
+
+    @patch(
+        "mmrelay.setup_utils.subprocess.run",
+        side_effect=OSError("No such file"),
+    )
+    def test_start_service_os_error(self, mock_run):
+        """start_service should return False on OSError."""
+        from mmrelay.setup_utils import start_service
+
+        result = start_service()
+        self.assertFalse(result)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -6,6 +6,7 @@ Covers:
 - _probe_sqlite_json_each_support: json_each support detection
 """
 
+import asyncio
 import sqlite3
 from unittest.mock import MagicMock, patch
 
@@ -103,6 +104,117 @@ class TestGetSqliteRuntimeVersionInfo:
         ):
             result = _get_sqlite_runtime_version_info()
             assert result == (3, 45, 1)
+
+
+@pytest.mark.asyncio
+async def test_await_submitted_future_signal_done_handles_runtime_error():
+    """_signal_done callback should swallow RuntimeError when loop is shutting down."""
+
+    class FakeEvent:
+        def __init__(self):
+            self._set = False
+
+        def set(self):
+            self._set = True
+
+    fake_future = MagicMock()
+    fake_future.done.return_value = False
+    fake_future.result.return_value = "ok"
+
+    manager = MagicMock()
+    manager._resolve_submitted_future_result = staticmethod(lambda f: f.result())
+
+    from concurrent.futures import Future as RealFuture
+
+    worker = RealFuture()
+    worker.set_result("done")
+
+    import os
+    import tempfile
+
+    from mmrelay.db_runtime import DatabaseManager
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    tmp.close()
+    db = DatabaseManager(tmp.name)
+    try:
+        closed_loop = asyncio.new_event_loop()
+        closed_loop.close()
+
+        with (
+            patch(
+                "mmrelay.db_runtime.asyncio.get_running_loop", return_value=closed_loop
+            ),
+            patch("mmrelay.db_runtime.asyncio.Event", return_value=FakeEvent()),
+        ):
+            result = await db._await_submitted_future(worker)
+            assert result == "done"
+    finally:
+        db.close()
+        os.unlink(tmp.name)
+
+
+def test_log_write_future_error_after_cancellation_done_future():
+    """When worker_future is already done, _log_future_error is called immediately."""
+
+    class FakeFuture:
+        def __init__(self, exc=None):
+            self._exc = exc
+
+        def done(self):
+            return True
+
+        def result(self):
+            if self._exc:
+                raise self._exc
+            return None
+
+    import os
+    import tempfile
+    from concurrent.futures import CancelledError as ConcurrentCancelledError
+
+    from mmrelay.db_runtime import DatabaseManager
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    tmp.close()
+    db = DatabaseManager(tmp.name)
+    try:
+        with patch("mmrelay.db_runtime.logger") as mock_logger:
+            db._log_write_future_error_after_cancellation(
+                FakeFuture(exc=RuntimeError("boom"))
+            )
+        mock_logger.warning.assert_called_once()
+    finally:
+        db.close()
+        os.unlink(tmp.name)
+
+
+def test_log_write_future_error_after_cancellation_done_cancelled():
+    """Cancelled worker future should not trigger warning log."""
+    import os
+    import tempfile
+    from concurrent.futures import CancelledError as ConcurrentCancelledError
+
+    from mmrelay.db_runtime import DatabaseManager
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    tmp.close()
+    db = DatabaseManager(tmp.name)
+    try:
+
+        class CancelledFuture:
+            def done(self):
+                return True
+
+            def result(self):
+                raise ConcurrentCancelledError()
+
+        with patch("mmrelay.db_runtime.logger") as mock_logger:
+            db._log_write_future_error_after_cancellation(CancelledFuture())
+        mock_logger.warning.assert_not_called()
+    finally:
+        db.close()
+        os.unlink(tmp.name)
 
 
 class TestProbeSqliteJsonEachSupport:

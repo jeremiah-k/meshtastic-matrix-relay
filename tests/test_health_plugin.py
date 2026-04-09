@@ -282,6 +282,28 @@ class TestHealthPlugin(unittest.TestCase):
         asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_no_client(self, mock_connect):
+        """generate_response returns error when client is None (lines 60-61)."""
+        mock_connect.return_value = None
+        response = self.plugin.generate_response()
+        self.assertEqual(response, "Unable to connect to Meshtastic device.")
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_no_battery_but_has_snr(self, mock_connect):
+        """Nodes with SNR but no battery should show Battery: N/A (line 116)."""
+        nodes = {
+            "node1": {"snr": 5.0},
+        }
+        mock_client = MagicMock()
+        mock_client.nodes = nodes
+        mock_connect.return_value = mock_client
+
+        response = self.plugin.generate_response()
+        self.assertIn("Nodes: 1", response)
+        self.assertIn("Battery: N/A", response)
+        self.assertIn("SNR: 5.00", response)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_handle_room_message_with_match(self, mock_connect):
         """
         Tests that handle_room_message sends a health summary message to the Matrix room when the event matches.

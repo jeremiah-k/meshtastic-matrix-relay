@@ -305,7 +305,7 @@ class TestTelemetryPlugin(unittest.TestCase):
                     "time": 1642248000,
                     "deviceMetrics": {"batteryLevel": 80},
                 },
-            },
+            }
         }
 
         async def run_test():
@@ -318,6 +318,116 @@ class TestTelemetryPlugin(unittest.TestCase):
             self.plugin.set_node_data.assert_not_called()
 
         import asyncio
+
+        asyncio.run(run_test())
+
+    def test_handle_meshtastic_message_non_dict_decoded(self):
+        """Non-dict decoded should return False immediately."""
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(
+                {"decoded": "not_a_dict"}, "f", "l", "m"
+            )
+            self.assertFalse(result)
+
+        asyncio.run(run_test())
+
+    def test_handle_meshtastic_message_no_decoded(self):
+        """Packet with no decoded key should return False."""
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message({}, "f", "l", "m")
+            self.assertFalse(result)
+
+        asyncio.run(run_test())
+
+    def test_handle_meshtastic_message_non_finite_time(self):
+        """Non-finite telemetry time should fall back to rxTime."""
+        packet = {
+            "fromId": "!node1",
+            "rxTime": 9999,
+            "decoded": {
+                "portnum": "TELEMETRY_APP",
+                "telemetry": {
+                    "time": float("inf"),
+                    "deviceMetrics": {"batteryLevel": 50},
+                },
+            },
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(packet, "f", "l", "m")
+            self.assertFalse(result)
+            stored = self.plugin.set_node_data.call_args.kwargs["node_data"]
+            self.assertEqual(stored[0]["time"], 9999)
+
+        asyncio.run(run_test())
+
+    def test_handle_meshtastic_message_string_time(self):
+        """String telemetry time should fall back to rxTime."""
+        packet = {
+            "fromId": "!node1",
+            "rxTime": 5555,
+            "decoded": {
+                "portnum": "TELEMETRY_APP",
+                "telemetry": {
+                    "time": "not_a_number",
+                    "deviceMetrics": {"batteryLevel": 60},
+                },
+            },
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(packet, "f", "l", "m")
+            self.assertFalse(result)
+            stored = self.plugin.set_node_data.call_args.kwargs["node_data"]
+            self.assertEqual(stored[0]["time"], 5555)
+
+        asyncio.run(run_test())
+
+    def test_handle_meshtastic_message_existing_data_list(self):
+        """Should append to existing list of telemetry data."""
+        self.plugin.get_node_data.return_value = [{"time": 100, "batteryLevel": 70}]
+
+        packet = {
+            "fromId": "!node1",
+            "decoded": {
+                "portnum": "TELEMETRY_APP",
+                "telemetry": {
+                    "time": 200,
+                    "deviceMetrics": {"batteryLevel": 80},
+                },
+            },
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(packet, "f", "l", "m")
+            self.assertFalse(result)
+            stored = self.plugin.set_node_data.call_args.kwargs["node_data"]
+            self.assertEqual(len(stored), 2)
+
+        asyncio.run(run_test())
+
+    def test_handle_meshtastic_message_existing_data_non_list(self):
+        """Should wrap non-list existing data into a list and append."""
+        self.plugin.get_node_data.return_value = {"time": 100, "batteryLevel": 70}
+
+        packet = {
+            "fromId": "!node1",
+            "decoded": {
+                "portnum": "TELEMETRY_APP",
+                "telemetry": {
+                    "time": 200,
+                    "deviceMetrics": {"batteryLevel": 80},
+                },
+            },
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(packet, "f", "l", "m")
+            self.assertFalse(result)
+            stored = self.plugin.set_node_data.call_args.kwargs["node_data"]
+            self.assertEqual(len(stored), 2)
 
         asyncio.run(run_test())
 
@@ -545,6 +655,153 @@ class TestTelemetryPlugin(unittest.TestCase):
                     self.assertIn("voltage", title_call)
 
                 asyncio.run(run_test())
+
+    def test_handle_room_message_matrix_unavailable(self):
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="batteryLevel")
+
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "Bot"),
+            patch("mmrelay.matrix_utils.connect_matrix", return_value=None),
+        ):
+
+            async def run_test():
+                room = MagicMock()
+                room.room_id = "!r"
+                event = MagicMock()
+                event.body = "!batteryLevel"
+                event.source = {"content": {"formatted_body": ""}}
+                result = await self.plugin.handle_room_message(
+                    room, event, "!batteryLevel"
+                )
+                self.assertFalse(result)
+
+            asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    @patch("mmrelay.matrix_utils.send_image")
+    def test_handle_room_message_node_no_data(self, mock_send, mock_connect):
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="batteryLevel")
+        self.plugin.get_node_data.return_value = None
+        self.plugin.send_matrix_message = AsyncMock()
+
+        mock_matrix_client = MagicMock()
+        mock_connect.return_value = mock_matrix_client
+
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "Bot"),
+        ):
+
+            async def run_test():
+                room = MagicMock()
+                room.room_id = "!r"
+                event = MagicMock()
+                event.body = "!batteryLevel NodeX"
+                event.source = {"content": {"formatted_body": ""}}
+                result = await self.plugin.handle_room_message(
+                    room, event, "!batteryLevel NodeX"
+                )
+                self.assertTrue(result)
+                self.plugin.send_matrix_message.assert_awaited_once()
+                self.assertIn(
+                    "No telemetry data",
+                    self.plugin.send_matrix_message.call_args.args[1],
+                )
+
+            asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    @patch("mmrelay.matrix_utils.send_image")
+    def test_handle_room_message_all_nodes_data(self, mock_send, mock_connect):
+        import json
+
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="batteryLevel")
+        now_ts = datetime.now().timestamp()
+        self.plugin.get_data.return_value = [
+            (json.dumps([{"time": now_ts, "batteryLevel": 80}]),)
+        ]
+
+        mock_matrix_client = AsyncMock()
+        mock_connect.return_value = mock_matrix_client
+
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "Bot"),
+            patch("mmrelay.plugins.telemetry_plugin.plt.xticks"),
+            patch("mmrelay.plugins.telemetry_plugin.plt.subplots") as mock_subplots,
+            patch("mmrelay.plugins.telemetry_plugin.Image") as mock_image_class,
+        ):
+            mock_fig = MagicMock()
+            mock_ax = MagicMock()
+            mock_subplots.return_value = (mock_fig, mock_ax)
+            mock_img = MagicMock()
+            mock_img.mode = "RGBA"
+            mock_image_class.open.return_value.__enter__ = MagicMock(
+                return_value=mock_img
+            )
+            mock_image_class.open.return_value.__exit__ = MagicMock(return_value=False)
+
+            async def run_test():
+                room = MagicMock()
+                room.room_id = "!r"
+                event = MagicMock()
+                event.body = "!batteryLevel"
+                event.source = {"content": {"formatted_body": ""}}
+                result = await self.plugin.handle_room_message(
+                    room, event, "!batteryLevel"
+                )
+                self.assertTrue(result)
+
+            asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    @patch("mmrelay.matrix_utils.send_image")
+    def test_handle_room_message_image_upload_error(self, mock_send, mock_connect):
+        from mmrelay.matrix_utils import ImageUploadError
+
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="batteryLevel")
+        self.plugin.get_data.return_value = []
+
+        mock_matrix_client = MagicMock()
+        mock_matrix_client.room_send = AsyncMock()
+        mock_connect.return_value = mock_matrix_client
+        mock_send.side_effect = ImageUploadError("fail")
+
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "Bot"),
+            patch("mmrelay.plugins.telemetry_plugin.plt.xticks"),
+            patch("mmrelay.plugins.telemetry_plugin.plt.subplots") as mock_subplots,
+            patch("mmrelay.plugins.telemetry_plugin.Image") as mock_image_class,
+        ):
+            mock_fig = MagicMock()
+            mock_ax = MagicMock()
+            mock_subplots.return_value = (mock_fig, mock_ax)
+            mock_img = MagicMock()
+            mock_img.mode = "RGBA"
+            mock_image_class.open.return_value.__enter__ = MagicMock(
+                return_value=mock_img
+            )
+            mock_image_class.open.return_value.__exit__ = MagicMock(return_value=False)
+
+            async def run_test():
+                room = MagicMock()
+                room.room_id = "!r"
+                event = MagicMock()
+                event.body = "!batteryLevel"
+                event.source = {"content": {"formatted_body": ""}}
+                result = await self.plugin.handle_room_message(
+                    room, event, "!batteryLevel"
+                )
+                self.assertTrue(result)
+                mock_matrix_client.room_send.assert_awaited_once()
+
+            asyncio.run(run_test())
 
 
 if __name__ == "__main__":
