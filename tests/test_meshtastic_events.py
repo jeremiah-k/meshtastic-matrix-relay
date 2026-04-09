@@ -168,6 +168,51 @@ class TestOnLostMeshtasticConnection:
         assert mu.reconnect_task is scheduled_reconnect_task
         mu.reconnecting = False
 
+    def test_reconnect_schedule_runtime_error_closes_coroutine(self):
+        import mmrelay.meshtastic.events as events
+
+        mu.shutting_down = False
+        mu.reconnecting = False
+        mu.meshtastic_client = MagicMock()
+        mu._relay_active_client_id = None
+        mu.meshtastic_iface = None
+        mu._ble_future = None
+        mu._ble_future_address = None
+        mu._ble_executor_degraded_addresses = set()
+
+        mock_loop = MagicMock()
+        mock_loop.is_closed.return_value = False
+        mu.event_loop = mock_loop
+
+        reconnect_coro = MagicMock()
+
+        with (
+            patch.object(events.facade, "_disconnect_ble_interface"),
+            patch.object(events.facade, "reset_executor_degraded_state"),
+            patch.object(
+                events.facade,
+                "reconnect",
+                new=MagicMock(return_value=reconnect_coro),
+            ),
+            patch.object(
+                events.facade.asyncio,
+                "run_coroutine_threadsafe",
+                side_effect=RuntimeError("loop unavailable"),
+            ) as mock_schedule,
+            patch.object(events.facade.logger, "error") as mock_logger_error,
+        ):
+            events.on_lost_meshtastic_connection()
+
+        assert mu.reconnecting is False
+        reconnect_coro.close.assert_called_once()
+        mock_schedule.assert_called_once_with(reconnect_coro, mock_loop)
+        assert any(
+            call.args
+            and call.args[0]
+            == "Failed to schedule reconnect; event loop became unavailable"
+            for call in mock_logger_error.call_args_list
+        )
+
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestOnMeshtasticMessage:
