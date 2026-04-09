@@ -741,7 +741,9 @@ def test_connect_meshtastic_preserves_active_startup_drain_on_reconnect():
     mu.subscribed_to_connection_lost = True
     mu._startup_packet_drain_applied = True
     mu._relay_startup_drain_deadline_monotonic_secs = 1_200.0
-    mu._relay_startup_drain_complete_event.clear()
+    _event = mu.get_startup_drain_complete_event()
+    assert _event is not None
+    _event.clear()
 
     with (
         patch(
@@ -763,7 +765,7 @@ def test_connect_meshtastic_preserves_active_startup_drain_on_reconnect():
 
     assert result is mock_client
     assert mu._relay_startup_drain_deadline_monotonic_secs == 1_200.0
-    assert mu._relay_startup_drain_complete_event.is_set() is False
+    assert mu.get_startup_drain_complete_event().is_set() is False
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")

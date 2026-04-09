@@ -571,7 +571,9 @@ write_observability_report() {
 		echo
 		echo "### Artifacts"
 		echo "- MMRelay A log: \`${MMRELAY_LOG_PATH_A}\`"
+		echo "- MMRelay A file log: \`${MMRELAY_FILE_LOG_PATH_A}\`"
 		echo "- MMRelay B log: \`${MMRELAY_LOG_PATH_B}\`"
+		echo "- MMRelay B file log: \`${MMRELAY_FILE_LOG_PATH_B}\`"
 		echo "- meshtasticd A live log snapshot: \`${mesh_log_a_live}\`"
 		echo "- meshtasticd B live log snapshot: \`${mesh_log_b_live}\`"
 		echo "- meshtasticd A final log: \`${MESHTASTICD_LOG_PATH_A}\`"

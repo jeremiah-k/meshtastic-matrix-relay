@@ -67,17 +67,24 @@ from tests.constants import (
 TEST_PACKET_RX_TIME = 1234567890
 
 
+def _cancel_startup_drain_timer() -> None:
+    """Best-effort cancellation of the startup-drain expiry timer."""
+    import mmrelay.meshtastic_utils as _mu
+
+    _timer = getattr(_mu, "_relay_startup_drain_expiry_timer", None)
+    if _timer is not None:
+        with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+            _timer.cancel()
+
+
 @pytest.fixture(autouse=True)
 def reset_meshtastic_relay_state(monkeypatch):
     """Reset all Meshtastic relay module globals to prevent cross-test leakage."""
-    import mmrelay.meshtastic_utils as mu
+
+    _cancel_startup_drain_timer()
 
     startup_drain_complete_event = threading.Event()
     startup_drain_complete_event.set()
-    startup_drain_timer = getattr(mu, "_relay_startup_drain_expiry_timer", None)
-    if startup_drain_timer is not None:
-        with contextlib.suppress(AttributeError, RuntimeError, TypeError):
-            startup_drain_timer.cancel()
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._relay_active_client_id",
         None,
@@ -133,6 +140,10 @@ def reset_meshtastic_relay_state(monkeypatch):
         {},
         raising=False,
     )
+
+    yield
+
+    _cancel_startup_drain_timer()
 
 
 @pytest.fixture
@@ -5357,6 +5368,22 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             self.assertIsNone(result)
 
             mock_scan.assert_not_called()
+
+
+def test_none_startup_drain_event_is_safe_noop(reset_meshtastic_globals):
+    """Code paths that call .set()/.clear() on the startup drain event must handle None gracefully."""
+    import mmrelay.meshtastic_utils as mu
+
+    with patch.object(mu, "get_startup_drain_complete_event", return_value=None):
+        event = mu.get_startup_drain_complete_event()
+        assert event is None
+        mu._rollback_connect_attempt_state(
+            client=None,
+            client_assigned_for_this_connect=False,
+            startup_drain_armed_for_this_connect=True,
+            startup_drain_applied_for_this_connect=True,
+            reconnect_bootstrap_armed_for_this_connect=False,
+        )
 
 
 if __name__ == "__main__":

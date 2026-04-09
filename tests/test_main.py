@@ -835,6 +835,62 @@ class TestMain(unittest.TestCase):
         self.assertFalse(shutdown_backstop_fired)
         mock_stop_queue.assert_called_once()
 
+    @patch("mmrelay.main.initialize_database")
+    @patch("mmrelay.main.load_plugins")
+    @patch("mmrelay.main.start_message_queue")
+    @patch("mmrelay.main.connect_meshtastic")
+    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
+    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+    @patch(
+        "mmrelay.main.meshtastic_utils.refresh_node_name_tables", new_callable=AsyncMock
+    )
+    @patch("mmrelay.main.stop_message_queue")
+    def test_main_none_startup_drain_event_is_safe_noop(
+        self,
+        mock_stop_queue,
+        _mock_refresh_node_names,
+        _mock_join_room,
+        mock_connect_matrix,
+        mock_connect_meshtastic,
+        _mock_start_queue,
+        _mock_load_plugins,
+        _mock_init_db,
+    ):
+        """Ready publication should be a safe no-op when startup drain event is None."""
+        shutdown_event = _ImmediateEvent()
+        mock_matrix_client = AsyncMock()
+        mock_matrix_client.add_event_callback = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+        mock_connect_matrix.return_value = mock_matrix_client
+        mock_connect_meshtastic.return_value = MagicMock()
+
+        with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_make_patched_get_running_loop(),
+            ),
+            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
+            patch("mmrelay.main.asyncio.Event", return_value=shutdown_event),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                new_callable=AsyncMock,
+            ) as mock_check_conn,
+            patch(
+                "mmrelay.main.meshtastic_utils.get_startup_drain_complete_event",
+                return_value=None,
+            ),
+            patch("mmrelay.main.shutdown_plugins"),
+        ):
+            mock_queue = MagicMock()
+            mock_queue.ensure_processor_started = MagicMock()
+            mock_get_queue.return_value = mock_queue
+            mock_check_conn.return_value = True
+
+            asyncio.run(main(self.mock_config))
+
+        mock_stop_queue.assert_called_once()
+
     def test_main_with_message_map_wipe(self):
         """
         Test that the message map wipe function is called when the configuration enables wiping on restart.
