@@ -584,7 +584,9 @@ class TestPingPluginMimicMode(unittest.TestCase):
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("asyncio.sleep")
-    def test_mimic_excessive_punctuation_fallback(self, mock_sleep, mock_connect):
+    def test_mimic_balanced_wrapper_punctuation_preserved(
+        self, mock_sleep, mock_connect
+    ):
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
         mock_connect.return_value = mock_client
@@ -602,7 +604,9 @@ class TestPingPluginMimicMode(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(text="Pong...", channelIndex=0)
+            mock_client.sendText.assert_called_once_with(
+                text="!!!pong!!!", channelIndex=0
+            )
 
         asyncio.run(run_test())
 
@@ -662,7 +666,6 @@ class TestPingPluginMimicMode(unittest.TestCase):
             for message in (
                 "please ping",
                 "can you ping?",
-                "ping now",
                 "before ping after",
             ):
                 with self.subTest(message=message):
@@ -678,6 +681,86 @@ class TestPingPluginMimicMode(unittest.TestCase):
                     self.assertFalse(result)
                     mock_client.sendText.assert_not_called()
                     mock_client.sendText.reset_mock()
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_mimic_first_word_ping_with_trailing_text_matches(
+        self, mock_sleep, mock_connect
+    ):
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+
+        packet = {
+            "decoded": {"text": "ping now"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            mock_sleep.assert_called_once_with(1.0)
+            mock_client.sendText.assert_called_once_with(text="pong", channelIndex=0)
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_mimic_first_word_wrapped_ping_with_trailing_text_preserved(
+        self, mock_sleep, mock_connect
+    ):
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+
+        packet = {
+            "decoded": {"text": "!!!!!PInG?!!!! status"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            mock_sleep.assert_called_once_with(1.0)
+            mock_client.sendText.assert_called_once_with(
+                text="!!!!!POnG?!!!!", channelIndex=0
+            )
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_mimic_first_word_one_side_exceeds_max_uses_fallback(
+        self, mock_sleep, mock_connect
+    ):
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+
+        packet = {
+            "decoded": {"text": "!!!!!!PING? status"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            mock_sleep.assert_called_once_with(1.0)
+            mock_client.sendText.assert_called_once_with(text="Pong...", channelIndex=0)
 
         asyncio.run(run_test())
 

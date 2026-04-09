@@ -105,16 +105,27 @@ class Plugin(BasePlugin):
         mimic_mode = self.get_mimic_mode()
 
         if mimic_mode:
-            match = PING_COMMAND_REGEX.fullmatch(message)
+            first_word = message.split(maxsplit=1)[0] if message else ""
+            match = PING_COMMAND_REGEX.fullmatch(first_word)
             if not match:
                 return False
             pre_punc = match.group(1)
             matched_text = match.group(2)
             post_punc = match.group(3)
+            base_response = match_case(matched_text, "pong")
+            reply_message = (
+                PING_FALLBACK_RESPONSE
+                if (
+                    len(pre_punc) > MAX_PUNCTUATION_LENGTH
+                    or len(post_punc) > MAX_PUNCTUATION_LENGTH
+                )
+                else pre_punc + base_response + post_punc
+            )
         else:
             explicit_match = PING_EXPLICIT_COMMAND_REGEX.fullmatch(message)
             if not explicit_match:
                 return False
+            reply_message = PING_RESPONSE
 
         from mmrelay.meshtastic_utils import connect_meshtastic
 
@@ -151,19 +162,6 @@ class Plugin(BasePlugin):
             channel,
             self.plugin_name,
         )
-
-        if mimic_mode:
-            total_punc_length = len(pre_punc) + len(post_punc)
-
-            base_response = match_case(matched_text, "pong")
-
-            reply_message = (
-                PING_FALLBACK_RESPONSE
-                if total_punc_length > MAX_PUNCTUATION_LENGTH
-                else pre_punc + base_response + post_punc
-            )
-        else:
-            reply_message = PING_RESPONSE
 
         await asyncio.sleep(self.get_response_delay())
 
