@@ -759,16 +759,11 @@ class Plugin(BasePlugin):
         Returns:
             tuple[str | None, str | None]: `(command, args)` where `command` is the matched command in lowercase and `args` is the trimmed argument string. Returns `(None, None)` if `message` is not a string or does not contain a supported command.
         """
-        if not isinstance(message, str):
+        parsed = self.parse_mesh_bang_command(message, self.mesh_commands)
+        if parsed is None:
             return None, None
-        cmd_pattern = "|".join(re.escape(cmd) for cmd in self.mesh_commands)
-        pattern = rf"^\s*!(?P<cmd>{cmd_pattern})(?:\s+(?P<args>.*))?$"
-        match = re.match(pattern, message, flags=re.IGNORECASE)
-        if not match:
-            return None, None
-        cmd = match.group("cmd").lower()
-        args = match.group("args") or ""
-        return cmd, args.strip()
+        cmd, args = parsed
+        return cmd.lower(), args
 
     def _parse_location_override(self, arg_text: str) -> tuple[float, float] | None:
         """

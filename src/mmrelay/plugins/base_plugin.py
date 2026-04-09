@@ -891,6 +891,60 @@ class BasePlugin(ABC):
             return ""
         return args.strip()
 
+    def parse_mesh_bang_command(
+        self, text: str, commands: Iterable[str]
+    ) -> tuple[str, str] | None:
+        """
+        Parse a mesh command that starts with `!` and return the matched command plus args.
+
+        Command matching is case-insensitive, but the returned command uses the canonical
+        command spelling provided in `commands` (first occurrence wins). Commands may be
+        passed with or without a leading `!`.
+
+        Parameters:
+            text (str): Incoming mesh message text.
+            commands (Iterable[str]): Supported command names.
+
+        Returns:
+            tuple[str, str] | None: `(command, args)` with trimmed args (possibly empty),
+                or `None` if the message does not start with a supported `!command`.
+        """
+        if not isinstance(text, str):
+            return None
+
+        command_lookup: dict[str, str] = {}
+        normalized_commands: list[str] = []
+        for candidate in commands:
+            if not isinstance(candidate, str):
+                continue
+            normalized = candidate.strip()
+            if not normalized:
+                continue
+            if normalized.startswith("!"):
+                normalized = normalized[1:]
+            if not normalized:
+                continue
+
+            key = normalized.casefold()
+            if key in command_lookup:
+                continue
+            command_lookup[key] = normalized
+            normalized_commands.append(normalized)
+
+        if not normalized_commands:
+            return None
+
+        cmd_pattern = "|".join(re.escape(cmd) for cmd in normalized_commands)
+        pattern = rf"^\s*!(?P<cmd>{cmd_pattern})\b(?:\s+(?P<args>.*))?$"
+        match = re.match(pattern, text, flags=re.IGNORECASE)
+        if not match:
+            return None
+
+        matched_cmd = match.group("cmd")
+        canonical_command = command_lookup.get(matched_cmd.casefold(), matched_cmd)
+        args = (match.group("args") or "").strip()
+        return canonical_command, args
+
     def get_require_bot_mention(self) -> bool:
         """
         Determine whether this plugin requires the bot to be mentioned.
