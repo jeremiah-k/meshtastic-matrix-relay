@@ -5382,9 +5382,12 @@ def test_none_startup_drain_event_is_safe_noop():
     """Code paths that call .set()/.clear() on the startup drain event must handle None gracefully."""
     import mmrelay.meshtastic_utils as mu
 
-    with patch.object(mu, "get_startup_drain_complete_event", return_value=None):
-        event = mu.get_startup_drain_complete_event()
-        assert event is None
+    mu._relay_startup_drain_expiry_timer = MagicMock()
+    mu._relay_startup_drain_deadline_monotonic_secs = 123.0
+    mu._startup_packet_drain_applied = True
+    with patch.object(
+        mu, "get_startup_drain_complete_event", return_value=None
+    ) as mock_get_event:
         mu._rollback_connect_attempt_state(
             client=None,
             client_assigned_for_this_connect=False,
@@ -5392,6 +5395,7 @@ def test_none_startup_drain_event_is_safe_noop():
             startup_drain_applied_for_this_connect=True,
             reconnect_bootstrap_armed_for_this_connect=False,
         )
+    mock_get_event.assert_called()
 
 
 if __name__ == "__main__":
