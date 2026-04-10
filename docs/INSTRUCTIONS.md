@@ -120,7 +120,6 @@ mmrelay --config /path/to/config.yaml --home /path/to/mmrelay-home
 - `--config PATH` - Specify a custom configuration file location
 - `--home PATH` - Set the home directory for all runtime data (credentials, logs, database, plugins)
 - `--log-level {error,warning,info,debug}` - Set the logging verbosity
-- `--logfile PATH` - Specify a custom log file location
 - `--version` - Show version information and exit
 - `--help` - Display help message
 
