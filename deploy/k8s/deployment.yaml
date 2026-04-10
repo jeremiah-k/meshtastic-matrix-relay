@@ -165,8 +165,6 @@ spec:
               mountPath: /data
             - name: tmp
               mountPath: /tmp
-            - name: run
-              mountPath: /run/mmrelay
       volumes:
         # Config source (Secret containing config.yaml) - used by init container only
         - name: config-source
@@ -180,6 +178,4 @@ spec:
           persistentVolumeClaim:
             claimName: mmrelay-data
         - name: tmp
-          emptyDir: {}
-        - name: run
           emptyDir: {}

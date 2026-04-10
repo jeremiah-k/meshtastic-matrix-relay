@@ -188,8 +188,6 @@ spec:
               mountPath: {{ .Values.mmrelayHome | quote }}
             - name: tmp
               mountPath: /tmp
-            - name: run
-              mountPath: /run/mmrelay
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -216,8 +214,6 @@ spec:
           emptyDir: {}
           {{- end }}
         - name: tmp
-          emptyDir: {}
-        - name: run
           emptyDir: {}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}

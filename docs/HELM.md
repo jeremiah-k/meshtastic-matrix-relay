@@ -315,7 +315,7 @@ probes:
     failureThreshold: 3
 ```
 
-- **Readiness**: Checks for ready file at `/run/mmrelay/ready` (cheap, fast)
+- **Readiness**: Checks for ready file at `/tmp/mmrelay-ready` (cheap, fast)
 - **Startup**: Allows up to 5 minutes for initialization (60 failures × 5s = 300s)
 - **Liveness**: Checks the ready file for recent updates
 
@@ -447,9 +447,8 @@ The chart uses fixed runtime paths (consistent with container design):
 
 - **MMRELAY_HOME**: `/data` (PVC mount)
 - **Config Path**: `/data/config.yaml` (from Secret/ConfigMap)
-- **Ready File**: `/run/mmrelay/ready` (for probes)
+- **Ready File**: `/tmp/mmrelay-ready` (for probes, under /tmp emptyDir)
 - **Tmp**: `/tmp` (emptyDir)
-- **Run**: `/run/mmrelay` (emptyDir)
 
 All persistent data lives under `/data`:
 
@@ -596,7 +595,7 @@ Check:
 ### Ready File Missing
 
 ```bash
-kubectl exec -n mmrelay <pod-name> -- ls -l /run/mmrelay
+kubectl exec -n mmrelay <pod-name> -- ls -l /tmp/mmrelay-ready
 kubectl logs -n mmrelay <pod-name> --tail=50
 ```
 

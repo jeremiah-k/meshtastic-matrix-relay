@@ -565,7 +565,7 @@ If you need to reset the PVC:
 
 The following paths recreate themselves automatically on startup:
 
-- `/run/mmrelay/`: Runtime directory (contains the ready file)
+- `/tmp/mmrelay-ready`: Ready file (auto-created, checked by probes)
 - Caches: Temporary data cached in memory or temporary files
 - Logs: New log files are created on startup (old logs are retained in `/data/logs/`)
 
@@ -577,7 +577,7 @@ The PVC is the **single source of truth** for persistent data:
 
 - `/data` (PVC): **Authoritative** - persistent, backed up
 - `/data/config.yaml`: **Persistent after first startup** - copied by the init container from Secret/ConfigMap onto the PVC; subsequent pod restarts use the PVC copy
-- `/run/mmrelay`: **Not persistent** - recreated on each pod start
+- `/tmp/mmrelay-ready`: **Not persistent** - recreated on each pod start
 - `/tmp`: **Not persistent** - temporary storage
 
 When debugging or troubleshooting, always verify the contents of `/data` on the PVC.
@@ -590,21 +590,21 @@ MMRelay uses Kubernetes startup, readiness, and liveness probes to ensure the po
 
 **Readiness probe** (period: 10s, timeout: 2s, failureThreshold: 3):
 
-- Checks if the ready file exists at `/run/mmrelay/ready`
+- Checks if the ready file exists at `/tmp/mmrelay-ready`
 - Cheap and stable check that determines service routing
 - The pod is marked "Ready" when the ready file exists
 - Traffic is only sent to ready pods
 
 **Startup probe** (period: 5s, timeout: 2s, failureThreshold: 60):
 
-- Also checks for the ready file at `/run/mmrelay/ready`
+- Also checks for the ready file at `/tmp/mmrelay-ready`
 - Allows up to 5 minutes for initialization (60 failures × 5s = 300s)
 - Prevents the liveness probe from killing the pod during slow startup
 - Once the startup probe succeeds, the liveness probe takes over
 
 **Liveness probe** (period: 60s, timeout: 20s, failureThreshold: 3):
 
-- Checks that the ready file at `/run/mmrelay/ready` has been modified within the last 2 minutes
+- Checks that the ready file at `/tmp/mmrelay-ready` has been modified within the last 2 minutes
 - Verifies the application is still actively updating the ready file (not frozen/deadlocked)
 - If the probe fails repeatedly, Kubernetes will restart the pod
 - The longer period and timeout reduce false positives for transient issues
@@ -633,7 +633,7 @@ If a pod is not ready or keeps restarting:
 2. Verify the ready file exists:
 
    ```bash
-   kubectl exec -n mmrelay <pod-name> -- ls -l /run/mmrelay
+   kubectl exec -n mmrelay <pod-name> -- ls -l /tmp/mmrelay-ready
    ```
 
 3. Run doctor inside the pod:
@@ -794,8 +794,8 @@ Because environments differ widely, treat BLE support in Kubernetes as experimen
 
 ## Notes
 
-- Ready file: The ready file feature is enabled by default via `MMRELAY_READY_FILE=/run/mmrelay/ready` in the deployment:
-  - Readiness and startup probes check for the marker file at `/run/mmrelay/ready`
-  - Liveness probe verifies the ready file at `/run/mmrelay/ready` was modified within the last 2 minutes
+- Ready file: The ready file feature is enabled by default via `MMRELAY_READY_FILE=/tmp/mmrelay-ready` in the deployment:
+  - Readiness and startup probes check for the marker file at `/tmp/mmrelay-ready`
+  - Liveness probe verifies the ready file at `/tmp/mmrelay-ready` was modified within the last 2 minutes
   - Heartbeat interval is configurable via `MMRELAY_READY_HEARTBEAT_SECONDS` (default: 60s)
 - NetworkPolicy: The default NetworkPolicy allows all egress; restrict CIDRs as needed for production. The default policy includes rules for both IPv4 (`0.0.0.0/0`) and IPv6 (`::/0`) egress.
