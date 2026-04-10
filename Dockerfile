@@ -13,14 +13,11 @@ WORKDIR /app
 RUN pip install --no-cache-dir --upgrade pip==25.1.1 setuptools==80.9.0 wheel==0.45.1
 
 # Copy source files
-COPY requirements.txt requirements-e2e.txt setup.py ./
-COPY README.md ./
+COPY pyproject.toml MANIFEST.in setup.py README.md LICENSE ./
 COPY src/ ./src/
 
-# Install dependencies and application package with E2EE support (consolidated)
-RUN python -m pip install --no-cache-dir --timeout=300 --retries=3 -r requirements.txt \
-    && python -m pip install --no-cache-dir --timeout=300 --retries=3 -r requirements-e2e.txt \
-    && python -m pip install --no-cache-dir --no-deps .
+# Install dependencies and application package with E2EE support
+RUN python -m pip install --no-cache-dir --timeout=300 --retries=3 ".[e2e]"
 
 # Runtime stage
 FROM python:3.11-slim-bookworm

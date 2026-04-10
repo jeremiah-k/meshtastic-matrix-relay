@@ -1,3 +1,81 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=80.9.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "mmrelay"
+dynamic = ["version"]
+description = "Bridge between Meshtastic mesh networks and Matrix chat rooms"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+authors = [{ name = "Geoff Whittington" }, { name = "Jeremiah K." }]
+maintainers = [{ name = "Jeremiah K.", email = "jeremiahk@gmx.com" }]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Operating System :: OS Independent",
+  "Development Status :: 4 - Beta",
+  "Topic :: Communications",
+]
+dependencies = [
+  "mtjk==2.7.8.post1",
+  "Pillow==12.2.0",
+  "aiohttp==3.13.5",
+  "matrix-nio==0.25.2",
+  "matplotlib==3.10.8",
+  "requests==2.33.1",
+  "markdown==3.10.2",
+  "bleach==6.3.0",
+  "haversine==2.9.0",
+  "schedule==1.2.2",
+  "platformdirs==4.9.4",
+  "py-staticmaps>=0.4.0",
+  "psutil>=5.8.0",
+  "rich==14.3.3",
+  "setuptools>=80.9.0",
+]
+
+[project.optional-dependencies]
+e2e = ["matrix-nio[e2e]==0.25.2", "python-olm"]
+test = [
+  "coverage==7.13.5",
+  "pytest==9.0.2",
+  "pytest-cov==7.1.0",
+  "pytest-asyncio==1.3.0",
+  "pytest-env==1.6.0",
+  "pytest-timeout==2.4.0",
+]
+dev = [
+  "mypy==1.20.0",
+  "pyright==1.1.408",
+  "types-PyYAML==6.0.12.20250915",
+  "types-Markdown==3.10.2.20260211",
+  "types-jsonschema==4.26.0.20260402",
+]
+
+[project.urls]
+Homepage = "https://github.com/jeremiah-k/meshtastic-matrix-relay"
+Repository = "https://github.com/jeremiah-k/meshtastic-matrix-relay"
+Issues = "https://github.com/jeremiah-k/meshtastic-matrix-relay/issues"
+
+[project.scripts]
+mmrelay = "mmrelay.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = false
+
+[tool.setuptools.dynamic]
+version = { attr = "mmrelay.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"mmrelay.tools" = ["*.yaml", "*.service", "*.env"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["__pycache__/*", "*.py[cod]"]
