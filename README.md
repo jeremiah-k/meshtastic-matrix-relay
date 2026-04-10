@@ -24,7 +24,7 @@ A powerful and easy-to-use relay between Meshtastic devices and Matrix chat room
 
 ## Documentation
 
-MMRelay supports multiple deployment methods including pipx, Docker, and Kubernetes. For complete setup instructions and all deployment options, see:
+MMRelay supports multiple deployment methods including pip/pipx, Docker, and Kubernetes. For complete setup instructions and all deployment options, see:
 
 - [Installation Instructions](docs/INSTRUCTIONS.md) - Setup and configuration guide
 - [What's New in v1.3](docs/WHATS_NEW_1.3.md) - Latest release changes and migration info

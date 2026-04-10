@@ -22,7 +22,7 @@
 ## Testing Guidelines (from TESTING_GUIDE.md)
 
 - **Read the testing guide in full**: Follow existing patterns (Located in docs/dev/TESTING_GUIDE.md)
-- **Set up a venv**: Create a virtual environment in venv/ and `pip install -r requirements.txt -r requirements-e2e.txt
+- **Set up a venv**: Create a virtual environment in `venv/` and run `pip install -e '.[dev,test,e2e]'`
 - **Async Mocking**: Use regular `Mock` with `return_value` for functions called via `asyncio.run()`, not `AsyncMock`
 - **Warning Handling**: Treat all warnings as errors - fix underlying issues, don't suppress
 - **Test Organization**: Use Arrange-Act-Assert pattern, descriptive test names, independent tests

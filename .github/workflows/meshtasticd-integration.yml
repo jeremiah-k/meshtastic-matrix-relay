@@ -146,7 +146,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-meshtasticd-integration-${{ hashFiles('**/requirements.txt') }}
+          key: ${{ runner.os }}-pip-meshtasticd-integration-${{ hashFiles('**/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-pip-
 

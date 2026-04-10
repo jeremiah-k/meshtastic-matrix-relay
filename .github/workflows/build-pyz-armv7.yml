@@ -89,8 +89,8 @@ jobs:
               }
             fi
 
-            echo "=== Installing remaining requirements ==="
-            pip install -r requirements.txt
+            echo "=== Installing package dependencies from pyproject.toml ==="
+            pip install .
             mkdir -p dist
 
             echo "=== Verifying rpds-py installation ==="
