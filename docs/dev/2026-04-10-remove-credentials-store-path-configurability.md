@@ -55,7 +55,7 @@ Credentials are a Matrix concept. The code supports checking both `config["crede
 
 ## Files Affected
 
-### Source files to modify:
+### Source files to modify
 
 - `src/mmrelay/config.py` — Remove `get_explicit_credentials_path()`, `InvalidCredentialsPathTypeError`, `_resolve_credentials_path()`, simplify `save_credentials()`, `load_credentials()`, `get_credentials_search_paths()`
 - `src/mmrelay/paths.py` — No changes needed (default path functions are correct)
@@ -68,7 +68,7 @@ Credentials are a Matrix concept. The code supports checking both `config["crede
 - `src/mmrelay/constants/messages.py` — Remove or keep `LEGACY_CREDENTIALS_WARNING_MSG` (still used for legacy _location_ warnings, not path config)
 - `src/mmrelay/tools/sample_config.yaml` — Remove `credentials_path` references in comments (lines 18-19, 29)
 
-### Test files to modify:
+### Test files to modify
 
 - `tests/test_config_edge_cases.py` — Remove/update ~15 tests for `get_explicit_credentials_path`, `InvalidCredentialsPathTypeError`, `_resolve_credentials_path`, `MMRELAY_CREDENTIALS_PATH` env var
 - `tests/test_config.py` — Remove/update ~8 tests for explicit path saving, `MMRELAY_CREDENTIALS_PATH` env var
@@ -93,7 +93,7 @@ Credentials are a Matrix concept. The code supports checking both `config["crede
 - `tests/test_migrate_rollback_auto.py` — Verify rollback tests
 - `tests/test_cli_targeted.py` — Update if needed
 
-### Documentation files to modify:
+### Documentation files to modify
 
 - `docs/ADVANCED_CONFIGURATION.md` — Remove `MMRELAY_CREDENTIALS_PATH` from env var table
 - `docs/E2EE.md` — Remove `store_path` reference at line 184

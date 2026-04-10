@@ -17,6 +17,7 @@ COPY pyproject.toml MANIFEST.in setup.py README.md LICENSE ./
 COPY src/ ./src/
 
 # Install dependencies and application package with E2EE support
+# hadolint ignore=DL3013
 RUN python -m pip install --no-cache-dir --timeout=300 --retries=3 ".[e2e]"
 
 # Runtime stage
