@@ -50,6 +50,9 @@ lint:
       paths:
         - src/mmrelay/tools/sample_config.yaml
         - src/mmrelay/plugins/map_plugin.py
+    - linters: [dotenv-linter]
+      paths:
+        - src/mmrelay/tools/sample.env
     - linters: [prettier, yamllint]
       paths:
         - src/mmrelay/tools/k8s/*.yaml

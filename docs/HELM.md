@@ -234,6 +234,34 @@ extraVolumeMounts:
 
 This direct Secret mount is only safe if you treat `credentials.json` as immutable. MMRelay may update credentials after discovery, so if you need those updates persisted, copy the file into the PVC instead of mounting the Secret path directly.
 
+One practical pattern is to mount the Secret at a temporary path, copy it into
+`/data/matrix/credentials.json` once, then remove the temporary mount on the
+next Helm upgrade:
+
+```yaml
+extraVolumes:
+  - name: credentials-bootstrap
+    secret:
+      secretName: mmrelay-credentials
+      items:
+        - key: credentials.json
+          path: credentials.json
+
+extraVolumeMounts:
+  - name: credentials-bootstrap
+    mountPath: /tmp/bootstrap-credentials/credentials.json
+    subPath: credentials.json
+    readOnly: true
+```
+
+```bash
+kubectl exec -n mmrelay deploy/mmrelay -- sh -c \
+  'cp /tmp/bootstrap-credentials/credentials.json /data/matrix/credentials.json && chmod 600 /data/matrix/credentials.json'
+```
+
+After the file is on the PVC, remove the temporary Secret mount from your Helm
+values so future credential updates persist normally.
+
 If you previously used bootstrap auth, delete the old `mmrelay-matrix-auth` Secret after switching to pre-existing credentials to avoid confusion or conflicts:
 
 ```bash

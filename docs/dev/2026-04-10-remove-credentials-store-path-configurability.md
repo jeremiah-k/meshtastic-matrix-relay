@@ -14,7 +14,7 @@ This is a breaking change and must be called out in the release notes and change
 
 External integrations that read `MatrixAuthInfo.credentials_path` or pass `credentials_path` to `save_credentials()` will break and need to be updated before the release ships.
 
-Add migration guidance that Python 3.8/3.9 users must upgrade their runtime before moving to MMRelay 1.2, and include a short note in the changelog/release announcement so the upgrade path is explicit.
+Add migration guidance that users must remove legacy path overrides before upgrading to the release that includes this breaking change, and include a short note in the changelog/release announcement so the upgrade path is explicit.
 
 ---
 
@@ -539,7 +539,55 @@ git commit -m "docs: remove credentials_path from sample config"
 
 ---
 
-## Task 10: Update documentation
+## Task 10: Add deprecation warnings for ignored legacy overrides
+
+**Files:**
+
+- Modify: `src/mmrelay/config.py`
+- Modify: `src/mmrelay/cli.py`
+- Modify: `tests/test_config_edge_cases.py`
+- Modify: `tests/test_cli.py`
+
+- [ ] **Step 1: Add centralized warning logic in `config.py`**
+
+Add a helper in `src/mmrelay/config.py` that checks parsed config data plus the
+`MMRELAY_CREDENTIALS_PATH` environment variable and logs warnings when ignored
+legacy path overrides are present:
+
+- top-level `credentials_path`
+- `matrix.credentials_path`
+- `matrix.e2ee.store_path`
+- `matrix.encryption.store_path`
+- `MMRELAY_CREDENTIALS_PATH`
+
+Call this helper from the main config-loading path so warnings are emitted once
+per load, not from every downstream auth or E2EE code path.
+
+- [ ] **Step 2: Keep warning scope narrow and migration-oriented**
+
+Warnings should explain that these keys/env vars are ignored, that
+`MMRELAY_HOME` is now the only supported path control, and that users should
+remove the legacy settings from their config or deployment manifests.
+
+- [ ] **Step 3: Update tests**
+
+Add or update tests in `tests/test_config_edge_cases.py` and `tests/test_cli.py`
+to verify:
+
+- warnings are emitted for each ignored legacy key/env var
+- warnings are not duplicated excessively during a single config load
+- config loading still succeeds after warning
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/mmrelay/config.py src/mmrelay/cli.py tests/test_config_edge_cases.py tests/test_cli.py
+git commit -m "feat: warn on ignored credentials_path and store_path overrides"
+```
+
+---
+
+## Task 11: Update documentation
 
 **Files:**
 
@@ -587,7 +635,7 @@ git commit -m "docs: remove credentials_path and store_path configurability docu
 
 ---
 
-## Task 11: Update test files (batch 1 — config tests)
+## Task 12: Update test files (batch 1 — config tests)
 
 **Files:**
 
@@ -644,7 +692,7 @@ git commit -m "test: update config tests for credentials_path removal"
 
 ---
 
-## Task 12: Update test files (batch 2 — matrix and CLI tests)
+## Task 13: Update test files (batch 2 — matrix and CLI tests)
 
 **Files:**
 
@@ -717,7 +765,7 @@ git commit -m "test: update matrix and CLI tests for credentials_path/store_path
 
 ---
 
-## Task 13: Verify and run full test suite
+## Task 14: Verify and run full test suite
 
 - [ ] **Step 1: Run full test suite with coverage**
 
@@ -734,8 +782,12 @@ Expected: No errors
 Run: `grep -r "get_explicit_credentials_path\|InvalidCredentialsPathTypeError\|_resolve_credentials_path\|MMRELAY_CREDENTIALS_PATH" src/ tests/ --include="*.py"`
 Expected: No matches
 
-Run: `grep -r -n "store_path" src/mmrelay/ --include="*.py" | grep -E "config|credentials|section_cfg|override|store_path ="`
-Expected: Matches only legacy config-reading or assignment sites that should be removed
+Run: `grep -r -nE 'get\("store_path"\)|section_cfg\.get\("store_path"\)|store_override' src/mmrelay/ --include="*.py"`
+Expected: No matches
+
+This final grep only checks for config-based `store_path` override reads. Other
+runtime `store_path` identifiers may still remain where they refer to the
+default E2EE store path or AsyncClient kwargs.
 
 - [ ] **Step 4: Final commit if any fixes needed**
 

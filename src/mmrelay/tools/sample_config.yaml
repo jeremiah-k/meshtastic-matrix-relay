@@ -38,9 +38,9 @@ matrix_rooms: # Needs at least 1 room & channel, but supports all Meshtastic cha
 meshtastic:
   connection_type: tcp # Choose either "tcp", "serial", or "ble"
   host: meshtastic.local # Only used when connection is "tcp"
-  port: 4403 # TCP port override (default: 4403, only used with "tcp" connection)
-  serial_port: /dev/ttyUSB0 # Only used when connection is "serial"
-  ble_address: AA:BB:CC:DD:EE:FF # Only used when connection is "ble" - Uses either an address or name from a `meshtastic --ble-scan`
+  #port: 4403 # TCP port override (default: 4403, only used with "tcp" connection)
+  #serial_port: /dev/ttyUSB0 # Only used when connection is "serial"
+  #ble_address: AA:BB:CC:DD:EE:FF # Only used when connection is "ble" - Uses either an address or name from a `meshtastic --ble-scan`
   meshnet_name: Your Meshnet Name # This is displayed in full on Matrix, but is truncated when sent to a Meshnet
   message_interactions: # Configure reactions and replies (both require message storage in database)
     reactions: false # Enable reaction relaying between platforms
