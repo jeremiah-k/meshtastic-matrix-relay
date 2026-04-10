@@ -779,8 +779,11 @@ Expected: No errors
 
 - [ ] **Step 3: Verify no references to removed symbols remain**
 
-Run: `grep -r "get_explicit_credentials_path\|InvalidCredentialsPathTypeError\|_resolve_credentials_path\|MMRELAY_CREDENTIALS_PATH" src/ tests/ --include="*.py"`
+Run: `grep -r "get_explicit_credentials_path\|InvalidCredentialsPathTypeError\|_resolve_credentials_path" src/ tests/ --include="*.py"`
 Expected: No matches
+
+Run: `grep -r "MMRELAY_CREDENTIALS_PATH" src/ tests/ --include="*.py"`
+Expected: Matches only the centralized deprecation-warning path and related tests
 
 Run: `grep -r -nE 'get\("store_path"\)|section_cfg\.get\("store_path"\)|store_override' src/mmrelay/ --include="*.py"`
 Expected: No matches

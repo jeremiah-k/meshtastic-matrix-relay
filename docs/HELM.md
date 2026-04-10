@@ -175,9 +175,10 @@ config:
 
 MMRelay authenticates with Matrix using environment variables that bootstrap `credentials.json` on the PVC. This is handled by the `matrixAuth` values section.
 
-#### Bootstrap Mode (Default)
+#### Bootstrap Mode (Optional)
 
-For initial deployment without existing credentials, use Matrix auth environment variables:
+For initial deployment without existing credentials, enable bootstrap by
+setting `matrixAuth.enabled: true` and use Matrix auth environment variables:
 
 ```yaml
 matrixAuth:
