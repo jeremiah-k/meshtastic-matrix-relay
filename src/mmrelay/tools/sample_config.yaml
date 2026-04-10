@@ -15,8 +15,7 @@ matrix:
   #   MMRELAY_MATRIX_ACCESS_TOKEN=your_access_token  # Optional alternative to password
   # Best for: Kubernetes deployments with secrets, automated CI/CD
   # NO CONFIG FIELDS NEEDED - environment variables provide all authentication data
-  # Tip (Kubernetes): set credentials_path to a writable PVC location
-  # credentials_path: /data/matrix/credentials.json
+  # Note: MMRELAY_HOME controls the base directory for credentials (default: ~/.mmrelay)
   #
   # Method 3 (LEGACY): Password in config.yaml (NOT RECOMMENDED)
   # Uncomment the fields below. MMRelay will create credentials.json on first run.
@@ -26,7 +25,6 @@ matrix:
   #homeserver: https://example.matrix.org
   #bot_user_id: "@botuser:example.matrix.org"
   #password: your_matrix_password_here
-  #credentials_path: /data/matrix/credentials.json
   #
   # See docs/KUBERNETES.md for Kubernetes-specific authentication setup
   # See docs/E2EE.md for End-to-End Encryption configuration

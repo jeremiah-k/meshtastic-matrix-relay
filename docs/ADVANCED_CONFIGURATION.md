@@ -328,7 +328,6 @@ Use environment variables **only** when:
 | `MMRELAY_DATABASE_PATH`                      | `database.path`                      | string  | SQLite database path                                                                                                 |
 | `MMRELAY_HOME`                               | _(path override)_                    | string  | Override application home directory (default: `~/.mmrelay`)                                                          |
 | `MMRELAY_LOG_PATH`                           | _(path override)_                    | string  | Override log file path (default: `<home>/logs/mmrelay.log`)                                                          |
-| `MMRELAY_CREDENTIALS_PATH`                   | `credentials_path`                   | string  | Override credentials.json file path (default: `<home>/matrix/credentials.json`)                                      |
 
 ## Tips for Advanced Configuration
 
