@@ -5,7 +5,7 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
-- [Quick Start (Recommended)](#quick-start-recommended)
+- [Quick Start](#quick-start)
 - [Deployment Methods](#deployment-methods)
   - [Prebuilt Images with Make](#prebuilt-images-with-make)
   - [Portainer/GUI Tools](#portainergui-tools)
@@ -26,7 +26,7 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 
 You need Docker installed on your system. Follow the [official Docker installation guide](https://docs.docker.com/engine/install/).
 
-## Quick Start (Recommended)
+## Quick Start
 
 **Most users should start here** - prebuilt images without cloning the repository:
 

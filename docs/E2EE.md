@@ -164,7 +164,6 @@ communication.
 ### 1. Install E2EE support
 
 ```bash
-# Recommended for isolated installs
 pipx install 'mmrelay[e2e]'
 
 # Or using pip
@@ -305,6 +304,9 @@ Install E2EE dependencies (Linux/macOS):
 
 ```bash
 pipx install 'mmrelay[e2e]'
+
+# Or using pip
+pip install 'mmrelay[e2e]'
 ```
 
 If running from a local checkout:
