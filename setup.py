@@ -47,7 +47,8 @@ setup(
     ],
     python_requires=">=3.10",
     install_requires=[
-        "mtjk==2.7.8.post1," "Pillow==12.2.0",
+        "mtjk==2.7.8.post1",
+        "Pillow==12.2.0",
         "aiohttp==3.13.5",
         "matrix-nio==0.25.2",
         "matplotlib==3.10.8",
