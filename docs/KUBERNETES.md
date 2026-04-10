@@ -17,7 +17,7 @@ proceed with the Quick Start below.
 
 ## Image Selection
 
-The base Kubernetes manifest uses `kustomize` images transform to set the container image tag. The default `kustomization.yaml` pins to a specific stable release tag (e.g., `1.3.0`). Edit `kustomization.yaml` to change the tag for your target release.
+The base Kubernetes manifest uses `kustomize` images transform to set the container image tag. The default `kustomization.yaml` pins to a specific stable release tag (e.g., `1.3.3`). Edit `kustomization.yaml` to change the tag for your target release.
 
 ### Setting a specific image tag
 
@@ -26,7 +26,7 @@ Edit `deploy/k8s/kustomization.yaml` to set a specific tag:
 ```yaml
 images:
   - name: ghcr.io/jeremiah-k/mmrelay
-    newTag: 1.3.0 # Change to your desired version
+    newTag: 1.3.3 # Change to your desired version
 ```
 
 Alternatively, use `kustomize edit` from the command line:
@@ -79,7 +79,7 @@ curl -fLo ./deploy/k8s/overlays/digest/kustomization.yaml "${BASE_URL}/overlays/
 
 # Set a specific image tag (recommended; avoid floating latest in production/tests)
 ${EDITOR:-vi} ./deploy/k8s/kustomization.yaml
-# Set newTag to 1.3.0 (or your target release tag)
+# Set newTag to 1.3.3 (or your target release tag)
 # If you change the namespace, update the --namespace/-n flags below
 
 # Ensure the namespace exists
