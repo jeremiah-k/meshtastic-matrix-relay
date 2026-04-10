@@ -78,14 +78,8 @@ This interactive command will:
 - Create secure credentials and save to `~/.mmrelay/matrix/credentials.json`
 - Set up encryption keys for secure communication (Linux/macOS)
 - Works for regular Matrix communication on all platforms
-- **Use modern OIDC authentication** compatible with Matrix 2.0 and MAS (Matrix Authentication Service)
-
-**Why use `mmrelay auth login`?**
-
-- **Future-proof**: Compatible with Matrix Authentication Service (MAS) used by matrix.org and other modern homeservers.
-- **Token rotation**: Automatically handles token refresh, preventing authentication expiration.
 - **Required for E2EE**: Essential for encrypted room support.
-- **Secure**: Uses proper OIDC flows instead of long-lived access tokens.
+- **Secure**: Stores credentials in a dedicated credentials file instead of embedding tokens in config.yaml.
 
 **Platform Notes**:
 
@@ -111,7 +105,7 @@ Start the relay with a single command:
 mmrelay
 ```
 
-By default, MMRelay uses `~/.mmrelay` as the home directory for all runtime data on Linux/macOS. On Windows, it uses the platform-specific application data directory (e.g., `%APPDATA%/mmrelay`).
+By default, MMRelay uses `~/.mmrelay` as the home directory for all runtime data on Linux/macOS. On Windows, it uses the platform-specific application data directory (e.g., `%LOCALAPPDATA%/mmrelay`).
 
 ### Command-Line Options
 
@@ -126,6 +120,7 @@ mmrelay --config /path/to/config.yaml --home /path/to/mmrelay-home
 - `--config PATH` - Specify a custom configuration file location
 - `--home PATH` - Set the home directory for all runtime data (credentials, logs, database, plugins)
 - `--log-level {error,warning,info,debug}` - Set the logging verbosity
+- `--logfile PATH` - Specify a custom log file location
 - `--version` - Show version information and exit
 - `--help` - Display help message
 
@@ -155,6 +150,18 @@ mmrelay service install
 
 # Set up Matrix E2EE authentication (for encrypted rooms)
 mmrelay auth login
+
+# Check Matrix authentication status
+mmrelay auth status
+
+# Log out and clear Matrix session data
+mmrelay auth logout
+
+# Show path configuration and diagnostics
+mmrelay paths
+
+# Diagnose path configuration and migration status
+mmrelay doctor
 ```
 
 ## Running as a Service

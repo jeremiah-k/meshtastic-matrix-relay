@@ -15,7 +15,7 @@ mmrelayHome: /data
 configPath: /data/config.yaml
 # Liveness probe expects this ready file to be updated at least every 2 minutes
 # (see livenessProbe find -mmin -2). Adjust the probe or update cadence if needed.
-readyFile: /run/mmrelay/ready
+readyFile: /tmp/mmrelay-ready
 
 # Config injection
 # The init container copies config.yaml from this Secret/ConfigMap to the PVC.

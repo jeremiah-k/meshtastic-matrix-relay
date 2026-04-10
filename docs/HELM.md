@@ -173,38 +173,9 @@ config:
 
 ### Credentials Injection
 
-MMRelay can use a pre-created `credentials.json` from a Secret (recommended for credential rotation):
+MMRelay authenticates with Matrix using environment variables that bootstrap `credentials.json` on the PVC. This is handled by the `matrixAuth` values section.
 
-```yaml
-credentials:
-  enabled: true
-  secretName: mmrelay-credentials
-  key: credentials.json
-  create: false
-  data: ""
-```
-
-Create the credentials Secret:
-
-```bash
-kubectl create secret generic mmrelay-credentials \
-  --from-file=credentials.json=./credentials.json \
-  --namespace mmrelay
-```
-
-#### Optional: Helm-created credentials (explicit opt-in)
-
-```yaml
-credentials:
-  enabled: true
-  secretName: mmrelay-credentials
-  key: credentials.json
-  create: true
-  data: |
-    { "homeserver": "https://matrix.org", "user_id": "@bot:matrix.org", "access_token": "..." }
-```
-
-#### Bootstrap Mode (Alternative)
+#### Bootstrap Mode (Default)
 
 For initial deployment without existing credentials, use Matrix auth environment variables:
 
@@ -235,6 +206,38 @@ Rate-limit safety for repeat tests:
 
 - Do not repeatedly recreate namespace/PVC + `mmrelay-matrix-auth` unless required.
 - Reuse the same PVC between test iterations when possible to avoid repeated Matrix login bootstrap.
+
+#### Pre-existing credentials.json (Manual)
+
+If you already have a `credentials.json` (e.g., from `mmrelay auth login`), you can mount it directly by creating a Secret and adding custom volume mounts via `extraVolumes` and `extraVolumeMounts`:
+
+```bash
+kubectl create secret generic mmrelay-credentials \
+  --from-file=credentials.json=./credentials.json \
+  --namespace mmrelay
+```
+
+```yaml
+extraVolumes:
+  - name: credentials
+    secret:
+      secretName: mmrelay-credentials
+      items:
+        - key: credentials.json
+          path: credentials.json
+
+extraVolumeMounts:
+  - name: credentials
+    mountPath: /data/matrix/credentials.json
+    subPath: credentials.json
+    readOnly: true
+```
+
+After mounting a pre-existing `credentials.json`, disable the bootstrap Secret to avoid conflicts:
+
+```bash
+kubectl delete secret mmrelay-matrix-auth -n mmrelay
+```
 
 ### Persistence
 
@@ -425,7 +428,7 @@ denies all ingress and allows all egress by default.
 
 ```yaml
 networkPolicy:
-  enabled: true
+  enabled: false # Set to true to enable
 ```
 
 ### No Horizontal Pod Autoscaler (HPA)
@@ -658,9 +661,9 @@ config:
   source: secret
   name: mmrelay-config-external
 
-credentials:
+matrixAuth:
   enabled: true
-  secretName: mmrelay-credentials-external
+  secretName: mmrelay-matrix-auth-external
 ```
 
 External secret manager creates Secrets with these names.

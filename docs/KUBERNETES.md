@@ -17,7 +17,7 @@ proceed with the Quick Start below.
 
 ## Image Selection
 
-The base Kubernetes manifest uses `kustomize` images transform to set the container image tag. By default, the base configuration uses the `latest` tag. For 1.3.x, set a specific tag such as `1.3.0`.
+The base Kubernetes manifest uses `kustomize` images transform to set the container image tag. The default `kustomization.yaml` pins to a specific stable release tag (e.g., `1.3.0`). Edit `kustomization.yaml` to change the tag for your target release.
 
 ### Setting a specific image tag
 
@@ -119,7 +119,7 @@ kubectl create secret generic mmrelay-config \
 kubectl apply -k ./deploy/k8s
 
 # Check status
-kubectl get pods -n mmrelay -l app.kubernetes.io/name=mmrelay
+kubectl get pods -n mmrelay -l app=mmrelay
 kubectl logs -n mmrelay -f deployment/mmrelay
 ```
 
@@ -172,10 +172,17 @@ For most users, keep the default Secret-based flow to avoid extra configuration 
      --namespace mmrelay
    ```
 
-2. Uncomment the ConfigMap volume and volumeMount in `deployment.yaml`:
-   - In the `volumes` section, uncomment the ConfigMap volume
-   - In `spec.template.spec.containers[0].volumeMounts`, uncomment the ConfigMap mount
-   - Comment out the Secret volume and mount
+2. Edit `deployment.yaml` to replace the Secret volume with a ConfigMap volume:
+   - In the `volumes` section, change the `config-source` volume from `secret` to `configMap`:
+     ```yaml
+     - name: config-source
+       configMap:
+         name: mmrelay-config
+         items:
+           - key: config.yaml
+             path: config.yaml
+     ```
+   - The `volumeMounts` in the init container and main container do not need to change (they reference `config-source` and `data`)
 
 **Important**: Only enable one pattern at a time (Secret OR ConfigMap), not both.
 
@@ -206,9 +213,23 @@ kubectl create secret generic mmrelay-credentials \
 
 #### Enable credentials Secret in deployment
 
-1. Uncomment the credentials Secret volume in `deployment.yaml`:
-   - In the `volumes` section, uncomment the credentials Secret volume
-   - In `spec.template.spec.containers[0].volumeMounts`, uncomment the credentials mount
+1. Add a credentials Secret volume to `deployment.yaml`:
+   - In the `volumes` section, add:
+     ```yaml
+     - name: credentials
+       secret:
+         secretName: mmrelay-credentials
+         items:
+           - key: credentials.json
+             path: credentials.json
+     ```
+   - In `spec.template.spec.containers[0].volumeMounts`, add:
+     ```yaml
+     - name: credentials
+       mountPath: /data/matrix/credentials.json
+       subPath: credentials.json
+       readOnly: true
+     ```
 
 2. Delete the optional `mmrelay-matrix-auth` Secret (if used):
 
@@ -218,7 +239,7 @@ kubectl create secret generic mmrelay-credentials \
 
 3. Restart the pod:
    ```bash
-   kubectl delete pod -n mmrelay -l app.kubernetes.io/name=mmrelay
+   kubectl delete pod -n mmrelay -l app=mmrelay
    ```
 
 The pod will start using the mounted `credentials.json` instead of bootstrapping from environment variables.
@@ -244,7 +265,7 @@ To rotate credentials:
 
 3. Restart the pod:
    ```bash
-   kubectl delete pod -n mmrelay -l app.kubernetes.io/name=mmrelay
+   kubectl delete pod -n mmrelay -l app=mmrelay
    ```
 
 The new credentials will be loaded on the next startup.
@@ -326,7 +347,7 @@ Create a backup to local storage:
 
 ```bash
 # Get the pod name
-POD_NAME=$(kubectl get pods -n mmrelay -l app.kubernetes.io/name=mmrelay -o jsonpath='{.items[0].metadata.name}')
+POD_NAME=$(kubectl get pods -n mmrelay -l app=mmrelay -o jsonpath='{.items[0].metadata.name}')
 
 # Copy /data to local directory
 kubectl exec -n mmrelay $POD_NAME -- tar czf - /data > mmrelay-backup-$(date +%Y%m%d).tar.gz
@@ -679,7 +700,7 @@ After deployment, verify your configuration:
 
 ```bash
 # Get the pod name
-POD_NAME=$(kubectl get pods -n mmrelay -l app.kubernetes.io/name=mmrelay -o jsonpath='{.items[0].metadata.name}')
+POD_NAME=$(kubectl get pods -n mmrelay -l app=mmrelay -o jsonpath='{.items[0].metadata.name}')
 
 # Run diagnostics
 kubectl exec -n mmrelay $POD_NAME -- mmrelay doctor
@@ -748,9 +769,9 @@ Serial requires host device access and node pinning. Start with the most restric
         - 20 # device group (often dialout)
     ```
 
-5.  Use a minimal security context (least privilege first):
+5.  If `supplementalGroups` is insufficient, try adding capabilities. Only use `runAsUser: 0` / `runAsGroup: 0` as a **last resort** — this runs the container as root and significantly increases the attack surface:
 
-    Update `spec.template.spec.containers[0].securityContext`:
+    > **Warning**: Running as root (`runAsUser: 0`) should only be used if supplemental groups and capabilities both fail. It is not recommended for production.
 
     ```yaml
     securityContext:

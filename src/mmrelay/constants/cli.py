@@ -44,11 +44,20 @@ CLI_COMMANDS: Final[Mapping[str, str]] = MappingProxyType(
         # Config commands
         "generate_config": "mmrelay config generate",
         "check_config": "mmrelay config check",
+        "config_paths": "mmrelay config paths",
+        "config_diagnose": "mmrelay config diagnose",
         # Auth commands
         "auth_login": "mmrelay auth login",
         "auth_status": "mmrelay auth status",
+        "auth_logout": "mmrelay auth logout",
         # Service commands
         "service_install": "mmrelay service install",
+        "service_migrate": "mmrelay service migrate",
+        # Diagnostic commands
+        "paths": "mmrelay paths",
+        "doctor": "mmrelay doctor",
+        "verify_migration": "mmrelay verify-migration",
+        "migrate": "mmrelay migrate",
         # Main commands
         "start_relay": "mmrelay",
         "show_version": "mmrelay --version",

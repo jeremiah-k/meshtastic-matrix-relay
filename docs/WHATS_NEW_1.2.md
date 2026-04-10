@@ -40,9 +40,9 @@ matrix:
 
 ### Improved Authentication Flow
 
-- **OIDC Compatibility**: `mmrelay auth login` now uses modern OIDC flows compatible with Matrix 2.0
-- **MAS Support**: Compatible with Matrix Authentication Service used by matrix.org
-- **Token Rotation**: Automatic handling of token refresh, preventing authentication expiration
+- **Credentials Management**: `mmrelay auth login` creates persistent credentials stored in `~/.mmrelay/matrix/credentials.json`
+- **Persistent Device ID**: Maintains a consistent device identity across restarts for E2EE
+- **Interactive Setup**: Guided prompts for homeserver, username, and password
 
 ## 🎨 Matrix HTML Formatting Support
 
@@ -76,7 +76,7 @@ matrix:
 ### Testing Enhancements
 
 - **Improved Test Coverage**: Significant increase from ~70% to 90%+ total coverage
-- **Full Test Suite CI**: CI covers Python 3.10-3.12; runtime supports Python 3.9+
+- **Full Test Suite CI**: CI covers Python 3.10-3.12; runtime supports Python 3.10+
 - **Component Coverage**: Dedicated coverage tracking for major feature areas
 
 ### Documentation & Developer Experience
