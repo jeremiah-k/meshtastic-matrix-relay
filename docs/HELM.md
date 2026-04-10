@@ -209,7 +209,7 @@ Rate-limit safety for repeat tests:
 
 #### Pre-existing credentials.json (Manual)
 
-If you already have a `credentials.json` (e.g., from `mmrelay auth login`), you can mount it directly by creating a Secret and adding custom volume mounts via `extraVolumes` and `extraVolumeMounts`:
+If you already have a `credentials.json` (e.g., from `mmrelay auth login`), disable `matrixAuth.enabled` and mount it by creating a Secret and adding custom volume mounts via `extraVolumes` and `extraVolumeMounts`:
 
 ```bash
 kubectl create secret generic mmrelay-credentials \
@@ -230,10 +230,11 @@ extraVolumeMounts:
   - name: credentials
     mountPath: /data/matrix/credentials.json
     subPath: credentials.json
-    readOnly: true
 ```
 
-After mounting a pre-existing `credentials.json`, disable the bootstrap Secret to avoid conflicts:
+This direct Secret mount is only safe if you treat `credentials.json` as immutable. MMRelay may update credentials after discovery, so if you need those updates persisted, copy the file into the PVC instead of mounting the Secret path directly.
+
+If you previously used bootstrap auth, delete the old `mmrelay-matrix-auth` Secret after switching to pre-existing credentials to avoid confusion or conflicts:
 
 ```bash
 kubectl delete secret mmrelay-matrix-auth -n mmrelay

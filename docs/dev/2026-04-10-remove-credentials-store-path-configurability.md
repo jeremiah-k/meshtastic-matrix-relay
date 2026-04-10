@@ -8,6 +8,14 @@
 
 **Tech Stack:** Python 3.10+, pytest, asyncio
 
+## Versioning and Migration
+
+This is a breaking change and must be called out in the release notes and changelog. Users should remove any `credentials_path` or `store_path` config entries and rely on `MMRELAY_HOME` for path control instead.
+
+External integrations that read `MatrixAuthInfo.credentials_path` or pass `credentials_path` to `save_credentials()` will break and need to be updated before the release ships.
+
+Add migration guidance that Python 3.8/3.9 users must upgrade their runtime before moving to MMRelay 1.2, and include a short note in the changelog/release announcement so the upgrade path is explicit.
+
 ---
 
 ## Background
@@ -24,6 +32,16 @@ Every deployment method already controls data paths via `MMRELAY_HOME`:
 | Helm           | `matrixAuth` handles credentials; `MMRELAY_HOME` handles all paths                                              |
 
 No Helm chart, K8s manifest, or Docker compose file references `credentials_path` or `store_path`. The "Tip (Kubernetes): set credentials_path to a writable PVC location" in the sample config was misleading — `MMRELAY_HOME` already solves this.
+
+### Deprecation Warnings
+
+Add warnings when the following legacy config keys or environment variables are present but ignored:
+
+- top-level `credentials_path`
+- `matrix.credentials_path`
+- `matrix.e2ee.store_path`
+- `matrix.encryption.store_path`
+- `MMRELAY_CREDENTIALS_PATH`
 
 ### Why `credentials_path` Shouldn't Be Top-Level
 
@@ -716,8 +734,8 @@ Expected: No errors
 Run: `grep -r "get_explicit_credentials_path\|InvalidCredentialsPathTypeError\|_resolve_credentials_path\|MMRELAY_CREDENTIALS_PATH" src/ tests/ --include="*.py"`
 Expected: No matches
 
-Run: `grep -r "store_path" src/mmrelay/ --include="*.py"`
-Expected: No matches (only `STORE_DIRNAME` constant and `get_e2ee_store_dir()` function should remain)
+Run: `grep -r -n "store_path" src/mmrelay/ --include="*.py" | grep -E "config|credentials|section_cfg|override|store_path ="`
+Expected: Matches only legacy config-reading or assignment sites that should be removed
 
 - [ ] **Step 4: Final commit if any fixes needed**
 

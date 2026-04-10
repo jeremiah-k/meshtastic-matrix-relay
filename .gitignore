@@ -12,6 +12,7 @@ __pycache__/
 *$py.class
 src/mmrelay.egg-info
 .opencode/
+.codex
 /build/
 /.ci-artifacts/
 coderabbit_actionable_items.md

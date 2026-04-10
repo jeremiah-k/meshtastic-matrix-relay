@@ -268,7 +268,7 @@ The `MMRELAY_MATRIX_*` variables (HOMESERVER, BOT_USER_ID, PASSWORD, ACCESS_TOKE
 
 #### System Configuration
 
-- **`MMRELAY_LOGGING_LEVEL`**: Log level (`debug`, `info`, `warning`, `error`)
+- **`MMRELAY_LOGGING_LEVEL`**: Log level (`debug`, `info`, `warning`, `error`, `critical`)
 - **`MMRELAY_LOG_FILE`**: Path to log file (enables file logging when set; for Docker use a path under `/data/logs/...` to persist)
 - **`MMRELAY_DATABASE_PATH`**: Path to SQLite database file
 
@@ -323,7 +323,7 @@ Use environment variables **only** when:
 | `MMRELAY_MESHTASTIC_MESHNET_NAME`            | `meshtastic.meshnet_name`            | string  | Display name for mesh                                                                                                |
 | `MMRELAY_MESHTASTIC_MESSAGE_DELAY`           | `meshtastic.message_delay`           | float   | Delay between messages in seconds (minimum: 2.0)                                                                     |
 | `MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL` | `meshtastic.nodedb_refresh_interval` | float   | Refresh interval for cached long/short node-name tables from NodeDB (default: `15.0`; `0` disables periodic refresh) |
-| `MMRELAY_LOGGING_LEVEL`                      | `logging.level`                      | string  | Log level (`debug`, `info`, `warning`, `error`)                                                                      |
+| `MMRELAY_LOGGING_LEVEL`                      | `logging.level`                      | string  | Log level (`debug`, `info`, `warning`, `error`, `critical`)                                                          |
 | `MMRELAY_LOG_FILE`                           | `logging.filename`                   | string  | Log file path (enables file logging when set)                                                                        |
 | `MMRELAY_DATABASE_PATH`                      | `database.path`                      | string  | SQLite database path                                                                                                 |
 | `MMRELAY_HOME`                               | _(path override)_                    | string  | Override application home directory (default: `~/.mmrelay`)                                                          |

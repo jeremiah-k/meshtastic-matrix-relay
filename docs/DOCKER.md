@@ -509,7 +509,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "find $${MMRELAY_READY_FILE:-/tmp/mmrelay-ready} -mmin -2 | grep -q .",
+          "test -f $${MMRELAY_READY_FILE:-/tmp/mmrelay-ready} && find $${MMRELAY_READY_FILE:-/tmp/mmrelay-ready} -mmin -2 | grep -q .",
         ]
       interval: 30s
       timeout: 5s

@@ -184,7 +184,7 @@ For most users, keep the default Secret-based flow to avoid extra configuration 
              path: config.yaml
      ```
 
-   - The `volumeMounts` in the init container and main container do not need to change (they reference `config-source` and `data`)
+   - The init container mounts `config-source` and `data`; the main container mounts `data` and `tmp`
 
 **Important**: Only enable one pattern at a time (Secret OR ConfigMap), not both.
 
@@ -774,9 +774,19 @@ Serial requires host device access and node pinning. Start with the most restric
         - 20 # device group (often dialout)
     ```
 
-5.  If `supplementalGroups` is insufficient, try adding capabilities. Only use `runAsUser: 0` / `runAsGroup: 0` as a **last resort** — this runs the container as root and significantly increases the attack surface:
+5.  If `supplementalGroups` is insufficient, try adding capabilities before falling back to root. Keep `allowPrivilegeEscalation: false` and use the smallest capability set that works for your cluster policy:
 
-    > **Warning**: Running as root (`runAsUser: 0`) should only be used if supplemental groups and capabilities both fail. It is not recommended for production.
+    ```yaml
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        add:
+          - DAC_OVERRIDE
+    ```
+
+6.  If capabilities still do not work, try running as root with `runAsUser: 0` and `runAsGroup: 0`:
+
+    > **Warning**: Running as root should only be used after supplemental groups and capabilities both fail. It is not recommended for production.
 
     ```yaml
     securityContext:
@@ -785,7 +795,7 @@ Serial requires host device access and node pinning. Start with the most restric
       allowPrivilegeEscalation: false
     ```
 
-If you still get permission errors, try adding capabilities. Only use `privileged: true` as a last resort.
+7.  If you still get permission errors, use `privileged: true` as a last resort only.
 
 ### BLE
 
