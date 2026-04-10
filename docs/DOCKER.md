@@ -234,6 +234,12 @@ MMRelay checks for authentication in this order:
 - `make build-nocache` - Build Docker image from source with --no-cache for fresh builds
 - `make rebuild` - Stop, rebuild with --no-cache, and restart container (for updates)
 
+### Update and Diagnostic Commands
+
+- `make update-compose` - Update docker-compose.yaml with latest sample
+- `make doctor` - Run diagnostics inside the container
+- `make paths` - Show runtime paths inside the container
+
 ### Manual Docker Commands
 
 If not using make commands:
@@ -417,7 +423,7 @@ For upgrade/migration procedures and deprecation timeline details, see the [Migr
 
 - Check logs: `docker compose logs mmrelay`
 - Verify config syntax (host):
-  `mmrelay config check --config ~/.mmrelay/config.yaml`
+  `mmrelay --config ~/.mmrelay/config.yaml config check`
 - Verify config syntax (container):
   `docker compose exec mmrelay mmrelay config check`
 - Ensure all required config fields are set
@@ -493,18 +499,22 @@ services:
       - MMRELAY_READY_FILE=/tmp/mmrelay-ready
     volumes:
       # Use MMRELAY_HOST_HOME for host paths (not MMRELAY_HOME to avoid conflict)
-      # For SELinux systems (RHEL/CentOS/Fedora), add :Z flag to prevent permission denied errors
-      - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data:Z
-      # For non-SELinux systems, you can use:
-      # - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data
+      # For non-SELinux systems (most common):
+      - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data
+      # For SELinux systems (RHEL/CentOS/Fedora), add :Z flag to prevent permission denied errors:
+      # - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data:Z
 
-    # Lightweight readiness check
+    # Readiness check (checks readiness file freshness periodically updated by app)
     healthcheck:
-      test: ["CMD-SHELL", "test -f $${MMRELAY_READY_FILE:-/tmp/mmrelay-ready}"]
+      test:
+        [
+          "CMD-SHELL",
+          "test -f $${MMRELAY_READY_FILE:-/tmp/mmrelay-ready} && find $${MMRELAY_READY_FILE:-/tmp/mmrelay-ready} -mmin -2 | grep -q .",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 30s
+      start_period: 60s
 ```
 
 ### Step 4: Start the container

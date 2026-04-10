@@ -91,7 +91,7 @@ spec:
             - name: MPLCONFIGDIR
               value: /tmp/matplotlib
             - name: MMRELAY_READY_FILE
-              value: /run/mmrelay/ready
+              value: /tmp/mmrelay-ready
             - name: MMRELAY_HOME
               value: /data
           envFrom:
@@ -136,7 +136,7 @@ spec:
               command:
                 - sh
                 - -c
-                - test -f /run/mmrelay/ready
+                - test -f "$MMRELAY_READY_FILE"
             initialDelaySeconds: 0
             periodSeconds: 10
             timeoutSeconds: 2
@@ -146,7 +146,7 @@ spec:
               command:
                 - sh
                 - -c
-                - test -f /run/mmrelay/ready
+                - test -f "$MMRELAY_READY_FILE"
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 60
@@ -165,8 +165,6 @@ spec:
               mountPath: /data
             - name: tmp
               mountPath: /tmp
-            - name: run
-              mountPath: /run/mmrelay
       volumes:
         # Config source (Secret containing config.yaml) - used by init container only
         - name: config-source
@@ -180,6 +178,4 @@ spec:
           persistentVolumeClaim:
             claimName: mmrelay-data
         - name: tmp
-          emptyDir: {}
-        - name: run
           emptyDir: {}

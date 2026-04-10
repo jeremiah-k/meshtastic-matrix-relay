@@ -57,7 +57,7 @@ helm install mmrelay ./deploy/helm/mmrelay \
 # Optional but recommended: pin image tag explicitly for repeatable runs
 helm upgrade --install mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
-  --set image.tag=1.3.0
+  --set image.tag=1.3.3
 ```
 
 ### 6. Verify Deployment
@@ -76,7 +76,7 @@ The Helm chart is highly configurable. Key options include:
 ```yaml
 image:
   repository: ghcr.io/jeremiah-k/mmrelay
-  tag: 1.3.0
+  tag: 1.3.3
   pullPolicy: IfNotPresent
   # Pin by digest for production (immutable)
   digest: ""
@@ -88,7 +88,7 @@ image:
 
 ```bash
 helm upgrade mmrelay ./deploy/helm/mmrelay \
-  --set image.tag=1.3.0 \
+  --set image.tag=1.3.3 \
   --namespace mmrelay
 ```
 
@@ -173,40 +173,12 @@ config:
 
 ### Credentials Injection
 
-MMRelay can use a pre-created `credentials.json` from a Secret (recommended for credential rotation):
+MMRelay authenticates with Matrix using environment variables that bootstrap `credentials.json` on the PVC. This is handled by the `matrixAuth` values section.
 
-```yaml
-credentials:
-  enabled: true
-  secretName: mmrelay-credentials
-  key: credentials.json
-  create: false
-  data: ""
-```
+#### Bootstrap Mode (Optional)
 
-Create the credentials Secret:
-
-```bash
-kubectl create secret generic mmrelay-credentials \
-  --from-file=credentials.json=./credentials.json \
-  --namespace mmrelay
-```
-
-#### Optional: Helm-created credentials (explicit opt-in)
-
-```yaml
-credentials:
-  enabled: true
-  secretName: mmrelay-credentials
-  key: credentials.json
-  create: true
-  data: |
-    { "homeserver": "https://matrix.org", "user_id": "@bot:matrix.org", "access_token": "..." }
-```
-
-#### Bootstrap Mode (Alternative)
-
-For initial deployment without existing credentials, use Matrix auth environment variables:
+For initial deployment without existing credentials, enable bootstrap by
+setting `matrixAuth.enabled: true` and use Matrix auth environment variables:
 
 ```yaml
 matrixAuth:
@@ -235,6 +207,67 @@ Rate-limit safety for repeat tests:
 
 - Do not repeatedly recreate namespace/PVC + `mmrelay-matrix-auth` unless required.
 - Reuse the same PVC between test iterations when possible to avoid repeated Matrix login bootstrap.
+
+#### Pre-existing credentials.json (Manual)
+
+If you already have a `credentials.json` (e.g., from `mmrelay auth login`), disable `matrixAuth.enabled` and mount it by creating a Secret and adding custom volume mounts via `extraVolumes` and `extraVolumeMounts`:
+
+```bash
+kubectl create secret generic mmrelay-credentials \
+  --from-file=credentials.json=./credentials.json \
+  --namespace mmrelay
+```
+
+```yaml
+extraVolumes:
+  - name: credentials
+    secret:
+      secretName: mmrelay-credentials
+      items:
+        - key: credentials.json
+          path: credentials.json
+
+extraVolumeMounts:
+  - name: credentials
+    mountPath: /data/matrix/credentials.json
+    subPath: credentials.json
+```
+
+This direct Secret mount is only safe if you treat `credentials.json` as immutable. MMRelay may update credentials after discovery, so if you need those updates persisted, copy the file into the PVC instead of mounting the Secret path directly.
+
+One practical pattern is to mount the Secret at a temporary path, copy it into
+`/data/matrix/credentials.json` once, then remove the temporary mount on the
+next Helm upgrade:
+
+```yaml
+extraVolumes:
+  - name: credentials-bootstrap
+    secret:
+      secretName: mmrelay-credentials
+      items:
+        - key: credentials.json
+          path: credentials.json
+
+extraVolumeMounts:
+  - name: credentials-bootstrap
+    mountPath: /tmp/bootstrap-credentials/credentials.json
+    subPath: credentials.json
+    readOnly: true
+```
+
+```bash
+kubectl exec -n mmrelay deploy/mmrelay -- sh -c \
+  'cp /tmp/bootstrap-credentials/credentials.json /data/matrix/credentials.json && chmod 600 /data/matrix/credentials.json'
+```
+
+After the file is on the PVC, remove the temporary Secret mount from your Helm
+values so future credential updates persist normally.
+
+If you previously used bootstrap auth, delete the old `mmrelay-matrix-auth` Secret after switching to pre-existing credentials to avoid confusion or conflicts:
+
+```bash
+kubectl delete secret mmrelay-matrix-auth -n mmrelay
+```
 
 ### Persistence
 
@@ -312,7 +345,7 @@ probes:
     failureThreshold: 3
 ```
 
-- **Readiness**: Checks for ready file at `/run/mmrelay/ready` (cheap, fast)
+- **Readiness**: Checks for ready file at `/tmp/mmrelay-ready` (cheap, fast)
 - **Startup**: Allows up to 5 minutes for initialization (60 failures × 5s = 300s)
 - **Liveness**: Checks the ready file for recent updates
 
@@ -425,7 +458,7 @@ denies all ingress and allows all egress by default.
 
 ```yaml
 networkPolicy:
-  enabled: true
+  enabled: false # Set to true to enable
 ```
 
 ### No Horizontal Pod Autoscaler (HPA)
@@ -444,9 +477,8 @@ The chart uses fixed runtime paths (consistent with container design):
 
 - **MMRELAY_HOME**: `/data` (PVC mount)
 - **Config Path**: `/data/config.yaml` (from Secret/ConfigMap)
-- **Ready File**: `/run/mmrelay/ready` (for probes)
+- **Ready File**: `/tmp/mmrelay-ready` (for probes, under /tmp emptyDir)
 - **Tmp**: `/tmp` (emptyDir)
-- **Run**: `/run/mmrelay` (emptyDir)
 
 All persistent data lives under `/data`:
 
@@ -483,7 +515,7 @@ If upgrading from 1.2.x or earlier, follow `docs/MIGRATION_1.3.md` first.
 ```bash
 helm upgrade mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
-  --set image.tag=1.3.0
+  --set image.tag=1.3.3
 ```
 
 ### Rolling Restart
@@ -593,7 +625,7 @@ Check:
 ### Ready File Missing
 
 ```bash
-kubectl exec -n mmrelay <pod-name> -- ls -l /run/mmrelay
+kubectl exec -n mmrelay <pod-name> -- ls -l /tmp/mmrelay-ready
 kubectl logs -n mmrelay <pod-name> --tail=50
 ```
 
@@ -658,9 +690,9 @@ config:
   source: secret
   name: mmrelay-config-external
 
-credentials:
+matrixAuth:
   enabled: true
-  secretName: mmrelay-credentials-external
+  secretName: mmrelay-matrix-auth-external
 ```
 
 External secret manager creates Secrets with these names.

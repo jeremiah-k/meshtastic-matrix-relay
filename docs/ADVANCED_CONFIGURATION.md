@@ -310,6 +310,10 @@ Use environment variables **only** when:
 
 | Environment Variable                         | Config.yaml Path                     | Type    | Description                                                                                                          |
 | -------------------------------------------- | ------------------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------- |
+| `MMRELAY_MATRIX_HOMESERVER`                  | `matrix.homeserver`                  | string  | Matrix homeserver URL                                                                                                |
+| `MMRELAY_MATRIX_BOT_USER_ID`                 | `matrix.bot_user_id`                 | string  | Matrix bot user ID                                                                                                   |
+| `MMRELAY_MATRIX_PASSWORD`                    | `matrix.password`                    | string  | Matrix password (prefer `mmrelay auth login`)                                                                        |
+| `MMRELAY_MATRIX_ACCESS_TOKEN`                | `matrix.access_token`                | string  | Matrix access token (prefer `mmrelay auth login`)                                                                    |
 | `MMRELAY_MESHTASTIC_CONNECTION_TYPE`         | `meshtastic.connection_type`         | string  | Connection method (`tcp`, `serial`, `ble`)                                                                           |
 | `MMRELAY_MESHTASTIC_HOST`                    | `meshtastic.host`                    | string  | TCP host address                                                                                                     |
 | `MMRELAY_MESHTASTIC_PORT`                    | `meshtastic.port`                    | integer | TCP port (default: 4403)                                                                                             |
@@ -320,8 +324,10 @@ Use environment variables **only** when:
 | `MMRELAY_MESHTASTIC_MESSAGE_DELAY`           | `meshtastic.message_delay`           | float   | Delay between messages in seconds (minimum: 2.0)                                                                     |
 | `MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL` | `meshtastic.nodedb_refresh_interval` | float   | Refresh interval for cached long/short node-name tables from NodeDB (default: `15.0`; `0` disables periodic refresh) |
 | `MMRELAY_LOGGING_LEVEL`                      | `logging.level`                      | string  | Log level (`debug`, `info`, `warning`, `error`, `critical`)                                                          |
-| `MMRELAY_LOG_FILE`                           | `logging.filename`                   | string  | Log file path                                                                                                        |
+| `MMRELAY_LOG_FILE`                           | `logging.filename`                   | string  | Log file path (enables file logging when set)                                                                        |
 | `MMRELAY_DATABASE_PATH`                      | `database.path`                      | string  | SQLite database path                                                                                                 |
+| `MMRELAY_HOME`                               | _(path override)_                    | string  | Override application home directory (default: `~/.mmrelay`)                                                          |
+| `MMRELAY_LOG_PATH`                           | _(path override)_                    | string  | Override log file path (default: `<home>/logs/mmrelay.log`)                                                          |
 
 ## Tips for Advanced Configuration
 

@@ -2,6 +2,11 @@
 
 MMRelay 1.2 introduces Matrix End-to-End Encryption support, enhanced authentication management, and improved Docker deployment capabilities. This release focuses on security, reliability, and ease of deployment for users upgrading from 1.1.4.
 
+## ⬆️ Upgrade Note
+
+MMRelay 1.2 requires Python 3.10 or newer. Upgrade to Python 3.10+ before
+upgrading to MMRelay 1.2.
+
 ## 🔐 Matrix End-to-End Encryption (E2EE) Support
 
 **The flagship feature of 1.2** - Full Matrix E2EE support enabling secure communication in encrypted Matrix rooms.
@@ -40,9 +45,9 @@ matrix:
 
 ### Improved Authentication Flow
 
-- **OIDC Compatibility**: `mmrelay auth login` now uses modern OIDC flows compatible with Matrix 2.0
-- **MAS Support**: Compatible with Matrix Authentication Service used by matrix.org
-- **Token Rotation**: Automatic handling of token refresh, preventing authentication expiration
+- **Credentials Management**: `mmrelay auth login` creates persistent credentials stored in `~/.mmrelay/matrix/credentials.json`
+- **Persistent Device ID**: Maintains a consistent device identity across restarts for E2EE
+- **Interactive Setup**: Guided prompts for homeserver, username, and password
 
 ## 🎨 Matrix HTML Formatting Support
 
@@ -76,7 +81,7 @@ matrix:
 ### Testing Enhancements
 
 - **Improved Test Coverage**: Significant increase from ~70% to 90%+ total coverage
-- **Full Test Suite CI**: CI covers Python 3.10-3.12; runtime supports Python 3.9+
+- **Full Test Suite CI**: CI covers Python 3.10-3.12; runtime supports Python 3.10+
 - **Component Coverage**: Dedicated coverage tracking for major feature areas
 
 ### Documentation & Developer Experience
@@ -97,12 +102,12 @@ pipx install --upgrade 'mmrelay[e2e]'
 mmrelay auth login
 ```
 
-### Backward Compatibility
+### Compatibility Notes
 
-- **Existing Configurations**: All 1.1.4 configurations continue to work unchanged
+- **Existing Configurations**: Most 1.1.4 settings continue to work after you upgrade to Python 3.10+
 - **Gradual Migration**: Add new features (E2EE, HTML formatting, enhanced Docker support) as desired
-- **No Breaking Changes**: Seamless upgrade experience
+- **Python Upgrade Required**: Python 3.8 and 3.9 users must upgrade to Python 3.10+ before upgrading to MMRelay 1.2
 
 ---
 
-**MMRelay 1.2** brings secure end-to-end encryption, modern authentication, and enhanced deployment options while maintaining full backward compatibility with existing setups.
+**MMRelay 1.2** brings secure end-to-end encryption, modern authentication, and enhanced deployment options for Python 3.10+ environments.

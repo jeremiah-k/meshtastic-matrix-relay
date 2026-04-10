@@ -28,8 +28,8 @@ def is_running_as_service() -> bool:
 
     Checks whether the INVOCATION_ID environment variable is set (systemd-provided) and, if not,
     inspects /proc/self/status to find the parent PID and then /proc/<ppid>/comm to compare the
-    parent process name against the expected systemd init binary name. If any file access,
-    permission, or parsing errors occur, the function returns False.
+    parent process name against the expected systemd init binary name. Invalid parent PIDs and
+    proc-filesystem access failures return False.
     Returns:
         bool: True when running under a systemd service, otherwise False.
     """
@@ -42,12 +42,19 @@ def is_running_as_service() -> bool:
             for line in status_file:
                 if line.startswith("PPid:"):
                     ppid = int(line.split()[1])
+                    if ppid <= 0:
+                        return False
                     with open(
                         PROC_COMM_PATH_TEMPLATE.format(ppid=ppid),
                         encoding=DEFAULT_TEXT_ENCODING,
                     ) as comm_file:
                         return comm_file.read().strip() == SYSTEMD_INIT_SYSTEM
-    except (FileNotFoundError, PermissionError, ValueError, IndexError) as e:
+    except (FileNotFoundError, PermissionError) as e:
+        _get_logger().debug(
+            "Service detection unavailable via proc filesystem",
+            extra={"error_type": type(e).__name__},
+        )
+    except (ValueError, IndexError) as e:
         _get_logger().debug(
             "Service detection failed via proc filesystem",
             exc_info=True,

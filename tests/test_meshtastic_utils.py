@@ -987,6 +987,26 @@ class TestMeshtasticUtils(unittest.TestCase):
         assert result is False
         assert mu._relay_startup_drain_complete_event.is_set() is True
 
+    def test_rollback_connect_attempt_none_event_is_safe_noop(self):
+        """Rollback should not raise AttributeError when the drain event is None."""
+        import mmrelay.meshtastic_utils as mu
+
+        mu._relay_startup_drain_expiry_timer = MagicMock()
+        mu._relay_startup_drain_deadline_monotonic_secs = 123.0
+        mu._startup_packet_drain_applied = True
+
+        with patch.object(mu, "get_startup_drain_complete_event", return_value=None):
+            result = mu._rollback_connect_attempt_state(
+                client=None,
+                client_assigned_for_this_connect=False,
+                startup_drain_armed_for_this_connect=True,
+                startup_drain_applied_for_this_connect=True,
+                reconnect_bootstrap_armed_for_this_connect=False,
+            )
+
+        assert result is False
+        assert mu._relay_startup_drain_deadline_monotonic_secs is None
+
     def test_send_text_reply_success(self):
         """
         Test that send_text_reply returns the expected result when sending a text reply succeeds.

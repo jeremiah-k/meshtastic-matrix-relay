@@ -17,7 +17,7 @@ proceed with the Quick Start below.
 
 ## Image Selection
 
-The base Kubernetes manifest uses `kustomize` images transform to set the container image tag. By default, the base configuration uses the `latest` tag. For 1.3.x, set a specific tag such as `1.3.0`.
+The base Kubernetes manifest uses `kustomize` images transform to set the container image tag. The default `kustomization.yaml` pins to a specific stable release tag (e.g., `1.3.3`). Edit `kustomization.yaml` to change the tag for your target release.
 
 ### Setting a specific image tag
 
@@ -26,7 +26,7 @@ Edit `deploy/k8s/kustomization.yaml` to set a specific tag:
 ```yaml
 images:
   - name: ghcr.io/jeremiah-k/mmrelay
-    newTag: 1.3.0 # Change to your desired version
+    newTag: 1.3.3 # Change to your desired version
 ```
 
 Alternatively, use `kustomize edit` from the command line:
@@ -79,7 +79,7 @@ curl -fLo ./deploy/k8s/overlays/digest/kustomization.yaml "${BASE_URL}/overlays/
 
 # Set a specific image tag (recommended; avoid floating latest in production/tests)
 ${EDITOR:-vi} ./deploy/k8s/kustomization.yaml
-# Set newTag to 1.3.0 (or your target release tag)
+# Set newTag to 1.3.3 (or your target release tag)
 # If you change the namespace, update the --namespace/-n flags below
 
 # Ensure the namespace exists
@@ -119,7 +119,7 @@ kubectl create secret generic mmrelay-config \
 kubectl apply -k ./deploy/k8s
 
 # Check status
-kubectl get pods -n mmrelay -l app.kubernetes.io/name=mmrelay
+kubectl get pods -n mmrelay -l app=mmrelay
 kubectl logs -n mmrelay -f deployment/mmrelay
 ```
 
@@ -172,10 +172,19 @@ For most users, keep the default Secret-based flow to avoid extra configuration 
      --namespace mmrelay
    ```
 
-2. Uncomment the ConfigMap volume and volumeMount in `deployment.yaml`:
-   - In the `volumes` section, uncomment the ConfigMap volume
-   - In `spec.template.spec.containers[0].volumeMounts`, uncomment the ConfigMap mount
-   - Comment out the Secret volume and mount
+2. Edit `deployment.yaml` to replace the Secret volume with a ConfigMap volume:
+   - In the `volumes` section, change the `config-source` volume from `secret` to `configMap`:
+
+     ```yaml
+     - name: config-source
+       configMap:
+         name: mmrelay-config
+         items:
+           - key: config.yaml
+             path: config.yaml
+     ```
+
+   - The init container mounts `config-source` and `data`; the main container mounts `data` and `tmp`
 
 **Important**: Only enable one pattern at a time (Secret OR ConfigMap), not both.
 
@@ -206,9 +215,26 @@ kubectl create secret generic mmrelay-credentials \
 
 #### Enable credentials Secret in deployment
 
-1. Uncomment the credentials Secret volume in `deployment.yaml`:
-   - In the `volumes` section, uncomment the credentials Secret volume
-   - In `spec.template.spec.containers[0].volumeMounts`, uncomment the credentials mount
+1. Add a credentials Secret volume to `deployment.yaml`:
+   - In the `volumes` section, add:
+
+     ```yaml
+     - name: credentials
+       secret:
+         secretName: mmrelay-credentials
+         items:
+           - key: credentials.json
+             path: credentials.json
+     ```
+
+   - In `spec.template.spec.containers[0].volumeMounts`, add:
+
+     ```yaml
+     - name: credentials
+       mountPath: /data/matrix/credentials.json
+       subPath: credentials.json
+       readOnly: true
+     ```
 
 2. Delete the optional `mmrelay-matrix-auth` Secret (if used):
 
@@ -218,7 +244,7 @@ kubectl create secret generic mmrelay-credentials \
 
 3. Restart the pod:
    ```bash
-   kubectl delete pod -n mmrelay -l app.kubernetes.io/name=mmrelay
+   kubectl delete pod -n mmrelay -l app=mmrelay
    ```
 
 The pod will start using the mounted `credentials.json` instead of bootstrapping from environment variables.
@@ -244,7 +270,7 @@ To rotate credentials:
 
 3. Restart the pod:
    ```bash
-   kubectl delete pod -n mmrelay -l app.kubernetes.io/name=mmrelay
+   kubectl delete pod -n mmrelay -l app=mmrelay
    ```
 
 The new credentials will be loaded on the next startup.
@@ -326,7 +352,7 @@ Create a backup to local storage:
 
 ```bash
 # Get the pod name
-POD_NAME=$(kubectl get pods -n mmrelay -l app.kubernetes.io/name=mmrelay -o jsonpath='{.items[0].metadata.name}')
+POD_NAME=$(kubectl get pods -n mmrelay -l app=mmrelay -o jsonpath='{.items[0].metadata.name}')
 
 # Copy /data to local directory
 kubectl exec -n mmrelay $POD_NAME -- tar czf - /data > mmrelay-backup-$(date +%Y%m%d).tar.gz
@@ -544,7 +570,7 @@ If you need to reset the PVC:
 
 The following paths recreate themselves automatically on startup:
 
-- `/run/mmrelay/`: Runtime directory (contains the ready file)
+- `/tmp/mmrelay-ready`: Ready file (auto-created, checked by probes)
 - Caches: Temporary data cached in memory or temporary files
 - Logs: New log files are created on startup (old logs are retained in `/data/logs/`)
 
@@ -556,7 +582,7 @@ The PVC is the **single source of truth** for persistent data:
 
 - `/data` (PVC): **Authoritative** - persistent, backed up
 - `/data/config.yaml`: **Persistent after first startup** - copied by the init container from Secret/ConfigMap onto the PVC; subsequent pod restarts use the PVC copy
-- `/run/mmrelay`: **Not persistent** - recreated on each pod start
+- `/tmp/mmrelay-ready`: **Not persistent** - recreated on each pod start
 - `/tmp`: **Not persistent** - temporary storage
 
 When debugging or troubleshooting, always verify the contents of `/data` on the PVC.
@@ -569,21 +595,21 @@ MMRelay uses Kubernetes startup, readiness, and liveness probes to ensure the po
 
 **Readiness probe** (period: 10s, timeout: 2s, failureThreshold: 3):
 
-- Checks if the ready file exists at `/run/mmrelay/ready`
+- Checks if the ready file exists at `/tmp/mmrelay-ready`
 - Cheap and stable check that determines service routing
 - The pod is marked "Ready" when the ready file exists
 - Traffic is only sent to ready pods
 
 **Startup probe** (period: 5s, timeout: 2s, failureThreshold: 60):
 
-- Also checks for the ready file at `/run/mmrelay/ready`
+- Also checks for the ready file at `/tmp/mmrelay-ready`
 - Allows up to 5 minutes for initialization (60 failures × 5s = 300s)
 - Prevents the liveness probe from killing the pod during slow startup
 - Once the startup probe succeeds, the liveness probe takes over
 
 **Liveness probe** (period: 60s, timeout: 20s, failureThreshold: 3):
 
-- Checks that the ready file at `/run/mmrelay/ready` has been modified within the last 2 minutes
+- Checks that the ready file at `/tmp/mmrelay-ready` has been modified within the last 2 minutes
 - Verifies the application is still actively updating the ready file (not frozen/deadlocked)
 - If the probe fails repeatedly, Kubernetes will restart the pod
 - The longer period and timeout reduce false positives for transient issues
@@ -612,7 +638,7 @@ If a pod is not ready or keeps restarting:
 2. Verify the ready file exists:
 
    ```bash
-   kubectl exec -n mmrelay <pod-name> -- ls -l /run/mmrelay
+   kubectl exec -n mmrelay <pod-name> -- ls -l /tmp/mmrelay-ready
    ```
 
 3. Run doctor inside the pod:
@@ -679,7 +705,7 @@ After deployment, verify your configuration:
 
 ```bash
 # Get the pod name
-POD_NAME=$(kubectl get pods -n mmrelay -l app.kubernetes.io/name=mmrelay -o jsonpath='{.items[0].metadata.name}')
+POD_NAME=$(kubectl get pods -n mmrelay -l app=mmrelay -o jsonpath='{.items[0].metadata.name}')
 
 # Run diagnostics
 kubectl exec -n mmrelay $POD_NAME -- mmrelay doctor
@@ -748,9 +774,19 @@ Serial requires host device access and node pinning. Start with the most restric
         - 20 # device group (often dialout)
     ```
 
-5.  Use a minimal security context (least privilege first):
+5.  If `supplementalGroups` is insufficient, try adding capabilities before falling back to root. Keep `allowPrivilegeEscalation: false` and use the smallest capability set that works for your cluster policy:
 
-    Update `spec.template.spec.containers[0].securityContext`:
+    ```yaml
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        add:
+          - DAC_OVERRIDE
+    ```
+
+6.  If capabilities still do not work, try running as root with `runAsUser: 0` and `runAsGroup: 0`:
+
+    > **Warning**: Running as root should only be used after supplemental groups and capabilities both fail. It is not recommended for production.
 
     ```yaml
     securityContext:
@@ -759,7 +795,7 @@ Serial requires host device access and node pinning. Start with the most restric
       allowPrivilegeEscalation: false
     ```
 
-If you still get permission errors, try adding capabilities. Only use `privileged: true` as a last resort.
+7.  If you still get permission errors, use `privileged: true` as a last resort only.
 
 ### BLE
 
@@ -773,8 +809,8 @@ Because environments differ widely, treat BLE support in Kubernetes as experimen
 
 ## Notes
 
-- Ready file: The ready file feature is enabled by default via `MMRELAY_READY_FILE=/run/mmrelay/ready` in the deployment:
-  - Readiness and startup probes check for the marker file at `/run/mmrelay/ready`
-  - Liveness probe verifies the ready file at `/run/mmrelay/ready` was modified within the last 2 minutes
+- Ready file: The ready file feature is enabled by default via `MMRELAY_READY_FILE=/tmp/mmrelay-ready` in the deployment:
+  - Readiness and startup probes check for the marker file at `/tmp/mmrelay-ready`
+  - Liveness probe verifies the ready file at `/tmp/mmrelay-ready` was modified within the last 2 minutes
   - Heartbeat interval is configurable via `MMRELAY_READY_HEARTBEAT_SECONDS` (default: 60s)
 - NetworkPolicy: The default NetworkPolicy allows all egress; restrict CIDRs as needed for production. The default policy includes rules for both IPv4 (`0.0.0.0/0`) and IPv6 (`::/0`) egress.

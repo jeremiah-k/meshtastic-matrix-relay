@@ -33,8 +33,8 @@ lint:
     - isort@8.0.1
     - markdownlint@0.48.0
     - osv-scanner@2.3.5
-    - prettier@3.8.1
-    - ruff@0.15.9
+    - prettier@3.8.2
+    - ruff@0.15.10
     - trufflehog@3.94.3
     - yamllint@1.38.0
   definitions:
@@ -50,6 +50,9 @@ lint:
       paths:
         - src/mmrelay/tools/sample_config.yaml
         - src/mmrelay/plugins/map_plugin.py
+    - linters: [dotenv-linter]
+      paths:
+        - src/mmrelay/tools/sample.env
     - linters: [prettier, yamllint]
       paths:
         - src/mmrelay/tools/k8s/*.yaml

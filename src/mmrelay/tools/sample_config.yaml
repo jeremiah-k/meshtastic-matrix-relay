@@ -1,52 +1,31 @@
 matrix:
-  # MATRIX AUTHENTICATION - Choose ONE method:
+  # Matrix authentication:
+  # Run `mmrelay auth login` before starting MMRelay.
+  # This is the normal setup path. Do not fill in `homeserver`,
+  # `bot_user_id`, or `password` here.
   #
-  # Method 1 (RECOMMENDED): Use 'mmrelay auth login' command
-  # This creates secure credentials.json with E2EE support and persistent device identity.
-  # Run: mmrelay auth login
-  # Best for: All deployment types (pipx, Docker, Kubernetes)
-  # NO CONFIG FIELDS NEEDED - credentials.json provides all authentication data
+  # No authentication fields are required in this file when using
+  # `mmrelay auth login`.
   #
-  # Method 2: Environment Variables (Kubernetes/Docker)
-  # Set these environment variables instead of using password in config:
-  #   MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org
-  #   MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org
-  #   MMRELAY_MATRIX_PASSWORD=your_password
-  #   MMRELAY_MATRIX_ACCESS_TOKEN=your_access_token  # Optional alternative to password
-  # Best for: Kubernetes deployments with secrets, automated CI/CD
-  # NO CONFIG FIELDS NEEDED - environment variables provide all authentication data
-  # Tip (Kubernetes): set credentials_path to a writable PVC location
-  # credentials_path: /data/matrix/credentials.json
-  #
-  # Method 3 (LEGACY): Password in config.yaml (NOT RECOMMENDED)
-  # Uncomment the fields below. MMRelay will create credentials.json on first run.
-  # IMPORTANT: Remove the password from this file after first successful startup!
-  # Security: chmod 600 ~/.mmrelay/config.yaml (Linux/macOS)
-  # ONLY USE THIS if you cannot use Method 1 or Method 2
-  #homeserver: https://example.matrix.org
-  #bot_user_id: "@botuser:example.matrix.org"
-  #password: your_matrix_password_here
-  #credentials_path: /data/matrix/credentials.json
-  #
-  # See docs/KUBERNETES.md for Kubernetes-specific authentication setup
-  # See docs/E2EE.md for End-to-End Encryption configuration
+  # For Docker/Kubernetes environment-variable auth, see
+  # `docs/ADVANCED_CONFIGURATION.md`.
+  # See `docs/INSTRUCTIONS.md` for setup and `docs/E2EE.md` for
+  # End-to-End Encryption configuration.
 
   # End-to-End Encryption (E2EE) configuration
-  # E2EE is automatically enabled when using credentials.json (auth login or password/env-based auth)
-  # AND E2EE dependencies are installed (Linux/macOS only)
+  # E2EE is automatically enabled when credentials are available and
+  # E2EE dependencies are installed (Linux/macOS only)
   # NOTE: E2EE is not available on Windows due to dependency limitations
   #
   # SETUP INSTRUCTIONS:
   # 1. Install E2EE dependencies: pipx install 'mmrelay[e2e]' (Linux/macOS only)
-  # 2. Authenticate using Method 1 or Method 2 to create credentials.json
-  #    (If using the legacy config password, set it above and run once)
+  # 2. Authenticate using `mmrelay auth login` to create credentials.json
   # 3. MMRelay will automatically create credentials.json with E2EE support
-  # 4. For interactive setup, use: mmrelay auth login
   #
   e2ee:
     enabled: true
 
-  # Message prefix customization (Meshtastic → Matrix direction)
+  # Message prefix customization (Meshtastic -> Matrix direction)
   #prefix_enabled: true # Enable prefixes on messages from mesh (e.g., "[Alice/MyMesh]: message")
   #prefix_format: "[{long}/{mesh}]: " # Default format. Variables: {long1-20}, {long}, {short}, {mesh1-20}, {mesh}
 
@@ -59,8 +38,9 @@ matrix_rooms: # Needs at least 1 room & channel, but supports all Meshtastic cha
 meshtastic:
   connection_type: tcp # Choose either "tcp", "serial", or "ble"
   host: meshtastic.local # Only used when connection is "tcp"
-  serial_port: /dev/ttyUSB0 # Only used when connection is "serial"
-  ble_address: AA:BB:CC:DD:EE:FF # Only used when connection is "ble" - Uses either an address or name from a `meshtastic --ble-scan`
+  #port: 4403 # TCP port override (default: 4403, only used with "tcp" connection)
+  #serial_port: /dev/ttyUSB0 # Only used when connection is "serial"
+  #ble_address: AA:BB:CC:DD:EE:FF # Only used when connection is "ble" - Uses either an address or name from a `meshtastic --ble-scan`
   meshnet_name: Your Meshnet Name # This is displayed in full on Matrix, but is truncated when sent to a Meshnet
   message_interactions: # Configure reactions and replies (both require message storage in database)
     reactions: false # Enable reaction relaying between platforms
@@ -77,7 +57,7 @@ meshtastic:
 
   # Additional configuration options (commented out with defaults)
   broadcast_enabled: true # Must be set to true to enable Matrix to Meshtastic messages
-  #detection_sensor: true # Must be set to true to forward messages of Meshtastic's detection sensor module
+  #detection_sensor: true # Defaults to true; set to false to disable detection sensor message forwarding
 
   # Optional packet-routing overrides
   #packet_routing:
@@ -88,14 +68,14 @@ meshtastic:
   # Note: relay-eligible packets still need a usable channel for Matrix delivery.
   # If channel is missing, plugins still run and only Matrix relay is skipped.
   # See docs/ADVANCED_CONFIGURATION.md for behavior details.
-  #message_delay: 2.2 # Delay in seconds between messages sent to mesh (minimum: 2.0 due to firmware)
+  #message_delay: 2.5 # Delay in seconds between messages sent to mesh (minimum: 2.0 due to firmware)
   #timeout: 30 # Timeout in seconds for Meshtastic operations (default: 30, library default: 300)
   # Seconds between refreshes of cached long/short node-name tables from Meshtastic NodeDB.
   # Set to 0 to disable periodic refresh. Increase on large/busy meshes to reduce overhead;
   # decrease if names appear stale. Future versions may expand this beyond name caches.
   #nodedb_refresh_interval: 15.0
 
-  # Message prefix customization (Matrix → Meshtastic direction)
+  # Message prefix customization (Matrix -> Meshtastic direction)
   #prefix_enabled: true # Enable username prefixes on messages sent to mesh (e.g., "Alice[M]: message")
   #prefix_format: "{display5}[M]: " # Default format. See ADVANCED_CONFIGURATION.md for all variables.
 
@@ -103,7 +83,7 @@ logging:
   level: info
   #log_to_file: true                          # Set to true to enable file logging
   #filename: ~/.mmrelay/logs/mmrelay.log      # Default location if log_to_file is true
-  #max_log_size: 10485760                     # 10 MB default if omitted
+  #max_log_size: 5242880                      # 5 MB default if omitted
   #backup_count: 1                            # Keeps 1 backup as the default if omitted
   #color_enabled: true                        # Set to false to disable colored console output
   #rich_tracebacks: false                     # Show rich tracebacks in console output (defaults to false)
@@ -117,7 +97,7 @@ logging:
   #  full_packets: false     # Log full packet details at DEBUG level (sanitized: removes keys, encrypted payloads)
 
 #database:
-#  path: ~/.mmrelay/data/meshtastic.sqlite   # Default location
+#  path: ~/.mmrelay/database/meshtastic.sqlite  # Default location
 #  enable_wal: true  # Enable Write-Ahead Logging for better concurrency
 #  busy_timeout_ms: 5000  # Milliseconds to wait if the database is busy
 #  pragmas:
@@ -131,7 +111,7 @@ logging:
 plugins:
   # Global setting for all plugins: require bot mentions for commands
   #require_bot_mention: true  # Set to false to disable mention requirements for all plugins
-  
+
   ping:
     active: true
     #require_bot_mention: true  # Override global setting for this plugin only
