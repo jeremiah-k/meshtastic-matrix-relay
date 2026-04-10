@@ -1,26 +1,21 @@
 matrix:
-  # Run `mmrelay auth login` before starting MMRelay.
-  # Recommended docs: `docs/INSTRUCTIONS.md` and `docs/E2EE.md`.
-  #
-  # For Docker/Kubernetes environment-variable auth, see
-  # `docs/ADVANCED_CONFIGURATION.md`.
-  #
-  # Legacy password-in-config setup is documented in `docs/INSTRUCTIONS.md`.
-  #homeserver: https://example.matrix.org
-  #bot_user_id: "@botuser:example.matrix.org"
-  #password: your_matrix_password_here
+  # Start with `mmrelay auth login` before running MMRelay.
+  # This is the normal setup path; you do not need to fill in homeserver,
+  # bot_user_id, or password here.
+  # See `docs/INSTRUCTIONS.md`, `docs/E2EE.md`, and
+  # `docs/ADVANCED_CONFIGURATION.md` for the full setup and option reference.
   e2ee:
     enabled: true
 
 matrix_rooms:
-  # Add one or more Matrix room/channel mappings.
+  # Map Matrix rooms to Meshtastic channels.
   - id: "#someroomalias:example.matrix.org"
     meshtastic_channel: 0
   - id: "!someroomid:example.matrix.org"
     meshtastic_channel: 2
 
 meshtastic:
-  # See `docs/ADVANCED_CONFIGURATION.md` for connection, routing, and prefix options.
+  # See `docs/ADVANCED_CONFIGURATION.md` for the full option set.
   connection_type: tcp
   host: meshtastic.local
   serial_port: /dev/ttyUSB0
@@ -29,55 +24,11 @@ meshtastic:
   message_interactions:
     reactions: false
     replies: false
-
   broadcast_enabled: true
-
-  # Optional overrides. See `docs/ADVANCED_CONFIGURATION.md`.
-  #health_check:
-  #  enabled: false
-  #  connect_probe_enabled: false
-  #  heartbeat_interval: 60
-  #  initial_delay: 5
-  #  probe_timeout: 30
-  #packet_routing:
-  #  chat_portnums:
-  #    - "RANGE_TEST_APP"
-  #  disabled_portnums: []
-  #  encrypted_action: plugin_only
-  #message_delay: 2.5
-  #timeout: 30
-  #nodedb_refresh_interval: 15.0
-  #prefix_enabled: true
-  #prefix_format: "{display5}[M]: "
 
 logging:
   level: info
-  # See `docs/ADVANCED_CONFIGURATION.md` for logging levels and debug logging.
-  #log_to_file: true
-  #filename: ~/.mmrelay/logs/mmrelay.log
-  #max_log_size: 5242880
-  #backup_count: 1
-  #color_enabled: true
-  #rich_tracebacks: false
-  #debug:
-  #  matrix_nio: false
-  #  bleak: true
-  #  meshtastic: "warning"
-  #  full_packets: false
 
-#database:
-#  # See `docs/ADVANCED_CONFIGURATION.md` for database settings.
-#  path: ~/.mmrelay/database/meshtastic.sqlite
-#  enable_wal: true
-#  busy_timeout_ms: 5000
-#  pragmas:
-#    synchronous: NORMAL
-#    temp_store: MEMORY
-#  msg_map:
-#    msgs_to_keep: 500
-#    wipe_on_restart: true
-
-# Plugin examples. See `docs/ADVANCED_CONFIGURATION.md` for plugin options.
 plugins:
   ping:
     active: true
@@ -86,15 +37,3 @@ plugins:
     units: imperial
   nodes:
     active: true
-
-#community-plugins:
-#  sample_plugin:
-#    active: true
-#    repository: https://github.com/username/sample_plugin.git
-#    tag: master
-#
-#custom-plugins:
-#  my_custom_plugin:
-#    active: true
-#  another_custom_plugin:
-#    active: false
