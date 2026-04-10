@@ -136,7 +136,7 @@ spec:
               command:
                 - sh
                 - -c
-                - test -f /tmp/mmrelay-ready
+                - test -f "$MMRELAY_READY_FILE"
             initialDelaySeconds: 0
             periodSeconds: 10
             timeoutSeconds: 2
@@ -146,7 +146,7 @@ spec:
               command:
                 - sh
                 - -c
-                - test -f /tmp/mmrelay-ready
+                - test -f "$MMRELAY_READY_FILE"
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 60

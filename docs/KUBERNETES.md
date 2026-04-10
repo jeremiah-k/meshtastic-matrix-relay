@@ -174,6 +174,7 @@ For most users, keep the default Secret-based flow to avoid extra configuration 
 
 2. Edit `deployment.yaml` to replace the Secret volume with a ConfigMap volume:
    - In the `volumes` section, change the `config-source` volume from `secret` to `configMap`:
+
      ```yaml
      - name: config-source
        configMap:
@@ -182,6 +183,7 @@ For most users, keep the default Secret-based flow to avoid extra configuration 
            - key: config.yaml
              path: config.yaml
      ```
+
    - The `volumeMounts` in the init container and main container do not need to change (they reference `config-source` and `data`)
 
 **Important**: Only enable one pattern at a time (Secret OR ConfigMap), not both.
@@ -215,6 +217,7 @@ kubectl create secret generic mmrelay-credentials \
 
 1. Add a credentials Secret volume to `deployment.yaml`:
    - In the `volumes` section, add:
+
      ```yaml
      - name: credentials
        secret:
@@ -223,7 +226,9 @@ kubectl create secret generic mmrelay-credentials \
            - key: credentials.json
              path: credentials.json
      ```
+
    - In `spec.template.spec.containers[0].volumeMounts`, add:
+
      ```yaml
      - name: credentials
        mountPath: /data/matrix/credentials.json
