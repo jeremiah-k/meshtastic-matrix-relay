@@ -25,10 +25,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: 3.12
 
@@ -59,19 +59,19 @@ jobs:
         run: pyinstaller --name=mmrelay.exe --onefile --console --collect-all rich src/mmrelay/main.py
 
       - name: Build installer
-        uses: nadeemjazmawe/inno-setup-action-cli@v6.0.5
+        uses: nadeemjazmawe/inno-setup-action-cli@31fe986b893b62ba38889603be4a74452a8f6362 # v6.0.5
         with:
           filepath: "/DAppVersion=${{ env.FILE_VERSION }} ./scripts/mmrelay.iss"
 
       - name: Upload installer as artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: MMRelay_setup_${{ env.FILE_VERSION }}
           path: scripts/MMRelay_setup_${{ env.FILE_VERSION }}.exe
 
       - name: Upload installer to GitHub Release
         if: github.event_name == 'release'
-        uses: svenstaro/upload-release-action@v2
+        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: scripts/MMRelay_setup_${{ env.FILE_VERSION }}.exe

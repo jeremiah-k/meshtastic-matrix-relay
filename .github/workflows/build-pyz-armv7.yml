@@ -18,10 +18,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up QEMU for multi-arch builds
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4
         with:
           platforms: all
 
@@ -38,7 +38,7 @@ jobs:
 
       - name: Restore cached ARMv7 builder image
         id: builder-image-cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
         with:
           path: ${{ steps.builder-image-cache-meta.outputs.cache_path }}
           key: ${{ steps.builder-image-cache-meta.outputs.cache_key }}
@@ -65,7 +65,7 @@ jobs:
           fi
 
       - name: Build inside ARMv7 Docker (using pre-built builder)
-        uses: addnab/docker-run-action@v3
+        uses: addnab/docker-run-action@4f65fabd2431ebc8d299f8e5a018d79a769ae185 # v3
         with:
           image: ${{ env.BUILDER_IMAGE }}
           options: --platform linux/arm/v7 -v ${{ github.workspace }}:/github/workspace -w /github/workspace
@@ -137,19 +137,19 @@ jobs:
 
       - name: Persist cached ARMv7 builder image
         if: ${{ success() && steps.builder-image-cache.outputs.cache-hit != 'true' && steps.builder-image-tar.outputs.saved == 'true' }}
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
         with:
           path: ${{ steps.builder-image-cache-meta.outputs.cache_path }}
           key: ${{ steps.builder-image-cache-meta.outputs.cache_key }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: mmrelay-${{ env.FILE_VERSION }}-armv7
           path: dist/*.pyz
 
       - name: Upload PYZ to GitHub Release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: dist/*.pyz
