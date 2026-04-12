@@ -31,7 +31,7 @@ dependencies = [
   "bleach==6.3.0",
   "haversine==2.9.0",
   "schedule==1.2.2",
-  "platformdirs==4.9.4",
+  "platformdirs==4.9.6",
   "py-staticmaps==0.4.0",
   "psutil==7.1.2",
   "rich==15.0.0",
