@@ -18,7 +18,8 @@ COPY src/ ./src/
 
 # Install dependencies and application package with E2EE support
 # hadolint ignore=DL3013
-RUN python -m pip install --no-cache-dir --timeout=300 --retries=3 ".[e2e]"
+RUN python -m pip install --no-cache-dir --timeout=300 --retries=3 \
+    --prefix=/install ".[e2e]"
 
 # Runtime stage
 FROM python:3.11-slim-bookworm
@@ -39,11 +40,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set working directory
 WORKDIR /app
 
-# Copy installed packages from builder stage
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-
-# Copy scripts to the correct location
-COPY --from=builder /usr/local/bin/mmrelay /usr/local/bin/mmrelay
+# Copy installed Python packages and scripts from builder stage.
+# Using a fixed prefix keeps this independent of pythonX.Y site-packages paths.
+COPY --from=builder /install /usr/local
 
 # Create app and data directories and set ownership
 RUN mkdir -p /app /data && chown -R mmrelay:mmrelay /app /data
