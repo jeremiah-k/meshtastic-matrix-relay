@@ -33,10 +33,10 @@
       "automerge": true
     },
     {
-      "description": "Keep mtjk updates manual for relay compatibility verification",
+      "description": "Automerge mtjk updates when new releases are detected",
       "matchManagers": ["pep621"],
       "matchPackageNames": ["mtjk"],
-      "automerge": false
+      "automerge": true
     }
   ]
 }
