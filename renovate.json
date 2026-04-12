@@ -1,0 +1,42 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:best-practices"],
+  "forkProcessing": "enabled",
+  "mode": "full",
+  "enabledManagers": [
+    "pep621",
+    "github-actions",
+    "dockerfile",
+    "docker-compose"
+  ],
+  "timezone": "America/Chicago",
+  "updateNotScheduled": true,
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Dependency Updates (mmrelay)",
+  "automerge": false,
+  "automergeType": "pr",
+  "platformAutomerge": false,
+  "separateMajorMinor": true,
+  "prConcurrentLimit": 0,
+  "prHourlyLimit": 0,
+  "packageRules": [
+    {
+      "description": "Automerge all non-major dependency updates",
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest",
+        "pinDigest",
+        "lockFileMaintenance"
+      ],
+      "automerge": true
+    },
+    {
+      "description": "Automerge mtjk updates when new releases are detected",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": ["mtjk"],
+      "automerge": true
+    }
+  ]
+}
