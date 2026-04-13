@@ -71,6 +71,7 @@ from mmrelay.constants.network import (
     BLE_DUP_CONNECT_SUPPRESSED_TOKEN,
     BLE_FUTURE_STALE_GRACE_SECS,
     BLE_FUTURE_WATCHDOG_SECS,
+    BLE_INTERFACE_CREATE_GRACE_SECS,
     BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
     BLE_RETRY_DELAY_SECS,
     BLE_SCAN_TIMEOUT_SECS,
@@ -230,7 +231,9 @@ _connect_attempt_in_progress = False
 _CONNECT_ATTEMPT_WAIT_POLL_SECS = 1.0
 _CONNECT_ATTEMPT_WAIT_MAX_SECS = 5.0
 _CONNECT_ATTEMPT_BLE_WAIT_MAX_SECS = (
-    BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS + BLE_CONNECT_TIMEOUT_SECS
+    BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS
+    + BLE_INTERFACE_CREATE_GRACE_SECS
+    + BLE_CONNECT_TIMEOUT_SECS
 )
 
 reconnecting = False
@@ -333,6 +336,7 @@ from mmrelay.meshtastic.connection import (
     _connect_meshtastic_impl,
     _get_connect_time_probe_settings,
     _get_connection_retry_wait_time,
+    _log_ble_shutdown_state,
     _rollback_connect_attempt_state,
     _schedule_connect_time_calibration_probe,
     connect_meshtastic,

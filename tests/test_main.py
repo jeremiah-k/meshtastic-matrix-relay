@@ -1466,7 +1466,19 @@ class TestMain(unittest.TestCase):
         original_iface = mu.meshtastic_iface
         original_shutting_down = mu.shutting_down
         original_reconnecting = mu.reconnecting
+        with mu._ble_executor_lock:
+            original_ble_future = mu._ble_future
+            original_ble_future_address = mu._ble_future_address
+            original_ble_future_started_at = mu._ble_future_started_at
+            original_ble_future_timeout_secs = mu._ble_future_timeout_secs
         try:
+            pending_ble_future = MagicMock()
+            pending_ble_future.done.return_value = False
+            with mu._ble_executor_lock:
+                mu._ble_future = pending_ble_future
+                mu._ble_future_address = "AA:BB:CC:DD:EE:FF"
+                mu._ble_future_started_at = mu.time.monotonic() - 3.0
+                mu._ble_future_timeout_secs = 20.0
             with (
                 patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
                 patch(
@@ -1490,6 +1502,11 @@ class TestMain(unittest.TestCase):
             mu.meshtastic_iface = original_iface
             mu.shutting_down = original_shutting_down
             mu.reconnecting = original_reconnecting
+            with mu._ble_executor_lock:
+                mu._ble_future = original_ble_future
+                mu._ble_future_address = original_ble_future_address
+                mu._ble_future_started_at = original_ble_future_started_at
+                mu._ble_future_timeout_secs = original_ble_future_timeout_secs
 
         mock_meshtastic_logger.warning.assert_any_call(
             "Meshtastic client close timed out during %s - may cause notification errors",
@@ -1660,12 +1677,14 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.get_message_queue")
     @patch("mmrelay.main.stop_message_queue")
+    @patch("mmrelay.main.meshtastic_utils._log_ble_shutdown_state")
     @patch("mmrelay.main.meshtastic_logger")
     @patch("mmrelay.main.meshtastic_utils._run_blocking_with_timeout")
     def test_main_shutdown_success_logs_close_complete(
         self,
         mock_run_blocking_with_timeout,
         mock_meshtastic_logger,
+        mock_log_ble_shutdown_state,
         _mock_stop_queue,
         mock_get_queue,
         mock_join_room,
@@ -1720,6 +1739,7 @@ class TestMain(unittest.TestCase):
             mu.reconnecting = original_reconnecting
 
         mock_run_blocking_with_timeout.assert_called_once()
+        mock_log_ble_shutdown_state.assert_called_once_with(context="shutdown")
         mock_meshtastic_logger.info.assert_any_call(
             "Meshtastic client closed successfully"
         )

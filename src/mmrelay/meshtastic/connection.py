@@ -16,7 +16,6 @@ from mmrelay.constants.config import (
 )
 from mmrelay.constants.network import (
     BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
-    BLE_SCAN_TIMEOUT_SECS,
     BLE_TROUBLESHOOTING_GUIDANCE,
     CONFIG_KEY_BLE_ADDRESS,
     CONFIG_KEY_CONNECTION_TYPE,
@@ -35,6 +34,7 @@ from mmrelay.constants.network import (
 
 __all__ = [
     "_connect_meshtastic_impl",
+    "_log_ble_shutdown_state",
     "_get_connection_retry_wait_time",
     "_get_connect_time_probe_settings",
     "_rollback_connect_attempt_state",
@@ -42,6 +42,10 @@ __all__ = [
     "connect_meshtastic",
     "serial_port_exists",
 ]
+
+
+class BLEDiscoveryTransientError(Exception):
+    """Retryable BLE discovery/setup failure that should not consume timeout budget."""
 
 
 def serial_port_exists(port_name: str) -> bool:
@@ -56,6 +60,39 @@ def serial_port_exists(port_name: str) -> bool:
     """
     ports = [p.device for p in facade.serial.tools.list_ports.comports()]
     return port_name in ports
+
+
+def _log_ble_shutdown_state(*, context: str) -> None:
+    """Log in-flight BLE worker state at shutdown for diagnostics."""
+    pending_ble_future: Future[Any] | None = None
+    pending_ble_address: str | None = None
+    pending_ble_started_at: float | None = None
+    pending_ble_timeout_secs: float | None = None
+    with facade._ble_executor_lock:
+        pending_ble_future = facade._ble_future
+        pending_ble_address = facade._ble_future_address
+        pending_ble_started_at = facade._ble_future_started_at
+        pending_ble_timeout_secs = facade._ble_future_timeout_secs
+    if pending_ble_future is None or pending_ble_future.done():
+        return
+    elapsed_secs: float | None = None
+    if pending_ble_started_at is not None:
+        elapsed_secs = max(
+            0.0,
+            facade.time.monotonic() - pending_ble_started_at,
+        )
+    facade.logger.debug(
+        "Meshtastic shutdown during %s with in-flight BLE worker for %s "
+        "(elapsed=%ss, timeout=%ss)",
+        context,
+        pending_ble_address or "unknown",
+        "unknown" if elapsed_secs is None else f"{elapsed_secs:.1f}",
+        (
+            "unknown"
+            if pending_ble_timeout_secs is None
+            else f"{pending_ble_timeout_secs:.1f}"
+        ),
+    )
 
 
 def _get_connection_retry_wait_time(attempts: int) -> float:
@@ -435,8 +472,6 @@ def _connect_meshtastic_impl(
     attempts = 0
     timeout_attempts = 0
     successful = False
-    ble_scan_after_failure = False
-    ble_scan_reason: str | None = None
 
     # Get timeout configuration (default: DEFAULT_MESHTASTIC_TIMEOUT)
     timeout_raw = meshtastic_settings.get(
@@ -480,6 +515,7 @@ def _connect_meshtastic_impl(
         # Initialize before try block to avoid unbound variable errors
         ble_address: str | None = None
         supports_auto_reconnect = False
+        fallback_to_compat_mode = False
         ble_connect_timeout_logged_for_attempt = False
         startup_drain_pending_for_this_connect = False
         startup_drain_armed_for_this_connect = False
@@ -554,9 +590,16 @@ def _connect_meshtastic_impl(
                             )
                             # Detect whether this BLEInterface implementation supports
                             # explicit auto_reconnect control.
-                            ble_init_sig = inspect.signature(
-                                facade.meshtastic.ble_interface.BLEInterface.__init__
-                            )
+                            try:
+                                ble_init_sig = inspect.signature(
+                                    facade.meshtastic.ble_interface.BLEInterface.__init__
+                                )
+                            except (TypeError, ValueError):
+                                ble_init_sig = None
+                                fallback_to_compat_mode = True
+                                facade.logger.debug(
+                                    "BLEInterface signature unavailable; using compatibility mode"
+                                )
                             create_timeout_secs = ble_create_timeout_secs
                             create_timeout_arg = max(1, math.ceil(create_timeout_secs))
                             ble_kwargs = {
@@ -564,44 +607,58 @@ def _connect_meshtastic_impl(
                                 "noProto": False,
                                 "debugOut": None,
                                 "noNodes": False,
-                                # Use the same timeout budget for constructor and watchdog.
+                                # Constructor timeout sent to BLEInterface. Keep this separate
+                                # from the outer watchdog timeout used by mmrelay.
                                 "timeout": create_timeout_arg,
                             }
 
                             # Configure auto_reconnect only when supported.
                             supports_auto_reconnect = (
-                                "auto_reconnect" in ble_init_sig.parameters
+                                ble_init_sig is not None
+                                and "auto_reconnect" in ble_init_sig.parameters
                             )
                             if supports_auto_reconnect:
                                 ble_kwargs["auto_reconnect"] = False
+                                # Auto-reconnect-capable interfaces (for example mtjk)
+                                # may perform staged direct/discovery connect work inside
+                                # __init__. Keep constructor timeout bounded, but allow a
+                                # bounded extra watchdog budget so interface creation can
+                                # complete without false-positive worker timeouts.
+                                #
+                                # Some implementations can spend additional time after the
+                                # constructor timeout budget while finalizing BLE state, so
+                                # enforce at least one BLE connect-timeout window of slack.
+                                create_timeout_secs = max(
+                                    create_timeout_secs,
+                                    float(
+                                        create_timeout_arg
+                                        + facade.BLE_INTERFACE_CREATE_GRACE_SECS
+                                    ),
+                                    float(
+                                        create_timeout_arg
+                                        + facade.BLE_CONNECT_TIMEOUT_SECS
+                                    ),
+                                )
+                                effective_grace_secs = max(
+                                    0.0,
+                                    create_timeout_secs - float(create_timeout_arg),
+                                )
                                 facade.logger.debug(
                                     "BLEInterface supports auto_reconnect; setting auto_reconnect=False "
                                     "to ensure sequential reconnection control"
+                                )
+                                facade.logger.debug(
+                                    "Using BLE interface creation watchdog %.1fs for %s "
+                                    "(constructor timeout=%ss, connect-grace=%ss)",
+                                    create_timeout_secs,
+                                    ble_address,
+                                    create_timeout_arg,
+                                    effective_grace_secs,
                                 )
                             else:
                                 facade.logger.debug(
                                     "BLEInterface auto_reconnect parameter not available; using compatibility mode"
                                 )
-                            # Compatibility mode (official library) can benefit from
-                            # pre-scan retries. Forked interfaces that expose
-                            # auto_reconnect already perform richer connect/discovery
-                            # orchestration, so avoid duplicate scan work there.
-                            if ble_scan_after_failure and not supports_auto_reconnect:
-                                scan_timeout_secs = facade._coerce_positive_float(
-                                    facade._ble_scan_timeout_secs,
-                                    BLE_SCAN_TIMEOUT_SECS,
-                                    "_ble_scan_timeout_secs",
-                                )
-                                facade.logger.debug(
-                                    "Scanning for BLE device before retrying %s (%s)",
-                                    ble_address,
-                                    ble_scan_reason or "previous failure",
-                                )
-                                facade._scan_for_ble_address(
-                                    ble_address, scan_timeout_secs
-                                )
-                                ble_scan_after_failure = False
-                                ble_scan_reason = None
 
                             # Create BLE interface with timeout protection to prevent indefinite hangs
                             # Use ThreadPoolExecutor to run with timeout, as BLEInterface.__init__
@@ -704,11 +761,18 @@ def _connect_meshtastic_impl(
                                     facade.logger.debug(
                                         f"BLE interface created successfully for {ble_address}"
                                     )
-                                    if hasattr(
+                                    if not fallback_to_compat_mode and hasattr(
                                         facade.meshtastic_iface, "auto_reconnect"
                                     ):
                                         supports_auto_reconnect = True
                                     else:
+                                        if fallback_to_compat_mode:
+                                            facade.logger.debug(
+                                                "Keeping BLE interface in compatibility mode for %s "
+                                                "(signature introspection unavailable).",
+                                                ble_address,
+                                            )
+                                        supports_auto_reconnect = False
                                         facade.reset_executor_degraded_state(
                                             ble_address=ble_address
                                         )
@@ -769,7 +833,7 @@ def _connect_meshtastic_impl(
                                         )
                                     facade.meshtastic_iface = None
                                 raise
-                            except Exception:
+                            except Exception as err:
                                 # Late BLE worker failures can surface during shutdown
                                 # after cancellation. Treat those as expected noise.
                                 if facade.shutting_down:
@@ -778,6 +842,16 @@ def _connect_meshtastic_impl(
                                         ble_address,
                                         exc_info=True,
                                     )
+                                elif facade._is_ble_discovery_error(err):
+                                    facade.logger.warning(
+                                        "BLE interface creation transient failure for %s: %s",
+                                        ble_address,
+                                        err,
+                                    )
+                                    raise BLEDiscoveryTransientError(
+                                        "BLE interface transient discovery/setup failure for "
+                                        f"{ble_address}: {err}"
+                                    ) from err
                                 else:
                                     facade.logger.exception(
                                         "BLE interface creation failed"
@@ -787,18 +861,25 @@ def _connect_meshtastic_impl(
                             facade.logger.debug(
                                 f"Reusing existing BLE interface for {ble_address}"
                             )
-                            if hasattr(facade.meshtastic_iface, "auto_reconnect"):
+                            existing_sig = None
+                            try:
+                                existing_sig = inspect.signature(
+                                    type(facade.meshtastic_iface).__init__
+                                )
+                            except (TypeError, ValueError):
+                                fallback_to_compat_mode = True
+                                facade.logger.debug(
+                                    "Reused BLEInterface signature unavailable; keeping compatibility mode"
+                                )
+                            if not fallback_to_compat_mode and hasattr(
+                                facade.meshtastic_iface, "auto_reconnect"
+                            ):
                                 supports_auto_reconnect = True
                             else:
-                                try:
-                                    existing_sig = inspect.signature(
-                                        type(facade.meshtastic_iface).__init__
-                                    )
-                                    supports_auto_reconnect = (
-                                        "auto_reconnect" in existing_sig.parameters
-                                    )
-                                except (TypeError, ValueError):
-                                    supports_auto_reconnect = False
+                                supports_auto_reconnect = (
+                                    existing_sig is not None
+                                    and "auto_reconnect" in existing_sig.parameters
+                                )
 
                         iface = facade.meshtastic_iface
 
@@ -1311,6 +1392,30 @@ def _connect_meshtastic_impl(
             successful = False
             facade.logger.exception("Critical connection error")
             return None
+        except BLEDiscoveryTransientError as e:
+            successful = False
+            client_assigned_for_this_connect = facade._rollback_connect_attempt_state(
+                client=client,
+                client_assigned_for_this_connect=client_assigned_for_this_connect,
+                startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
+                startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
+                reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+            )
+            if facade.shutting_down:
+                break
+            attempts += 1
+            if retry_limit == facade.INFINITE_RETRIES or attempts <= retry_limit:
+                wait_time = facade._get_connection_retry_wait_time(attempts)
+                facade.logger.warning(
+                    "Connection attempt %s hit transient BLE discovery/setup failure (%s). Retrying in %s seconds...",
+                    attempts,
+                    e,
+                    wait_time,
+                )
+                facade.time.sleep(wait_time)
+            else:
+                facade.logger.exception("Connection failed after %s attempts", attempts)
+                return None
         except (facade.FuturesTimeoutError, TimeoutError) as e:
             successful = False
             client_assigned_for_this_connect = facade._rollback_connect_attempt_state(
@@ -1390,17 +1495,6 @@ def _connect_meshtastic_impl(
                         ble_address,
                     )
             attempts += 1
-            if (
-                connection_type == CONNECTION_TYPE_BLE
-                and ble_address
-                # Keep discovery-triggered scan recovery scoped to compatibility
-                # mode; forked auto_reconnect-capable implementations handle
-                # discovery/connect retries internally.
-                and not supports_auto_reconnect
-                and facade._is_ble_discovery_error(e)
-            ):
-                ble_scan_after_failure = True
-                ble_scan_reason = type(e).__name__
             if retry_limit == 0 or attempts <= retry_limit:
                 wait_time = facade._get_connection_retry_wait_time(attempts)
                 facade.logger.warning(
