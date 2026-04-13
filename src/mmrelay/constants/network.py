@@ -91,7 +91,7 @@ MILLISECONDS_PER_SECOND: Final[int] = 1000
 METADATA_WATCHDOG_SECS: Final[float] = 30.0
 
 # Timeout for BLE connect() operation watchdog
-BLE_CONNECT_TIMEOUT_SECS: Final[float] = 30.0
+BLE_CONNECT_TIMEOUT_SECS: Final[float] = 20.0
 
 # Maximum orphaned workers before entering degraded state
 # When executor recovery cycles orphan this many workers, we stop
@@ -105,7 +105,7 @@ ACK_POLL_INTERVAL_SECS: Final[float] = 0.1
 BLE_FUTURE_STALE_GRACE_SECS: Final[float] = 2.0
 # Keep BLE interface construction bounded so retries happen quickly on transient
 # BlueZ/DBus hiccups instead of stalling for long intervals.
-BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS: Final[float] = 15.0
+BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS: Final[float] = 25.0
 # Additional watchdog slack for BLEInterface implementations that perform staged
 # connect/config work during constructor execution.
 BLE_INTERFACE_CREATE_GRACE_SECS: Final[float] = 5.0
