@@ -588,7 +588,7 @@ def _connect_meshtastic_impl(
                                     create_timeout_secs,
                                     float(
                                         create_timeout_arg
-                                        + facade.BLE_CONNECT_TIMEOUT_SECS
+                                        + facade.BLE_INTERFACE_CREATE_GRACE_SECS
                                     ),
                                 )
                                 facade.logger.debug(
@@ -601,7 +601,7 @@ def _connect_meshtastic_impl(
                                     create_timeout_secs,
                                     ble_address,
                                     create_timeout_arg,
-                                    facade.BLE_CONNECT_TIMEOUT_SECS,
+                                    facade.BLE_INTERFACE_CREATE_GRACE_SECS,
                                 )
                             else:
                                 facade.logger.debug(
@@ -774,7 +774,7 @@ def _connect_meshtastic_impl(
                                         )
                                     facade.meshtastic_iface = None
                                 raise
-                            except Exception:
+                            except Exception as err:
                                 # Late BLE worker failures can surface during shutdown
                                 # after cancellation. Treat those as expected noise.
                                 if facade.shutting_down:
@@ -783,6 +783,15 @@ def _connect_meshtastic_impl(
                                         ble_address,
                                         exc_info=True,
                                     )
+                                elif facade._is_ble_discovery_error(err):
+                                    facade.logger.warning(
+                                        "BLE interface creation transient failure for %s: %s",
+                                        ble_address,
+                                        err,
+                                    )
+                                    raise TimeoutError(
+                                        f"BLE interface setup timed out for {ble_address}: {err}"
+                                    ) from err
                                 else:
                                     facade.logger.exception(
                                         "BLE interface creation failed"

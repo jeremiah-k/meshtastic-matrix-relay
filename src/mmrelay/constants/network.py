@@ -103,7 +103,12 @@ ACK_POLL_INTERVAL_SECS: Final[float] = 0.1
 
 # BLE timing constants
 BLE_FUTURE_STALE_GRACE_SECS: Final[float] = 2.0
-BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS: Final[float] = 90.0
+# Keep BLE interface construction bounded so retries happen quickly on transient
+# BlueZ/DBus hiccups instead of stalling for long intervals.
+BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS: Final[float] = 15.0
+# Additional watchdog slack for BLEInterface implementations that perform staged
+# connect/config work during constructor execution.
+BLE_INTERFACE_CREATE_GRACE_SECS: Final[float] = 5.0
 BLE_DISCONNECT_MAX_RETRIES: Final[int] = 3
 BLE_DISCONNECT_TIMEOUT_SECS: Final[float] = 3.0
 BLE_DISCONNECT_SETTLE_SECS: Final[float] = 2.0
