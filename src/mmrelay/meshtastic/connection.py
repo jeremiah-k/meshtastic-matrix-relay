@@ -44,6 +44,10 @@ __all__ = [
 ]
 
 
+class BLEDiscoveryTransientError(Exception):
+    """Retryable BLE discovery/setup failure that should not consume timeout budget."""
+
+
 def serial_port_exists(port_name: str) -> bool:
     """
     Determine whether a serial port with the given device name exists on the system.
@@ -844,8 +848,9 @@ def _connect_meshtastic_impl(
                                         ble_address,
                                         err,
                                     )
-                                    raise TimeoutError(
-                                        f"BLE interface setup timed out for {ble_address}: {err}"
+                                    raise BLEDiscoveryTransientError(
+                                        "BLE interface transient discovery/setup failure for "
+                                        f"{ble_address}: {err}"
                                     ) from err
                                 else:
                                     facade.logger.exception(
@@ -1387,6 +1392,30 @@ def _connect_meshtastic_impl(
             successful = False
             facade.logger.exception("Critical connection error")
             return None
+        except BLEDiscoveryTransientError as e:
+            successful = False
+            client_assigned_for_this_connect = facade._rollback_connect_attempt_state(
+                client=client,
+                client_assigned_for_this_connect=client_assigned_for_this_connect,
+                startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
+                startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
+                reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+            )
+            if facade.shutting_down:
+                break
+            attempts += 1
+            if retry_limit == facade.INFINITE_RETRIES or attempts <= retry_limit:
+                wait_time = facade._get_connection_retry_wait_time(attempts)
+                facade.logger.warning(
+                    "Connection attempt %s hit transient BLE discovery/setup failure (%s). Retrying in %s seconds...",
+                    attempts,
+                    e,
+                    wait_time,
+                )
+                facade.time.sleep(wait_time)
+            else:
+                facade.logger.exception("Connection failed after %s attempts", attempts)
+                return None
         except (facade.FuturesTimeoutError, TimeoutError) as e:
             successful = False
             client_assigned_for_this_connect = facade._rollback_connect_attempt_state(

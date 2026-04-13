@@ -5178,15 +5178,22 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         class _BleInterfaceWithAutoReconnect:
             def __init__(
                 self,
-                address=None,
-                noProto=False,
-                debugOut=None,
-                noNodes=False,
-                timeout=300,
+                address: str | None = None,
+                noProto: bool = False,
+                debugOut: Any | None = None,
+                noNodes: bool = False,
+                timeout: int = 300,
                 *,
-                auto_reconnect=False,
-            ):
+                auto_reconnect: bool = False,
+            ) -> None:
                 self.address = address
+                self._unused_params = (
+                    noProto,
+                    debugOut,
+                    noNodes,
+                    timeout,
+                    auto_reconnect,
+                )
 
         mock_executor = Mock()
         mock_executor._shutdown = False
@@ -5241,7 +5248,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             "matrix_rooms": [],
         }
 
-        def _make_keyerror_future():
+        def _make_keyerror_future() -> Mock:
             future = Mock()
             future.result = Mock(side_effect=KeyError("path"))
             future.cancel = Mock(return_value=False)
@@ -5313,7 +5320,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         submit_count = 0
 
-        def submit_side_effect(_func, *_args, **_kwargs):
+        def submit_side_effect(_func: Any, *_args: Any, **_kwargs: Any) -> Mock:
             nonlocal submit_count
             submit_count += 1
             if submit_count == 1:
@@ -5406,7 +5413,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         import mmrelay.meshtastic_utils as mu
 
-        def _future_result(*_args, **_kwargs):
+        def _future_result(*_args: Any, **_kwargs: Any) -> Any:
             mu.shutting_down = True
             raise KeyError("path")
 
@@ -5486,7 +5493,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_iface.connect = Mock()
         mock_iface.auto_reconnect = False
 
-        def _make_interface_future():
+        def _make_interface_future() -> Mock:
             future = Mock()
             future.result = Mock(return_value=mock_iface)
             future.cancel = Mock(return_value=True)
@@ -5498,7 +5505,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             for future in (_make_interface_future(), _make_timeout_future())
         )
 
-        def submit_side_effect(_func, *_args, **_kwargs):
+        def submit_side_effect(_func: Any, *_args: Any, **_kwargs: Any) -> Mock:
             return next(future_sequence)
 
         mock_executor = Mock()
@@ -5575,26 +5582,33 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         class _BleInterfaceWithAutoReconnect:
             def __init__(
                 self,
-                address=None,
-                noProto=False,
-                debugOut=None,
-                noNodes=False,
-                timeout=300,
+                address: str | None = None,
+                noProto: bool = False,
+                debugOut: Any | None = None,
+                noNodes: bool = False,
+                timeout: int = 300,
                 *,
-                auto_reconnect=False,
-            ):
+                auto_reconnect: bool = False,
+            ) -> None:
                 self.address = address
+                self._unused_params = (
+                    noProto,
+                    debugOut,
+                    noNodes,
+                    timeout,
+                    auto_reconnect,
+                )
 
         mock_iface = Mock()
         mock_iface.auto_reconnect = False
 
-        def _make_interface_future():
+        def _make_interface_future() -> Mock:
             future = Mock()
             future.result = Mock(return_value=mock_iface)
             future.cancel = Mock(return_value=True)
             return future
 
-        def _make_keyerror_future():
+        def _make_keyerror_future() -> Mock:
             future = Mock()
             future.result = Mock(side_effect=KeyError("path"))
             future.cancel = Mock(return_value=False)
@@ -5606,7 +5620,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             for future in (_make_interface_future(), _make_keyerror_future())
         )
 
-        def submit_side_effect(_func, *_args, **_kwargs):
+        def submit_side_effect(_func: Any, *_args: Any, **_kwargs: Any) -> Mock:
             return next(future_sequence)
 
         mock_executor = Mock()
@@ -5654,15 +5668,16 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         class _BleInterfaceCompatibility:
             def __init__(
                 self,
-                address=None,
-                noProto=False,
-                debugOut=None,
-                noNodes=False,
-                timeout=300,
-            ):
+                address: str | None = None,
+                noProto: bool = False,
+                debugOut: Any | None = None,
+                noNodes: bool = False,
+                timeout: int = 300,
+            ) -> None:
                 self.address = address
+                self._unused_params = (noProto, debugOut, noNodes, timeout)
 
-        def _make_keyerror_future():
+        def _make_keyerror_future() -> Mock:
             future = Mock()
             future.result = Mock(side_effect=KeyError("path"))
             future.cancel = Mock(return_value=False)
@@ -5675,7 +5690,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             )
         )
 
-        def submit_side_effect(_func, *_args, **_kwargs):
+        def submit_side_effect(_func: Any, *_args: Any, **_kwargs: Any) -> Mock:
             return next(future_sequence)
 
         mock_executor = Mock()

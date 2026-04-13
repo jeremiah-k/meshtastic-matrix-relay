@@ -8,7 +8,7 @@
 2. Legacy upstream-style BLE interface (no `auto_reconnect` kwarg)
 
 Reference fork for the modern interface contract:
-[mtjk (Meshtastic Python fork)](https://github.com/jeremiah-k/meshtastic-python).
+[mtjk (Meshtastic Python fork)](https://github.com/jeremiah-k/mtjk).
 
 This document records the technical contract so BLE changes in either repo do not
 reintroduce double-reconnect loops, scan regressions, or constructor/connect
