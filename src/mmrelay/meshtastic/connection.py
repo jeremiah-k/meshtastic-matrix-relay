@@ -582,14 +582,26 @@ def _connect_meshtastic_impl(
                                 # Auto-reconnect-capable interfaces (for example mtjk)
                                 # may perform staged direct/discovery connect work inside
                                 # __init__. Keep constructor timeout bounded, but allow a
-                                # small extra watchdog grace so interface creation can
+                                # bounded extra watchdog budget so interface creation can
                                 # complete without false-positive worker timeouts.
+                                #
+                                # Some implementations can spend additional time after the
+                                # constructor timeout budget while finalizing BLE state, so
+                                # enforce at least one BLE connect-timeout window of slack.
                                 create_timeout_secs = max(
                                     create_timeout_secs,
                                     float(
                                         create_timeout_arg
                                         + facade.BLE_INTERFACE_CREATE_GRACE_SECS
                                     ),
+                                    float(
+                                        create_timeout_arg
+                                        + facade.BLE_CONNECT_TIMEOUT_SECS
+                                    ),
+                                )
+                                effective_grace_secs = max(
+                                    0.0,
+                                    create_timeout_secs - float(create_timeout_arg),
                                 )
                                 facade.logger.debug(
                                     "BLEInterface supports auto_reconnect; setting auto_reconnect=False "
@@ -601,7 +613,7 @@ def _connect_meshtastic_impl(
                                     create_timeout_secs,
                                     ble_address,
                                     create_timeout_arg,
-                                    facade.BLE_INTERFACE_CREATE_GRACE_SECS,
+                                    effective_grace_secs,
                                 )
                             else:
                                 facade.logger.debug(

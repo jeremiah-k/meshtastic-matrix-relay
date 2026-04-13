@@ -5161,6 +5161,72 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("mmrelay.meshtastic_utils.time.sleep")
+    def test_connect_meshtastic_ble_creation_timeout_auto_reconnect_uses_connect_budget(
+        self, _mock_sleep, mock_logger
+    ):
+        """Auto-reconnect constructor path should include BLE connect-timeout slack."""
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_BLE,
+                "ble_address": TEST_BLE_MAC,
+                "retries": 1,
+            },
+            "matrix_rooms": [],
+        }
+
+        class _BleInterfaceWithAutoReconnect:
+            def __init__(
+                self,
+                address=None,
+                noProto=False,
+                debugOut=None,
+                noNodes=False,
+                timeout=300,
+                *,
+                auto_reconnect=False,
+            ):
+                self.address = address
+
+        mock_executor = Mock()
+        mock_executor._shutdown = False
+        mock_executor.submit.side_effect = [
+            _make_timeout_future(),
+            _make_timeout_future(),
+        ]
+
+        with (
+            patch("mmrelay.meshtastic_utils._ble_interface_create_timeout_secs", 15.0),
+            patch(
+                "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+                _BleInterfaceWithAutoReconnect,
+            ),
+            patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
+            patch("bleak.BleakClient") as mock_bleak_client,
+        ):
+            mock_client_instance = Mock()
+            mock_client_instance.is_connected = False
+            mock_bleak_client.return_value = mock_client_instance
+
+            import mmrelay.meshtastic_utils as mu
+
+            _reset_ble_inflight_state(mu)
+            mu._metadata_future = None
+            result = connect_meshtastic(passed_config=config)
+            self.assertIsNone(result)
+
+        error_calls = [
+            call
+            for call in mock_logger.error.call_args_list
+            if "BLE interface creation timed out after" in str(call)
+        ]
+        self.assertEqual(len(error_calls), 2)
+        expected_watchdog = 15.0 + BLE_CONNECT_TIMEOUT_SECS
+        self.assertTrue(all(call.args[1] == expected_watchdog for call in error_calls))
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("mmrelay.meshtastic_utils.time.sleep")
     def test_connect_meshtastic_ble_signature_unavailable_uses_compatibility_mode(
         self, _mock_sleep, mock_logger
     ):
