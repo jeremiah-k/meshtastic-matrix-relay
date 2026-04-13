@@ -1396,6 +1396,7 @@ class TestSerialPortDetection(unittest.TestCase):
         self.assertFalse(result)
 
 
+@pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestConnectionLossHandling(unittest.TestCase):
     """Test cases for connection loss handling."""
 
@@ -5179,11 +5180,11 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             def __init__(
                 self,
                 address: str | None = None,
+                *,
                 noProto: bool = False,
-                debugOut: Any | None = None,
+                debugOut: object | None = None,
                 noNodes: bool = False,
                 timeout: int = 300,
-                *,
                 auto_reconnect: bool = False,
             ) -> None:
                 self.address = address
@@ -5320,14 +5321,15 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         submit_count = 0
 
-        def submit_side_effect(_func: Any, *_args: Any, **_kwargs: Any) -> Mock:
+        def submit_side_effect(
+            _func: object, *_args: object, **_kwargs: object
+        ) -> Mock:
             nonlocal submit_count
             submit_count += 1
             if submit_count == 1:
                 return create_future
-            raise AssertionError(
-                "connect() should not be scheduled in compatibility-mode fallback"
-            )
+            msg = "connect() should not be scheduled in compatibility-mode fallback"
+            raise AssertionError(msg)
 
         mock_executor = Mock()
         mock_executor._shutdown = False
@@ -5413,7 +5415,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         import mmrelay.meshtastic_utils as mu
 
-        def _future_result(*_args: Any, **_kwargs: Any) -> Any:
+        def _future_result(*_args: object, **_kwargs: object) -> object:
             mu.shutting_down = True
             raise KeyError("path")
 
@@ -5505,7 +5507,9 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             for future in (_make_interface_future(), _make_timeout_future())
         )
 
-        def submit_side_effect(_func: Any, *_args: Any, **_kwargs: Any) -> Mock:
+        def submit_side_effect(
+            _func: object, *_args: object, **_kwargs: object
+        ) -> Mock:
             return next(future_sequence)
 
         mock_executor = Mock()
@@ -5583,11 +5587,11 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             def __init__(
                 self,
                 address: str | None = None,
+                *,
                 noProto: bool = False,
-                debugOut: Any | None = None,
+                debugOut: object | None = None,
                 noNodes: bool = False,
                 timeout: int = 300,
-                *,
                 auto_reconnect: bool = False,
             ) -> None:
                 self.address = address
@@ -5620,7 +5624,9 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             for future in (_make_interface_future(), _make_keyerror_future())
         )
 
-        def submit_side_effect(_func: Any, *_args: Any, **_kwargs: Any) -> Mock:
+        def submit_side_effect(
+            _func: object, *_args: object, **_kwargs: object
+        ) -> Mock:
             return next(future_sequence)
 
         mock_executor = Mock()
@@ -5669,8 +5675,9 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             def __init__(
                 self,
                 address: str | None = None,
+                *,
                 noProto: bool = False,
-                debugOut: Any | None = None,
+                debugOut: object | None = None,
                 noNodes: bool = False,
                 timeout: int = 300,
             ) -> None:
@@ -5690,7 +5697,9 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             )
         )
 
-        def submit_side_effect(_func: Any, *_args: Any, **_kwargs: Any) -> Mock:
+        def submit_side_effect(
+            _func: object, *_args: object, **_kwargs: object
+        ) -> Mock:
             return next(future_sequence)
 
         mock_executor = Mock()
