@@ -551,9 +551,15 @@ def _connect_meshtastic_impl(
                             )
                             # Detect whether this BLEInterface implementation supports
                             # explicit auto_reconnect control.
-                            ble_init_sig = inspect.signature(
-                                facade.meshtastic.ble_interface.BLEInterface.__init__
-                            )
+                            try:
+                                ble_init_sig = inspect.signature(
+                                    facade.meshtastic.ble_interface.BLEInterface.__init__
+                                )
+                            except (TypeError, ValueError):
+                                ble_init_sig = None
+                                facade.logger.debug(
+                                    "BLEInterface signature unavailable; using compatibility mode"
+                                )
                             create_timeout_secs = ble_create_timeout_secs
                             create_timeout_arg = max(1, math.ceil(create_timeout_secs))
                             ble_kwargs = {
@@ -568,7 +574,8 @@ def _connect_meshtastic_impl(
 
                             # Configure auto_reconnect only when supported.
                             supports_auto_reconnect = (
-                                "auto_reconnect" in ble_init_sig.parameters
+                                ble_init_sig is not None
+                                and "auto_reconnect" in ble_init_sig.parameters
                             )
                             if supports_auto_reconnect:
                                 ble_kwargs["auto_reconnect"] = False

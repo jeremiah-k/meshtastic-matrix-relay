@@ -5160,6 +5160,64 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             self.assertEqual(len(warning_calls), MAX_TIMEOUT_RETRIES_INFINITE)
 
     @patch("mmrelay.meshtastic_utils.logger")
+    @patch("mmrelay.meshtastic_utils.time.sleep")
+    def test_connect_meshtastic_ble_signature_unavailable_uses_compatibility_mode(
+        self, _mock_sleep, mock_logger
+    ):
+        """BLEInterface signature introspection failures should not abort creation path."""
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_BLE,
+                "ble_address": TEST_BLE_MAC,
+                "retries": 1,
+            },
+            "matrix_rooms": [],
+        }
+
+        def _make_keyerror_future():
+            future = Mock()
+            future.result = Mock(side_effect=KeyError("path"))
+            future.cancel = Mock(return_value=False)
+            return future
+
+        mock_executor = Mock()
+        mock_executor._shutdown = False
+        mock_executor.submit.side_effect = [
+            _make_keyerror_future(),
+            _make_keyerror_future(),
+        ]
+
+        with (
+            patch(
+                "mmrelay.meshtastic_utils.inspect.signature",
+                side_effect=ValueError("no signature metadata"),
+            ),
+            patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
+            patch("bleak.BleakClient") as mock_bleak_client,
+        ):
+            mock_client_instance = Mock()
+            mock_client_instance.is_connected = False
+            mock_bleak_client.return_value = mock_client_instance
+
+            import mmrelay.meshtastic_utils as mu
+
+            _reset_ble_inflight_state(mu)
+            mu._metadata_future = None
+            result = connect_meshtastic(passed_config=config)
+
+        self.assertIsNone(result)
+        self.assertEqual(mock_executor.submit.call_count, 2)
+        self.assertTrue(
+            any(
+                "BLEInterface signature unavailable; using compatibility mode"
+                in str(call)
+                for call in mock_logger.debug.call_args_list
+            )
+        )
+
+    @patch("mmrelay.meshtastic_utils.logger")
     def test_connect_meshtastic_ble_creation_error_during_shutdown_logs_debug(
         self, mock_logger
     ):
