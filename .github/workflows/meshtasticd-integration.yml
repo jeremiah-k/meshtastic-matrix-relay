@@ -76,14 +76,14 @@ jobs:
 
       - name: Restore cached meshtasticd image
         id: meshtasticd-image-cache
-        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: ${{ steps.meshtasticd-cache.outputs.cache_path }}
           key: ${{ steps.meshtasticd-cache.outputs.cache_key }}
 
       - name: Restore cached Synapse image
         id: synapse-image-cache
-        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: ${{ steps.synapse-cache.outputs.cache_path }}
           key: ${{ steps.synapse-cache.outputs.cache_key }}
@@ -143,7 +143,7 @@ jobs:
           python-version: "3.14"
 
       - name: Cache pip dependencies
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-meshtasticd-integration-${{ hashFiles('**/pyproject.toml') }}
@@ -193,14 +193,14 @@ jobs:
 
       - name: Persist cached meshtasticd image
         if: ${{ always() && steps.meshtasticd-image-cache.outputs.cache-hit != 'true' && steps.meshtasticd-image-tar.outputs.saved == 'true' }}
-        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: ${{ steps.meshtasticd-cache.outputs.cache_path }}
           key: ${{ steps.meshtasticd-cache.outputs.cache_key }}
 
       - name: Persist cached Synapse image
         if: ${{ always() && steps.synapse-image-cache.outputs.cache-hit != 'true' && steps.synapse-image-tar.outputs.saved == 'true' }}
-        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: ${{ steps.synapse-cache.outputs.cache_path }}
           key: ${{ steps.synapse-cache.outputs.cache_key }}
