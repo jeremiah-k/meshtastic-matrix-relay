@@ -12,6 +12,7 @@ Tests the Meshtastic client functionality including:
 
 import asyncio
 import contextlib
+import inspect
 import os
 import sys
 import threading
@@ -5126,7 +5127,19 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
                 if "BLE interface creation timed out after" in str(call)
             ]
             self.assertEqual(len(error_calls), MAX_TIMEOUT_RETRIES_INFINITE + 1)
-            assert all(call.args[1] == 45.0 for call in error_calls)
+            try:
+                supports_auto_reconnect = (
+                    "auto_reconnect"
+                    in inspect.signature(
+                        mu.meshtastic.ble_interface.BLEInterface.__init__
+                    ).parameters
+                )
+            except (TypeError, ValueError):
+                supports_auto_reconnect = False
+            expected_watchdog = (
+                45.0 + BLE_CONNECT_TIMEOUT_SECS if supports_auto_reconnect else 45.0
+            )
+            assert all(call.args[1] == expected_watchdog for call in error_calls)
 
             last_error_call = str(error_calls[-1])
             self.assertIn(TEST_BLE_MAC, last_error_call)

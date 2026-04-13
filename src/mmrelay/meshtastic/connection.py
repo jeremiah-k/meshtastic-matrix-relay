@@ -564,7 +564,8 @@ def _connect_meshtastic_impl(
                                 "noProto": False,
                                 "debugOut": None,
                                 "noNodes": False,
-                                # Use the same timeout budget for constructor and watchdog.
+                                # Constructor timeout sent to BLEInterface. Keep this separate
+                                # from the outer watchdog timeout used by mmrelay.
                                 "timeout": create_timeout_arg,
                             }
 
@@ -574,9 +575,29 @@ def _connect_meshtastic_impl(
                             )
                             if supports_auto_reconnect:
                                 ble_kwargs["auto_reconnect"] = False
+                                # Auto-reconnect-capable interfaces (for example mtjk)
+                                # may perform staged direct/discovery connect work inside
+                                # __init__. Keep constructor timeout bounded, but allow a
+                                # small extra watchdog grace so interface creation can
+                                # complete without false-positive worker timeouts.
+                                create_timeout_secs = max(
+                                    create_timeout_secs,
+                                    float(
+                                        create_timeout_arg
+                                        + facade.BLE_CONNECT_TIMEOUT_SECS
+                                    ),
+                                )
                                 facade.logger.debug(
                                     "BLEInterface supports auto_reconnect; setting auto_reconnect=False "
                                     "to ensure sequential reconnection control"
+                                )
+                                facade.logger.debug(
+                                    "Using BLE interface creation watchdog %.1fs for %s "
+                                    "(constructor timeout=%ss, connect-grace=%ss)",
+                                    create_timeout_secs,
+                                    ble_address,
+                                    create_timeout_arg,
+                                    facade.BLE_CONNECT_TIMEOUT_SECS,
                                 )
                             else:
                                 facade.logger.debug(
