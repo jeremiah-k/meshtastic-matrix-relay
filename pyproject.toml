@@ -52,7 +52,7 @@ dev = [
   "pyright==1.1.408",
   "types-PyYAML==6.0.12.20250915",
   "types-Markdown==3.10.2.20260211",
-  "types-jsonschema==4.26.0.20260402",
+  "types-jsonschema==4.26.0.20260408",
 ]
 
 [project.urls]
