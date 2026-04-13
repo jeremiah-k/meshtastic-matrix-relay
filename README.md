@@ -7,7 +7,7 @@ A powerful and easy-to-use relay between Meshtastic devices and Matrix chat room
 ## Features
 
 - Bidirectional message relay between Meshtastic devices and Matrix chat rooms, capable of supporting multiple meshnets
-- Supports serial, network, and **_BLE (now too!)_** connections for Meshtastic devices
+- Supports serial, network, and BLE connections for Meshtastic devices
 - Custom fields are embedded in Matrix messages for relaying messages between multiple meshnets
 - Truncates long messages to fit within Meshtastic's payload size
 - SQLite database to store node information for improved functionality
@@ -15,12 +15,14 @@ A powerful and easy-to-use relay between Meshtastic devices and Matrix chat room
 - Configurable through a simple YAML file
 - Supports mapping multiple rooms and channels 1:1
 - Relays messages to/from an MQTT broker, if configured in the Meshtastic firmware
-- ✨️ _Bidirectional replies and reactions support_ ✨️
-- ✨️ _Native Docker support_ ✨️
-- 🔐 **Supports encrypted Matrix rooms (Matrix E2EE)** 🔐
-- 📁 **Unified directory structure** 📁 **NEW in v1.3!**
+- Bidirectional replies and reactions support
+- Native Docker support
+- Supports encrypted Matrix rooms 🔐 (Matrix E2EE)
+- Unified directory structure 📁 (New in v1.3)
 
 > **Encryption note**: MMRelay supports encrypted Matrix rooms (Matrix E2EE). For details on how this works and its security implications, see the [E2EE Setup Guide](docs/E2EE.md).
+>
+> **BLE integration note (v1.3.3)**: MMRelay now integrates with [mtjk (Meshtastic Python fork)](https://github.com/jeremiah-k/mtjk) while preserving compatibility boundaries for older Meshtastic Python BLE interfaces. Technical details: [BLE Dual-Library Compatibility](docs/dev/BLE_DUAL_LIBRARY_COMPATIBILITY.md).
 
 ## Documentation
 
