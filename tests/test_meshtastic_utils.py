@@ -5160,9 +5160,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             self.assertEqual(len(warning_calls), MAX_TIMEOUT_RETRIES_INFINITE)
 
     @patch("mmrelay.meshtastic_utils.logger")
-    @patch("mmrelay.meshtastic_utils.time.sleep")
     def test_connect_meshtastic_ble_creation_timeout_auto_reconnect_uses_connect_budget(
-        self, _mock_sleep, mock_logger
+        self, mock_logger
     ):
         """Auto-reconnect constructor path should include BLE connect-timeout slack."""
         from mmrelay.meshtastic_utils import connect_meshtastic
@@ -5197,6 +5196,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         ]
 
         with (
+            patch("mmrelay.meshtastic_utils.time.sleep"),
             patch("mmrelay.meshtastic_utils._ble_interface_create_timeout_secs", 15.0),
             patch(
                 "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
@@ -5226,9 +5226,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         self.assertTrue(all(call.args[1] == expected_watchdog for call in error_calls))
 
     @patch("mmrelay.meshtastic_utils.logger")
-    @patch("mmrelay.meshtastic_utils.time.sleep")
     def test_connect_meshtastic_ble_signature_unavailable_uses_compatibility_mode(
-        self, _mock_sleep, mock_logger
+        self, mock_logger
     ):
         """BLEInterface signature introspection failures should not abort creation path."""
         from mmrelay.meshtastic_utils import connect_meshtastic
@@ -5256,6 +5255,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         ]
 
         with (
+            patch("mmrelay.meshtastic_utils.time.sleep"),
             patch(
                 "mmrelay.meshtastic_utils.inspect.signature",
                 side_effect=ValueError("no signature metadata"),
@@ -5279,6 +5279,111 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             any(
                 "BLEInterface signature unavailable; using compatibility mode"
                 in str(call)
+                for call in mock_logger.debug.call_args_list
+            )
+        )
+
+    def test_connect_meshtastic_ble_signature_unavailable_stays_compatibility_mode(
+        self,
+    ):
+        """Signature fallback should not re-enable explicit connect() via hasattr checks."""
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_BLE,
+                "ble_address": TEST_BLE_MAC,
+                "retries": 1,
+            },
+            "matrix_rooms": [],
+        }
+
+        mock_iface = Mock()
+        mock_iface.address = TEST_BLE_MAC
+        mock_iface.auto_reconnect = False
+        mock_iface.connect = Mock()
+        mock_iface.client = Mock()
+        mock_iface.client.bleak_client = Mock()
+        mock_iface.client.bleak_client.address = TEST_BLE_MAC
+        mock_iface.getMyNodeInfo.return_value = {"num": 123}
+
+        create_future = Mock()
+        create_future.result = Mock(return_value=mock_iface)
+        create_future.cancel = Mock(return_value=True)
+
+        submit_count = 0
+
+        def submit_side_effect(_func, *_args, **_kwargs):
+            nonlocal submit_count
+            submit_count += 1
+            if submit_count == 1:
+                return create_future
+            raise AssertionError(
+                "connect() should not be scheduled in compatibility-mode fallback"
+            )
+
+        mock_executor = Mock()
+        mock_executor._shutdown = False
+        mock_executor.submit.side_effect = submit_side_effect
+
+        with (
+            patch("mmrelay.meshtastic_utils.time.sleep"),
+            patch(
+                "mmrelay.meshtastic_utils.inspect.signature",
+                side_effect=ValueError("no signature metadata"),
+            ),
+            patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
+            patch("bleak.BleakClient") as mock_bleak_client,
+        ):
+            mock_client_instance = Mock()
+            mock_client_instance.is_connected = False
+            mock_bleak_client.return_value = mock_client_instance
+
+            import mmrelay.meshtastic_utils as mu
+
+            _reset_ble_inflight_state(mu)
+            original_client = mu.meshtastic_client
+            original_iface = mu.meshtastic_iface
+            mu._metadata_future = None
+            try:
+                result = connect_meshtastic(passed_config=config)
+                self.assertIs(result, mock_iface)
+            finally:
+                mu.meshtastic_client = original_client
+                mu.meshtastic_iface = original_iface
+                _reset_ble_inflight_state(mu)
+
+        self.assertEqual(submit_count, 1)
+        mock_iface.connect.assert_not_called()
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_log_ble_shutdown_state_logs_inflight_worker(self, mock_logger):
+        """Shutdown diagnostics should log in-flight BLE worker state when present."""
+        import mmrelay.meshtastic_utils as mu
+
+        pending_future = Mock()
+        pending_future.done.return_value = False
+        with mu._ble_executor_lock:
+            original_ble_future = mu._ble_future
+            original_ble_future_address = mu._ble_future_address
+            original_ble_future_started_at = mu._ble_future_started_at
+            original_ble_future_timeout_secs = mu._ble_future_timeout_secs
+            mu._ble_future = pending_future
+            mu._ble_future_address = TEST_BLE_MAC
+            mu._ble_future_started_at = mu.time.monotonic() - 2.5
+            mu._ble_future_timeout_secs = 20.0
+        try:
+            mu._log_ble_shutdown_state(context="shutdown")
+        finally:
+            with mu._ble_executor_lock:
+                mu._ble_future = original_ble_future
+                mu._ble_future_address = original_ble_future_address
+                mu._ble_future_started_at = original_ble_future_started_at
+                mu._ble_future_timeout_secs = original_ble_future_timeout_secs
+
+        self.assertTrue(
+            any(
+                "in-flight BLE worker" in str(call)
                 for call in mock_logger.debug.call_args_list
             )
         )
@@ -5364,8 +5469,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         self.assertIsNone(mu.meshtastic_iface)
 
     @patch("mmrelay.meshtastic_utils.logger")
-    @patch("mmrelay.meshtastic_utils.time.sleep")
-    def test_connect_meshtastic_ble_connect_timeout(self, _mock_sleep, mock_logger):
+    def test_connect_meshtastic_ble_connect_timeout(self, mock_logger):
         """Test connect_meshtastic handles BLE connect() timeout."""
         from mmrelay.meshtastic_utils import connect_meshtastic
 
@@ -5402,6 +5506,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_executor.submit.side_effect = submit_side_effect
 
         with (
+            patch("mmrelay.meshtastic_utils.time.sleep"),
             patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
             patch("bleak.BleakClient") as mock_bleak_client,
         ):
@@ -5454,10 +5559,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             ]
             self.assertEqual(len(warning_calls), MAX_TIMEOUT_RETRIES_INFINITE)
 
-    @patch("mmrelay.meshtastic_utils.time.sleep")
-    def test_connect_meshtastic_does_not_scan_after_ble_errors_auto_reconnect(
-        self, _mock_sleep
-    ):
+    def test_connect_meshtastic_does_not_scan_after_ble_errors_auto_reconnect(self):
         """Explicit BLE-address retries should not trigger discovery scans."""
         from mmrelay.meshtastic_utils import connect_meshtastic
 
@@ -5512,6 +5614,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_executor.submit.side_effect = submit_side_effect
 
         with (
+            patch("mmrelay.meshtastic_utils.time.sleep"),
             patch(
                 "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
                 _BleInterfaceWithAutoReconnect,
@@ -5533,9 +5636,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
             mock_scan.assert_not_called()
 
-    @patch("mmrelay.meshtastic_utils.time.sleep")
     def test_connect_meshtastic_does_not_scan_after_ble_errors_compatibility_mode(
-        self, _mock_sleep
+        self,
     ):
         """Compatibility-mode retries for explicit BLE address should stay direct-only."""
         from mmrelay.meshtastic_utils import connect_meshtastic
@@ -5581,6 +5683,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_executor.submit.side_effect = submit_side_effect
 
         with (
+            patch("mmrelay.meshtastic_utils.time.sleep"),
             patch(
                 "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
                 _BleInterfaceCompatibility,

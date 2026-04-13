@@ -334,6 +334,7 @@ from mmrelay.meshtastic.connection import (
     _connect_meshtastic_impl,
     _get_connect_time_probe_settings,
     _get_connection_retry_wait_time,
+    _log_ble_shutdown_state,
     _rollback_connect_attempt_state,
     _schedule_connect_time_calibration_probe,
     connect_meshtastic,

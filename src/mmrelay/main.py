@@ -612,6 +612,7 @@ async def main(config: dict[str, Any]) -> None:
             return
 
         meshtastic_logger.info("Closing Meshtastic client...")
+        meshtastic_utils._log_ble_shutdown_state(context=context)
 
         def _close_meshtastic() -> None:
             if not meshtastic_utils.meshtastic_client:
