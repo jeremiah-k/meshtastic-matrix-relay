@@ -1393,6 +1393,50 @@ class Plugin:
         )
         mock_update_check.assert_called_once()
 
+    @patch("mmrelay.plugin_loader.clone_or_update_repo")
+    @patch("mmrelay.plugin_loader._install_requirements_for_repo")
+    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
+    @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
+    @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    def test_load_plugins_skips_community_dep_install_when_disabled(
+        self,
+        _mock_start_scheduler,
+        mock_get_custom_dirs,
+        mock_get_community_dirs,
+        mock_load_from_dir,
+        mock_install_reqs,
+        mock_clone_repo,
+    ):
+        """Community dependency installer function should not be called when disabled."""
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+
+        config = {
+            "security": {"auto_install_deps": False},
+            "community-plugins": {
+                "commit-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "commit": "0123456789abcdef0123456789abcdef01234567",
+                }
+            },
+            "plugins": {},
+        }
+
+        mock_get_custom_dirs.return_value = []
+        mock_get_community_dirs.return_value = [self.community_dir]
+        mock_clone_repo.return_value = True
+        mock_load_from_dir.return_value = []
+
+        with patch(
+            "mmrelay.plugin_loader._check_commit_pin_for_upstream_updates"
+        ) as mock_update_check:
+            load_plugins(config)
+
+        mock_update_check.assert_called_once()
+        mock_install_reqs.assert_not_called()
+
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
@@ -5131,6 +5175,49 @@ class TestCommunityPluginSecurityHelpers(unittest.TestCase):
             stderr="",
         )
         self.assertEqual(pl._resolve_remote_default_branch("/tmp/repo"), "main")
+
+    @patch("mmrelay.plugin_loader._resolve_remote_branch_head_commit")
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_resolve_remote_default_branch_falls_back_to_main_master(
+        self, mock_run_git, mock_resolve_remote_branch_head
+    ):
+        """Default branch resolver should fallback to main/master when symref parse fails."""
+        mock_run_git.return_value = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="0123456789abcdef0123456789abcdef01234567\tHEAD\n",
+            stderr="",
+        )
+        mock_resolve_remote_branch_head.side_effect = [
+            "0123456789abcdef0123456789abcdef01234567",
+            None,
+        ]
+
+        resolved = pl._resolve_remote_default_branch("/tmp/repo")
+        self.assertEqual(resolved, "main")
+        mock_resolve_remote_branch_head.assert_any_call("/tmp/repo", "main")
+
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_resolve_local_head_commit_rejects_non_full_sha(self, mock_run_git):
+        """Local HEAD resolver should only accept full 40-char SHAs."""
+        mock_run_git.return_value = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="deadbeef\n",
+            stderr="",
+        )
+        self.assertIsNone(pl._resolve_local_head_commit("/tmp/repo"))
+
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_resolve_remote_branch_head_commit_rejects_non_full_sha(self, mock_run_git):
+        """Remote branch head resolver should only accept full 40-char SHAs."""
+        mock_run_git.return_value = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="deadbeef\trefs/heads/main\n",
+            stderr="",
+        )
+        self.assertIsNone(pl._resolve_remote_branch_head_commit("/tmp/repo", "main"))
 
     @patch("mmrelay.plugin_loader._resolve_local_head_commit")
     @patch("mmrelay.plugin_loader._resolve_remote_default_branch")

@@ -1197,6 +1197,19 @@ def _state_file_path(repo_path: str) -> str:
     return os.path.join(repo_path, PLUGIN_STATE_FILENAME)
 
 
+def _is_full_commit_sha(value: str) -> bool:
+    """
+    Check whether a string is a full 40-character hexadecimal commit SHA.
+
+    Parameters:
+        value (str): Candidate commit SHA string.
+
+    Returns:
+        bool: `True` for full 40-char hex SHAs, else `False`.
+    """
+    return bool(re.fullmatch(r"[0-9a-fA-F]{40}", (value or "").strip()))
+
+
 def _load_plugin_state(repo_path: str) -> dict[str, Any]:
     """
     Load persisted community plugin state from disk.
@@ -1244,6 +1257,8 @@ def _save_plugin_state(repo_path: str, state: dict[str, Any]) -> None:
         ) as temp_handle:
             json.dump(state, temp_handle, indent=2, sort_keys=True)
             temp_handle.write("\n")
+            temp_handle.flush()
+            os.fsync(temp_handle.fileno())
             tmp_path = temp_handle.name
         os.replace(tmp_path, state_path)
     except (OSError, TypeError, ValueError) as exc:
@@ -1288,6 +1303,7 @@ def _resolve_remote_default_branch(repo_path: str) -> str | None:
     Returns:
         str | None: Default branch name (for example "main"), or None.
     """
+    result: subprocess.CompletedProcess[str] | None = None
     try:
         result = _run_git(
             [
@@ -1302,16 +1318,34 @@ def _resolve_remote_default_branch(repo_path: str) -> str | None:
             timeout=GIT_COMMAND_TIMEOUT_SECONDS,
             capture_output=True,
         )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
-        return None
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug(
+            "Unable to resolve remote default branch for %s via symref: %s",
+            repo_path,
+            exc,
+        )
 
-    for line in result.stdout.splitlines():
-        if not line.startswith("ref: ") or not line.endswith("\tHEAD"):
-            continue
-        ref_value = line.split("\t", 1)[0].replace("ref: ", "", 1).strip()
-        prefix = "refs/heads/"
-        if ref_value.startswith(prefix):
-            return ref_value[len(prefix) :]
+    if result is not None:
+        for raw_line in result.stdout.splitlines():
+            line = raw_line.strip()
+            if not line.startswith("ref:"):
+                continue
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            ref_value = parts[1].strip()
+            prefix = "refs/heads/"
+            if ref_value.startswith(prefix):
+                return ref_value[len(prefix) :]
+
+    for fallback_branch in DEFAULT_BRANCHES:
+        if _resolve_remote_branch_head_commit(repo_path, fallback_branch):
+            return fallback_branch
+
+    logger.debug(
+        "Could not determine remote default branch for %s; skipping update check",
+        repo_path,
+    )
     return None
 
 
@@ -1331,11 +1365,12 @@ def _resolve_local_head_commit(repo_path: str) -> str | None:
             timeout=GIT_COMMAND_TIMEOUT_SECONDS,
             capture_output=True,
         )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug("Unable to resolve local HEAD commit for %s: %s", repo_path, exc)
         return None
 
     commit_sha = result.stdout.strip()
-    return commit_sha if COMMIT_HASH_PATTERN.fullmatch(commit_sha) else None
+    return commit_sha if _is_full_commit_sha(commit_sha) else None
 
 
 def _resolve_remote_branch_head_commit(repo_path: str, branch_name: str) -> str | None:
@@ -1362,14 +1397,20 @@ def _resolve_remote_branch_head_commit(repo_path: str, branch_name: str) -> str 
             timeout=GIT_COMMAND_TIMEOUT_SECONDS,
             capture_output=True,
         )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug(
+            "Unable to resolve remote branch head for %s (%s): %s",
+            repo_path,
+            branch_name,
+            exc,
+        )
         return None
 
     first_line = next((line.strip() for line in result.stdout.splitlines() if line), "")
     if not first_line:
         return None
     remote_sha = first_line.split("\t", 1)[0].strip()
-    return remote_sha if COMMIT_HASH_PATTERN.fullmatch(remote_sha) else None
+    return remote_sha if _is_full_commit_sha(remote_sha) else None
 
 
 def _get_repo_host_info(repo_url: str) -> tuple[str, str, str] | None:
@@ -1397,14 +1438,11 @@ def _get_repo_host_info(repo_url: str) -> tuple[str, str, str] | None:
 
     parsed = urlsplit(trimmed_url)
     host = (parsed.hostname or "").lower()
-    path = (parsed.path or "").strip("/")
-    parts = path.split("/")
-    if not host or len(parts) < 2:
+    path = (parsed.path or "").strip()
+    https_match = re.match(r"^/([^/]+)/([^/]+?)(?:\.git)?/?$", path)
+    if not host or https_match is None:
         return None
-    owner = parts[0]
-    repo_name = parts[1]
-    if repo_name.endswith(".git"):
-        repo_name = repo_name[:-4]
+    owner, repo_name = https_match.groups()
     if not owner or not repo_name:
         return None
     return host, owner, repo_name
@@ -3133,9 +3171,10 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                     validation_result.repo_url,
                     repo_path,
                 )
-            _install_requirements_for_repo(
-                repo_path, repo_name, plugin_type=PLUGIN_TYPE_COMMUNITY
-            )
+            if _check_auto_install_enabled(config, plugin_type=PLUGIN_TYPE_COMMUNITY):
+                _install_requirements_for_repo(
+                    repo_path, repo_name, plugin_type=PLUGIN_TYPE_COMMUNITY
+                )
             ready_community_plugins.append(plugin_name)
         else:
             logger.error("Repository URL not specified for a community plugin")
