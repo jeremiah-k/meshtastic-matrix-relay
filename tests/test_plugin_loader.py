@@ -1184,6 +1184,215 @@ class Plugin:
             self.community_dir,
         )
 
+    @patch("mmrelay.plugin_loader.clone_or_update_repo")
+    @patch("mmrelay.plugin_loader._install_requirements_for_repo")
+    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
+    @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
+    @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_load_plugins_missing_ref_warns_unsafe_default(
+        self,
+        mock_logger,
+        _mock_start_scheduler,
+        mock_get_custom_dirs,
+        mock_get_community_dirs,
+        mock_load_from_dir,
+        _mock_install_reqs,
+        mock_clone_repo,
+    ):
+        """Missing refs should warn and still default to the main branch."""
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+
+        config = {
+            "community-plugins": {
+                "test-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                }
+            },
+            "plugins": {},
+        }
+
+        mock_get_custom_dirs.return_value = []
+        mock_get_community_dirs.return_value = [self.community_dir]
+        mock_clone_repo.return_value = True
+        mock_load_from_dir.return_value = []
+
+        load_plugins(config)
+
+        mock_logger.warning.assert_any_call(
+            "No ref specified; defaulting to branch 'main' is deprecated and unsafe"
+        )
+
+    @patch("mmrelay.plugin_loader.clone_or_update_repo")
+    @patch("mmrelay.plugin_loader._install_requirements_for_repo")
+    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
+    @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
+    @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_load_plugins_branch_warning_respects_allow_moving_ref(
+        self,
+        mock_logger,
+        _mock_start_scheduler,
+        mock_get_custom_dirs,
+        mock_get_community_dirs,
+        mock_load_from_dir,
+        _mock_install_reqs,
+        mock_clone_repo,
+    ):
+        """Branch refs warn unless allow_moving_ref is explicitly true."""
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+
+        config = {
+            "community-plugins": {
+                "warn-branch": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "branch": "main",
+                },
+                "allow-branch": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo2.git",
+                    "branch": "main",
+                    "allow_moving_ref": True,
+                },
+            },
+            "plugins": {},
+        }
+
+        mock_get_custom_dirs.return_value = []
+        mock_get_community_dirs.return_value = [self.community_dir]
+        mock_clone_repo.return_value = True
+        mock_load_from_dir.return_value = []
+
+        load_plugins(config)
+
+        branch_warning = (
+            "Branch refs are moving targets and not recommended in production"
+        )
+        warning_calls = [
+            call_args
+            for call_args in mock_logger.warning.call_args_list
+            if call_args.args and call_args.args[0] == branch_warning
+        ]
+        self.assertEqual(
+            len(warning_calls),
+            1,
+            "Expected one branch warning for the plugin without allow_moving_ref",
+        )
+
+    @patch("mmrelay.plugin_loader.clone_or_update_repo")
+    @patch("mmrelay.plugin_loader._install_requirements_for_repo")
+    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
+    @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
+    @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_load_plugins_tag_warning_once_per_startup(
+        self,
+        mock_logger,
+        _mock_start_scheduler,
+        mock_get_custom_dirs,
+        mock_get_community_dirs,
+        mock_load_from_dir,
+        _mock_install_reqs,
+        mock_clone_repo,
+    ):
+        """Tag ref warning should be emitted once per load cycle."""
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+
+        config = {
+            "community-plugins": {
+                "tag-one": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "tag": "v1.0.0",
+                },
+                "tag-two": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo2.git",
+                    "tag": "v2.0.0",
+                },
+            },
+            "plugins": {},
+        }
+
+        mock_get_custom_dirs.return_value = []
+        mock_get_community_dirs.return_value = [self.community_dir]
+        mock_clone_repo.return_value = True
+        mock_load_from_dir.return_value = []
+
+        load_plugins(config)
+
+        tag_warning = "Tags can be retargeted; commit pins are safer"
+        warning_calls = [
+            call_args
+            for call_args in mock_logger.warning.call_args_list
+            if call_args.args and call_args.args[0] == tag_warning
+        ]
+        self.assertEqual(len(warning_calls), 1)
+
+    @patch("mmrelay.plugin_loader.clone_or_update_repo")
+    @patch("mmrelay.plugin_loader._install_requirements_for_repo")
+    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
+    @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
+    @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    @patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_load_plugins_commit_ref_emits_no_branch_or_tag_warning(
+        self,
+        mock_logger,
+        mock_update_check,
+        _mock_start_scheduler,
+        mock_get_custom_dirs,
+        mock_get_community_dirs,
+        mock_load_from_dir,
+        _mock_install_reqs,
+        mock_clone_repo,
+    ):
+        """Commit refs should not emit branch/tag safety warnings."""
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+
+        config = {
+            "community-plugins": {
+                "commit-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "commit": "0123456789abcdef0123456789abcdef01234567",
+                }
+            },
+            "plugins": {},
+        }
+
+        mock_get_custom_dirs.return_value = []
+        mock_get_community_dirs.return_value = [self.community_dir]
+        mock_clone_repo.return_value = True
+        mock_load_from_dir.return_value = []
+
+        load_plugins(config)
+
+        warning_texts = {
+            call_args.args[0]
+            for call_args in mock_logger.warning.call_args_list
+            if call_args.args
+        }
+        self.assertNotIn(
+            "Tags can be retargeted; commit pins are safer",
+            warning_texts,
+        )
+        self.assertNotIn(
+            "Branch refs are moving targets and not recommended in production",
+            warning_texts,
+        )
+        mock_update_check.assert_called_once()
+
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
@@ -2267,6 +2476,23 @@ class TestGitOperations(BaseGitTest):
 
         config = {"other": "value"}
         result = _check_auto_install_enabled(config)
+        self.assertTrue(result)
+
+    def test_check_auto_install_enabled_community_default_off(self):
+        """Community plugin dependency installs should default to disabled."""
+        from mmrelay.plugin_loader import _check_auto_install_enabled
+
+        result = _check_auto_install_enabled(None, plugin_type=pl.PLUGIN_TYPE_COMMUNITY)
+        self.assertFalse(result)
+
+    def test_check_auto_install_enabled_community_explicit_true(self):
+        """Community dependency installs should honor explicit config opt-in."""
+        from mmrelay.plugin_loader import _check_auto_install_enabled
+
+        config = {"security": {"auto_install_deps": True}}
+        result = _check_auto_install_enabled(
+            config, plugin_type=pl.PLUGIN_TYPE_COMMUNITY
+        )
         self.assertTrue(result)
 
     @patch("mmrelay.plugin_loader.logger")
@@ -3682,6 +3908,37 @@ class TestDependencyInstallation(BaseGitTest):
             "test-plugin",
         )
 
+    @patch("mmrelay.plugin_loader.logger")
+    @patch("mmrelay.plugin_loader._collect_requirements", return_value=[])
+    def test_install_community_requirements_warns_once_when_enabled(
+        self, _mock_collect, mock_logger
+    ):
+        """Community dependency auto-install should emit the risk warning once."""
+        pl._community_dep_install_warning_logged = False
+        with patch(
+            "mmrelay.plugin_loader.config", {"security": {"auto_install_deps": True}}
+        ):
+            _install_requirements_for_repo(
+                self.repo_path,
+                "test-plugin",
+                plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+            )
+            _install_requirements_for_repo(
+                self.repo_path,
+                "test-plugin",
+                plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+            )
+
+        risk_warning = (
+            "Community plugin dependencies execute arbitrary code and are unsafe"
+        )
+        warning_calls = [
+            call_args
+            for call_args in mock_logger.warning.call_args_list
+            if call_args.args and call_args.args[0] == risk_warning
+        ]
+        self.assertEqual(len(warning_calls), 1)
+
     @patch("mmrelay.plugin_loader._collect_requirements")
     @patch("mmrelay.plugin_loader._check_auto_install_enabled")
     def test_install_plugin_requirements_no_file(
@@ -4813,6 +5070,128 @@ class TestDependencyInstallation(BaseGitTest):
         # Should return False when all operations fail
         self.assertFalse(result)
         mock_logger.warning.assert_called()
+
+
+class TestCommunityPluginSecurityHelpers(unittest.TestCase):
+    """Focused tests for community plugin security-hardening helpers."""
+
+    def test_build_compare_url_supports_https_github(self):
+        """Compare URL should be generated for https GitHub repository URLs."""
+        compare_url = pl._build_compare_url(
+            "https://github.com/owner/repo.git",
+            "aaaabbbb",
+            "ccccdddd",
+        )
+        self.assertEqual(
+            compare_url,
+            "https://github.com/owner/repo/compare/aaaabbbb...ccccdddd",
+        )
+
+    def test_build_compare_url_supports_ssh_github(self):
+        """Compare URL should be generated for git@github.com repository URLs."""
+        compare_url = pl._build_compare_url(
+            "git@github.com:owner/repo.git",
+            "11112222",
+            "33334444",
+        )
+        self.assertEqual(
+            compare_url,
+            "https://github.com/owner/repo/compare/11112222...33334444",
+        )
+
+    def test_state_file_read_write_round_trip(self):
+        """State files should persist and reload plugin state safely."""
+        with tempfile.TemporaryDirectory() as repo_path:
+            expected_state = {
+                "last_notified_upstream_head": "abc123",
+                "last_checked_at": "2026-01-01T00:00:00+00:00",
+            }
+            pl._save_plugin_state(repo_path, expected_state)
+            loaded_state = pl._load_plugin_state(repo_path)
+            self.assertEqual(loaded_state, expected_state)
+
+    def test_state_file_invalid_json_returns_empty(self):
+        """Invalid state JSON should be ignored without raising."""
+        with tempfile.TemporaryDirectory() as repo_path:
+            state_path = os.path.join(repo_path, pl.PLUGIN_STATE_FILENAME)
+            with open(state_path, "w", encoding="utf-8") as handle:
+                handle.write("{invalid json}")
+            self.assertEqual(pl._load_plugin_state(repo_path), {})
+
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_resolve_remote_default_branch_parses_symref_output(self, mock_run_git):
+        """Default branch resolver should parse `git ls-remote --symref` output."""
+        mock_run_git.return_value = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                "ref: refs/heads/main\tHEAD\n"
+                "0123456789abcdef0123456789abcdef01234567\tHEAD\n"
+            ),
+            stderr="",
+        )
+        self.assertEqual(pl._resolve_remote_default_branch("/tmp/repo"), "main")
+
+    @patch("mmrelay.plugin_loader._resolve_local_head_commit")
+    @patch("mmrelay.plugin_loader._resolve_remote_default_branch")
+    @patch("mmrelay.plugin_loader._resolve_remote_branch_head_commit")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_check_commit_pin_update_detection_and_dedupe(
+        self,
+        mock_logger,
+        mock_resolve_remote_head,
+        mock_resolve_default_branch,
+        mock_resolve_local_head,
+    ):
+        """Commit update notification should persist and dedupe by upstream head."""
+        pinned_sha = "0123456789abcdef0123456789abcdef01234567"
+        upstream_sha = "89abcdef0123456789abcdef0123456789abcdef"
+        mock_resolve_local_head.return_value = pinned_sha
+        mock_resolve_default_branch.return_value = "main"
+        mock_resolve_remote_head.return_value = upstream_sha
+        compare_url = (
+            "https://github.com/owner/repo/compare/"
+            "0123456789abcdef0123456789abcdef01234567..."
+            "89abcdef0123456789abcdef0123456789abcdef"
+        )
+
+        with tempfile.TemporaryDirectory() as repo_path:
+            pl._check_commit_pin_for_upstream_updates(
+                "demo-plugin",
+                "https://github.com/owner/repo.git",
+                repo_path,
+            )
+            state = pl._load_plugin_state(repo_path)
+            self.assertEqual(state.get("last_notified_upstream_head"), upstream_sha)
+            self.assertIsInstance(state.get("last_checked_at"), str)
+            mock_logger.warning.assert_any_call(
+                "Plugin '%s' is pinned to %s, upstream is now %s",
+                "demo-plugin",
+                pinned_sha,
+                upstream_sha,
+            )
+            mock_logger.warning.assert_any_call("Compare: %s", compare_url)
+
+            # Force re-check by setting an old timestamp, but keep same notified head.
+            state["last_checked_at"] = "2000-01-01T00:00:00+00:00"
+            pl._save_plugin_state(repo_path, state)
+            mock_logger.warning.reset_mock()
+
+            pl._check_commit_pin_for_upstream_updates(
+                "demo-plugin",
+                "https://github.com/owner/repo.git",
+                repo_path,
+            )
+
+            self.assertFalse(
+                any(
+                    call_args.args
+                    and call_args.args[0]
+                    == "Plugin '%s' is pinned to %s, upstream is now %s"
+                    for call_args in mock_logger.warning.call_args_list
+                ),
+                "Expected no duplicate pinned-vs-upstream warning",
+            )
 
 
 class TestExecPluginModuleThreadSafety(unittest.TestCase):

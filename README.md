@@ -73,8 +73,10 @@ community-plugins:
   example-plugin:
     active: true
     repository: https://github.com/jeremiah-k/mmr-plugin-template.git
-    tag: main
+    commit: 0123456789abcdef0123456789abcdef01234567
 ```
+
+Community plugins run in the same MMRelay process and inherit its permissions. Use trusted sources and prefer commit-pinned refs.
 
 ### Plugin System
 
