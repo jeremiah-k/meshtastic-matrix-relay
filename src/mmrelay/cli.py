@@ -13,12 +13,14 @@ import platform
 import shutil
 import sys
 from collections.abc import Mapping
+
+# Import version from package
+from importlib.metadata import version as _get_version
 from typing import Any
 
 import yaml
 
-# Import version from package
-from mmrelay import __version__
+__version__ = _get_version("mmrelay")
 from mmrelay.cli_utils import (
     get_command,
     get_deprecation_warning,

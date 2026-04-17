@@ -10,6 +10,10 @@ import signal
 import sys
 import tempfile
 import threading
+
+# Import version from package
+# Import meshtastic_utils as a module to set event_loop
+from importlib.metadata import version as _get_version
 from pathlib import Path
 from typing import Any, Callable, cast
 
@@ -23,9 +27,9 @@ from nio import (
 )
 from nio.events.room_events import RoomMemberEvent
 
-# Import version from package
-# Import meshtastic_utils as a module to set event_loop
-from mmrelay import __version__, meshtastic_utils
+from mmrelay import meshtastic_utils
+
+__version__ = _get_version("mmrelay")
 from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config
 from mmrelay.constants.app import (
     APP_DISPLAY_NAME,

@@ -1,5 +1,3 @@
 """
 Meshtastic Matrix Relay - Bridge between Meshtastic mesh networks and Matrix chat rooms.
 """
-
-__version__: str = "1.3.4"
