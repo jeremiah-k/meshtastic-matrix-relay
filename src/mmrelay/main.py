@@ -27,9 +27,13 @@ from nio import (
 )
 from nio.events.room_events import RoomMemberEvent
 
+# isort: skip
 from mmrelay import meshtastic_utils
 
-__version__ = _get_version("mmrelay")
+try:
+    __version__ = _get_version("mmrelay")
+except Exception:
+    __version__ = "unknown"
 from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config
 from mmrelay.constants.app import (
     APP_DISPLAY_NAME,

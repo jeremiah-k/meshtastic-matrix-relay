@@ -20,7 +20,10 @@ from typing import Any
 
 import yaml
 
-__version__ = _get_version("mmrelay")
+try:
+    __version__ = _get_version("mmrelay")
+except Exception:
+    __version__ = "unknown"
 from mmrelay.cli_utils import (
     get_command,
     get_deprecation_warning,
