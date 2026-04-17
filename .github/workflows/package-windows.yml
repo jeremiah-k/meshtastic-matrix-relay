@@ -59,9 +59,10 @@ jobs:
         run: pyinstaller --name=mmrelay.exe --onefile --console --collect-all rich src/mmrelay/main.py
 
       - name: Build installer
-        uses: nadeemjazmawe/inno-setup-action-cli@31fe986b893b62ba38889603be4a74452a8f6362 # v6.0.5
+        uses: sharktide/iscc-cli@6f80e2e08ffc0606116be38199a77902d266b09a # v1.0.0
         with:
-          filepath: "/DAppVersion=${{ env.FILE_VERSION }} ./scripts/mmrelay.iss"
+          filepath: "./scripts/mmrelay.iss"
+          options: "/DAppVersion=${{ env.FILE_VERSION }}"
 
       - name: Upload installer as artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
