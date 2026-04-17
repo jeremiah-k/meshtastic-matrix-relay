@@ -25,7 +25,7 @@ jobs:
       - name: Extract version and build info
         id: get_version
         run: |
-          VERSION=$(python3 -c "import sys; sys.path.insert(0, 'src'); from mmrelay import __version__; print(__version__)")
+          VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
           BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
