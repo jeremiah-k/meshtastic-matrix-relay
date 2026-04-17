@@ -2,6 +2,7 @@
 import hashlib
 import importlib
 import importlib.util
+import json
 import os
 import re
 import shlex
@@ -13,6 +14,7 @@ import tempfile
 import threading
 import time
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from types import ModuleType
 from typing import Any, Final, Iterator, NamedTuple, NoReturn, Sequence, cast
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
@@ -105,6 +107,15 @@ _global_scheduler_stop_event: threading.Event | None = None
 # Plugin dependency directory (may not be set if base dir can't be resolved)
 _PLUGIN_DEPS_DIR: str | None = None
 PLUGIN_REQUIREMENTS_FILENAME: Final[str] = "requirements.txt"
+PLUGIN_STATE_FILENAME: Final[str] = ".mmrelay-plugin-state.json"
+PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT: Final[str] = (
+    "last_installed_requirements_commit"
+)
+PLUGIN_STATE_LAST_REQUIREMENTS_INSTALLED_AT: Final[str] = (
+    "last_requirements_installed_at"
+)
+COMMUNITY_PLUGIN_UPDATE_CHECK_INTERVAL: Final[timedelta] = timedelta(hours=24)
+_community_dep_install_warning_logged = False
 
 
 def _is_safe_plugin_name(name: str) -> bool:
@@ -729,9 +740,10 @@ def _reset_caches_for_tests() -> None:
 
     Sets the module globals `sorted_active_plugins` to an empty list and `plugins_loaded` to False to ensure test isolation.
     """
-    global sorted_active_plugins, plugins_loaded
+    global sorted_active_plugins, plugins_loaded, _community_dep_install_warning_logged
     sorted_active_plugins = []
     plugins_loaded = False
+    _community_dep_install_warning_logged = False
 
 
 def _refresh_dependency_paths() -> None:
@@ -786,31 +798,34 @@ def _refresh_dependency_paths() -> None:
     importlib.invalidate_caches()
 
 
-def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
+def _install_requirements_for_repo(
+    repo_path: str,
+    repo_name: str,
+    plugin_type: str = PLUGIN_TYPE_CUSTOM,
+) -> bool:
     """
     Install dependencies listed in repo_path/requirements.txt for a community plugin and refresh import paths.
 
-    This function is a no-op if no requirements file exists or if automatic installation is disabled by configuration.
-    When enabled, it will install allowed dependency entries either into the application's pipx environment (when pipx is in use)
-    or into the current Python environment (using pip). After a successful installation the interpreter import/search paths are refreshed
-    so newly installed packages become importable. Failures are logged and do not raise from this function.
+    This function is a no-op if no requirements file exists. It installs allowed dependency
+    entries either into the application's pipx environment (when pipx is in use) or into
+    the current Python environment (using pip). After a successful installation the
+    interpreter import/search paths are refreshed so newly installed packages become
+    importable. Failures are logged and do not raise from this function.
 
     Parameters:
         repo_path: Filesystem path to the plugin repository (looks for a requirements.txt file at this location).
         repo_name: Human-readable repository name used in log messages and warnings.
+
+    Returns:
+        bool: True when dependency handling completed without installation errors (including
+        no-op cases), False when installation failed.
     """
 
     requirements_path = os.path.join(repo_path, PLUGIN_REQUIREMENTS_FILENAME)
     if not os.path.isfile(requirements_path):
-        return
+        return True
 
-    if not _check_auto_install_enabled(config):
-        logger.warning(
-            "Auto-install of requirements for %s disabled by config; skipping.",
-            repo_name,
-        )
-        return
-
+    global _community_dep_install_warning_logged
     try:
         in_pipx = any(key in os.environ for key in PIPX_ENVIRONMENT_KEYS)
 
@@ -853,6 +868,14 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
             # Check if there are actual packages to install (not just flags)
             packages = [r for r in safe_requirements if not r.startswith("-")]
             if packages:
+                if (
+                    plugin_type == PLUGIN_TYPE_COMMUNITY
+                    and not _community_dep_install_warning_logged
+                ):
+                    logger.warning(
+                        "Community plugin dependencies execute arbitrary code and are unsafe"
+                    )
+                    _community_dep_install_warning_logged = True
                 # Write safe requirements to a temporary file to handle hashed requirements
                 # and environment markers properly
                 with tempfile.NamedTemporaryFile(
@@ -898,6 +921,14 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                     requirements_path,
                 )
             else:
+                if (
+                    plugin_type == PLUGIN_TYPE_COMMUNITY
+                    and not _community_dep_install_warning_logged
+                ):
+                    logger.warning(
+                        "Community plugin dependencies execute arbitrary code and are unsafe"
+                    )
+                    _community_dep_install_warning_logged = True
                 cmd = [
                     sys.executable,
                     "-m",
@@ -936,6 +967,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
             _refresh_dependency_paths()
         else:
             logger.info("No dependency installation run for plugin %s", repo_name)
+        return True
     except (
         OSError,
         subprocess.CalledProcessError,
@@ -950,6 +982,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
             "Plugin %s may not work correctly without its dependencies",
             repo_name,
         )
+        return False
 
 
 def _get_plugin_dirs(plugin_type: str) -> list[str]:
@@ -1120,37 +1153,373 @@ def _run_git(
     return _run(cmd, timeout=timeout, **kwargs)
 
 
-def _check_auto_install_enabled(config: Any) -> bool:
-    """
-    Determine whether automatic dependency installation is enabled for the given configuration.
-
-    Parameters:
-        config (dict|Any): Configuration mapping expected to contain a "security" dict with an optional
-            boolean "auto_install_deps" key. If `config` is falsy or missing the key, automatic
-            installation is considered enabled by default.
-
-    Returns:
-        True if automatic installation is enabled, False otherwise.
-    """
-    if not config:
-        return True
-    return bool(config.get("security", {}).get("auto_install_deps", True))
-
-
 def _raise_install_error(pkg_name: str) -> NoReturn:
     """
-    Emit a warning that automatic dependency installation is disabled and raise a subprocess.CalledProcessError.
+    Emit a warning that dependency auto-install is blocked and raise a subprocess.CalledProcessError.
 
     Parameters:
         pkg_name (str): Package name referenced in the warning message.
 
     Raises:
-        subprocess.CalledProcessError: Always raised to indicate installation cannot proceed because auto-install is disabled.
+        subprocess.CalledProcessError: Always raised to indicate installation cannot proceed because auto-install is blocked.
     """
     logger.warning(
-        f"Auto-install disabled; cannot install {pkg_name}. See docs for enabling."
+        f"Auto-install blocked by policy; cannot install {pkg_name}. See docs for enabling."
     )
     raise subprocess.CalledProcessError(1, "pip/pipx")
+
+
+def _state_file_path(repo_path: str) -> str:
+    """
+    Build the plugin state file path for a community plugin repository.
+
+    Parameters:
+        repo_path (str): Filesystem path to the plugin repository.
+
+    Returns:
+        str: Absolute path to the state file inside the repository.
+    """
+    return os.path.join(repo_path, PLUGIN_STATE_FILENAME)
+
+
+def _is_full_commit_sha(value: str) -> bool:
+    """
+    Check whether a string is a full 40-character hexadecimal commit SHA.
+
+    Parameters:
+        value (str): Candidate commit SHA string.
+
+    Returns:
+        bool: `True` for full 40-char hex SHAs, else `False`.
+    """
+    return bool(re.fullmatch(r"[0-9a-fA-F]{40}", (value or "").strip()))
+
+
+def _load_plugin_state(repo_path: str) -> dict[str, Any]:
+    """
+    Load persisted community plugin state from disk.
+
+    Parameters:
+        repo_path (str): Filesystem path to the plugin repository.
+
+    Returns:
+        dict[str, Any]: Parsed state object, or an empty dict if unavailable.
+    """
+    state_path = _state_file_path(repo_path)
+    try:
+        with open(state_path, encoding=DEFAULT_TEXT_ENCODING) as handle:
+            loaded_state = json.load(handle)
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        logger.debug("Failed to read plugin state file %s: %s", state_path, exc)
+        return {}
+
+    if isinstance(loaded_state, dict):
+        return cast(dict[str, Any], loaded_state)
+
+    logger.debug("Ignoring invalid plugin state in %s: expected object", state_path)
+    return {}
+
+
+def _save_plugin_state(repo_path: str, state: dict[str, Any]) -> None:
+    """
+    Persist community plugin state to disk using an atomic replace.
+
+    Parameters:
+        repo_path (str): Filesystem path to the plugin repository.
+        state (dict[str, Any]): Serializable state mapping to persist.
+    """
+    state_path = _state_file_path(repo_path)
+    tmp_path: str | None = None
+    try:
+        os.makedirs(repo_path, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding=DEFAULT_TEXT_ENCODING,
+            delete=False,
+            dir=repo_path,
+        ) as temp_handle:
+            json.dump(state, temp_handle, indent=2, sort_keys=True)
+            temp_handle.write("\n")
+            temp_handle.flush()
+            os.fsync(temp_handle.fileno())
+            tmp_path = temp_handle.name
+        os.replace(tmp_path, state_path)
+    except (OSError, TypeError, ValueError) as exc:
+        logger.debug("Failed to write plugin state file %s: %s", state_path, exc)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+
+def _parse_state_timestamp(value: Any) -> datetime | None:
+    """
+    Parse an ISO timestamp from plugin state.
+
+    Parameters:
+        value (Any): Raw timestamp value from state.
+
+    Returns:
+        datetime | None: Parsed UTC datetime, or None when invalid.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    normalized = value.strip().replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _resolve_remote_default_branch(repo_path: str) -> str | None:
+    """
+    Resolve the remote default branch name for origin.
+
+    Parameters:
+        repo_path (str): Filesystem path to the plugin repository.
+
+    Returns:
+        str | None: Default branch name (for example "main"), or None.
+    """
+    result: subprocess.CompletedProcess[str] | None = None
+    try:
+        result = _run_git(
+            [
+                "git",
+                "-C",
+                repo_path,
+                "ls-remote",
+                "--symref",
+                GIT_REMOTE_ORIGIN,
+                "HEAD",
+            ],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            capture_output=True,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug(
+            "Unable to resolve remote default branch for %s via symref: %s",
+            repo_path,
+            exc,
+        )
+
+    if result is not None:
+        for raw_line in result.stdout.splitlines():
+            line = raw_line.strip()
+            if not line.startswith("ref:"):
+                continue
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            ref_value = parts[1].strip()
+            prefix = "refs/heads/"
+            if ref_value.startswith(prefix):
+                return ref_value[len(prefix) :]
+
+    for fallback_branch in DEFAULT_BRANCHES:
+        if _resolve_remote_branch_head_commit(repo_path, fallback_branch):
+            return fallback_branch
+
+    logger.debug(
+        "Could not determine remote default branch for %s; skipping update check",
+        repo_path,
+    )
+    return None
+
+
+def _resolve_local_head_commit(repo_path: str) -> str | None:
+    """
+    Resolve the current local HEAD commit SHA for a repository.
+
+    Parameters:
+        repo_path (str): Filesystem path to the plugin repository.
+
+    Returns:
+        str | None: Full commit SHA, or None when unavailable.
+    """
+    try:
+        result = _run_git(
+            ["git", "-C", repo_path, GIT_REV_PARSE_CMD, GIT_REF_HEAD],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            capture_output=True,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug("Unable to resolve local HEAD commit for %s: %s", repo_path, exc)
+        return None
+
+    commit_sha = result.stdout.strip()
+    return commit_sha if _is_full_commit_sha(commit_sha) else None
+
+
+def _resolve_remote_branch_head_commit(repo_path: str, branch_name: str) -> str | None:
+    """
+    Resolve the remote HEAD commit SHA for a specific branch on origin.
+
+    Parameters:
+        repo_path (str): Filesystem path to the plugin repository.
+        branch_name (str): Branch name to resolve.
+
+    Returns:
+        str | None: Commit SHA for origin/<branch_name>, or None.
+    """
+    try:
+        result = _run_git(
+            [
+                "git",
+                "-C",
+                repo_path,
+                "ls-remote",
+                GIT_REMOTE_ORIGIN,
+                f"refs/heads/{branch_name}",
+            ],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            capture_output=True,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug(
+            "Unable to resolve remote branch head for %s (%s): %s",
+            repo_path,
+            branch_name,
+            exc,
+        )
+        return None
+
+    first_line = next((line.strip() for line in result.stdout.splitlines() if line), "")
+    if not first_line:
+        return None
+    remote_sha = first_line.split("\t", 1)[0].strip()
+    return remote_sha if _is_full_commit_sha(remote_sha) else None
+
+
+def _get_repo_host_info(repo_url: str) -> tuple[str, str, str] | None:
+    """
+    Extract host, owner, and repository name from a GitHub-style URL.
+
+    Supports:
+    - https://github.com/owner/repo.git
+    - git@github.com:owner/repo.git
+
+    Parameters:
+        repo_url (str): Repository URL to parse.
+
+    Returns:
+        tuple[str, str, str] | None: (host, owner, repo_name), or None if parsing fails.
+    """
+    trimmed_url = (repo_url or "").strip()
+    if not trimmed_url:
+        return None
+
+    ssh_match = re.match(r"^git@([^:]+):([^/]+)/([^/]+?)(?:\.git)?/?$", trimmed_url)
+    if ssh_match:
+        host, owner, repo_name = ssh_match.groups()
+        return host.lower(), owner, repo_name
+
+    parsed = urlsplit(trimmed_url)
+    host = (parsed.hostname or "").lower()
+    path = (parsed.path or "").strip()
+    https_match = re.match(r"^/([^/]+)/([^/]+?)(?:\.git)?/?$", path)
+    if not host or https_match is None:
+        return None
+    owner, repo_name = https_match.groups()
+    if not owner or not repo_name:
+        return None
+    return host, owner, repo_name
+
+
+def _build_compare_url(repo_url: str, base_sha: str, head_sha: str) -> str | None:
+    """
+    Build a GitHub compare URL between two explicit commits.
+
+    Parameters:
+        repo_url (str): Repository URL.
+        base_sha (str): Older/base commit SHA.
+        head_sha (str): Newer/head commit SHA.
+
+    Returns:
+        str | None: Compare URL for GitHub repositories, otherwise None.
+    """
+    if not base_sha or not head_sha:
+        return None
+
+    repo_info = _get_repo_host_info(repo_url)
+    if repo_info is None:
+        return None
+    host, owner, repo_name = repo_info
+    if host != "github.com":
+        return None
+
+    return f"https://github.com/{owner}/{repo_name}/compare/{base_sha}...{head_sha}"
+
+
+def _check_commit_pin_for_upstream_updates(
+    plugin_name: str,
+    repo_url: str,
+    repo_path: str,
+) -> None:
+    """
+    Check whether a commit-pinned community plugin is behind the upstream default branch.
+
+    The check is throttled by the state file's `last_checked_at` value and never
+    raises. It only logs a new notification when upstream default-branch HEAD
+    changes since the last notification.
+
+    Parameters:
+        plugin_name (str): Configured plugin name for logging.
+        repo_url (str): Repository URL used for optional compare URL generation.
+        repo_path (str): Filesystem path to the checked-out repository.
+    """
+    try:
+        state = _load_plugin_state(repo_path)
+        now = datetime.now(timezone.utc)
+        last_checked_at = _parse_state_timestamp(state.get("last_checked_at"))
+        if (
+            last_checked_at is not None
+            and now - last_checked_at < COMMUNITY_PLUGIN_UPDATE_CHECK_INTERVAL
+        ):
+            return
+
+        pinned_sha = _resolve_local_head_commit(repo_path)
+        default_branch = _resolve_remote_default_branch(repo_path)
+        upstream_sha = None
+        if default_branch:
+            upstream_sha = _resolve_remote_branch_head_commit(repo_path, default_branch)
+
+        if default_branch:
+            state["last_seen_default_branch"] = default_branch
+        if upstream_sha:
+            state["last_seen_default_branch_head"] = upstream_sha
+
+        if pinned_sha and upstream_sha and upstream_sha != pinned_sha:
+            last_notified_upstream = state.get("last_notified_upstream_head")
+            if not isinstance(last_notified_upstream, str):
+                last_notified_upstream = ""
+            if upstream_sha != last_notified_upstream:
+                logger.warning(
+                    "Plugin '%s' is pinned to %s, upstream is now %s",
+                    plugin_name,
+                    pinned_sha,
+                    upstream_sha,
+                )
+                compare_url = _build_compare_url(repo_url, pinned_sha, upstream_sha)
+                if compare_url:
+                    logger.warning("Compare: %s", compare_url)
+                state["last_notified_upstream_head"] = upstream_sha
+
+        state["last_checked_at"] = now.isoformat()
+        _save_plugin_state(repo_path, state)
+    except Exception as exc:  # pragma: no cover - defensive safety net
+        logger.debug(
+            "Failed to check upstream updates for community plugin %s: %s",
+            plugin_name,
+            exc,
+        )
 
 
 def _fetch_commit_with_fallback(repo_path: str, ref_value: str, repo_name: str) -> bool:
@@ -2131,15 +2500,20 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
     )
 
 
-def load_plugins_from_directory(directory: str, recursive: bool = False) -> list[Any]:
+def load_plugins_from_directory(
+    directory: str,
+    recursive: bool = False,
+    plugin_type: str = PLUGIN_TYPE_CUSTOM,
+) -> list[Any]:
     """
     Discover and instantiate top-level Plugin classes from Python modules in a directory.
 
-    Scans the given directory (optionally recursively) for .py modules, imports each module in an isolated namespace, and returns instantiated top-level `Plugin` objects found. On import failure due to a missing dependency and when automatic installation is enabled, the function may attempt to install the missing package and refresh import paths before retrying. The function does not raise on individual plugin load failures; it returns only successfully instantiated plugins.
+    Scans the given directory (optionally recursively) for .py modules, imports each module in an isolated namespace, and returns instantiated top-level `Plugin` objects found. On import failure due to a missing dependency, the function may attempt an auto-install retry for non-community plugins and refresh import paths before retrying. The function does not raise on individual plugin load failures; it returns only successfully instantiated plugins.
 
     Parameters:
         directory (str): Path to the directory containing plugin Python files.
         recursive (bool): If True, scan subdirectories recursively; otherwise scan only the top-level directory.
+        plugin_type (str): Plugin source category used for dependency auto-install policy.
 
     Returns:
         list[Any]: Instances of discovered `Plugin` classes; returns an empty list if none are found.
@@ -2229,7 +2603,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
 
                         # Try to automatically install the missing dependency
                         try:
-                            if not _check_auto_install_enabled(config):
+                            if plugin_type == PLUGIN_TYPE_COMMUNITY:
                                 _raise_install_error(missing_pkg)
                             # Check if we're running in a pipx environment
                             in_pipx = (
@@ -2609,6 +2983,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         CONFIG_SECTION_COMMUNITY_PLUGINS, community_plugins_config
     )
     ready_community_plugins = []
+    tag_ref_warning_logged = False
 
     if active_community_plugins:
         # Ensure all community plugin directories exist
@@ -2665,6 +3040,8 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         commit = plugin_info.get("commit")
         tag = plugin_info.get("tag")
         branch = plugin_info.get("branch")
+        install_requirements_raw = plugin_info.get("install_requirements", False)
+        install_requirements = False
 
         # Validate that repo_url and ref fields are strings if provided
         if repo_url is not None and not isinstance(repo_url, str):
@@ -2692,27 +3069,57 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                 invalid_ref_field,
             )
             continue
+        if isinstance(install_requirements_raw, bool):
+            install_requirements = install_requirements_raw
+        elif install_requirements_raw is not None:
+            logger.warning(
+                "Ignoring non-boolean 'install_requirements' value for %s plugin '%s'; expected true/false.",
+                CONFIG_SECTION_COMMUNITY_PLUGINS,
+                plugin_name,
+            )
 
         # Determine what to use (commit, tag, branch, or default)
         # Priority: commit > tag > branch
+        explicit_branch_ref = False
+        has_explicit_ref = False
         if commit:
+            has_explicit_ref = True
             if tag or branch:
                 logger.warning(
                     f"Commit specified along with tag/branch for plugin {plugin_name}, using commit"
                 )
             ref = {"type": "commit", "value": commit}
         elif tag and branch:
+            has_explicit_ref = True
             logger.warning(
                 f"Both tag and branch specified for plugin {plugin_name}, using tag"
             )
             ref = {"type": "tag", "value": tag}
         elif tag:
+            has_explicit_ref = True
             ref = {"type": "tag", "value": tag}
         elif branch:
+            has_explicit_ref = True
             ref = {"type": "branch", "value": branch}
+            explicit_branch_ref = True
         else:
             # Default to the first configured default branch if neither is specified.
-            ref = {"type": "branch", "value": DEFAULT_BRANCHES[0]}
+            default_branch = DEFAULT_BRANCHES[0]
+            logger.warning(
+                "No ref specified for %s; defaulting to branch '%s' is deprecated and unsafe",
+                plugin_name,
+                default_branch,
+            )
+            ref = {"type": "branch", "value": default_branch}
+
+        if ref["type"] == "tag" and not tag_ref_warning_logged:
+            logger.warning("Tags can be retargeted; commit pins are safer")
+            tag_ref_warning_logged = True
+        elif ref["type"] == "branch" and explicit_branch_ref:
+            logger.warning(
+                "Community plugin '%s' uses a branch ref; branch refs are moving targets and not recommended in production",
+                plugin_name,
+            )
 
         if repo_url:
             if community_plugins_dir is None:
@@ -2766,7 +3173,73 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
             if not success:
                 logger.warning(f"Failed to clone/update plugin {plugin_name}, skipping")
                 continue
-            _install_requirements_for_repo(repo_path, repo_name)
+            if ref["type"] == "commit":
+                _check_commit_pin_for_upstream_updates(
+                    plugin_name,
+                    validation_result.repo_url,
+                    repo_path,
+                )
+            if install_requirements:
+                ref_value = str(ref.get("value", "")).strip()
+                ref_type = str(ref.get("type", "")).strip()
+                if not has_explicit_ref:
+                    logger.warning(
+                        "Skipping dependency install for community plugin '%s': "
+                        "install_requirements requires an explicit ref; "
+                        "implicit default-branch refs are not eligible.",
+                        plugin_name,
+                    )
+                elif ref_type == "commit" and not _is_full_commit_sha(ref_value):
+                    logger.warning(
+                        "Skipping dependency install for community plugin '%s': "
+                        "commit refs for install_requirements must use a full "
+                        "40-character SHA.",
+                        plugin_name,
+                    )
+                else:
+                    if ref_type == "branch":
+                        logger.warning(
+                            "Community plugin '%s' uses install_requirements with an "
+                            "explicit branch ref; installs will follow moving upstream "
+                            "commits.",
+                            plugin_name,
+                        )
+                    elif ref_type == "tag":
+                        logger.warning(
+                            "Community plugin '%s' uses install_requirements with an "
+                            "explicit tag ref; tags can be retargeted.",
+                            plugin_name,
+                        )
+                    pinned_sha = _resolve_local_head_commit(repo_path)
+                    if pinned_sha is None:
+                        logger.warning(
+                            "Skipping dependency install for community plugin '%s': unable to resolve checked-out commit.",
+                            plugin_name,
+                        )
+                    else:
+                        state = _load_plugin_state(repo_path)
+                        last_installed_commit = state.get(
+                            PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT
+                        )
+                        if (
+                            isinstance(last_installed_commit, str)
+                            and last_installed_commit == pinned_sha
+                        ):
+                            logger.debug(
+                                "Skipping requirements install for community plugin %s; already installed for commit %s",
+                                plugin_name,
+                                pinned_sha,
+                            )
+                        elif _install_requirements_for_repo(
+                            repo_path, repo_name, plugin_type=PLUGIN_TYPE_COMMUNITY
+                        ):
+                            state[PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT] = (
+                                pinned_sha
+                            )
+                            state[PLUGIN_STATE_LAST_REQUIREMENTS_INSTALLED_AT] = (
+                                datetime.now(timezone.utc).isoformat()
+                            )
+                            _save_plugin_state(repo_path, state)
             ready_community_plugins.append(plugin_name)
         else:
             logger.error("Repository URL not specified for a community plugin")
@@ -2811,7 +3284,11 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                     logger.info(f"Loading community plugin from: {plugin_path}")
                     try:
                         plugins.extend(
-                            load_plugins_from_directory(plugin_path, recursive=True)
+                            load_plugins_from_directory(
+                                plugin_path,
+                                recursive=True,
+                                plugin_type=PLUGIN_TYPE_COMMUNITY,
+                            )
                         )
                         plugin_found = True
                         break

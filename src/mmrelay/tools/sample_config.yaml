@@ -133,11 +133,15 @@ plugins:
 #  sample_plugin:
 #    active: true
 #    repository: https://github.com/username/sample_plugin.git
-#    tag: master
+#    commit: 0123456789abcdef0123456789abcdef01234567
+#    install_requirements: true # Optional; commit pins preferred
 #  advanced_plugin:
 #    active: false
 #    repository: https://github.com/username/advanced_plugin.git
-#    tag: v1.3.0
+#    commit: fedcba9876543210fedcba9876543210fedcba98
+#
+# Community plugins run in-process. Use trusted sources.
+# Prefer commit pins. install_requirements: true installs deps once per resolved commit.
 
 #custom-plugins:
 #  my_custom_plugin:
