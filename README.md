@@ -77,6 +77,7 @@ community-plugins:
 ```
 
 Community plugins run in the same MMRelay process and inherit its permissions. Use trusted sources and prefer commit-pinned refs.
+Community plugin dependency installation is disabled by default; enable it only for trusted repositories with `security.auto_install_deps: true`.
 
 ### Plugin System
 

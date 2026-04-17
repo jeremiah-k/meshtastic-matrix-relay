@@ -1243,11 +1243,11 @@ class Plugin:
     def test_load_plugins_missing_ref_warns_unsafe_default(
         self,
         mock_logger,
-        _mock_start_scheduler,
+        mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        _mock_install_reqs,
+        mock_install_reqs,
         mock_clone_repo,
     ):
         """Missing refs should warn and still default to the main branch."""
@@ -1276,6 +1276,12 @@ class Plugin:
             "test-plugin",
             "main",
         )
+        mock_start_scheduler.assert_called_once()
+        mock_install_reqs.assert_called_once_with(
+            os.path.join(self.community_dir, "repo"),
+            "repo",
+            plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+        )
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo")
@@ -1284,17 +1290,17 @@ class Plugin:
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
     @patch("mmrelay.plugin_loader.logger")
-    def test_load_plugins_branch_warning_respects_allow_moving_ref(
+    def test_load_plugins_branch_warning_for_each_explicit_branch_ref(
         self,
         mock_logger,
-        _mock_start_scheduler,
+        mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        _mock_install_reqs,
+        mock_install_reqs,
         mock_clone_repo,
     ):
-        """Branch refs warn unless allow_moving_ref is explicitly true."""
+        """Branch refs should always warn for explicit branch pins."""
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
 
@@ -1309,7 +1315,6 @@ class Plugin:
                     "active": True,
                     "repository": "https://github.com/user/repo2.git",
                     "branch": "main",
-                    "allow_moving_ref": True,
                 },
             },
             "plugins": {},
@@ -1332,9 +1337,11 @@ class Plugin:
         ]
         self.assertEqual(
             len(warning_calls),
-            1,
-            "Expected one branch warning for the plugin without allow_moving_ref",
+            2,
+            "Expected one branch warning per explicitly branch-pinned plugin",
         )
+        mock_start_scheduler.assert_called_once()
+        self.assertEqual(mock_install_reqs.call_count, 2)
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo")
@@ -1346,11 +1353,11 @@ class Plugin:
     def test_load_plugins_tag_warning_once_per_startup(
         self,
         mock_logger,
-        _mock_start_scheduler,
+        mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        _mock_install_reqs,
+        mock_install_reqs,
         mock_clone_repo,
     ):
         """Tag ref warning should be emitted once per load cycle."""
@@ -1387,6 +1394,8 @@ class Plugin:
             if call_args.args and call_args.args[0] == tag_warning
         ]
         self.assertEqual(len(warning_calls), 1)
+        mock_start_scheduler.assert_called_once()
+        self.assertEqual(mock_install_reqs.call_count, 2)
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo")
@@ -1400,11 +1409,11 @@ class Plugin:
         self,
         mock_logger,
         mock_update_check,
-        _mock_start_scheduler,
+        mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        _mock_install_reqs,
+        mock_install_reqs,
         mock_clone_repo,
     ):
         """Commit refs should not emit branch/tag safety warnings."""
@@ -1443,6 +1452,12 @@ class Plugin:
             warning_texts,
         )
         mock_update_check.assert_called_once()
+        mock_start_scheduler.assert_called_once()
+        mock_install_reqs.assert_called_once_with(
+            os.path.join(self.community_dir, "repo"),
+            "repo",
+            plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+        )
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo")
@@ -1450,16 +1465,16 @@ class Plugin:
     @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
-    def test_load_plugins_skips_community_dep_install_when_disabled(
+    def test_load_plugins_calls_community_dep_installer_even_when_disabled(
         self,
-        _mock_start_scheduler,
+        mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
         mock_install_reqs,
         mock_clone_repo,
     ):
-        """Community dependency installer function should not be called when disabled."""
+        """Loader should always call installer helper and let it enforce policy."""
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
 
@@ -1486,7 +1501,12 @@ class Plugin:
             load_plugins(config)
 
         mock_update_check.assert_called_once()
-        mock_install_reqs.assert_not_called()
+        mock_install_reqs.assert_called_once_with(
+            os.path.join(self.community_dir, "repo"),
+            "repo",
+            plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+        )
+        mock_start_scheduler.assert_called_once()
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader.load_plugins_from_directory")

@@ -3104,7 +3104,6 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         # Determine what to use (commit, tag, branch, or default)
         # Priority: commit > tag > branch
         explicit_branch_ref = False
-        allow_moving_ref = plugin_info.get("allow_moving_ref") is True
         if commit:
             if tag or branch:
                 logger.warning(
@@ -3134,7 +3133,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         if ref["type"] == "tag" and not tag_ref_warning_logged:
             logger.warning("Tags can be retargeted; commit pins are safer")
             tag_ref_warning_logged = True
-        elif ref["type"] == "branch" and explicit_branch_ref and not allow_moving_ref:
+        elif ref["type"] == "branch" and explicit_branch_ref:
             logger.warning(
                 "Branch refs are moving targets and not recommended in production"
             )
@@ -3197,10 +3196,9 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                     validation_result.repo_url,
                     repo_path,
                 )
-            if _check_auto_install_enabled(config, plugin_type=PLUGIN_TYPE_COMMUNITY):
-                _install_requirements_for_repo(
-                    repo_path, repo_name, plugin_type=PLUGIN_TYPE_COMMUNITY
-                )
+            _install_requirements_for_repo(
+                repo_path, repo_name, plugin_type=PLUGIN_TYPE_COMMUNITY
+            )
             ready_community_plugins.append(plugin_name)
         else:
             logger.error("Repository URL not specified for a community plugin")

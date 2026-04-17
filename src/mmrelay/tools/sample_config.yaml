@@ -141,6 +141,9 @@ plugins:
 #
 # Community plugins run in-process and inherit MMRelay permissions.
 # Use trusted sources and prefer commit-pinned refs.
+# Community dependency auto-install is disabled by default.
+#security:
+#  auto_install_deps: true # Only enable for trusted community plugin repositories.
 
 #custom-plugins:
 #  my_custom_plugin:
