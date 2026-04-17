@@ -74,10 +74,13 @@ community-plugins:
     active: true
     repository: https://github.com/jeremiah-k/mmr-plugin-template.git
     commit: 0123456789abcdef0123456789abcdef01234567
+    install_requirements: true
 ```
 
 Community plugins run in the same MMRelay process and inherit its permissions. Use trusted sources and prefer commit-pinned refs.
-Community plugin dependency installation is disabled by default; enable it only for trusted repositories with `security.auto_install_deps: true`.
+Dependency installation is per-plugin: set `install_requirements: true` only for trusted plugins pinned to a full commit SHA.
+When `install_requirements: true` is used with `branch`, `tag`, or no ref, MMRelay logs a warning and skips installation.
+For commit-pinned plugins, requirements are installed once per commit and skipped when the pinned revision is unchanged.
 
 ### Plugin System
 

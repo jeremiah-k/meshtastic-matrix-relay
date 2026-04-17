@@ -108,6 +108,12 @@ _global_scheduler_stop_event: threading.Event | None = None
 _PLUGIN_DEPS_DIR: str | None = None
 PLUGIN_REQUIREMENTS_FILENAME: Final[str] = "requirements.txt"
 PLUGIN_STATE_FILENAME: Final[str] = ".mmrelay-plugin-state.json"
+PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT: Final[str] = (
+    "last_installed_requirements_commit"
+)
+PLUGIN_STATE_LAST_REQUIREMENTS_INSTALLED_AT: Final[str] = (
+    "last_requirements_installed_at"
+)
 COMMUNITY_PLUGIN_UPDATE_CHECK_INTERVAL: Final[timedelta] = timedelta(hours=24)
 _community_dep_install_warning_logged = False
 
@@ -796,30 +802,28 @@ def _install_requirements_for_repo(
     repo_path: str,
     repo_name: str,
     plugin_type: str = PLUGIN_TYPE_CUSTOM,
-) -> None:
+) -> bool:
     """
     Install dependencies listed in repo_path/requirements.txt for a community plugin and refresh import paths.
 
-    This function is a no-op if no requirements file exists or if automatic installation is disabled by configuration.
-    When enabled, it will install allowed dependency entries either into the application's pipx environment (when pipx is in use)
-    or into the current Python environment (using pip). After a successful installation the interpreter import/search paths are refreshed
-    so newly installed packages become importable. Failures are logged and do not raise from this function.
+    This function is a no-op if no requirements file exists. It installs allowed dependency
+    entries either into the application's pipx environment (when pipx is in use) or into
+    the current Python environment (using pip). After a successful installation the
+    interpreter import/search paths are refreshed so newly installed packages become
+    importable. Failures are logged and do not raise from this function.
 
     Parameters:
         repo_path: Filesystem path to the plugin repository (looks for a requirements.txt file at this location).
         repo_name: Human-readable repository name used in log messages and warnings.
+
+    Returns:
+        bool: True when dependency handling completed without installation errors (including
+        no-op cases), False when installation failed.
     """
 
     requirements_path = os.path.join(repo_path, PLUGIN_REQUIREMENTS_FILENAME)
     if not os.path.isfile(requirements_path):
-        return
-
-    if not _check_auto_install_enabled(config, plugin_type=plugin_type):
-        logger.warning(
-            "Auto-install of requirements for %s disabled by config; skipping.",
-            repo_name,
-        )
-        return
+        return True
 
     global _community_dep_install_warning_logged
     try:
@@ -963,6 +967,7 @@ def _install_requirements_for_repo(
             _refresh_dependency_paths()
         else:
             logger.info("No dependency installation run for plugin %s", repo_name)
+        return True
     except (
         OSError,
         subprocess.CalledProcessError,
@@ -977,6 +982,7 @@ def _install_requirements_for_repo(
             "Plugin %s may not work correctly without its dependencies",
             repo_name,
         )
+        return False
 
 
 def _get_plugin_dirs(plugin_type: str) -> list[str]:
@@ -1147,46 +1153,18 @@ def _run_git(
     return _run(cmd, timeout=timeout, **kwargs)
 
 
-def _check_auto_install_enabled(
-    config: Any, plugin_type: str = PLUGIN_TYPE_CUSTOM
-) -> bool:
-    """
-    Determine whether automatic dependency installation is enabled for the given configuration and plugin type.
-
-    Parameters:
-        config (dict|Any): Configuration mapping expected to contain a "security" dict
-            with an optional boolean "auto_install_deps" key.
-        plugin_type (str): Plugin source category. Community plugin dependency
-            auto-install is disabled by default unless explicitly enabled in config.
-
-    Returns:
-        True if automatic installation is enabled for the plugin type, False otherwise.
-    """
-    if not isinstance(config, dict):
-        return plugin_type != PLUGIN_TYPE_COMMUNITY
-
-    security_config = config.get("security", {})
-    if not isinstance(security_config, dict):
-        security_config = {}
-
-    # Keep existing custom plugin behavior, but require explicit opt-in for
-    # community plugin dependency installation.
-    default_enabled = plugin_type != PLUGIN_TYPE_COMMUNITY
-    return bool(security_config.get("auto_install_deps", default_enabled))
-
-
 def _raise_install_error(pkg_name: str) -> NoReturn:
     """
-    Emit a warning that automatic dependency installation is disabled and raise a subprocess.CalledProcessError.
+    Emit a warning that dependency auto-install is blocked and raise a subprocess.CalledProcessError.
 
     Parameters:
         pkg_name (str): Package name referenced in the warning message.
 
     Raises:
-        subprocess.CalledProcessError: Always raised to indicate installation cannot proceed because auto-install is disabled.
+        subprocess.CalledProcessError: Always raised to indicate installation cannot proceed because auto-install is blocked.
     """
     logger.warning(
-        f"Auto-install disabled; cannot install {pkg_name}. See docs for enabling."
+        f"Auto-install blocked by policy; cannot install {pkg_name}. See docs for enabling."
     )
     raise subprocess.CalledProcessError(1, "pip/pipx")
 
@@ -2530,7 +2508,7 @@ def load_plugins_from_directory(
     """
     Discover and instantiate top-level Plugin classes from Python modules in a directory.
 
-    Scans the given directory (optionally recursively) for .py modules, imports each module in an isolated namespace, and returns instantiated top-level `Plugin` objects found. On import failure due to a missing dependency and when automatic installation is enabled, the function may attempt to install the missing package and refresh import paths before retrying. The function does not raise on individual plugin load failures; it returns only successfully instantiated plugins.
+    Scans the given directory (optionally recursively) for .py modules, imports each module in an isolated namespace, and returns instantiated top-level `Plugin` objects found. On import failure due to a missing dependency, the function may attempt an auto-install retry for non-community plugins and refresh import paths before retrying. The function does not raise on individual plugin load failures; it returns only successfully instantiated plugins.
 
     Parameters:
         directory (str): Path to the directory containing plugin Python files.
@@ -2625,9 +2603,7 @@ def load_plugins_from_directory(
 
                         # Try to automatically install the missing dependency
                         try:
-                            if not _check_auto_install_enabled(
-                                config, plugin_type=plugin_type
-                            ):
+                            if plugin_type == PLUGIN_TYPE_COMMUNITY:
                                 _raise_install_error(missing_pkg)
                             # Check if we're running in a pipx environment
                             in_pipx = (
@@ -3073,6 +3049,8 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         commit = plugin_info.get("commit")
         tag = plugin_info.get("tag")
         branch = plugin_info.get("branch")
+        install_requirements_raw = plugin_info.get("install_requirements", False)
+        install_requirements = False
 
         # Validate that repo_url and ref fields are strings if provided
         if repo_url is not None and not isinstance(repo_url, str):
@@ -3100,6 +3078,14 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                 invalid_ref_field,
             )
             continue
+        if isinstance(install_requirements_raw, bool):
+            install_requirements = install_requirements_raw
+        elif install_requirements_raw is not None:
+            logger.warning(
+                "Ignoring non-boolean 'install_requirements' value for %s plugin '%s'; expected true/false.",
+                CONFIG_SECTION_COMMUNITY_PLUGINS,
+                plugin_name,
+            )
 
         # Determine what to use (commit, tag, branch, or default)
         # Priority: commit > tag > branch
@@ -3196,9 +3182,44 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                     validation_result.repo_url,
                     repo_path,
                 )
-            _install_requirements_for_repo(
-                repo_path, repo_name, plugin_type=PLUGIN_TYPE_COMMUNITY
-            )
+            if install_requirements:
+                ref_value = str(ref.get("value", "")).strip()
+                if ref.get("type") != "commit" or not _is_full_commit_sha(ref_value):
+                    logger.warning(
+                        "Skipping dependency install for community plugin '%s': install_requirements requires a full 40-character commit pin; branch, tag, and default refs are not allowed.",
+                        plugin_name,
+                    )
+                else:
+                    pinned_sha = _resolve_local_head_commit(repo_path)
+                    if pinned_sha is None:
+                        logger.warning(
+                            "Skipping dependency install for community plugin '%s': unable to resolve checked-out commit.",
+                            plugin_name,
+                        )
+                    else:
+                        state = _load_plugin_state(repo_path)
+                        last_installed_commit = state.get(
+                            PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT
+                        )
+                        if (
+                            isinstance(last_installed_commit, str)
+                            and last_installed_commit == pinned_sha
+                        ):
+                            logger.debug(
+                                "Skipping requirements install for community plugin %s; already installed for commit %s",
+                                plugin_name,
+                                pinned_sha,
+                            )
+                        elif _install_requirements_for_repo(
+                            repo_path, repo_name, plugin_type=PLUGIN_TYPE_COMMUNITY
+                        ):
+                            state[PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT] = (
+                                pinned_sha
+                            )
+                            state[PLUGIN_STATE_LAST_REQUIREMENTS_INSTALLED_AT] = (
+                                datetime.now(timezone.utc).isoformat()
+                            )
+                            _save_plugin_state(repo_path, state)
             ready_community_plugins.append(plugin_name)
         else:
             logger.error("Repository URL not specified for a community plugin")

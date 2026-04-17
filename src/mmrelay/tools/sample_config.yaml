@@ -134,6 +134,7 @@ plugins:
 #    active: true
 #    repository: https://github.com/username/sample_plugin.git
 #    commit: 0123456789abcdef0123456789abcdef01234567
+#    install_requirements: true # Allowed only with full commit pins
 #  advanced_plugin:
 #    active: false
 #    repository: https://github.com/username/advanced_plugin.git
@@ -141,9 +142,9 @@ plugins:
 #
 # Community plugins run in-process and inherit MMRelay permissions.
 # Use trusted sources and prefer commit-pinned refs.
-# Community dependency auto-install is disabled by default.
-#security:
-#  auto_install_deps: true # Only enable for trusted community plugin repositories.
+# Community dependency installation is per-plugin and disabled by default.
+# install_requirements is ignored for branch/tag/missing refs.
+# When enabled with a commit pin, requirements are installed once per commit.
 
 #custom-plugins:
 #  my_custom_plugin:
