@@ -22,7 +22,7 @@ A powerful and easy-to-use relay between Meshtastic devices and Matrix chat room
 
 > **Encryption note**: MMRelay supports encrypted Matrix rooms (Matrix E2EE). For details on how this works and its security implications, see the [E2EE Setup Guide](docs/E2EE.md).
 >
-> **BLE integration note (v1.3.3)**: MMRelay now integrates with [mtjk (Meshtastic Python fork)](https://github.com/jeremiah-k/mtjk) while preserving compatibility boundaries for older Meshtastic Python BLE interfaces. Technical details: [BLE Dual-Library Compatibility](docs/dev/BLE_DUAL_LIBRARY_COMPATIBILITY.md).
+> **Improved BLE stability (v1.3.3)**: BLE reliability improved in v1.3.3 after switching BLE handling to [mtjk](https://github.com/jeremiah-k/mtjk).
 
 ## Documentation
 
@@ -53,18 +53,22 @@ Produce high-level details about your mesh:
 
 See the full list of [core plugins](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Core-Plugins).
 
-### Community & Custom Plugins
+### Plugin System
 
-MMRelay's plugin system allows you to extend functionality in two ways:
+MMRelay supports three plugin types:
 
-- **Custom Plugins**: Create personal plugins for your own use, stored in `~/.mmrelay/plugins/custom/`
-- **Community Plugins**: Share your creations with others or use plugins developed by the community
+- **Core Plugins**: Built in with MMRelay
+- **Community Plugins**: Git-based plugins that MMRelay syncs for you
+- **Custom Plugins**: Local/manual plugins for private use and development
+
+MMRelay manages plugin directories under `MMRELAY_HOME` (default `~/.mmrelay`).
+Most users only need `config.yaml`; path details matter mainly when authoring custom plugins.
 
 Check the [Community Plugins Development Guide](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Community-Plugin-Development-Guide) in our wiki to get started.
 
 ✨️ Visit the [Community Plugins List](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Community-Plugin-List)!
 
-#### Install a Community Plugin
+### Install a Community Plugin
 
 Add the repository under the `community-plugins` section in `config.yaml`:
 
@@ -83,14 +87,6 @@ community-plugins:
 - Explicit `branch` and `tag` refs are allowed for dependency install, but MMRelay logs warnings.
 - Missing ref (implicit default branch) is not eligible for dependency install.
 - Dependencies install once per resolved local commit and are skipped when unchanged.
-
-### Plugin System
-
-Plugins make it easy to extend functionality without modifying the core program. MMRelay features a powerful plugin system with standardized locations:
-
-- **Core Plugins**: Pre-installed with the package
-- **Custom Plugins**: Your own plugins in `~/.mmrelay/plugins/custom/`
-- **Community Plugins**: Third-party plugins in `~/.mmrelay/plugins/community/`
 
 ---
 
