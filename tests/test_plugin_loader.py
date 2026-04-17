@@ -518,6 +518,51 @@ class Plugin:
         self.assertEqual(len(plugins), 1)
         self.assertEqual(plugins[0].plugin_name, "auto_plugin")
 
+    def test_load_plugins_from_directory_community_missing_dependency_respects_disabled_auto_install(
+        self,
+    ):
+        """Community plugin dependency retry should not install when disabled."""
+        plugin_content = """
+import missingdep_for_community
+
+class Plugin:
+    pass
+"""
+        plugin_file = os.path.join(self.custom_dir, "community_missing_dep.py")
+        with open(plugin_file, "w", encoding="utf-8") as handle:
+            handle.write(plugin_content)
+
+        original_config = pl.config
+        pl.config = {"security": {"auto_install_deps": False}}
+        try:
+            with (
+                patch(
+                    "mmrelay.plugin_loader._check_auto_install_enabled",
+                    return_value=False,
+                ) as mock_auto_install_enabled,
+                patch(
+                    "mmrelay.plugin_loader._raise_install_error",
+                    side_effect=subprocess.CalledProcessError(1, "pip/pipx"),
+                ) as mock_raise_install_error,
+                patch("mmrelay.plugin_loader._run") as mock_run,
+            ):
+                plugins = load_plugins_from_directory(
+                    self.custom_dir,
+                    plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+                )
+        finally:
+            pl.config = original_config
+
+        self.assertEqual(plugins, [])
+        self.assertTrue(
+            any(
+                kwargs.get("plugin_type") == pl.PLUGIN_TYPE_COMMUNITY
+                for _, kwargs in mock_auto_install_enabled.call_args_list
+            )
+        )
+        mock_raise_install_error.assert_called_once_with("missingdep_for_community")
+        mock_run.assert_not_called()
+
     def test_load_plugins_from_directory_auto_install_retry_no_plugin_class(self):
         orig_pipx_home = os.environ.get("PIPX_HOME")
         orig_pipx_local_venvs = os.environ.get("PIPX_LOCAL_VENVS")
@@ -796,7 +841,11 @@ class Plugin:
             pl.sorted_active_plugins = []
             load_plugins(config)
 
-        mock_load.assert_called_once_with(found_path, recursive=True)
+        mock_load.assert_called_once_with(
+            found_path,
+            recursive=True,
+            plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+        )
         mock_logger.warning.assert_any_call(
             "Community plugin 'missing_plugin' not found in any of the plugin directories"
         )
@@ -1223,7 +1272,9 @@ class Plugin:
         load_plugins(config)
 
         mock_logger.warning.assert_any_call(
-            "No ref specified; defaulting to branch 'main' is deprecated and unsafe"
+            "No ref specified for %s; defaulting to branch '%s' is deprecated and unsafe",
+            "test-plugin",
+            "main",
         )
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
@@ -1436,6 +1487,52 @@ class Plugin:
 
         mock_update_check.assert_called_once()
         mock_install_reqs.assert_not_called()
+
+    @patch("mmrelay.plugin_loader.clone_or_update_repo")
+    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
+    @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
+    @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    @patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates")
+    def test_load_plugins_community_loader_passes_plugin_type(
+        self,
+        mock_update_check,
+        mock_start_scheduler,
+        mock_get_custom_dirs,
+        mock_get_community_dirs,
+        mock_load_from_dir,
+        mock_clone_repo,
+    ):
+        """Community plugin load should pass plugin_type to directory loader."""
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+
+        config = {
+            "community-plugins": {
+                "commit-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "commit": "0123456789abcdef0123456789abcdef01234567",
+                }
+            },
+            "plugins": {},
+        }
+
+        mock_get_custom_dirs.return_value = []
+        mock_get_community_dirs.return_value = [self.community_dir]
+        mock_clone_repo.return_value = True
+        mock_load_from_dir.return_value = []
+        os.makedirs(os.path.join(self.community_dir, "repo"), exist_ok=True)
+
+        load_plugins(config)
+
+        mock_load_from_dir.assert_any_call(
+            os.path.join(self.community_dir, "repo"),
+            recursive=True,
+            plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+        )
+        mock_update_check.assert_called_once()
+        mock_start_scheduler.assert_called_once()
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
@@ -3953,14 +4050,20 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader.logger")
-    @patch("mmrelay.plugin_loader._collect_requirements", return_value=[])
+    @patch("mmrelay.plugin_loader._run")
+    @patch("mmrelay.plugin_loader._collect_requirements")
     def test_install_community_requirements_warns_once_when_enabled(
-        self, _mock_collect, mock_logger
+        self, mock_collect, mock_run, mock_logger
     ):
         """Community dependency auto-install should emit the risk warning once."""
-        pl._community_dep_install_warning_logged = False
-        with patch(
-            "mmrelay.plugin_loader.config", {"security": {"auto_install_deps": True}}
+        mock_collect.return_value = ["requests==2.28.0"]
+        mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+        with (
+            patch.object(pl, "_community_dep_install_warning_logged", False),
+            patch(
+                "mmrelay.plugin_loader.config",
+                {"security": {"auto_install_deps": True}},
+            ),
         ):
             _install_requirements_for_repo(
                 self.repo_path,
@@ -5174,7 +5277,8 @@ class TestCommunityPluginSecurityHelpers(unittest.TestCase):
             ),
             stderr="",
         )
-        self.assertEqual(pl._resolve_remote_default_branch("/tmp/repo"), "main")
+        with tempfile.TemporaryDirectory() as repo_path:
+            self.assertEqual(pl._resolve_remote_default_branch(repo_path), "main")
 
     @patch("mmrelay.plugin_loader._resolve_remote_branch_head_commit")
     @patch("mmrelay.plugin_loader._run_git")
@@ -5193,9 +5297,10 @@ class TestCommunityPluginSecurityHelpers(unittest.TestCase):
             None,
         ]
 
-        resolved = pl._resolve_remote_default_branch("/tmp/repo")
-        self.assertEqual(resolved, "main")
-        mock_resolve_remote_branch_head.assert_any_call("/tmp/repo", "main")
+        with tempfile.TemporaryDirectory() as repo_path:
+            resolved = pl._resolve_remote_default_branch(repo_path)
+            self.assertEqual(resolved, "main")
+            mock_resolve_remote_branch_head.assert_any_call(repo_path, "main")
 
     @patch("mmrelay.plugin_loader._run_git")
     def test_resolve_local_head_commit_rejects_non_full_sha(self, mock_run_git):
@@ -5206,7 +5311,8 @@ class TestCommunityPluginSecurityHelpers(unittest.TestCase):
             stdout="deadbeef\n",
             stderr="",
         )
-        self.assertIsNone(pl._resolve_local_head_commit("/tmp/repo"))
+        with tempfile.TemporaryDirectory() as repo_path:
+            self.assertIsNone(pl._resolve_local_head_commit(repo_path))
 
     @patch("mmrelay.plugin_loader._run_git")
     def test_resolve_remote_branch_head_commit_rejects_non_full_sha(self, mock_run_git):
@@ -5217,7 +5323,8 @@ class TestCommunityPluginSecurityHelpers(unittest.TestCase):
             stdout="deadbeef\trefs/heads/main\n",
             stderr="",
         )
-        self.assertIsNone(pl._resolve_remote_branch_head_commit("/tmp/repo", "main"))
+        with tempfile.TemporaryDirectory() as repo_path:
+            self.assertIsNone(pl._resolve_remote_branch_head_commit(repo_path, "main"))
 
     @patch("mmrelay.plugin_loader._resolve_local_head_commit")
     @patch("mmrelay.plugin_loader._resolve_remote_default_branch")

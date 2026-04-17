@@ -822,15 +822,6 @@ def _install_requirements_for_repo(
         return
 
     global _community_dep_install_warning_logged
-    if (
-        plugin_type == PLUGIN_TYPE_COMMUNITY
-        and not _community_dep_install_warning_logged
-    ):
-        logger.warning(
-            "Community plugin dependencies execute arbitrary code and are unsafe"
-        )
-        _community_dep_install_warning_logged = True
-
     try:
         in_pipx = any(key in os.environ for key in PIPX_ENVIRONMENT_KEYS)
 
@@ -873,6 +864,14 @@ def _install_requirements_for_repo(
             # Check if there are actual packages to install (not just flags)
             packages = [r for r in safe_requirements if not r.startswith("-")]
             if packages:
+                if (
+                    plugin_type == PLUGIN_TYPE_COMMUNITY
+                    and not _community_dep_install_warning_logged
+                ):
+                    logger.warning(
+                        "Community plugin dependencies execute arbitrary code and are unsafe"
+                    )
+                    _community_dep_install_warning_logged = True
                 # Write safe requirements to a temporary file to handle hashed requirements
                 # and environment markers properly
                 with tempfile.NamedTemporaryFile(
@@ -918,6 +917,14 @@ def _install_requirements_for_repo(
                     requirements_path,
                 )
             else:
+                if (
+                    plugin_type == PLUGIN_TYPE_COMMUNITY
+                    and not _community_dep_install_warning_logged
+                ):
+                    logger.warning(
+                        "Community plugin dependencies execute arbitrary code and are unsafe"
+                    )
+                    _community_dep_install_warning_logged = True
                 cmd = [
                     sys.executable,
                     "-m",
@@ -2515,7 +2522,11 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
     )
 
 
-def load_plugins_from_directory(directory: str, recursive: bool = False) -> list[Any]:
+def load_plugins_from_directory(
+    directory: str,
+    recursive: bool = False,
+    plugin_type: str = PLUGIN_TYPE_CUSTOM,
+) -> list[Any]:
     """
     Discover and instantiate top-level Plugin classes from Python modules in a directory.
 
@@ -2524,6 +2535,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
     Parameters:
         directory (str): Path to the directory containing plugin Python files.
         recursive (bool): If True, scan subdirectories recursively; otherwise scan only the top-level directory.
+        plugin_type (str): Plugin source category used for dependency auto-install policy.
 
     Returns:
         list[Any]: Instances of discovered `Plugin` classes; returns an empty list if none are found.
@@ -2613,13 +2625,24 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
 
                         # Try to automatically install the missing dependency
                         try:
-                            if not _check_auto_install_enabled(config):
+                            if not _check_auto_install_enabled(
+                                config, plugin_type=plugin_type
+                            ):
                                 _raise_install_error(missing_pkg)
                             # Check if we're running in a pipx environment
                             in_pipx = (
                                 "PIPX_HOME" in os.environ
                                 or "PIPX_LOCAL_VENVS" in os.environ
                             )
+                            global _community_dep_install_warning_logged
+                            if (
+                                plugin_type == PLUGIN_TYPE_COMMUNITY
+                                and not _community_dep_install_warning_logged
+                            ):
+                                logger.warning(
+                                    "Community plugin dependencies execute arbitrary code and are unsafe"
+                                )
+                                _community_dep_install_warning_logged = True
 
                             if in_pipx:
                                 logger.info(
@@ -3100,10 +3123,13 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
             explicit_branch_ref = True
         else:
             # Default to the first configured default branch if neither is specified.
+            default_branch = DEFAULT_BRANCHES[0]
             logger.warning(
-                "No ref specified; defaulting to branch 'main' is deprecated and unsafe"
+                "No ref specified for %s; defaulting to branch '%s' is deprecated and unsafe",
+                plugin_name,
+                default_branch,
             )
-            ref = {"type": "branch", "value": DEFAULT_BRANCHES[0]}
+            ref = {"type": "branch", "value": default_branch}
 
         if ref["type"] == "tag" and not tag_ref_warning_logged:
             logger.warning("Tags can be retargeted; commit pins are safer")
@@ -3219,7 +3245,11 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                     logger.info(f"Loading community plugin from: {plugin_path}")
                     try:
                         plugins.extend(
-                            load_plugins_from_directory(plugin_path, recursive=True)
+                            load_plugins_from_directory(
+                                plugin_path,
+                                recursive=True,
+                                plugin_type=PLUGIN_TYPE_COMMUNITY,
+                            )
                         )
                         plugin_found = True
                         break
