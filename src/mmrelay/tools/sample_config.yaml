@@ -141,7 +141,7 @@ plugins:
 #    commit: fedcba9876543210fedcba9876543210fedcba98
 #
 # Community plugins run in-process. Use trusted sources.
-# Prefer commit pins. Set install_requirements: true to install deps (once per resolved commit).
+# Prefer commit pins. install_requirements: true installs deps once per resolved commit.
 
 #custom-plugins:
 #  my_custom_plugin:

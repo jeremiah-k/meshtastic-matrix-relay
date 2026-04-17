@@ -77,11 +77,12 @@ community-plugins:
     install_requirements: true
 ```
 
-Community plugins run in the same MMRelay process and inherit its permissions. Use trusted sources and prefer commit-pinned refs.
-Dependency installation is per-plugin: set `install_requirements: true` only for trusted plugins.
-When `install_requirements: true` is used with explicit `branch` or `tag` refs, MMRelay logs a warning but allows installation.
-When no ref is specified (implicit default branch), MMRelay logs a warning and skips dependency installation.
-Requirements are installed once per resolved local commit and skipped when that commit is unchanged.
+- Community plugins run in the same MMRelay process and inherit its permissions. Use trusted sources.
+- Dependency installation is per-plugin and defaults to off (`install_requirements: false`).
+- Prefer commit-pinned refs.
+- Explicit `branch` and `tag` refs are allowed for dependency install, but MMRelay logs warnings.
+- Missing ref (implicit default branch) is not eligible for dependency install.
+- Dependencies install once per resolved local commit and are skipped when unchanged.
 
 ### Plugin System
 
