@@ -3090,20 +3090,25 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         # Determine what to use (commit, tag, branch, or default)
         # Priority: commit > tag > branch
         explicit_branch_ref = False
+        has_explicit_ref = False
         if commit:
+            has_explicit_ref = True
             if tag or branch:
                 logger.warning(
                     f"Commit specified along with tag/branch for plugin {plugin_name}, using commit"
                 )
             ref = {"type": "commit", "value": commit}
         elif tag and branch:
+            has_explicit_ref = True
             logger.warning(
                 f"Both tag and branch specified for plugin {plugin_name}, using tag"
             )
             ref = {"type": "tag", "value": tag}
         elif tag:
+            has_explicit_ref = True
             ref = {"type": "tag", "value": tag}
         elif branch:
+            has_explicit_ref = True
             ref = {"type": "branch", "value": branch}
             explicit_branch_ref = True
         else:
@@ -3184,12 +3189,35 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                 )
             if install_requirements:
                 ref_value = str(ref.get("value", "")).strip()
-                if ref.get("type") != "commit" or not _is_full_commit_sha(ref_value):
+                ref_type = str(ref.get("type", "")).strip()
+                if not has_explicit_ref:
                     logger.warning(
-                        "Skipping dependency install for community plugin '%s': install_requirements requires a full 40-character commit pin; branch, tag, and default refs are not allowed.",
+                        "Skipping dependency install for community plugin '%s': "
+                        "install_requirements requires an explicit ref; "
+                        "implicit default-branch refs are not eligible.",
+                        plugin_name,
+                    )
+                elif ref_type == "commit" and not _is_full_commit_sha(ref_value):
+                    logger.warning(
+                        "Skipping dependency install for community plugin '%s': "
+                        "commit refs for install_requirements must use a full "
+                        "40-character SHA.",
                         plugin_name,
                     )
                 else:
+                    if ref_type == "branch":
+                        logger.warning(
+                            "Community plugin '%s' uses install_requirements with an "
+                            "explicit branch ref; installs will follow moving upstream "
+                            "commits.",
+                            plugin_name,
+                        )
+                    elif ref_type == "tag":
+                        logger.warning(
+                            "Community plugin '%s' uses install_requirements with an "
+                            "explicit tag ref; tags can be retargeted.",
+                            plugin_name,
+                        )
                     pinned_sha = _resolve_local_head_commit(repo_path)
                     if pinned_sha is None:
                         logger.warning(

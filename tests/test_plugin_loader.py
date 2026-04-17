@@ -1546,23 +1546,32 @@ class Plugin:
         mock_start_scheduler.assert_called_once()
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
-    @patch("mmrelay.plugin_loader._install_requirements_for_repo")
+    @patch("mmrelay.plugin_loader._install_requirements_for_repo", return_value=True)
+    @patch("mmrelay.plugin_loader._save_plugin_state")
+    @patch("mmrelay.plugin_loader._load_plugin_state", return_value={})
+    @patch(
+        "mmrelay.plugin_loader._resolve_local_head_commit",
+        return_value="0123456789abcdef0123456789abcdef01234567",
+    )
     @patch("mmrelay.plugin_loader.load_plugins_from_directory")
     @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
     @patch("mmrelay.plugin_loader.logger")
-    def test_load_plugins_opted_in_branch_and_tag_skip_dependency_install(
+    def test_load_plugins_opted_in_branch_allows_dependency_install_with_warning(
         self,
         mock_logger,
         mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
+        mock_resolve_local_head_commit,
+        mock_load_state,
+        mock_save_state,
         mock_install_reqs,
         mock_clone_repo,
     ):
-        """Branch/tag refs with install_requirements should warn and skip installation."""
+        """Explicit branch refs should warn but still allow dependency installation."""
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
         config = {
@@ -1572,13 +1581,141 @@ class Plugin:
                     "repository": "https://github.com/user/repo.git",
                     "branch": "main",
                     "install_requirements": True,
-                },
+                }
+            },
+            "plugins": {},
+        }
+
+        mock_get_custom_dirs.return_value = []
+        mock_get_community_dirs.return_value = [self.community_dir]
+        mock_clone_repo.return_value = True
+        mock_load_from_dir.return_value = []
+
+        load_plugins(config)
+
+        mock_resolve_local_head_commit.assert_called_once_with(
+            os.path.join(self.community_dir, "repo")
+        )
+        mock_load_state.assert_called_once_with(
+            os.path.join(self.community_dir, "repo")
+        )
+        mock_install_reqs.assert_called_once_with(
+            os.path.join(self.community_dir, "repo"),
+            "repo",
+            plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+        )
+        saved_state = mock_save_state.call_args.args[1]
+        self.assertEqual(
+            saved_state.get(pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT),
+            "0123456789abcdef0123456789abcdef01234567",
+        )
+        mock_logger.warning.assert_any_call(
+            "Community plugin '%s' uses install_requirements with an explicit branch "
+            "ref; installs will follow moving upstream commits.",
+            "branch-plugin",
+        )
+        mock_start_scheduler.assert_called_once()
+
+    @patch("mmrelay.plugin_loader.clone_or_update_repo")
+    @patch("mmrelay.plugin_loader._install_requirements_for_repo", return_value=True)
+    @patch("mmrelay.plugin_loader._save_plugin_state")
+    @patch("mmrelay.plugin_loader._load_plugin_state", return_value={})
+    @patch(
+        "mmrelay.plugin_loader._resolve_local_head_commit",
+        return_value="0123456789abcdef0123456789abcdef01234567",
+    )
+    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
+    @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
+    @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_load_plugins_opted_in_tag_allows_dependency_install_with_warning(
+        self,
+        mock_logger,
+        mock_start_scheduler,
+        mock_get_custom_dirs,
+        mock_get_community_dirs,
+        mock_load_from_dir,
+        mock_resolve_local_head_commit,
+        mock_load_state,
+        mock_save_state,
+        mock_install_reqs,
+        mock_clone_repo,
+    ):
+        """Explicit tag refs should warn but still allow dependency installation."""
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+        config = {
+            "community-plugins": {
                 "tag-plugin": {
                     "active": True,
-                    "repository": "https://github.com/user/repo2.git",
+                    "repository": "https://github.com/user/repo.git",
                     "tag": "v1.0.0",
                     "install_requirements": True,
-                },
+                }
+            },
+            "plugins": {},
+        }
+
+        mock_get_custom_dirs.return_value = []
+        mock_get_community_dirs.return_value = [self.community_dir]
+        mock_clone_repo.return_value = True
+        mock_load_from_dir.return_value = []
+
+        load_plugins(config)
+
+        mock_resolve_local_head_commit.assert_called_once_with(
+            os.path.join(self.community_dir, "repo")
+        )
+        mock_load_state.assert_called_once_with(
+            os.path.join(self.community_dir, "repo")
+        )
+        mock_install_reqs.assert_called_once_with(
+            os.path.join(self.community_dir, "repo"),
+            "repo",
+            plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+        )
+        saved_state = mock_save_state.call_args.args[1]
+        self.assertEqual(
+            saved_state.get(pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT),
+            "0123456789abcdef0123456789abcdef01234567",
+        )
+        mock_logger.warning.assert_any_call(
+            "Community plugin '%s' uses install_requirements with an explicit tag "
+            "ref; tags can be retargeted.",
+            "tag-plugin",
+        )
+        mock_start_scheduler.assert_called_once()
+
+    @patch("mmrelay.plugin_loader.clone_or_update_repo")
+    @patch("mmrelay.plugin_loader._install_requirements_for_repo")
+    @patch("mmrelay.plugin_loader._resolve_local_head_commit")
+    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
+    @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
+    @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_load_plugins_opted_in_missing_ref_skips_dependency_install(
+        self,
+        mock_logger,
+        mock_start_scheduler,
+        mock_get_custom_dirs,
+        mock_get_community_dirs,
+        mock_load_from_dir,
+        mock_resolve_local_head_commit,
+        mock_install_reqs,
+        mock_clone_repo,
+    ):
+        """Missing refs with install_requirements should warn and skip installation."""
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+        config = {
+            "community-plugins": {
+                "default-branch-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "install_requirements": True,
+                }
             },
             "plugins": {},
         }
@@ -1591,9 +1728,13 @@ class Plugin:
         load_plugins(config)
 
         mock_install_reqs.assert_not_called()
-        warning_message = "Skipping dependency install for community plugin '%s': install_requirements requires a full 40-character commit pin; branch, tag, and default refs are not allowed."
-        mock_logger.warning.assert_any_call(warning_message, "branch-plugin")
-        mock_logger.warning.assert_any_call(warning_message, "tag-plugin")
+        mock_resolve_local_head_commit.assert_not_called()
+        mock_logger.warning.assert_any_call(
+            "Skipping dependency install for community plugin '%s': "
+            "install_requirements requires an explicit ref; "
+            "implicit default-branch refs are not eligible.",
+            "default-branch-plugin",
+        )
         mock_start_scheduler.assert_called_once()
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")

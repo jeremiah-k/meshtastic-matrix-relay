@@ -143,8 +143,10 @@ plugins:
 # Community plugins run in-process and inherit MMRelay permissions.
 # Use trusted sources and prefer commit-pinned refs.
 # Community dependency installation is per-plugin and disabled by default.
-# install_requirements is ignored for branch/tag/missing refs.
-# When enabled with a commit pin, requirements are installed once per commit.
+# install_requirements is allowed for explicit commit/branch/tag refs.
+# branch/tag installs log warnings because refs can move/retarget.
+# missing refs (implicit default branch) are not eligible for install.
+# When enabled, requirements are installed once per resolved local commit.
 
 #custom-plugins:
 #  my_custom_plugin:
