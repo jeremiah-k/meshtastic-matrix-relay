@@ -2610,15 +2610,6 @@ def load_plugins_from_directory(
                                 "PIPX_HOME" in os.environ
                                 or "PIPX_LOCAL_VENVS" in os.environ
                             )
-                            global _community_dep_install_warning_logged
-                            if (
-                                plugin_type == PLUGIN_TYPE_COMMUNITY
-                                and not _community_dep_install_warning_logged
-                            ):
-                                logger.warning(
-                                    "Community plugin dependencies execute arbitrary code and are unsafe"
-                                )
-                                _community_dep_install_warning_logged = True
 
                             if in_pipx:
                                 logger.info(
@@ -3126,7 +3117,8 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
             tag_ref_warning_logged = True
         elif ref["type"] == "branch" and explicit_branch_ref:
             logger.warning(
-                "Branch refs are moving targets and not recommended in production"
+                "Community plugin '%s' uses a branch ref; branch refs are moving targets and not recommended in production",
+                plugin_name,
             )
 
         if repo_url:

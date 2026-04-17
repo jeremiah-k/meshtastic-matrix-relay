@@ -1036,11 +1036,11 @@ class Plugin:
     @patch("mmrelay.plugin_loader.start_global_scheduler")
     def test_load_plugins_commit_priority_over_tag_and_branch(
         self,
-        _,
+        mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        __,
+        mock_install_reqs,
         mock_clone_repo,
     ):
         """Test that commit ref takes priority over tag and branch in plugin config."""
@@ -1075,6 +1075,8 @@ class Plugin:
             {"type": "commit", "value": "deadbeef"},
             self.community_dir,
         )
+        mock_start_scheduler.assert_called_once()
+        mock_install_reqs.assert_not_called()
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo")
@@ -1084,11 +1086,11 @@ class Plugin:
     @patch("mmrelay.plugin_loader.start_global_scheduler")
     def test_load_plugins_tag_priority_over_branch(
         self,
-        _mock_start_scheduler,
+        mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        _mock_install_reqs,
+        mock_install_reqs,
         mock_clone_repo,
     ):
         """Test that tag ref takes priority over branch in plugin config."""
@@ -1122,6 +1124,8 @@ class Plugin:
             {"type": "tag", "value": "v1.0.0"},
             self.community_dir,
         )
+        mock_start_scheduler.assert_called_once()
+        mock_install_reqs.assert_not_called()
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo")
@@ -1133,11 +1137,11 @@ class Plugin:
     def test_load_plugins_commit_with_tag_and_branch_warning(
         self,
         mock_logger,
-        _mock_start_scheduler,
+        mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        _mock_install_reqs,
+        mock_install_reqs,
         mock_clone_repo,
     ):
         """Test that warning is logged when commit is specified with tag/branch."""
@@ -1170,6 +1174,8 @@ class Plugin:
         mock_logger.warning.assert_any_call(
             "Commit specified along with tag/branch for plugin test-plugin, using commit"
         )
+        mock_start_scheduler.assert_called_once()
+        mock_install_reqs.assert_not_called()
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo")
@@ -1179,11 +1185,11 @@ class Plugin:
     @patch("mmrelay.plugin_loader.start_global_scheduler")
     def test_load_plugins_default_to_main_branch(
         self,
-        _mock_start_scheduler,
+        mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        _mock_install_reqs,
+        mock_install_reqs,
         mock_clone_repo,
     ):
         """Test that plugin defaults to main branch when no ref is specified."""
@@ -1215,6 +1221,8 @@ class Plugin:
             {"type": "branch", "value": "main"},
             self.community_dir,
         )
+        mock_start_scheduler.assert_called_once()
+        mock_install_reqs.assert_not_called()
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo")
@@ -1307,7 +1315,8 @@ class Plugin:
         load_plugins(config)
 
         branch_warning = (
-            "Branch refs are moving targets and not recommended in production"
+            "Community plugin '%s' uses a branch ref; branch refs are moving "
+            "targets and not recommended in production"
         )
         warning_calls = [
             call_args
@@ -1318,6 +1327,10 @@ class Plugin:
             len(warning_calls),
             2,
             "Expected one branch warning per explicitly branch-pinned plugin",
+        )
+        self.assertEqual(
+            {call_args.args[1] for call_args in warning_calls},
+            {"warn-branch", "allow-branch"},
         )
         mock_start_scheduler.assert_called_once()
         mock_install_reqs.assert_not_called()
@@ -1427,7 +1440,8 @@ class Plugin:
             warning_texts,
         )
         self.assertNotIn(
-            "Branch refs are moving targets and not recommended in production",
+            "Community plugin '%s' uses a branch ref; branch refs are moving "
+            "targets and not recommended in production",
             warning_texts,
         )
         mock_update_check.assert_called_once()
@@ -4382,7 +4396,7 @@ class TestDependencyInstallation(BaseGitTest):
         """Community dependency auto-install should emit the risk warning once."""
         mock_collect.return_value = ["requests==2.28.0"]
         mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
-        with patch.object(pl, "_community_dep_install_warning_logged", False):
+        with patch.object(pl, "_community_dep_install_warning_logged", new=False):
             _install_requirements_for_repo(
                 self.repo_path,
                 "test-plugin",
