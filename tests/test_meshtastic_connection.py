@@ -275,3 +275,29 @@ class TestConnectMeshtastic:
         mu.meshtastic_iface = None
         result = _connect_meshtastic_impl()
         assert result is existing
+
+    def test_tcp_connection_returns_none_client_raises_connection_error(self):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        mu.config = {
+            "meshtastic": {
+                "connection_type": "tcp",
+                "host": "192.168.1.1",
+                "retries": 1,
+            }
+        }
+        mu.shutting_down = False
+        mu.reconnecting = False
+        mu.meshtastic_client = None
+        mu.meshtastic_iface = None
+
+        with (
+            patch.object(
+                mu.meshtastic.tcp_interface,
+                "TCPInterface",
+                return_value=None,
+            ),
+            patch.object(mu, "time"),
+        ):
+            result = _connect_meshtastic_impl()
+            assert result is None
