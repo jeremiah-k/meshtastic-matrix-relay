@@ -24,29 +24,34 @@ jobs:
 
       - name: Extract version and build info
         id: get_version
+        shell: bash
         run: |
-          VERSION=$(python3 -c "import sys; sys.path.insert(0, 'src'); from mmrelay import __version__; print(__version__)")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          set -euo pipefail
+
+          VERSION="$(
+            python3 -c "import tomllib; from pathlib import Path; print(tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))['project']['version'])"
+          )"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
           BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
-          echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
+          echo "build_date=$BUILD_DATE" >> "$GITHUB_OUTPUT"
 
           VCS_REF=$(git rev-parse HEAD)
-          echo "vcs_ref=$VCS_REF" >> $GITHUB_OUTPUT
+          echo "vcs_ref=$VCS_REF" >> "$GITHUB_OUTPUT"
 
           GIT_SHA=$(git rev-parse --short HEAD)
-          echo "git_sha=$GIT_SHA" >> $GITHUB_OUTPUT
+          echo "git_sha=$GIT_SHA" >> "$GITHUB_OUTPUT"
 
           if [ "${{ github.event_name }}" == "release" ]; then
-            echo "docker_tag=$VERSION" >> $GITHUB_OUTPUT
-            echo "is_release=true" >> $GITHUB_OUTPUT
-            echo "should_tag_latest=true" >> $GITHUB_OUTPUT
+            echo "docker_tag=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+            echo "should_tag_latest=true" >> "$GITHUB_OUTPUT"
           else
             # Sanitize branch name for Docker tag (replace slashes and special chars)
             BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9._-]/-/g')
-            echo "docker_tag=$VERSION-dev-$BRANCH_NAME-$GIT_SHA" >> $GITHUB_OUTPUT
-            echo "is_release=false" >> $GITHUB_OUTPUT
-            echo "should_tag_latest=false" >> $GITHUB_OUTPUT
+            echo "docker_tag=$VERSION-dev-$BRANCH_NAME-$GIT_SHA" >> "$GITHUB_OUTPUT"
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+            echo "should_tag_latest=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Set up QEMU for multi-platform builds

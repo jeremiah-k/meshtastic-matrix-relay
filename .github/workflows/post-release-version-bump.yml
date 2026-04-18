@@ -1,0 +1,77 @@
+name: Post-Release Version Bump
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  bump-main-to-next-patch:
+    if: github.event.release.target_commitish == 'main'
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_BUMP_PAT: ${{ secrets.RELEASE_BUMP_PAT }}
+
+    steps:
+      - name: Validate release bump token
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${RELEASE_BUMP_PAT:-}" ]]; then
+            echo "::error::RELEASE_BUMP_PAT secret is required for post-release push to main."
+            exit 1
+          fi
+
+      - name: Checkout main branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_BUMP_PAT }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install bump-my-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install bump-my-version==1.3.0
+
+      - name: Bump patch version
+        id: bump
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CURRENT_VERSION="$(
+            python3 -c "import tomllib; from pathlib import Path; print(tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))['project']['version'])"
+          )"
+
+          bump-my-version bump patch
+
+          NEW_VERSION="$(
+            python3 -c "import tomllib; from pathlib import Path; print(tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))['project']['version'])"
+          )"
+
+          echo "current=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "new=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push version bump
+        if: steps.bump.outputs.current != steps.bump.outputs.new
+        env:
+          NEW_VERSION: ${{ steps.bump.outputs.new }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml
+          git commit -m "chore(version): bump to ${NEW_VERSION} after release ${RELEASE_TAG}"
+          git push origin HEAD:main

@@ -17,8 +17,7 @@ from typing import Any
 
 import yaml
 
-# Import version from package
-from mmrelay import __version__
+from mmrelay._version import __version__
 from mmrelay.cli_utils import (
     get_command,
     get_deprecation_warning,

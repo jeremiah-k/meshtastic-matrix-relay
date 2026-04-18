@@ -23,9 +23,7 @@ from nio import (
 )
 from nio.events.room_events import RoomMemberEvent
 
-# Import version from package
-# Import meshtastic_utils as a module to set event_loop
-from mmrelay import __version__, meshtastic_utils
+from mmrelay._version import __version__
 from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config
 from mmrelay.constants.app import (
     APP_DISPLAY_NAME,
@@ -82,6 +80,9 @@ from mmrelay.message_queue import (
 )
 from mmrelay.paths import get_home_dir, get_legacy_dirs, get_legacy_env_vars
 from mmrelay.plugin_loader import load_plugins, shutdown_plugins
+
+# Import as module to set event_loop.
+from mmrelay import meshtastic_utils  # isort: skip
 
 # Initialize logger
 logger = get_logger(name=APP_DISPLAY_NAME)
