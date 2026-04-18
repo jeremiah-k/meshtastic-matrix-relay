@@ -47,6 +47,7 @@ class TestHelpPlugin(unittest.TestCase):
 
         # Mock Matrix client methods
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
 
         # Create mock plugins for testing
         self.mock_plugin1 = MagicMock()
@@ -133,6 +134,7 @@ class TestHelpPlugin(unittest.TestCase):
                 )
                 self.assertFalse(result)
                 self.plugin.send_matrix_message.assert_not_called()
+                self.plugin.send_matrix_reaction.assert_not_called()
 
             asyncio.run(run_test())
 
@@ -168,6 +170,9 @@ class TestHelpPlugin(unittest.TestCase):
             self.assertTrue(result)
             self.plugin.matches.assert_called_once_with(event)
             self.plugin.send_matrix_message.assert_called_once()
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "✅"
+            )
 
             # Check the call arguments
             call_args = self.plugin.send_matrix_message.call_args
@@ -214,6 +219,9 @@ class TestHelpPlugin(unittest.TestCase):
 
             self.assertTrue(result)
             self.plugin.send_matrix_message.assert_called_once()
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "✅"
+            )
 
             # Check the call arguments
             call_args = self.plugin.send_matrix_message.call_args
@@ -260,6 +268,9 @@ class TestHelpPlugin(unittest.TestCase):
 
             self.assertTrue(result)
             self.plugin.send_matrix_message.assert_called_once()
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "✅"
+            )
 
             # Check the call arguments
             call_args = self.plugin.send_matrix_message.call_args
@@ -308,6 +319,10 @@ class TestHelpPlugin(unittest.TestCase):
             self.assertIn("cmd3", message)
             self.assertIn("weather", message)
 
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "✅"
+            )
+
         asyncio.run(run_test())
 
     @patch("mmrelay.plugins.help_plugin.load_plugins")
@@ -352,6 +367,10 @@ class TestHelpPlugin(unittest.TestCase):
                 message,
             )
 
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "✅"
+            )
+
         asyncio.run(run_test())
 
     def test_get_matrix_commands_none_name(self):
@@ -390,6 +409,10 @@ class TestHelpPlugin(unittest.TestCase):
 
             # Should show empty command list
             self.assertEqual(message, MSG_AVAILABLE_COMMANDS_PREFIX)
+
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "✅"
+            )
 
         asyncio.run(run_test())
 

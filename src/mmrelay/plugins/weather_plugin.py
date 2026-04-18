@@ -909,66 +909,71 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
-
         parsed_command = self.get_matching_matrix_command(event)
         if not parsed_command:
             return False
         args_text = self.extract_command_args(parsed_command, full_message) or ""
 
-        coords = await self._resolve_location_from_args(args_text)
+        try:
+            coords = await self._resolve_location_from_args(args_text)
 
-        if coords is None:
-            from mmrelay.meshtastic_utils import connect_meshtastic
+            if coords is None:
+                from mmrelay.meshtastic_utils import connect_meshtastic
 
-            meshtastic_client = await asyncio.to_thread(connect_meshtastic)
-            if meshtastic_client is None:
-                self.logger.error(
-                    "Meshtastic client unavailable; cannot determine mesh location."
+                meshtastic_client = await asyncio.to_thread(connect_meshtastic)
+                if meshtastic_client is None:
+                    self.logger.error(
+                        "Meshtastic client unavailable; cannot determine mesh location."
+                    )
+                    coords = None
+                else:
+                    coords = self._determine_mesh_location(meshtastic_client)
+
+            if coords is None:
+                await self.send_matrix_message(
+                    room.room_id,
+                    "Cannot determine location",
+                    formatted=False,
                 )
-                coords = None
-            else:
-                coords = self._determine_mesh_location(meshtastic_client)
+                await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
+                return True
 
-        if coords is None:
+            terrestrial = await asyncio.to_thread(
+                self.generate_forecast,
+                latitude=coords[0],
+                longitude=coords[1],
+                mode=parsed_command,
+            )
+            raw_units = self.config.get("units", WEATHER_UNITS_METRIC)
+            units = (
+                raw_units.strip().lower()
+                if isinstance(raw_units, str)
+                else WEATHER_UNITS_METRIC
+            )
+            if units not in {WEATHER_UNITS_METRIC, WEATHER_UNITS_IMPERIAL}:
+                units = WEATHER_UNITS_METRIC
+            marine = await asyncio.to_thread(
+                self.generate_marine_forecast,
+                coords[0],
+                coords[1],
+                parsed_command,
+                units,
+            )
+            if marine:
+                full_forecast = f"{terrestrial} | {marine}"
+            else:
+                full_forecast = terrestrial
             await self.send_matrix_message(
                 room.room_id,
-                "Cannot determine location",
+                full_forecast,
                 formatted=False,
             )
+            await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
             return True
-
-        terrestrial = await asyncio.to_thread(
-            self.generate_forecast,
-            latitude=coords[0],
-            longitude=coords[1],
-            mode=parsed_command,
-        )
-        raw_units = self.config.get("units", WEATHER_UNITS_METRIC)
-        units = (
-            raw_units.strip().lower()
-            if isinstance(raw_units, str)
-            else WEATHER_UNITS_METRIC
-        )
-        if units not in {WEATHER_UNITS_METRIC, WEATHER_UNITS_IMPERIAL}:
-            units = WEATHER_UNITS_METRIC
-        marine = await asyncio.to_thread(
-            self.generate_marine_forecast,
-            coords[0],
-            coords[1],
-            parsed_command,
-            units,
-        )
-        if marine:
-            full_forecast = f"{terrestrial} | {marine}"
-        else:
-            full_forecast = terrestrial
-        await self.send_matrix_message(
-            room.room_id,
-            full_forecast,
-            formatted=False,
-        )
-        return True
+        except Exception:
+            self.logger.exception("Error handling weather command")
+            await self.send_matrix_reaction(room.room_id, event.event_id, "❌")
+            return True
 
     async def _resolve_location_from_args(
         self, arg_text: str | None

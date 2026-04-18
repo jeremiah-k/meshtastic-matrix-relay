@@ -37,6 +37,7 @@ class TestHealthPlugin(unittest.TestCase):
 
         # Mock Matrix client methods
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
 
         # Create sample node data for testing
         self.sample_nodes = {
@@ -278,6 +279,7 @@ class TestHealthPlugin(unittest.TestCase):
             self.assertFalse(result)
             self.plugin.matches.assert_called_once_with(event)
             self.plugin.send_matrix_message.assert_not_called()
+            self.plugin.send_matrix_reaction.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -337,6 +339,10 @@ class TestHealthPlugin(unittest.TestCase):
             self.assertEqual(call_args[0][0], "!test:matrix.org")  # room_id
             self.assertIn("Nodes: 5", call_args[0][1])  # message content
             self.assertEqual(call_args.kwargs["formatted"], False)
+
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "✅"
+            )
 
         asyncio.run(run_test())
 

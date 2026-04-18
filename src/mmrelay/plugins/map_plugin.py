@@ -525,8 +525,6 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
-
         args = self.extract_command_args("map", full_message)
         if args is None:
             return False
@@ -580,79 +578,100 @@ class Plugin(BasePlugin):
             send_image,
         )
 
-        matrix_client = await connect_matrix()
-        if matrix_client is None:
-            logger.error("Failed to connect to Matrix client; cannot generate map")
-            await self.send_matrix_message(
-                room.room_id,
-                "Cannot generate map: Matrix client unavailable.",
-                formatted=False,
-            )
-            return True
-        meshtastic_client = await _connect_meshtastic_async()
-
-        has_nodes = getattr(meshtastic_client, "nodes", None) is not None
-
-        if not meshtastic_client or not has_nodes:
-            self.logger.error("Meshtastic client unavailable; cannot generate map")
-            await self.send_matrix_message(
-                room.room_id,
-                "Cannot generate map: Meshtastic client unavailable.",
-                formatted=False,
-            )
-            return True
-
-        locations = []
-        for _node, info in meshtastic_client.nodes.items():  # type: ignore[attr-defined]
-            pos = info.get("position") if isinstance(info, dict) else None
-            user = info.get("user") if isinstance(info, dict) else None
-            if (
-                isinstance(pos, dict)
-                and "latitude" in pos
-                and "longitude" in pos
-                and isinstance(user, dict)
-                and "shortName" in user
-            ):
-                locations.append(
-                    {
-                        "lat": pos["latitude"],
-                        "lon": pos["longitude"],
-                        "precisionBits": pos.get("precisionBits"),
-                        "label": user["shortName"],
-                    }
-                )
-
-        if not locations:
-            await self.send_matrix_message(
-                room.room_id,
-                "Cannot generate map: No nodes with location data found.",
-                formatted=False,
-            )
-            return True
-
-        pillow_image = await asyncio.to_thread(
-            get_map,
-            locations=locations,
-            zoom=zoom,
-            image_size=image_size,
-            _anonymize=False,
-            _radius=0,
-        )
-
         try:
-            await send_image(
-                matrix_client, room.room_id, pillow_image, MAP_IMAGE_FILENAME
+            matrix_client = await connect_matrix()
+            if matrix_client is None:
+                logger.error("Failed to connect to Matrix client; cannot generate map")
+                await self.send_matrix_message(
+                    room.room_id,
+                    "Cannot generate map: Matrix client unavailable.",
+                    formatted=False,
+                )
+                await self.send_matrix_reaction(
+                    room.room_id, event.event_id, "❌"
+                )
+                return True
+            meshtastic_client = await _connect_meshtastic_async()
+
+            has_nodes = getattr(meshtastic_client, "nodes", None) is not None
+
+            if not meshtastic_client or not has_nodes:
+                self.logger.error("Meshtastic client unavailable; cannot generate map")
+                await self.send_matrix_message(
+                    room.room_id,
+                    "Cannot generate map: Meshtastic client unavailable.",
+                    formatted=False,
+                )
+                await self.send_matrix_reaction(
+                    room.room_id, event.event_id, "❌"
+                )
+                return True
+
+            locations = []
+            for _node, info in meshtastic_client.nodes.items():  # type: ignore[attr-defined]
+                pos = info.get("position") if isinstance(info, dict) else None
+                user = info.get("user") if isinstance(info, dict) else None
+                if (
+                    isinstance(pos, dict)
+                    and "latitude" in pos
+                    and "longitude" in pos
+                    and isinstance(user, dict)
+                    and "shortName" in user
+                ):
+                    locations.append(
+                        {
+                            "lat": pos["latitude"],
+                            "lon": pos["longitude"],
+                            "precisionBits": pos.get("precisionBits"),
+                            "label": user["shortName"],
+                        }
+                    )
+
+            if not locations:
+                await self.send_matrix_message(
+                    room.room_id,
+                    "Cannot generate map: No nodes with location data found.",
+                    formatted=False,
+                )
+                await self.send_matrix_reaction(
+                    room.room_id, event.event_id, "✅"
+                )
+                return True
+
+            pillow_image = await asyncio.to_thread(
+                get_map,
+                locations=locations,
+                zoom=zoom,
+                image_size=image_size,
+                _anonymize=False,
+                _radius=0,
             )
-        except ImageUploadError:
-            self.logger.exception("Failed to send map image")
-            await matrix_client.room_send(
-                room_id=room.room_id,
-                message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
-                content={
-                    "msgtype": "m.notice",
-                    "body": "Failed to generate map: Image upload failed.",
-                },
+
+            try:
+                await send_image(
+                    matrix_client, room.room_id, pillow_image, MAP_IMAGE_FILENAME
+                )
+            except ImageUploadError:
+                self.logger.exception("Failed to send map image")
+                await matrix_client.room_send(
+                    room_id=room.room_id,
+                    message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
+                    content={
+                        "msgtype": "m.notice",
+                        "body": "Failed to generate map: Image upload failed.",
+                    },
+                )
+                await self.send_matrix_reaction(
+                    room.room_id, event.event_id, "❌"
+                )
+                return True
+            await self.send_matrix_reaction(
+                room.room_id, event.event_id, "✅"
             )
             return True
-
-        return True
+        except Exception:
+            self.logger.exception("Error handling map command")
+            await self.send_matrix_reaction(
+                room.room_id, event.event_id, "❌"
+            )
+            return True

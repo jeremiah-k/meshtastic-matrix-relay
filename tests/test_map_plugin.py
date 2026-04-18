@@ -343,6 +343,7 @@ class TestMapPlugin(unittest.TestCase):
         Initializes the Plugin and assigns test-specific configuration values for zoom, image size, anonymization, and radius.
         """
         self.plugin = Plugin()
+        self.plugin.send_matrix_reaction = AsyncMock()
         self.plugin.config = {
             "zoom": 10,
             "image_width": 800,
@@ -467,6 +468,9 @@ class TestMapPlugin(unittest.TestCase):
                 mock_room.room_id,
                 mock_image,
                 "location.png",
+            )
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:example.com", mock_event.event_id, "✅"
             )
 
         asyncio.run(run_test())
@@ -841,6 +845,9 @@ class TestMapPlugin(unittest.TestCase):
             self.plugin.send_matrix_message.assert_awaited_once()
             mock_get_map.assert_not_called()
             _mock_send_image.assert_not_called()
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:example.com", mock_event.event_id, "✅"
+            )
 
         asyncio.run(run_test())
 
@@ -900,6 +907,9 @@ class TestMapPlugin(unittest.TestCase):
             )
             self.assertIsNotNone(error_call)
             self.assertEqual(error_call.kwargs["room_id"], mock_room.room_id)
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:example.com", mock_event.event_id, "❌"
+            )
 
         asyncio.run(run_test())
 
@@ -994,6 +1004,7 @@ class TestGetMapEdgeCases(unittest.TestCase):
 class TestMapPluginHandleRoomMessage(unittest.TestCase):
     def setUp(self):
         self.plugin = Plugin()
+        self.plugin.send_matrix_reaction = AsyncMock()
         self.plugin.config = {
             "zoom": 10,
             "image_width": 800,
@@ -1127,6 +1138,9 @@ class TestMapPluginHandleRoomMessage(unittest.TestCase):
             self.assertTrue(result)
             self.plugin.send_matrix_message.assert_awaited_once()
             mock_get_map.assert_not_called()
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:example.com", mock_event.event_id, "❌"
+            )
 
         asyncio.run(run_test())
 
@@ -1158,6 +1172,9 @@ class TestMapPluginHandleRoomMessage(unittest.TestCase):
             self.assertTrue(result)
             self.plugin.send_matrix_message.assert_awaited_once()
             mock_get_map.assert_not_called()
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:example.com", mock_event.event_id, "❌"
+            )
 
         asyncio.run(run_test())
 

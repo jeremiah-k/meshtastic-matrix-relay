@@ -183,8 +183,6 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
-
         parsed_command = self.get_matching_matrix_command(event)
         if not parsed_command:
             return False
@@ -196,115 +194,124 @@ class Plugin(BasePlugin):
         hourly_intervals = self._generate_timeperiods()
         from mmrelay.matrix_utils import connect_matrix
 
-        matrix_client = await connect_matrix()
-        if matrix_client is None:
-            self.logger.warning(
-                "Matrix client unavailable; skipping telemetry graph generation"
-            )
-            return False
-
-        hourly_averages: dict[int, list[float]] = {}
-
-        def calculate_averages(node_data_rows: list[dict[str, Any]]) -> None:
-            """
-            Accumulate per-record telemetry values into hourly bins keyed by indices of the outer `hourly_intervals`.
-
-            Parameters:
-                node_data_rows (list[dict[str, Any]]): Records containing a "time" POSIX timestamp (seconds) and a telemetry value under the key named by the enclosing `telemetry_option`; values are appended to the outer `hourly_averages` dictionary for the matching hourly interval.
-            """
-            for record in node_data_rows:
-                if not isinstance(record, dict):
-                    continue
-                timestamp = record.get("time")
-                telemetry_value = record.get(telemetry_option)
-                if timestamp is None or telemetry_value is None:
-                    continue
-                try:
-                    record_time = datetime.fromtimestamp(timestamp)
-                    value = float(telemetry_value)
-                    if not math.isfinite(value):
-                        continue
-                except (TypeError, ValueError, OSError, OverflowError):
-                    continue
-                for i in range(len(hourly_intervals) - 1):
-                    if hourly_intervals[i] <= record_time < hourly_intervals[i + 1]:
-                        if i not in hourly_averages:
-                            hourly_averages[i] = []
-                        hourly_averages[i].append(value)
-                        break
-
-        if node:
-            node_data_rows = self.get_node_data(node)
-            if node_data_rows:
-                calculate_averages(
-                    node_data_rows
-                    if isinstance(node_data_rows, list)
-                    else [node_data_rows]
-                )
-            else:
-                await self.send_matrix_message(
-                    room.room_id,
-                    f"No telemetry data found for node '{node}'.",
-                    formatted=False,
-                )
-                return True
-        else:
-            for node_data_json in self.get_data():
-                node_data_rows = json.loads(node_data_json[0])
-                calculate_averages(node_data_rows)
-
-        final_averages = {}
-        for i, interval in enumerate(hourly_intervals[:-1]):
-            if i in hourly_averages:
-                final_averages[interval] = sum(hourly_averages[i]) / len(
-                    hourly_averages[i]
-                )
-            else:
-                final_averages[interval] = 0.0
-
-        hourly_intervals = list(final_averages.keys())
-        average_values = list(final_averages.values())
-
-        hourly_strings = [hour.strftime(HOUR_FORMAT) for hour in hourly_intervals]
-
-        fig, ax = plt.subplots()
-        ax.plot(hourly_strings, average_values)
-
-        if node:
-            title = f"{node} Hourly {telemetry_option} Averages"
-        else:
-            title = f"Network Hourly {telemetry_option} Averages"
-        ax.set_title(title)
-        ax.set_xlabel("Hour")
-        ax.set_ylabel(f"{telemetry_option}")
-
-        plt.xticks(rotation=GRAPH_XLABEL_ROTATION_DEGREES)
-
-        buf = io.BytesIO()
-        fig.savefig(buf, format=GRAPH_IMAGE_FORMAT, bbox_inches="tight")
-        plt.close(fig)
-        buf.seek(0)
-        with Image.open(buf) as img:
-            pil_image = img.copy() if img.mode == "RGBA" else img.convert("RGBA")
-
-        from mmrelay.matrix_utils import ImageUploadError, send_image
-
         try:
-            await send_image(
-                matrix_client,
-                room.room_id,
-                pil_image,
-                TELEMETRY_GRAPH_FILENAME,
-            )
-        except ImageUploadError:
-            self.logger.exception("Failed to send telemetry graph")
-            await matrix_client.room_send(
-                room_id=room.room_id,
-                message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
-                content={
-                    "msgtype": "m.notice",
-                    "body": MSG_GRAPH_UPLOAD_FAILED,
-                },
-            )
+            matrix_client = await connect_matrix()
+            if matrix_client is None:
+                self.logger.warning(
+                    "Matrix client unavailable; skipping telemetry graph generation"
+                )
+                await self.send_matrix_reaction(room.room_id, event.event_id, "❌")
+                return False
+
+            hourly_averages: dict[int, list[float]] = {}
+
+            def calculate_averages(node_data_rows: list[dict[str, Any]]) -> None:
+                """
+                Accumulate per-record telemetry values into hourly bins keyed by indices of the outer `hourly_intervals`.
+
+                Parameters:
+                    node_data_rows (list[dict[str, Any]]): Records containing a "time" POSIX timestamp (seconds) and a telemetry value under the key named by the enclosing `telemetry_option`; values are appended to the outer `hourly_averages` dictionary for the matching hourly interval.
+                """
+                for record in node_data_rows:
+                    if not isinstance(record, dict):
+                        continue
+                    timestamp = record.get("time")
+                    telemetry_value = record.get(telemetry_option)
+                    if timestamp is None or telemetry_value is None:
+                        continue
+                    try:
+                        record_time = datetime.fromtimestamp(timestamp)
+                        value = float(telemetry_value)
+                        if not math.isfinite(value):
+                            continue
+                    except (TypeError, ValueError, OSError, OverflowError):
+                        continue
+                    for i in range(len(hourly_intervals) - 1):
+                        if hourly_intervals[i] <= record_time < hourly_intervals[i + 1]:
+                            if i not in hourly_averages:
+                                hourly_averages[i] = []
+                            hourly_averages[i].append(value)
+                            break
+
+            if node:
+                node_data_rows = self.get_node_data(node)
+                if node_data_rows:
+                    calculate_averages(
+                        node_data_rows
+                        if isinstance(node_data_rows, list)
+                        else [node_data_rows]
+                    )
+                else:
+                    await self.send_matrix_message(
+                        room.room_id,
+                        f"No telemetry data found for node '{node}'.",
+                        formatted=False,
+                    )
+                    await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
+                    return True
+            else:
+                for node_data_json in self.get_data():
+                    node_data_rows = json.loads(node_data_json[0])
+                    calculate_averages(node_data_rows)
+
+            final_averages = {}
+            for i, interval in enumerate(hourly_intervals[:-1]):
+                if i in hourly_averages:
+                    final_averages[interval] = sum(hourly_averages[i]) / len(
+                        hourly_averages[i]
+                    )
+                else:
+                    final_averages[interval] = 0.0
+
+            hourly_intervals = list(final_averages.keys())
+            average_values = list(final_averages.values())
+
+            hourly_strings = [hour.strftime(HOUR_FORMAT) for hour in hourly_intervals]
+
+            fig, ax = plt.subplots()
+            ax.plot(hourly_strings, average_values)
+
+            if node:
+                title = f"{node} Hourly {telemetry_option} Averages"
+            else:
+                title = f"Network Hourly {telemetry_option} Averages"
+            ax.set_title(title)
+            ax.set_xlabel("Hour")
+            ax.set_ylabel(f"{telemetry_option}")
+
+            plt.xticks(rotation=GRAPH_XLABEL_ROTATION_DEGREES)
+
+            buf = io.BytesIO()
+            fig.savefig(buf, format=GRAPH_IMAGE_FORMAT, bbox_inches="tight")
+            plt.close(fig)
+            buf.seek(0)
+            with Image.open(buf) as img:
+                pil_image = img.copy() if img.mode == "RGBA" else img.convert("RGBA")
+
+            from mmrelay.matrix_utils import ImageUploadError, send_image
+
+            try:
+                await send_image(
+                    matrix_client,
+                    room.room_id,
+                    pil_image,
+                    TELEMETRY_GRAPH_FILENAME,
+                )
+            except ImageUploadError:
+                self.logger.exception("Failed to send telemetry graph")
+                await matrix_client.room_send(
+                    room_id=room.room_id,
+                    message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
+                    content={
+                        "msgtype": "m.notice",
+                        "body": MSG_GRAPH_UPLOAD_FAILED,
+                    },
+                )
+                await self.send_matrix_reaction(room.room_id, event.event_id, "❌")
+                return True
+            await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
             return True
-        return True
+        except Exception:
+            self.logger.exception("Error handling telemetry command")
+            await self.send_matrix_reaction(room.room_id, event.event_id, "❌")
+            return True

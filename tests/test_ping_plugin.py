@@ -958,6 +958,7 @@ class TestPingPluginMatrixHandling(unittest.TestCase):
             self.assertFalse(result)
             self.plugin.matches.assert_called_once_with(event)
             self.plugin.send_matrix_message.assert_not_called()
+            self.plugin.send_matrix_reaction.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -971,11 +972,29 @@ class TestPingPluginMatrixHandling(unittest.TestCase):
             result = await self.plugin.handle_room_message(room, event, "bot: !ping")
             self.assertTrue(result)
             self.plugin.matches.assert_called_once_with(event)
+            self.plugin.send_matrix_message.assert_called_once_with(
+                "!test:matrix.org", PING_RESPONSE
+            )
             self.plugin.send_matrix_reaction.assert_called_once_with(
                 "!test:matrix.org", event.event_id, "✅"
             )
-            self.plugin.send_matrix_message.assert_called_once_with(
-                "!test:matrix.org", PING_RESPONSE
+
+        asyncio.run(run_test())
+
+    def test_handle_room_message_ping_failure(self):
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.send_matrix_message = AsyncMock(
+            side_effect=Exception("send failed")
+        )
+        room = MagicMock()
+        room.room_id = "!test:matrix.org"
+        event = MagicMock()
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_room_message(room, event, "bot: !ping")
+            self.assertTrue(result)
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "❌"
             )
 
         asyncio.run(run_test())

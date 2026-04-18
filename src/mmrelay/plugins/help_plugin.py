@@ -127,6 +127,11 @@ class Plugin(BasePlugin):
             ]
             reply = MSG_AVAILABLE_COMMANDS_PREFIX + ", ".join(sorted(set(commands)))
 
+        try:
+            await self.send_matrix_message(room.room_id, reply)
+        except Exception:
+            self.logger.exception("Error handling help command")
+            await self.send_matrix_reaction(room.room_id, event.event_id, "❌")
+            return True
         await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
-        await self.send_matrix_message(room.room_id, reply)
         return True

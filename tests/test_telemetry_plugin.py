@@ -41,6 +41,7 @@ class TestTelemetryPlugin(unittest.TestCase):
 
         # Mock Matrix client methods
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
         self.plugin.send_room_image = AsyncMock()
         self.plugin.upload_image = AsyncMock()
         self.plugin.get_require_bot_mention = MagicMock(return_value=False)
@@ -577,6 +578,11 @@ class TestTelemetryPlugin(unittest.TestCase):
                 mock_ax.set_xlabel.assert_called_once_with("Hour")
                 mock_ax.set_ylabel.assert_called_once_with("batteryLevel")
 
+                # Should send success reaction
+                self.plugin.send_matrix_reaction.assert_called_once_with(
+                    "!test:matrix.org", event.event_id, "✅"
+                )
+
                 # Should upload and send image
                 mock_upload.assert_called_once()
                 mock_send_image.assert_called_once()
@@ -654,6 +660,10 @@ class TestTelemetryPlugin(unittest.TestCase):
                     self.assertIn("NodeABC", title_call)
                     self.assertIn("voltage", title_call)
 
+                    self.plugin.send_matrix_reaction.assert_called_once_with(
+                        "!test:matrix.org", event.event_id, "✅"
+                    )
+
                 asyncio.run(run_test())
 
     def test_handle_room_message_matrix_unavailable(self):
@@ -676,6 +686,9 @@ class TestTelemetryPlugin(unittest.TestCase):
                     room, event, "!batteryLevel"
                 )
                 self.assertFalse(result)
+                self.plugin.send_matrix_reaction.assert_called_once_with(
+                    "!r", event.event_id, "❌"
+                )
 
             asyncio.run(run_test())
 
@@ -709,6 +722,9 @@ class TestTelemetryPlugin(unittest.TestCase):
                 self.assertIn(
                     "No telemetry data",
                     self.plugin.send_matrix_message.call_args.args[1],
+                )
+                self.plugin.send_matrix_reaction.assert_called_once_with(
+                    "!r", event.event_id, "✅"
                 )
 
             asyncio.run(run_test())
@@ -755,6 +771,9 @@ class TestTelemetryPlugin(unittest.TestCase):
                     room, event, "!batteryLevel"
                 )
                 self.assertTrue(result)
+                self.plugin.send_matrix_reaction.assert_called_once_with(
+                    "!r", event.event_id, "✅"
+                )
 
             asyncio.run(run_test())
 
@@ -800,6 +819,9 @@ class TestTelemetryPlugin(unittest.TestCase):
                 )
                 self.assertTrue(result)
                 self.assertGreaterEqual(mock_matrix_client.room_send.await_count, 1)
+                self.plugin.send_matrix_reaction.assert_called_once_with(
+                    "!r", event.event_id, "❌"
+                )
 
             asyncio.run(run_test())
 

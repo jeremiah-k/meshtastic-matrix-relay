@@ -221,6 +221,11 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
+        try:
+            await self.send_matrix_message(room.room_id, PING_RESPONSE)
+        except Exception:
+            self.logger.exception("Error handling ping command")
+            await self.send_matrix_reaction(room.room_id, event.event_id, "❌")
+            return True
         await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
-        await self.send_matrix_message(room.room_id, PING_RESPONSE)
         return True
