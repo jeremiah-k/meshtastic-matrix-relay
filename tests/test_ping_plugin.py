@@ -137,6 +137,7 @@ class TestPingPlugin(unittest.TestCase):
             "channel": 0,
             "fromId": "!12345678",
             "to": BROADCAST_NUM,
+            "id": 123,
         }
 
         async def run_test() -> None:
@@ -149,7 +150,7 @@ class TestPingPlugin(unittest.TestCase):
             )
             mock_sleep.assert_called_once_with(1.0)
             self.plugin.send_message.assert_called_once_with(
-                text=PING_RESPONSE, channel=0, reply_id=None
+                text=PING_RESPONSE, channel=0, reply_id=123
             )
             self.plugin.logger.info.assert_called_once()
 
@@ -167,6 +168,7 @@ class TestPingPlugin(unittest.TestCase):
             "channel": 1,
             "fromId": "!12345678",
             "to": 123456789,
+            "id": 123,
         }
 
         async def run_test() -> None:
@@ -179,7 +181,10 @@ class TestPingPlugin(unittest.TestCase):
             )
             mock_sleep.assert_called_once_with(1.0)
             self.plugin.send_message.assert_called_once_with(
-                text=PING_RESPONSE, destination_id="!12345678", reply_id=None
+                text=PING_RESPONSE,
+                channel=1,
+                destination_id="!12345678",
+                reply_id=123,
             )
 
         asyncio.run(run_test())
@@ -930,7 +935,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
             )
             mock_sleep.assert_called_once_with(1.0)
             self.plugin.send_message.assert_called_once_with(
-                text="pong", destination_id="!12345678", reply_id=None
+                text="pong", channel=1, destination_id="!12345678", reply_id=None
             )
 
         asyncio.run(run_test())

@@ -168,7 +168,10 @@ class Plugin(BasePlugin):
 
         if is_direct_message:
             self.send_message(
-                text=reply_message, destination_id=from_id, reply_id=reply_id
+                text=reply_message,
+                channel=channel,
+                destination_id=from_id,
+                reply_id=reply_id,
             )
         else:
             self.send_message(text=reply_message, channel=channel, reply_id=reply_id)

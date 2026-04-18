@@ -1107,8 +1107,14 @@ def _connect_meshtastic_impl(
                 facade.logger.error(f"Unknown connection type: {connection_type}")
                 return None
 
-            # All connection paths above either returned None or assigned client
-            assert client is not None
+            if client is None:
+                facade.logger.error(
+                    "Meshtastic %s connection path completed without a client.",
+                    connection_type,
+                )
+                raise ConnectionError(
+                    f"Meshtastic {connection_type} connection completed without a client."
+                )
 
             successful = True
 
