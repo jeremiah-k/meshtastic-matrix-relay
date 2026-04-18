@@ -820,22 +820,8 @@ class Plugin(BasePlugin):
         # Wait for the response delay
         await asyncio.sleep(self.get_response_delay())
 
-        if is_direct_message:
-            # Respond via DM
-            self.send_message(
-                text=weather_notice,
-                destination_id=fromId,
-                reply_id=reply_id,
-            )
-        else:
-            # Respond in the same channel (broadcast)
-            self.send_message(
-                text=weather_notice,
-                channel=channel,
-                reply_id=reply_id,
-            )
-
-        # Fetch marine data and send as a separate message (Meshtastic has ~200 byte limit)
+        # Fetch marine data before sending so we can combine into one message if it fits
+        marine = None
         if coords:
             raw_units = self.config.get("units", WEATHER_UNITS_METRIC)
             units = (
@@ -852,20 +838,23 @@ class Plugin(BasePlugin):
                 mode,
                 units,
             )
-            if marine:
+
+        def _send(text: str) -> None:
+            if is_direct_message:
+                self.send_message(text=text, destination_id=fromId, reply_id=reply_id)
+            else:
+                self.send_message(text=text, channel=channel, reply_id=reply_id)
+
+        if marine:
+            combined = f"{weather_notice} | {marine}"
+            if len(combined.encode(DEFAULT_TEXT_ENCODING)) <= MAX_FORECAST_LENGTH:
+                _send(combined)
+            else:
+                _send(weather_notice)
                 await asyncio.sleep(self.get_response_delay())
-                if is_direct_message:
-                    self.send_message(
-                        text=marine,
-                        destination_id=fromId,
-                        reply_id=reply_id,
-                    )
-                else:
-                    self.send_message(
-                        text=marine,
-                        channel=channel,
-                        reply_id=reply_id,
-                    )
+                _send(marine)
+        else:
+            _send(weather_notice)
 
         return True
 
