@@ -1107,6 +1107,9 @@ def _connect_meshtastic_impl(
                 facade.logger.error(f"Unknown connection type: {connection_type}")
                 return None
 
+            # All connection paths above either returned None or assigned client
+            assert client is not None
+
             successful = True
 
             # Acquire lock only for the final setup and subscription

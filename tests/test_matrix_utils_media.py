@@ -124,6 +124,7 @@ async def test_send_image():
                 "!room:matrix.org",
                 upload_response=mock_upload_response,
                 filename="test.png",
+                reply_to_event_id=None,
             )
 
 

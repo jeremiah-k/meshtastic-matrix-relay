@@ -60,6 +60,7 @@ class TestPingPlugin(unittest.TestCase):
         self.plugin.is_channel_enabled = MagicMock(return_value=True)
         self.plugin.get_response_delay = MagicMock(return_value=1.0)
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_message = MagicMock()
 
     def test_plugin_name(self):
         self.assertEqual(self.plugin.plugin_name, "ping")
@@ -120,7 +121,7 @@ class TestPingPlugin(unittest.TestCase):
             self.plugin.logger.warning.assert_called_once_with(
                 "Meshtastic client myInfo unavailable; skipping ping"
             )
-            mock_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -147,8 +148,8 @@ class TestPingPlugin(unittest.TestCase):
                 0, is_direct_message=False
             )
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(
-                text=PING_RESPONSE, channelIndex=0
+            self.plugin.send_message.assert_called_once_with(
+                text=PING_RESPONSE, channel=0, reply_id=None
             )
             self.plugin.logger.info.assert_called_once()
 
@@ -177,8 +178,8 @@ class TestPingPlugin(unittest.TestCase):
                 1, is_direct_message=True
             )
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(
-                text=PING_RESPONSE, destinationId="!12345678"
+            self.plugin.send_message.assert_called_once_with(
+                text=PING_RESPONSE, destination_id="!12345678", reply_id=None
             )
 
         asyncio.run(run_test())
@@ -205,8 +206,8 @@ class TestPingPlugin(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(
-                text=PING_RESPONSE, channelIndex=0
+            self.plugin.send_message.assert_called_once_with(
+                text=PING_RESPONSE, channel=0, reply_id=None
             )
 
         asyncio.run(run_test())
@@ -229,7 +230,7 @@ class TestPingPlugin(unittest.TestCase):
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertFalse(result)
-            mock_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -251,7 +252,7 @@ class TestPingPlugin(unittest.TestCase):
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertFalse(result)
-            mock_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -273,7 +274,7 @@ class TestPingPlugin(unittest.TestCase):
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertFalse(result)
-            mock_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -295,7 +296,7 @@ class TestPingPlugin(unittest.TestCase):
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertFalse(result)
-            mock_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -319,7 +320,7 @@ class TestPingPlugin(unittest.TestCase):
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertFalse(result)
-            mock_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -342,7 +343,7 @@ class TestPingPlugin(unittest.TestCase):
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertFalse(result)
-            mock_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -367,8 +368,8 @@ class TestPingPlugin(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(
-                text=PING_RESPONSE, channelIndex=0
+            self.plugin.send_message.assert_called_once_with(
+                text=PING_RESPONSE, channel=0, reply_id=None
             )
 
         asyncio.run(run_test())
@@ -391,7 +392,7 @@ class TestPingPlugin(unittest.TestCase):
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertFalse(result)
-            mock_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -414,7 +415,7 @@ class TestPingPlugin(unittest.TestCase):
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertFalse(result)
-            mock_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -485,6 +486,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
         self.plugin.is_channel_enabled = MagicMock(return_value=True)
         self.plugin.get_response_delay = MagicMock(return_value=1.0)
         self.plugin.config = {"mimic_mode": True}
+        self.plugin.send_message = MagicMock()
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("asyncio.sleep")
@@ -506,7 +508,9 @@ class TestPingPluginMimicMode(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(text="pong", channelIndex=0)
+            self.plugin.send_message.assert_called_once_with(
+                text="pong", channel=0, reply_id=None
+            )
 
         asyncio.run(run_test())
 
@@ -533,11 +537,11 @@ class TestPingPluginMimicMode(unittest.TestCase):
                     )
                     self.assertTrue(result)
                     mock_sleep.assert_called_once_with(1.0)
-                    mock_client.sendText.assert_called_once_with(
-                        text=expected_response, channelIndex=0
+                    self.plugin.send_message.assert_called_once_with(
+                        text=expected_response, channel=0, reply_id=None
                     )
                     mock_sleep.reset_mock()
-                    mock_client.sendText.reset_mock()
+                    self.plugin.send_message.reset_mock()
 
         asyncio.run(run_test())
 
@@ -561,7 +565,9 @@ class TestPingPluginMimicMode(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(text="PONG", channelIndex=0)
+            self.plugin.send_message.assert_called_once_with(
+                text="PONG", channel=0, reply_id=None
+            )
 
         asyncio.run(run_test())
 
@@ -585,7 +591,9 @@ class TestPingPluginMimicMode(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(text="Pong", channelIndex=0)
+            self.plugin.send_message.assert_called_once_with(
+                text="Pong", channel=0, reply_id=None
+            )
 
         asyncio.run(run_test())
 
@@ -609,7 +617,9 @@ class TestPingPluginMimicMode(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(text="!pong!", channelIndex=0)
+            self.plugin.send_message.assert_called_once_with(
+                text="!pong!", channel=0, reply_id=None
+            )
 
         asyncio.run(run_test())
 
@@ -635,8 +645,8 @@ class TestPingPluginMimicMode(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(
-                text="!!!pong!!!", channelIndex=0
+            self.plugin.send_message.assert_called_once_with(
+                text="!!!pong!!!", channel=0, reply_id=None
             )
 
         asyncio.run(run_test())
@@ -661,8 +671,8 @@ class TestPingPluginMimicMode(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(
-                text="!!!!!pong", channelIndex=0
+            self.plugin.send_message.assert_called_once_with(
+                text="!!!!!pong", channel=0, reply_id=None
             )
 
         asyncio.run(run_test())
@@ -687,8 +697,8 @@ class TestPingPluginMimicMode(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(
-                text="!!!!!Pong?????", channelIndex=0
+            self.plugin.send_message.assert_called_once_with(
+                text="!!!!!Pong?????", channel=0, reply_id=None
             )
 
         asyncio.run(run_test())
@@ -713,7 +723,9 @@ class TestPingPluginMimicMode(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(text="PoNg!?!", channelIndex=0)
+            self.plugin.send_message.assert_called_once_with(
+                text="PoNg!?!", channel=0, reply_id=None
+            )
 
         asyncio.run(run_test())
 
@@ -735,7 +747,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertFalse(result)
-            mock_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -763,8 +775,8 @@ class TestPingPluginMimicMode(unittest.TestCase):
                         packet, "formatted_message", "TestNode", "TestMesh"
                     )
                     self.assertFalse(result)
-                    mock_client.sendText.assert_not_called()
-                    mock_client.sendText.reset_mock()
+                    self.plugin.send_message.assert_not_called()
+                    self.plugin.send_message.reset_mock()
 
         asyncio.run(run_test())
 
@@ -786,7 +798,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertFalse(result)
-            mock_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -812,7 +824,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
             )
             self.assertFalse(result)
             mock_sleep.assert_not_called()
-            mock_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -838,7 +850,7 @@ class TestPingPluginMimicMode(unittest.TestCase):
             )
             self.assertFalse(result)
             mock_sleep.assert_not_called()
-            mock_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -862,7 +874,9 @@ class TestPingPluginMimicMode(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(text="Pong...", channelIndex=0)
+            self.plugin.send_message.assert_called_once_with(
+                text="Pong...", channel=0, reply_id=None
+            )
 
         asyncio.run(run_test())
 
@@ -886,7 +900,9 @@ class TestPingPluginMimicMode(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(text="Pong...", channelIndex=0)
+            self.plugin.send_message.assert_called_once_with(
+                text="Pong...", channel=0, reply_id=None
+            )
 
         asyncio.run(run_test())
 
@@ -913,8 +929,8 @@ class TestPingPluginMimicMode(unittest.TestCase):
                 1, is_direct_message=True
             )
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(
-                text="pong", destinationId="!12345678"
+            self.plugin.send_message.assert_called_once_with(
+                text="pong", destination_id="!12345678", reply_id=None
             )
 
         asyncio.run(run_test())
@@ -950,7 +966,7 @@ class TestPingPluginMatrixHandling(unittest.TestCase):
             self.assertTrue(result)
             self.plugin.matches.assert_called_once_with(event)
             self.plugin.send_matrix_message.assert_called_once_with(
-                "!test:matrix.org", PING_RESPONSE
+                "!test:matrix.org", PING_RESPONSE, reply_to_event_id=event.event_id
             )
 
         asyncio.run(run_test())
@@ -962,6 +978,7 @@ class TestPingPluginEdgeCases(unittest.TestCase):
         self.plugin.logger = MagicMock()
         self.plugin.is_channel_enabled = MagicMock(return_value=True)
         self.plugin.get_response_delay = MagicMock(return_value=1.0)
+        self.plugin.send_message = MagicMock()
 
     def test_handle_meshtastic_message_no_decoded(self):
         packet = {"channel": 0, "fromId": "!12345678", "to": BROADCAST_NUM}
@@ -1010,8 +1027,8 @@ class TestPingPluginEdgeCases(unittest.TestCase):
             )
             self.assertTrue(result)
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(
-                text=PING_RESPONSE, channelIndex=0
+            self.plugin.send_message.assert_called_once_with(
+                text=PING_RESPONSE, channel=0, reply_id=None
             )
 
         asyncio.run(run_test())
@@ -1035,7 +1052,7 @@ class TestPingPluginEdgeCases(unittest.TestCase):
                 )
                 self.assertTrue(result)
                 mock_sleep.assert_not_called()
-                mock_client.sendText.assert_not_called()
+                self.plugin.send_message.assert_not_called()
                 self.plugin.logger.warning.assert_called_once_with(
                     "Direct message missing fromId; cannot reply"
                 )
@@ -1061,7 +1078,7 @@ class TestPingPluginEdgeCases(unittest.TestCase):
             )
             self.assertFalse(result)
             self.plugin.is_channel_enabled.assert_not_called()
-            mock_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -1088,9 +1105,10 @@ class TestPingPluginEdgeCases(unittest.TestCase):
                 DEFAULT_CHANNEL, is_direct_message=False
             )
             mock_sleep.assert_called_once_with(1.0)
-            mock_client.sendText.assert_called_once_with(
+            self.plugin.send_message.assert_called_once_with(
                 text=PING_RESPONSE,
-                channelIndex=DEFAULT_CHANNEL,
+                channel=DEFAULT_CHANNEL,
+                reply_id=None,
             )
 
         asyncio.run(run_test())

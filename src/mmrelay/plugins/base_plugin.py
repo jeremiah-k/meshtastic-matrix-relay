@@ -736,7 +736,7 @@ class BasePlugin(ABC):
             self.logger.error("Failed to connect to Matrix client")
             return None
 
-        content = {
+        content: dict[str, Any] = {
             "msgtype": "m.text",
             "body": message,
         }

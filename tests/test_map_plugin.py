@@ -327,6 +327,7 @@ class TestImageUploadAndSend(unittest.TestCase):
                 room_id,
                 upload_response=self.mock_upload_response,
                 filename="test.png",
+                reply_to_event_id=None,
             )
 
         asyncio.run(run_test())
@@ -462,7 +463,11 @@ class TestMapPlugin(unittest.TestCase):
             self.assertTrue(result)
             mock_get_map.assert_called_once()
             _mock_send_image.assert_called_once_with(
-                mock_matrix_client, mock_room.room_id, mock_image, "location.png"
+                mock_matrix_client,
+                mock_room.room_id,
+                mock_image,
+                "location.png",
+                reply_to_event_id=mock_event.event_id,
             )
 
         asyncio.run(run_test())

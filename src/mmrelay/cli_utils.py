@@ -777,6 +777,9 @@ async def logout_matrix_bot(password: str) -> bool:
         # Create a temporary client to verify the password
         # We'll try to login with the password to verify it's correct
         ssl_param = cast(Any, ssl_context)
+        if AsyncClient is None:
+            _get_logger().error("Matrix AsyncClient not available")
+            return False
         temp_client = AsyncClient(homeserver_str, user_id_str, ssl=ssl_param)
 
         try:
@@ -835,6 +838,9 @@ async def logout_matrix_bot(password: str) -> bool:
         print("🚪 Logging out from Matrix server...")
         main_client = None
         try:
+            if AsyncClient is None:
+                _get_logger().error("Matrix AsyncClient not available")
+                return False
             main_client = AsyncClient(homeserver_str, user_id_str, ssl=ssl_param)
             main_client.restore_login(
                 user_id=user_id_str,
