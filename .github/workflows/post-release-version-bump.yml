@@ -64,11 +64,14 @@ jobs:
 
       - name: Commit and push version bump
         if: steps.bump.outputs.current != steps.bump.outputs.new
+        env:
+          NEW_VERSION: ${{ steps.bump.outputs.new }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add pyproject.toml
-          git commit -m "chore(version): bump to ${{ steps.bump.outputs.new }} after release ${{ github.event.release.tag_name }}"
+          git commit -m "chore(version): bump to ${NEW_VERSION} after release ${RELEASE_TAG}"
           git push origin HEAD:main

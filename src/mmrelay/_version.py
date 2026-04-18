@@ -56,7 +56,10 @@ def _version_from_pyproject() -> str | None:
         if tomllib is not None:
             with pyproject.open("rb") as handle:
                 data = tomllib.load(handle)
-            version = data.get("project", {}).get("version")
+            project = data.get("project")
+            if not isinstance(project, dict):
+                return None
+            version = project.get("version")
             if isinstance(version, str):
                 normalized = version.strip()
                 return normalized or None
