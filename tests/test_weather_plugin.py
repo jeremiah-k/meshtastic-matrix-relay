@@ -1941,7 +1941,8 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.plugin.send_message = MagicMock()
         # Marine string long enough to push combined over 200 bytes
         self.plugin.generate_marine_forecast = MagicMock(
-            return_value="🌊 " + "W" * 200  # 205 bytes alone, guaranteed to exceed limit combined
+            return_value="🌊 "
+            + "W" * 200  # 205 bytes alone, guaranteed to exceed limit combined
         )
 
         packet = {

@@ -184,7 +184,9 @@ class Plugin(BasePlugin):
                 except (ValueError, AttributeError):
                     base_index = datetime.now().hour
 
-            mode_offsets = HOURLY_CONFIG.get(mode_key, HOURLY_CONFIG[WEATHER_MODE_CURRENT])
+            mode_offsets = HOURLY_CONFIG.get(
+                mode_key, HOURLY_CONFIG[WEATHER_MODE_CURRENT]
+            )
             offsets = [o for o in mode_offsets.get("offsets", ()) if isinstance(o, int)]
 
             return self._format_hourly_marine(data, base_index, offsets, units)
@@ -289,10 +291,17 @@ class Plugin(BasePlugin):
                 part += f" {round(d)}{DEGREE_SYMBOL}"
             return part
 
-        slot_parts = [s for s in [
-            _fmt_slot("Now", base_index),
-            *[_fmt_slot(f"+{o}h", min(base_index + o, len(heights) - 1)) for o in offsets],
-        ] if s is not None]
+        slot_parts = [
+            s
+            for s in [
+                _fmt_slot("Now", base_index),
+                *[
+                    _fmt_slot(f"+{o}h", min(base_index + o, len(heights) - 1))
+                    for o in offsets
+                ],
+            ]
+            if s is not None
+        ]
 
         if not slot_parts:
             return None
@@ -951,7 +960,12 @@ class Plugin(BasePlugin):
             full_forecast = f"{terrestrial} | {marine}"
         else:
             full_forecast = terrestrial
-        await self.send_matrix_message(room.room_id, full_forecast, formatted=False, reply_to_event_id=event.event_id)
+        await self.send_matrix_message(
+            room.room_id,
+            full_forecast,
+            formatted=False,
+            reply_to_event_id=event.event_id,
+        )
         return True
 
     async def _resolve_location_from_args(
