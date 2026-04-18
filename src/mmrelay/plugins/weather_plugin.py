@@ -850,7 +850,9 @@ class Plugin(BasePlugin):
 
         def _send(text: str) -> None:
             if is_direct_message:
-                self.send_message(text=text, destination_id=fromId, reply_id=reply_id)
+                self.send_message(
+                    text=text, channel=channel, destination_id=fromId, reply_id=reply_id
+                )
             else:
                 self.send_message(text=text, channel=channel, reply_id=reply_id)
 

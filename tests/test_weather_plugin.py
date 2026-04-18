@@ -904,6 +904,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.plugin.send_message.assert_called_once()
         call_args = self.plugin.send_message.call_args
         self.assertEqual(call_args.kwargs["destination_id"], TEST_MESHTASTIC_ID)
+        self.assertEqual(call_args.kwargs["channel"], 0)
         self.assertIn(
             _normalize_emoji("Now: 🌤️ Mainly clear"),
             _normalize_emoji(call_args.kwargs["text"]),
@@ -1673,6 +1674,51 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
         call_kwargs = self.plugin.send_message.call_args.kwargs
         self.assertEqual(call_kwargs.get("reply_id"), 42)
+        self.assertEqual(call_kwargs.get("channel"), 0)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    async def test_handle_meshtastic_dm_reply_id_and_channel(
+        self, mock_get, mock_connect
+    ):
+        """DM weather responses should propagate reply_id, channel, and destination_id."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = self.sample_weather_data
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = TEST_NODE_NUM
+        mock_client.nodes = {
+            TEST_MESHTASTIC_ID: {
+                "position": {"latitude": TEST_LAT_NYC, "longitude": TEST_LON_NYC}
+            }
+        }
+        mock_connect.return_value = mock_client
+
+        self.plugin.send_message = MagicMock()
+
+        packet = {
+            "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
+            "channel": 2,
+            "fromId": TEST_MESHTASTIC_ID,
+            "to": TEST_NODE_NUM,
+            "id": 99,
+        }
+
+        result = await self.plugin.handle_meshtastic_message(
+            packet, "formatted_message", "longname", "meshnet_name"
+        )
+
+        self.assertTrue(result)
+        self.plugin.send_message.assert_called_once()
+        call_kwargs = self.plugin.send_message.call_args.kwargs
+        self.assertEqual(call_kwargs["reply_id"], 99)
+        self.assertEqual(call_kwargs["channel"], 2)
+        self.assertEqual(call_kwargs["destination_id"], TEST_MESHTASTIC_ID)
+        self.plugin.is_channel_enabled.assert_called_once_with(
+            2, is_direct_message=True
+        )
 
     # ------------------------------------------------------------------
     # Marine forecast tests

@@ -109,10 +109,9 @@ class Plugin(BasePlugin):
                     if distance_km <= radius_km:
                         target_node = from_id
                         self.logger.debug(f"Sending dropped message to {target_node}")
-                        await asyncio.to_thread(
-                            meshtastic_client.sendText,
+                        self.send_message(
                             text=message["text"],
-                            destinationId=target_node,
+                            destination_id=target_node,
                         )
                     else:
                         unsent_messages.append(message)
