@@ -135,7 +135,7 @@ class Plugin(BasePlugin):
             url = (
                 f"https://marine-api.open-meteo.com/v1/marine?"
                 f"latitude={latitude}&longitude={longitude}&"
-                f"hourly=wave_height,wave_direction,wave_period&"
+                f"current=wave_height,wave_direction,wave_period&"
                 f"timezone=auto"
             )
             response = requests.get(url, timeout=WEATHER_API_TIMEOUT_SECONDS)
@@ -143,29 +143,21 @@ class Plugin(BasePlugin):
             data = response.json()
 
             # Extract marine data
-            hourly = data.get("hourly", {})
-            wave_heights = hourly.get("wave_height", [])
-            wave_dirs = hourly.get("wave_direction", [])
-            wave_periods = hourly.get("wave_period", [])
+            current = data.get("current", {})
+            wave_height = current.get("wave_height")
+            wave_dir = current.get("wave_direction")
+            wave_period = current.get("wave_period")
 
-            if not wave_heights:
+            if wave_height is None:
                 return "Marine data unavailable."
 
-            # Get current values (index 0 is the most recent)
-            current_wave_height = wave_heights[0] if wave_heights else None
-            current_wave_dir = wave_dirs[0] if wave_dirs else None
-            current_wave_period = wave_periods[0] if wave_periods else None
+            marine_parts = [f"🌊 Sea State: Waves {round(wave_height, 1)}m"]
 
-            if current_wave_height is None:
-                return "Marine data unavailable."
+            if wave_period is not None:
+                marine_parts[0] += f" ({round(wave_period, 1)}s)"
 
-            marine_parts = [f"🌊 Sea State: Waves {round(current_wave_height, 1)}m"]
-
-            if current_wave_period is not None:
-                marine_parts[0] += f" ({round(current_wave_period, 1)}s)"
-
-            if current_wave_dir is not None:
-                marine_parts.append(f"{round(current_wave_dir)}{DEGREE_SYMBOL}")
+            if wave_dir is not None:
+                marine_parts.append(f"{round(wave_dir)}{DEGREE_SYMBOL}")
 
             return " ".join(marine_parts)
 
