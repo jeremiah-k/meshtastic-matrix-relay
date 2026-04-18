@@ -90,6 +90,7 @@ class Plugin(BasePlugin):
         latitude: float,
         longitude: float,
         mode: str = WEATHER_MODE_CURRENT,
+        units: str = "metric",
     ) -> str | None:
         """
         Fetch marine weather data (wave height, period, and direction) for given coordinates.
@@ -113,16 +114,20 @@ class Plugin(BasePlugin):
             mode (str): Forecast mode — ``WEATHER_MODE_DAILY`` uses the daily endpoint,
                         ``WEATHER_MODE_CURRENT`` uses the current-conditions endpoint,
                         and any other value (e.g. ``hourly``) uses the hourly endpoint.
+            units (str): Unit system — ``"imperial"`` converts wave heights to feet,
+                         ``"metric"`` (default) keeps metres.
 
         Returns:
             str | None: Formatted marine forecast string when wave data is available,
                         or ``None`` if the coordinates are on land, the API returns no
                         data, or the request fails.
 
-                        Current example:
+                        Current example (metric):
                             ``"🌊 Sea State: Waves 1.5m (8.0s) 185°"``
+                        Current example (imperial):
+                            ``"🌊 Sea State: Waves 4.9ft (8.0s) 185°"``
                         Hourly example:
-                            ``"🌊 Waves: Now 1.5m | +3h 1.8m | +6h 2.1m | +12h 1.9m"``
+                            ``"🌊 Waves: Now 1.5m (8.0s) 185° | +3h 1.8m (8.2s) 190°"``
                         Daily example:
                             ``"🌊 Waves: Mon 1.5m (8.0s) 185° | Tue …"``
         """
@@ -133,21 +138,21 @@ class Plugin(BasePlugin):
                     f"https://marine-api.open-meteo.com/v1/marine?"
                     f"latitude={latitude}&longitude={longitude}&"
                     f"daily=wave_height_max,wave_direction_dominant,wave_period_max&"
-                    f"timezone=auto"
+                    f"timezone=auto&length_unit={units}"
                 )
             elif mode_key == WEATHER_MODE_CURRENT:
                 url = (
                     f"https://marine-api.open-meteo.com/v1/marine?"
                     f"latitude={latitude}&longitude={longitude}&"
                     f"current=wave_height,wave_direction,wave_period&"
-                    f"timezone=auto"
+                    f"timezone=auto&length_unit={units}"
                 )
             else:
                 url = (
                     f"https://marine-api.open-meteo.com/v1/marine?"
                     f"latitude={latitude}&longitude={longitude}&"
                     f"hourly=wave_height,wave_direction,wave_period&"
-                    f"timezone=auto"
+                    f"timezone=auto&length_unit={units}"
                 )
 
             response = requests.get(url, timeout=WEATHER_API_TIMEOUT_SECONDS)
@@ -155,9 +160,9 @@ class Plugin(BasePlugin):
             data = response.json()
 
             if mode_key == WEATHER_MODE_DAILY:
-                return self._format_daily_marine(data)
+                return self._format_daily_marine(data, units)
             if mode_key == WEATHER_MODE_CURRENT:
-                return self._format_current_marine(data)
+                return self._format_current_marine(data, units)
 
             # Hourly mode: anchor to the current hour using datetime.now()
             now = datetime.now()
@@ -175,7 +180,7 @@ class Plugin(BasePlugin):
             mode_offsets = HOURLY_CONFIG.get(mode_key, HOURLY_CONFIG[WEATHER_MODE_CURRENT])
             offsets = [o for o in mode_offsets.get("offsets", ()) if isinstance(o, int)]
 
-            return self._format_hourly_marine(data, base_index, offsets)
+            return self._format_hourly_marine(data, base_index, offsets, units)
 
         except requests.exceptions.RequestException:
             self.logger.debug(
@@ -185,8 +190,8 @@ class Plugin(BasePlugin):
             )
             return None
 
-    def _format_current_marine(self, data: dict) -> str | None:
-        """Format current/hourly marine API response into a single-line string."""
+    def _format_current_marine(self, data: dict, units: str = "metric") -> str | None:
+        """Format current marine API response into a single-line string."""
         current = data.get("current", {})
         wave_height = current.get("wave_height")
         wave_dir = current.get("wave_direction")
@@ -195,7 +200,8 @@ class Plugin(BasePlugin):
         if wave_height is None:
             return None
 
-        parts = [f"🌊 Sea State: Waves {round(wave_height, 1)}m"]
+        height_unit = "ft" if units == WEATHER_UNITS_IMPERIAL else "m"
+        parts = [f"🌊 Sea State: Waves {round(wave_height, 1)}{height_unit}"]
         if wave_period is not None:
             parts[0] += f" ({round(wave_period, 1)}s)"
         if wave_dir is not None:
@@ -203,7 +209,7 @@ class Plugin(BasePlugin):
 
         return " ".join(parts)
 
-    def _format_daily_marine(self, data: dict) -> str | None:
+    def _format_daily_marine(self, data: dict, units: str = "metric") -> str | None:
         """Format daily marine API response into a multi-day single-line string."""
         daily = data.get("daily", {})
         heights = daily.get("wave_height_max") or []
@@ -214,6 +220,7 @@ class Plugin(BasePlugin):
         if not heights:
             return None
 
+        height_unit = "ft" if units == WEATHER_UNITS_IMPERIAL else "m"
         day_parts = []
         for i, height in enumerate(heights):
             if height is None:
@@ -223,7 +230,7 @@ class Plugin(BasePlugin):
             except (IndexError, ValueError):
                 label = f"D{i}"
 
-            part = f"{label} {round(height, 1)}m"
+            part = f"{label} {round(height, 1)}{height_unit}"
             period = periods[i] if i < len(periods) else None
             direction = directions[i] if i < len(directions) else None
             if period is not None:
@@ -238,16 +245,13 @@ class Plugin(BasePlugin):
         return self._trim_to_max_bytes("🌊 Waves: " + " | ".join(day_parts))
 
     def _format_hourly_marine(
-        self, data: dict, base_index: int, offsets: list[int]
+        self, data: dict, base_index: int, offsets: list[int], units: str = "metric"
     ) -> str | None:
-        """Format hourly marine API response into a multi-slot single-line string.
-
-        Uses the ``base_index`` and ``offsets`` already calculated by
-        ``generate_forecast`` — the same values used for the terrestrial hourly
-        forecast — so no additional time-parsing is needed here.
-        """
+        """Format hourly marine API response into a multi-slot single-line string."""
         hourly = data.get("hourly", {})
         heights = hourly.get("wave_height") or []
+        directions = hourly.get("wave_direction") or []
+        periods = hourly.get("wave_period") or []
 
         if not heights:
             return None
@@ -256,12 +260,28 @@ class Plugin(BasePlugin):
         if now_height is None:
             return None
 
-        slot_parts = [f"Now {round(now_height, 1)}m"]
-        for offset in offsets:
-            idx = min(base_index + offset, len(heights) - 1)
-            h = heights[idx]
-            if h is not None:
-                slot_parts.append(f"+{offset}h {round(h, 1)}m")
+        height_unit = "ft" if units == WEATHER_UNITS_IMPERIAL else "m"
+
+        def _fmt_slot(label: str, idx: int) -> str | None:
+            h = heights[idx] if idx < len(heights) else None
+            if h is None:
+                return None
+            part = f"{label} {round(h, 1)}{height_unit}"
+            p = periods[idx] if idx < len(periods) else None
+            d = directions[idx] if idx < len(directions) else None
+            if p is not None:
+                part += f" ({round(p, 1)}s)"
+            if d is not None:
+                part += f" {round(d)}{DEGREE_SYMBOL}"
+            return part
+
+        slot_parts = [s for s in [
+            _fmt_slot("Now", base_index),
+            *[_fmt_slot(f"+{o}h", min(base_index + o, len(heights) - 1)) for o in offsets],
+        ] if s is not None]
+
+        if not slot_parts:
+            return None
 
         return self._trim_to_max_bytes("🌊 Waves: " + " | ".join(slot_parts))
 
@@ -800,11 +820,20 @@ class Plugin(BasePlugin):
 
         # Fetch marine data and send as a separate message (Meshtastic has ~200 byte limit)
         if coords:
+            raw_units = self.config.get("units", WEATHER_UNITS_METRIC)
+            units = (
+                raw_units.strip().lower()
+                if isinstance(raw_units, str)
+                else WEATHER_UNITS_METRIC
+            )
+            if units not in {WEATHER_UNITS_METRIC, WEATHER_UNITS_IMPERIAL}:
+                units = WEATHER_UNITS_METRIC
             marine = await asyncio.to_thread(
                 self.generate_marine_forecast,
                 coords[0],
                 coords[1],
                 mode,
+                units,
             )
             if marine:
                 await asyncio.sleep(self.get_response_delay())
@@ -894,11 +923,20 @@ class Plugin(BasePlugin):
             longitude=coords[1],
             mode=parsed_command,
         )
+        raw_units = self.config.get("units", WEATHER_UNITS_METRIC)
+        units = (
+            raw_units.strip().lower()
+            if isinstance(raw_units, str)
+            else WEATHER_UNITS_METRIC
+        )
+        if units not in {WEATHER_UNITS_METRIC, WEATHER_UNITS_IMPERIAL}:
+            units = WEATHER_UNITS_METRIC
         marine = await asyncio.to_thread(
             self.generate_marine_forecast,
             coords[0],
             coords[1],
             parsed_command,
+            units,
         )
         if marine:
             full_forecast = self._trim_to_max_bytes(f"{terrestrial} | {marine}")
