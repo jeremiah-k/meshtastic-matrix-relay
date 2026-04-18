@@ -1764,7 +1764,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("hourly=", called_url)
 
     def test_generate_marine_forecast_hourly_mode_uses_hourly_endpoint(self):
-        """Hourly mode should request hourly marine fields and current=time for anchoring."""
+        """Hourly mode should request hourly marine fields and current=wave_height for anchoring."""
         del self.plugin.generate_marine_forecast  # restore real method for direct testing
         hourly_times = [f"2023-08-20T{h:02d}:00" for h in range(24)]
         marine_payload = {
@@ -1782,7 +1782,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             called_url = mock_get.call_args.args[0]
 
         self.assertIn("hourly=", called_url)
-        self.assertIn("current=time", called_url)
+        self.assertIn("current=wave_height", called_url)
         self.assertNotIn("daily=", called_url)
         self.assertIsNotNone(result)
         self.assertIn("🌊", result)

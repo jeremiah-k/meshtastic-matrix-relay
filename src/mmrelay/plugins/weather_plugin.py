@@ -152,7 +152,7 @@ class Plugin(BasePlugin):
                     f"https://marine-api.open-meteo.com/v1/marine?"
                     f"latitude={latitude}&longitude={longitude}&"
                     f"hourly=wave_height,wave_direction,wave_period&"
-                    f"current=time&"
+                    f"current=wave_height&"
                     f"timezone=auto&length_unit={units}"
                 )
 
