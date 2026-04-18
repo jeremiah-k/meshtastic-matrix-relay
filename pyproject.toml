@@ -75,3 +75,31 @@ where = ["src"]
 
 [tool.setuptools.exclude-package-data]
 "*" = ["__pycache__/*", "*.py[cod]"]
+
+[tool.bumpversion]
+current_version = "1.3.5"
+parse = '(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)'
+serialize = ["{major}.{minor}.{patch}"]
+search = "{current_version}"
+replace = "{new_version}"
+commit = false
+tag = false
+allow_dirty = false
+
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+search = """
+[project]
+name = "mmrelay"
+version = "{current_version}"
+"""
+replace = """
+[project]
+name = "mmrelay"
+version = "{new_version}"
+"""
+
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+search = 'current_version = "{current_version}"'
+replace = 'current_version = "{new_version}"'

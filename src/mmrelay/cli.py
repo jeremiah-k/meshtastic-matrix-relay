@@ -13,17 +13,11 @@ import platform
 import shutil
 import sys
 from collections.abc import Mapping
-
-# Import version from package
-from importlib.metadata import version as _get_version
 from typing import Any
 
 import yaml
 
-try:
-    __version__ = _get_version("mmrelay")
-except Exception:
-    __version__ = "unknown"
+from mmrelay._version import __version__
 from mmrelay.cli_utils import (
     get_command,
     get_deprecation_warning,

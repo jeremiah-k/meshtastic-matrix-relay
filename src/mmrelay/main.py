@@ -10,10 +10,6 @@ import signal
 import sys
 import tempfile
 import threading
-
-# Import version from package
-# Import meshtastic_utils as a module to set event_loop
-from importlib.metadata import version as _get_version
 from pathlib import Path
 from typing import Any, Callable, cast
 
@@ -27,13 +23,7 @@ from nio import (
 )
 from nio.events.room_events import RoomMemberEvent
 
-# isort: skip
-from mmrelay import meshtastic_utils
-
-try:
-    __version__ = _get_version("mmrelay")
-except Exception:
-    __version__ = "unknown"
+from mmrelay._version import __version__
 from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config
 from mmrelay.constants.app import (
     APP_DISPLAY_NAME,
@@ -90,6 +80,9 @@ from mmrelay.message_queue import (
 )
 from mmrelay.paths import get_home_dir, get_legacy_dirs, get_legacy_env_vars
 from mmrelay.plugin_loader import load_plugins, shutdown_plugins
+
+# Import as module to set event_loop.
+from mmrelay import meshtastic_utils  # isort: skip
 
 # Initialize logger
 logger = get_logger(name=APP_DISPLAY_NAME)

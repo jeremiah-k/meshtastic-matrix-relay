@@ -36,17 +36,21 @@ jobs:
         id: get_version
         shell: bash
         run: |
+          set -euo pipefail
+
           # Extract version from pyproject.toml
-          VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          VERSION="$(
+            python -c "import tomllib; from pathlib import Path; print(tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))['project']['version'])"
+          )"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "Extracted version: $VERSION"
           GIT_SHA=$(git rev-parse --short HEAD)
-          echo "GIT_SHA=$GIT_SHA" >> $GITHUB_ENV
+          echo "GIT_SHA=$GIT_SHA" >> "$GITHUB_ENV"
           # Set FILE_VERSION to just the version for releases, or version-dev-SHA for PRs/manual runs
           if [ "${{ github.event_name }}" == "release" ]; then
-            echo "FILE_VERSION=$VERSION" >> $GITHUB_ENV
+            echo "FILE_VERSION=$VERSION" >> "$GITHUB_ENV"
           else
-            echo "FILE_VERSION=$VERSION-dev-$GIT_SHA" >> $GITHUB_ENV
+            echo "FILE_VERSION=$VERSION-dev-$GIT_SHA" >> "$GITHUB_ENV"
           fi
 
       - name: Install dependencies
