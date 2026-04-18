@@ -1888,10 +1888,10 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("mmrelay.plugins.weather_plugin.requests.get")
-    async def test_handle_meshtastic_message_sends_marine_separately(
+    async def test_handle_meshtastic_message_combines_marine_when_fits(
         self, mock_get, mock_connect
     ):
-        """When marine data is available, Meshtastic handler sends it as a second message."""
+        """When terrestrial + marine combined fits in 200 bytes, send as one message."""
         mock_get.return_value = _make_ok_response(self.sample_weather_data)
 
         mock_client = MagicMock()
@@ -1902,7 +1902,6 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_connect.return_value = mock_client
 
         self.plugin.send_message = MagicMock()
-        # Override marine mock to return data
         self.plugin.generate_marine_forecast = MagicMock(
             return_value="🌊 Waves: 1.2m 7.5s 270°"
         )
@@ -1918,7 +1917,45 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             packet, "formatted", "longname", "meshnet"
         )
         self.assertTrue(result)
-        # Should send two messages: terrestrial + marine
+        # Combined fits in 200 bytes → single message containing both
+        self.assertEqual(self.plugin.send_message.call_count, 1)
+        sent_text = self.plugin.send_message.call_args.kwargs["text"]
+        self.assertIn("🌊", sent_text)
+        self.assertIn("Now:", sent_text)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    async def test_handle_meshtastic_message_sends_marine_separately_when_too_long(
+        self, mock_get, mock_connect
+    ):
+        """When combined message exceeds 200 bytes, marine is sent as a second message."""
+        mock_get.return_value = _make_ok_response(self.sample_weather_data)
+
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = TEST_NODE_NUM
+        mock_client.nodes = {
+            TEST_MESHTASTIC_ID: {"position": {"latitude": 40.0, "longitude": -10.0}}
+        }
+        mock_connect.return_value = mock_client
+
+        self.plugin.send_message = MagicMock()
+        # Marine string long enough to push combined over 200 bytes
+        self.plugin.generate_marine_forecast = MagicMock(
+            return_value="🌊 " + "W" * 200  # 205 bytes alone, guaranteed to exceed limit combined
+        )
+
+        packet = {
+            "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
+            "channel": 0,
+            "fromId": TEST_MESHTASTIC_ID,
+            "to": BROADCAST_NUM,
+        }
+
+        result = await self.plugin.handle_meshtastic_message(
+            packet, "formatted", "longname", "meshnet"
+        )
+        self.assertTrue(result)
+        # Combined exceeds 200 bytes → two separate messages
         self.assertEqual(self.plugin.send_message.call_count, 2)
         call_texts = [c.kwargs["text"] for c in self.plugin.send_message.call_args_list]
         self.assertTrue(any("🌊" in t for t in call_texts))
