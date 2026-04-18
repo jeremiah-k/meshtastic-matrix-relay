@@ -63,6 +63,8 @@ jobs:
         run: pyinstaller --name=mmrelay.exe --onefile --console --collect-all rich src/mmrelay/main.py
 
       - name: Build installer
+        # Intentionally using a SHA-pinned action that supports `filepath` + `options`.
+        # Keep this pinned to control supply-chain risk and avoid interface drift.
         uses: sharktide/iscc-cli@6f80e2e08ffc0606116be38199a77902d266b09a # v1.0.0
         with:
           filepath: "./scripts/mmrelay.iss"

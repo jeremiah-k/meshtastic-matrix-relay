@@ -38,3 +38,45 @@ def test_get_version_uses_unknown_sentinel_when_unavailable() -> None:
         patch.object(version_helper, "_version_from_pyproject", return_value=None),
     ):
         assert version_helper.get_version() == "0+unknown"
+
+
+def test_version_from_pyproject_reads_real_toml(tmp_path) -> None:
+    """
+    pyproject parsing should read [project].version from a real file.
+    """
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\nname = "mmrelay"\nversion = "4.5.6"\n',
+        encoding="utf-8",
+    )
+    with patch.object(version_helper, "_find_pyproject_toml", return_value=pyproject):
+        assert version_helper._version_from_pyproject() == "4.5.6"
+
+
+def test_version_from_pyproject_regex_fallback_without_tomllib(tmp_path) -> None:
+    """
+    Python 3.10 fallback should parse version when tomllib is unavailable.
+    """
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\nname = "mmrelay"\nversion = "7.8.9"\n',
+        encoding="utf-8",
+    )
+    with (
+        patch.object(version_helper, "_find_pyproject_toml", return_value=pyproject),
+        patch.object(version_helper, "tomllib", new=None),
+    ):
+        assert version_helper._version_from_pyproject() == "7.8.9"
+
+
+def test_version_from_pyproject_returns_none_for_malformed_toml(tmp_path) -> None:
+    """
+    Malformed pyproject TOML should safely return None.
+    """
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\nname = "mmrelay"\nversion = [\n',
+        encoding="utf-8",
+    )
+    with patch.object(version_helper, "_find_pyproject_toml", return_value=pyproject):
+        assert version_helper._version_from_pyproject() is None
