@@ -1581,6 +1581,88 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result)
 
     # ------------------------------------------------------------------
+    # Reply support tests
+    # ------------------------------------------------------------------
+
+    async def test_handle_room_message_replies_to_event(self):
+        """handle_room_message should pass event.event_id as reply_to_event_id."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.generate_forecast = MagicMock(return_value="Sunny 25°C")
+
+        mock_client = MagicMock()
+        mock_client.nodes = {
+            "n1": {"position": {"latitude": 10.0, "longitude": 20.0}},
+        }
+
+        mock_event = MagicMock()
+        mock_event.event_id = "$test_event_123"
+        mock_event.body = "!weather"
+        mock_event.source = {"content": {"formatted_body": ""}}
+
+        with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=mock_client):
+            result = await self.plugin.handle_room_message(
+                MagicMock(room_id="!r"), mock_event, "!weather"
+            )
+
+        self.assertTrue(result)
+        call_kwargs = self.plugin.send_matrix_message.call_args.kwargs
+        self.assertEqual(call_kwargs.get("reply_to_event_id"), "$test_event_123")
+
+    async def test_handle_room_message_no_location_replies_to_event(self):
+        """'Cannot determine location' should also be sent as a reply."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.send_matrix_message = AsyncMock()
+
+        mock_event = MagicMock()
+        mock_event.event_id = "$no_loc_event"
+        mock_event.body = "!weather"
+        mock_event.source = {"content": {"formatted_body": ""}}
+
+        with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=None):
+            await self.plugin.handle_room_message(
+                MagicMock(room_id="!r"), mock_event, "!weather"
+            )
+
+        call_kwargs = self.plugin.send_matrix_message.call_args.kwargs
+        self.assertEqual(call_kwargs.get("reply_to_event_id"), "$no_loc_event")
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    async def test_handle_meshtastic_message_reply_id_passed(self, mock_get, mock_connect):
+        """handle_meshtastic_message should pass packet['id'] as reply_id to send_message."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = self.sample_weather_data
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = TEST_NODE_NUM
+        mock_client.nodes = {
+            TEST_MESHTASTIC_ID: {
+                "position": {"latitude": TEST_LAT_NYC, "longitude": TEST_LON_NYC}
+            }
+        }
+        mock_connect.return_value = mock_client
+
+        self.plugin.send_message = MagicMock()
+
+        packet = {
+            "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
+            "channel": 0,
+            "fromId": TEST_MESHTASTIC_ID,
+            "to": BROADCAST_NUM,
+            "id": 42,
+        }
+
+        await self.plugin.handle_meshtastic_message(packet, "f", "longname", "mesh")
+
+        call_kwargs = self.plugin.send_message.call_args.kwargs
+        self.assertEqual(call_kwargs.get("reply_id"), 42)
+
+    # ------------------------------------------------------------------
     # Marine forecast tests
     # ------------------------------------------------------------------
 

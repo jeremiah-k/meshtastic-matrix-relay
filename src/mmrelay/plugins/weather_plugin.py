@@ -794,6 +794,7 @@ class Plugin(BasePlugin):
 
         weather_notice = "Cannot determine location"
         mode = parsed_command
+        reply_id = packet.get("id")
         if coords:
             weather_notice = await asyncio.to_thread(
                 self.generate_forecast,
@@ -810,12 +811,14 @@ class Plugin(BasePlugin):
             self.send_message(
                 text=weather_notice,
                 destination_id=fromId,
+                reply_id=reply_id,
             )
         else:
             # Respond in the same channel (broadcast)
             self.send_message(
                 text=weather_notice,
                 channel=channel,
+                reply_id=reply_id,
             )
 
         # Fetch marine data and send as a separate message (Meshtastic has ~200 byte limit)
@@ -841,11 +844,13 @@ class Plugin(BasePlugin):
                     self.send_message(
                         text=marine,
                         destination_id=fromId,
+                        reply_id=reply_id,
                     )
                 else:
                     self.send_message(
                         text=marine,
                         channel=channel,
+                        reply_id=reply_id,
                     )
 
         return True
@@ -914,6 +919,7 @@ class Plugin(BasePlugin):
                 room.room_id,
                 "Cannot determine location",
                 formatted=False,
+                reply_to_event_id=event.event_id,
             )
             return True
 
@@ -942,7 +948,7 @@ class Plugin(BasePlugin):
             full_forecast = self._trim_to_max_bytes(f"{terrestrial} | {marine}")
         else:
             full_forecast = terrestrial
-        await self.send_matrix_message(room.room_id, full_forecast, formatted=False)
+        await self.send_matrix_message(room.room_id, full_forecast, formatted=False, reply_to_event_id=event.event_id)
         return True
 
     async def _resolve_location_from_args(
