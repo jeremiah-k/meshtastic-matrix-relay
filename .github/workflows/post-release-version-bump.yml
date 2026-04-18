@@ -13,12 +13,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Validate release bump token
+        if: ${{ secrets.RELEASE_BUMP_PAT == '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::error::RELEASE_BUMP_PAT secret is required for post-release push to main."
+          exit 1
+
       - name: Checkout main branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.RELEASE_BUMP_PAT || github.token }}
+          token: ${{ secrets.RELEASE_BUMP_PAT }}
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -52,7 +60,7 @@ jobs:
           echo "new=$NEW_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Commit and push version bump
-        if: steps.bump.outputs.current != steps.bump.outputs.new
+        if: ${{ steps.bump.outputs.current != steps.bump.outputs.new && secrets.RELEASE_BUMP_PAT != '' }}
         shell: bash
         run: |
           set -euo pipefail

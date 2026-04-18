@@ -13,7 +13,7 @@ from typing import Final
 _PACKAGE_NAME: Final[str] = "mmrelay"
 _UNKNOWN_VERSION: Final[str] = "0+unknown"
 _PROJECT_VERSION_RE: Final[re.Pattern[str]] = re.compile(
-    r"""^version\s*=\s*["'](?P<version>[^"']+)["']\s*$"""
+    r"""^version\s*=\s*["'](?P<version>[^"']+)["']\s*(?:#.*)?$"""
 )
 
 try:
@@ -60,6 +60,7 @@ def _version_from_pyproject() -> str | None:
             if isinstance(version, str):
                 normalized = version.strip()
                 return normalized or None
+            return None
 
         # Python 3.10 fallback: parse only [project] version entry.
         in_project_section = False

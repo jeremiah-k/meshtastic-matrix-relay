@@ -88,16 +88,8 @@ allow_dirty = false
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
-search = """
-[project]
-name = "mmrelay"
-version = "{current_version}"
-"""
-replace = """
-[project]
-name = "mmrelay"
-version = "{new_version}"
-"""
+search = 'version = "{current_version}"'
+replace = 'version = "{new_version}"'
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
