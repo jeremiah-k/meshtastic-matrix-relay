@@ -371,15 +371,15 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
         forecast = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
 
-        # Should make API request with correct parameters
-        mock_get.assert_called_once()
-        # Ensure HTTP errors would surface
-        mock_response.raise_for_status.assert_called_once()
+        # Should make two API requests: one for weather, one for marine data
+        self.assertEqual(mock_get.call_count, 2)
+        # Ensure HTTP errors would surface (called once per request)
+        self.assertEqual(mock_response.raise_for_status.call_count, 2)
 
-        # Accept both styles: URL with querystring or kwargs["params"]
-        args, kwargs = mock_get.call_args
-        url = args[0]
-        params = kwargs.get("params")
+        # First call must be to the main Open-Meteo forecast API
+        first_call_args, first_call_kwargs = mock_get.call_args_list[0]
+        url = first_call_args[0]
+        params = first_call_kwargs.get("params")
         self.assertIn("api.open-meteo.com", url)
         if params:
             self.assertEqual(float(params.get("latitude")), TEST_LAT_NYC)
@@ -412,8 +412,12 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("hourly=", url)  # ensure param present
                 self.assertIn(field, url)
 
-        # Verify timeout is set
-        self.assertEqual(mock_get.call_args.kwargs.get("timeout"), 10)
+        # Second call must be to the marine API
+        second_call_args, _ = mock_get.call_args_list[1]
+        self.assertIn("marine-api.open-meteo.com", second_call_args[0])
+
+        # Verify timeout is set on the first (forecast) call
+        self.assertEqual(first_call_kwargs.get("timeout"), 10)
 
         # Should contain current weather details only
         self.assertIn(
@@ -1576,6 +1580,159 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=None):
             result = await self.plugin.handle_meshtastic_message(packet, "f", "l", "m")
         self.assertTrue(result)
+
+    # ------------------------------------------------------------------
+    # Marine forecast tests
+    # ------------------------------------------------------------------
+
+    def test_get_marine_forecast_returns_formatted_string(self):
+        """Marine API with valid data should return a formatted sea-state string."""
+        marine_payload = {
+            "current": {
+                "wave_height": 1.5,
+                "wave_direction": 185.0,
+                "wave_period": 8.0,
+            }
+        }
+        with patch("mmrelay.plugins.weather_plugin.requests.get") as mock_get:
+            mock_get.return_value = _make_ok_response(marine_payload)
+            result = self.plugin._get_marine_forecast(40.0, -10.0)
+        self.assertIsNotNone(result)
+        self.assertIn("🌊", result)
+        self.assertIn("1.5m", result)
+        self.assertIn("8.0s", result)
+        self.assertIn("185°", result)
+
+    def test_get_marine_forecast_returns_none_for_land(self):
+        """Marine API returning null wave_height (land coords) should yield None."""
+        marine_payload = {
+            "current": {
+                "wave_height": None,
+                "wave_direction": None,
+                "wave_period": None,
+            }
+        }
+        with patch("mmrelay.plugins.weather_plugin.requests.get") as mock_get:
+            mock_get.return_value = _make_ok_response(marine_payload)
+            result = self.plugin._get_marine_forecast(40.7128, -74.006)
+        self.assertIsNone(result)
+
+    def test_get_marine_forecast_returns_none_on_request_error(self):
+        """A network error fetching marine data should return None, not raise."""
+        import requests as req
+
+        with patch("mmrelay.plugins.weather_plugin.requests.get") as mock_get:
+            mock_get.side_effect = req.exceptions.ConnectionError("timeout")
+            result = self.plugin._get_marine_forecast(40.0, -10.0)
+        self.assertIsNone(result)
+
+    def test_get_marine_forecast_without_period_and_direction(self):
+        """Marine forecast with only wave_height should omit period and direction."""
+        marine_payload = {
+            "current": {
+                "wave_height": 2.3,
+                "wave_direction": None,
+                "wave_period": None,
+            }
+        }
+        with patch("mmrelay.plugins.weather_plugin.requests.get") as mock_get:
+            mock_get.return_value = _make_ok_response(marine_payload)
+            result = self.plugin._get_marine_forecast(40.0, -10.0)
+        self.assertIsNotNone(result)
+        self.assertIn("2.3m", result)
+        self.assertNotIn("(", result)  # no period
+        self.assertNotIn("°", result)  # no direction
+
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    def test_generate_forecast_appends_marine_data_at_sea(self, mock_get):
+        """generate_forecast should append marine data when marine API returns data."""
+        marine_payload = {
+            "current": {
+                "wave_height": 1.2,
+                "wave_direction": 270.0,
+                "wave_period": 7.5,
+            }
+        }
+
+        def side_effect(url, **kwargs):
+            if "marine-api" in url:
+                return _make_ok_response(marine_payload)
+            return _make_ok_response(self.sample_weather_data)
+
+        mock_get.side_effect = side_effect
+        result = self.plugin.generate_forecast(40.0, -10.0)
+        self.assertIn("🌊", result)
+        self.assertIn("1.2m", result)
+
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    def test_generate_forecast_no_marine_data_on_land(self, mock_get):
+        """generate_forecast should not append marine section when marine API returns None."""
+        marine_payload = {"current": {"wave_height": None}}
+
+        def side_effect(url, **kwargs):
+            if "marine-api" in url:
+                return _make_ok_response(marine_payload)
+            return _make_ok_response(self.sample_weather_data)
+
+        mock_get.side_effect = side_effect
+        result = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
+        self.assertNotIn("🌊", result)
+
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    def test_generate_forecast_daily_appends_marine_data(self, mock_get):
+        """Daily forecast at sea should include marine data."""
+        daily_data = {
+            "current_weather": {
+                "temperature": 20.0,
+                "weathercode": 0,
+                "is_day": 1,
+                "time": "2023-08-20T10:00",
+            },
+            "hourly": {
+                "time": [],
+                "temperature_2m": [],
+                "precipitation_probability": [],
+            },
+            "daily": {
+                "weathercode": [0, 1],
+                "temperature_2m_max": [25.0, 27.0],
+                "temperature_2m_min": [15.0, 17.0],
+                "time": ["2023-08-20", "2023-08-21"],
+            },
+        }
+        marine_payload = {
+            "current": {
+                "wave_height": 0.8,
+                "wave_direction": 90.0,
+                "wave_period": 5.0,
+            }
+        }
+
+        def side_effect(url, **kwargs):
+            if "marine-api" in url:
+                return _make_ok_response(marine_payload)
+            return _make_ok_response(daily_data)
+
+        mock_get.side_effect = side_effect
+        result = self.plugin.generate_forecast(40.0, -10.0, mode="daily")
+        self.assertIn("🌊", result)
+        self.assertIn("0.8m", result)
+
+    def test_append_marine_forecast_with_data(self):
+        """_append_marine_forecast should append marine string when available."""
+        with patch.object(
+            self.plugin, "_get_marine_forecast", return_value="🌊 Sea State: Waves 1.0m"
+        ):
+            result = self.plugin._append_marine_forecast("Now: Clear - 20°C", 40.0, -10.0)
+        self.assertIn("🌊", result)
+        self.assertIn("Now: Clear - 20°C", result)
+        self.assertIn(" | ", result)
+
+    def test_append_marine_forecast_without_data(self):
+        """_append_marine_forecast should return terrestrial unchanged when no marine data."""
+        with patch.object(self.plugin, "_get_marine_forecast", return_value=None):
+            result = self.plugin._append_marine_forecast("Now: Clear - 20°C", 40.0, -10.0)
+        self.assertEqual(result, "Now: Clear - 20°C")
 
 
 if __name__ == "__main__":

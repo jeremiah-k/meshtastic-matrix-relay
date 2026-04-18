@@ -85,51 +85,24 @@ class Plugin(BasePlugin):
             return cmd
         return CANONICAL_WEATHER_MODE
 
-    def _is_in_ocean(self, latitude: float, longitude: float) -> bool:
-        """
-        Determine if coordinates are located in the ocean using elevation data.
-
-        Uses the Open-Elevation API to check if the location has negative elevation,
-        which indicates a position at or below sea level.
-
-        Parameters:
-            latitude (float): Latitude in decimal degrees.
-            longitude (float): Longitude in decimal degrees.
-
-        Returns:
-            bool: True if coordinates appear to be at sea (negative or zero elevation),
-                  False if on land, elevation data is unavailable, or API request fails.
-        """
-        try:
-            url = f"https://api.open-elevation.com/api/v1/lookup?locations={latitude},{longitude}"
-            response = requests.get(url, timeout=WEATHER_API_TIMEOUT_SECONDS)
-            response.raise_for_status()
-            data = response.json()
-            if data.get("results"):
-                elevation = data["results"][0].get("elevation", 1)
-                return elevation <= 0
-        except requests.exceptions.RequestException:
-            self.logger.debug(
-                "Could not determine elevation for coordinates %f, %f",
-                latitude,
-                longitude,
-            )
-        return False
-
-    def _get_marine_forecast(self, latitude: float, longitude: float) -> str:
+    def _get_marine_forecast(
+        self, latitude: float, longitude: float
+    ) -> str | None:
         """
         Fetch marine weather data (wave height, period, and direction) for given coordinates.
 
         Queries the Open-Meteo marine weather API to retrieve current wave conditions.
-        Returns a formatted string with sea state information or an error message.
+        The API returns no data for land coordinates, so a ``None`` return value naturally
+        indicates that the location is not at sea (or that the data is unavailable).
 
         Parameters:
             latitude (float): Latitude in decimal degrees.
             longitude (float): Longitude in decimal degrees.
 
         Returns:
-            str: Formatted marine forecast string (e.g., "🌊 Sea State: Waves 1.5m (8.0s) 185°"),
-                 or an error message if data is unavailable.
+            str | None: Formatted marine forecast string (e.g., "🌊 Sea State: Waves 1.5m (8.0s) 185°")
+                        when wave data is available, or ``None`` if the coordinates are on land,
+                        the API returns no data, or the request fails.
         """
         try:
             url = (
@@ -142,14 +115,13 @@ class Plugin(BasePlugin):
             response.raise_for_status()
             data = response.json()
 
-            # Extract marine data
             current = data.get("current", {})
             wave_height = current.get("wave_height")
             wave_dir = current.get("wave_direction")
             wave_period = current.get("wave_period")
 
             if wave_height is None:
-                return "Marine data unavailable."
+                return None
 
             marine_parts = [f"🌊 Sea State: Waves {round(wave_height, 1)}m"]
 
@@ -167,7 +139,31 @@ class Plugin(BasePlugin):
                 latitude,
                 longitude,
             )
-            return "Marine data unavailable."
+            return None
+
+    def _append_marine_forecast(
+        self, terrestrial: str, latitude: float, longitude: float
+    ) -> str:
+        """
+        Append marine weather data to a terrestrial forecast string if available.
+
+        Calls the marine API and, when wave data is returned (i.e. coordinates are at
+        sea), appends it to ``terrestrial`` separated by `` | `` and trims the result
+        to the message byte limit.  If no marine data is available the original
+        ``terrestrial`` string is returned unchanged.
+
+        Parameters:
+            terrestrial (str): Already-formatted terrestrial forecast string.
+            latitude (float): Latitude in decimal degrees.
+            longitude (float): Longitude in decimal degrees.
+
+        Returns:
+            str: The terrestrial forecast, optionally extended with sea-state data.
+        """
+        marine_data = self._get_marine_forecast(latitude, longitude)
+        if marine_data:
+            return self._trim_to_max_bytes(f"{terrestrial} | {marine_data}")
+        return terrestrial
 
     def generate_forecast(
         self, latitude: float, longitude: float, mode: str = CANONICAL_WEATHER_MODE
@@ -175,8 +171,8 @@ class Plugin(BasePlugin):
         """
         Generate a concise one-line weather forecast for the given GPS coordinates and requested mode.
 
-        If coordinates are detected to be at sea, marine weather data is automatically appended
-        to the terrestrial forecast including wave height, period, and direction.
+        Marine weather data is automatically requested and, when the coordinates are at sea,
+        appended to the terrestrial forecast with wave height, period, and direction.
 
         Parameters:
             latitude (float): Latitude in decimal degrees.
@@ -238,11 +234,9 @@ class Plugin(BasePlugin):
                 terrestrial_forecast = self._build_daily_forecast(
                     data, units, temperature_unit, daily_days
                 )
-                # Append marine data if location is at sea
-                if self._is_in_ocean(latitude, longitude):
-                    marine_data = self._get_marine_forecast(latitude, longitude)
-                    return self._trim_to_max_bytes(f"{terrestrial_forecast} | {marine_data}")
-                return terrestrial_forecast
+                return self._append_marine_forecast(
+                    terrestrial_forecast, latitude, longitude
+                )
 
             # Extract relevant weather data
             current_temp = data["current_weather"]["temperature"]
@@ -400,13 +394,9 @@ class Plugin(BasePlugin):
                     parts.append(f"Precip {precip_now}%")
 
                 terrestrial_forecast = self._trim_to_max_bytes(" | ".join(parts))
-
-                # Append marine data if location is at sea
-                if self._is_in_ocean(latitude, longitude):
-                    marine_data = self._get_marine_forecast(latitude, longitude)
-                    return self._trim_to_max_bytes(f"{terrestrial_forecast} | {marine_data}")
-
-                return terrestrial_forecast
+                return self._append_marine_forecast(
+                    terrestrial_forecast, latitude, longitude
+                )
 
             slots = [
                 slot
@@ -424,12 +414,9 @@ class Plugin(BasePlugin):
                 slots,
             )
 
-            # Append marine data if location is at sea
-            if self._is_in_ocean(latitude, longitude):
-                marine_data = self._get_marine_forecast(latitude, longitude)
-                return self._trim_to_max_bytes(f"{terrestrial_forecast} | {marine_data}")
-
-            return terrestrial_forecast
+            return self._append_marine_forecast(
+                terrestrial_forecast, latitude, longitude
+            )
 
         except (KeyError, IndexError, TypeError, ValueError, AttributeError):
             self.logger.exception("Malformed weather data")
