@@ -2,7 +2,7 @@
 Tests for shared version helper behavior.
 """
 
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import mmrelay._version as version_helper
 
@@ -96,8 +96,13 @@ def test_version_from_pyproject_tomllib_missing_version_does_not_fallback(
         '[project]\nname = "mmrelay"\ndynamic = ["version"]\n',
         encoding="utf-8",
     )
+    mock_tomllib = Mock()
+    mock_tomllib.load.return_value = {
+        "project": {"name": "mmrelay", "dynamic": ["version"]}
+    }
     with (
         patch.object(version_helper, "_find_pyproject_toml", return_value=pyproject),
+        patch.object(version_helper, "tomllib", new=mock_tomllib),
         patch.object(
             type(pyproject),
             "read_text",
