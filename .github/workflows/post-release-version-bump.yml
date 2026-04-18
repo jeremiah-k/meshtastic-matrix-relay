@@ -11,15 +11,18 @@ jobs:
   bump-main-to-next-patch:
     if: github.event.release.target_commitish == 'main'
     runs-on: ubuntu-latest
+    env:
+      RELEASE_BUMP_PAT: ${{ secrets.RELEASE_BUMP_PAT }}
 
     steps:
       - name: Validate release bump token
-        if: ${{ secrets.RELEASE_BUMP_PAT == '' }}
         shell: bash
         run: |
           set -euo pipefail
-          echo "::error::RELEASE_BUMP_PAT secret is required for post-release push to main."
-          exit 1
+          if [[ -z "${RELEASE_BUMP_PAT:-}" ]]; then
+            echo "::error::RELEASE_BUMP_PAT secret is required for post-release push to main."
+            exit 1
+          fi
 
       - name: Checkout main branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -60,7 +63,7 @@ jobs:
           echo "new=$NEW_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Commit and push version bump
-        if: ${{ steps.bump.outputs.current != steps.bump.outputs.new && secrets.RELEASE_BUMP_PAT != '' }}
+        if: steps.bump.outputs.current != steps.bump.outputs.new
         shell: bash
         run: |
           set -euo pipefail
