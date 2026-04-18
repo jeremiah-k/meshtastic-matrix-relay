@@ -85,53 +85,97 @@ class Plugin(BasePlugin):
             return cmd
         return CANONICAL_WEATHER_MODE
 
-    def _get_marine_forecast(
-        self, latitude: float, longitude: float
+    def generate_marine_forecast(
+        self,
+        latitude: float,
+        longitude: float,
+        mode: str = WEATHER_MODE_CURRENT,
     ) -> str | None:
         """
         Fetch marine weather data (wave height, period, and direction) for given coordinates.
 
-        Queries the Open-Meteo marine weather API to retrieve current wave conditions.
-        The API returns no data for land coordinates, so a ``None`` return value naturally
-        indicates that the location is not at sea (or that the data is unavailable).
+        Queries the Open-Meteo marine weather API.  The query parameters mirror the
+        terrestrial forecast mode so that marine data is always temporally consistent
+        with the rest of the response:
+
+        - ``current`` → ``current`` endpoint (instantaneous conditions).
+        - ``hourly`` → ``hourly`` endpoint, sliced at the same +3h/+6h/+12h offsets
+          derived from ``HOURLY_CONFIG`` and anchored to the current hour via
+          ``datetime.now()``.
+        - ``daily`` → ``daily`` endpoint (dominant direction and max height/period per day).
+
+        The API returns no data for land coordinates, so a ``None`` return value
+        naturally indicates that the location is not at sea (or that data is unavailable).
 
         Parameters:
             latitude (float): Latitude in decimal degrees.
             longitude (float): Longitude in decimal degrees.
+            mode (str): Forecast mode — ``WEATHER_MODE_DAILY`` uses the daily endpoint,
+                        ``WEATHER_MODE_CURRENT`` uses the current-conditions endpoint,
+                        and any other value (e.g. ``hourly``) uses the hourly endpoint.
 
         Returns:
-            str | None: Formatted marine forecast string (e.g., "🌊 Sea State: Waves 1.5m (8.0s) 185°")
-                        when wave data is available, or ``None`` if the coordinates are on land,
-                        the API returns no data, or the request fails.
+            str | None: Formatted marine forecast string when wave data is available,
+                        or ``None`` if the coordinates are on land, the API returns no
+                        data, or the request fails.
+
+                        Current example:
+                            ``"🌊 Sea State: Waves 1.5m (8.0s) 185°"``
+                        Hourly example:
+                            ``"🌊 Waves: Now 1.5m | +3h 1.8m | +6h 2.1m | +12h 1.9m"``
+                        Daily example:
+                            ``"🌊 Waves: Mon 1.5m (8.0s) 185° | Tue …"``
         """
         try:
-            url = (
-                f"https://marine-api.open-meteo.com/v1/marine?"
-                f"latitude={latitude}&longitude={longitude}&"
-                f"current=wave_height,wave_direction,wave_period&"
-                f"timezone=auto"
-            )
+            mode_key = self._normalize_mode(mode)
+            if mode_key == WEATHER_MODE_DAILY:
+                url = (
+                    f"https://marine-api.open-meteo.com/v1/marine?"
+                    f"latitude={latitude}&longitude={longitude}&"
+                    f"daily=wave_height_max,wave_direction_dominant,wave_period_max&"
+                    f"timezone=auto"
+                )
+            elif mode_key == WEATHER_MODE_CURRENT:
+                url = (
+                    f"https://marine-api.open-meteo.com/v1/marine?"
+                    f"latitude={latitude}&longitude={longitude}&"
+                    f"current=wave_height,wave_direction,wave_period&"
+                    f"timezone=auto"
+                )
+            else:
+                url = (
+                    f"https://marine-api.open-meteo.com/v1/marine?"
+                    f"latitude={latitude}&longitude={longitude}&"
+                    f"hourly=wave_height,wave_direction,wave_period&"
+                    f"timezone=auto"
+                )
+
             response = requests.get(url, timeout=WEATHER_API_TIMEOUT_SECONDS)
             response.raise_for_status()
             data = response.json()
 
-            current = data.get("current", {})
-            wave_height = current.get("wave_height")
-            wave_dir = current.get("wave_direction")
-            wave_period = current.get("wave_period")
+            if mode_key == WEATHER_MODE_DAILY:
+                return self._format_daily_marine(data)
+            if mode_key == WEATHER_MODE_CURRENT:
+                return self._format_current_marine(data)
 
-            if wave_height is None:
-                return None
+            # Hourly mode: anchor to the current hour using datetime.now()
+            now = datetime.now()
+            base_index = now.hour
+            hourly_times = data.get("hourly", {}).get("time", [])
+            if hourly_times:
+                try:
+                    base_key = now.replace(
+                        minute=0, second=0, microsecond=0
+                    ).strftime("%Y-%m-%dT%H:00")
+                    base_index = hourly_times.index(base_key)
+                except ValueError:
+                    pass
 
-            marine_parts = [f"🌊 Sea State: Waves {round(wave_height, 1)}m"]
+            mode_offsets = HOURLY_CONFIG.get(mode_key, HOURLY_CONFIG[WEATHER_MODE_CURRENT])
+            offsets = [o for o in mode_offsets.get("offsets", ()) if isinstance(o, int)]
 
-            if wave_period is not None:
-                marine_parts[0] += f" ({round(wave_period, 1)}s)"
-
-            if wave_dir is not None:
-                marine_parts.append(f"{round(wave_dir)}{DEGREE_SYMBOL}")
-
-            return " ".join(marine_parts)
+            return self._format_hourly_marine(data, base_index, offsets)
 
         except requests.exceptions.RequestException:
             self.logger.debug(
@@ -141,38 +185,91 @@ class Plugin(BasePlugin):
             )
             return None
 
-    def _append_marine_forecast(
-        self, terrestrial: str, latitude: float, longitude: float
-    ) -> str:
+    def _format_current_marine(self, data: dict) -> str | None:
+        """Format current/hourly marine API response into a single-line string."""
+        current = data.get("current", {})
+        wave_height = current.get("wave_height")
+        wave_dir = current.get("wave_direction")
+        wave_period = current.get("wave_period")
+
+        if wave_height is None:
+            return None
+
+        parts = [f"🌊 Sea State: Waves {round(wave_height, 1)}m"]
+        if wave_period is not None:
+            parts[0] += f" ({round(wave_period, 1)}s)"
+        if wave_dir is not None:
+            parts.append(f"{round(wave_dir)}{DEGREE_SYMBOL}")
+
+        return " ".join(parts)
+
+    def _format_daily_marine(self, data: dict) -> str | None:
+        """Format daily marine API response into a multi-day single-line string."""
+        daily = data.get("daily", {})
+        heights = daily.get("wave_height_max") or []
+        directions = daily.get("wave_direction_dominant") or []
+        periods = daily.get("wave_period_max") or []
+        times = daily.get("time") or []
+
+        if not heights:
+            return None
+
+        day_parts = []
+        for i, height in enumerate(heights):
+            if height is None:
+                continue
+            try:
+                label = datetime.fromisoformat(times[i]).strftime("%a")
+            except (IndexError, ValueError):
+                label = f"D{i}"
+
+            part = f"{label} {round(height, 1)}m"
+            period = periods[i] if i < len(periods) else None
+            direction = directions[i] if i < len(directions) else None
+            if period is not None:
+                part += f" ({round(period, 1)}s)"
+            if direction is not None:
+                part += f" {round(direction)}{DEGREE_SYMBOL}"
+            day_parts.append(part)
+
+        if not day_parts:
+            return None
+
+        return self._trim_to_max_bytes("🌊 Waves: " + " | ".join(day_parts))
+
+    def _format_hourly_marine(
+        self, data: dict, base_index: int, offsets: list[int]
+    ) -> str | None:
+        """Format hourly marine API response into a multi-slot single-line string.
+
+        Uses the ``base_index`` and ``offsets`` already calculated by
+        ``generate_forecast`` — the same values used for the terrestrial hourly
+        forecast — so no additional time-parsing is needed here.
         """
-        Append marine weather data to a terrestrial forecast string if available.
+        hourly = data.get("hourly", {})
+        heights = hourly.get("wave_height") or []
 
-        Calls the marine API and, when wave data is returned (i.e. coordinates are at
-        sea), appends it to ``terrestrial`` separated by `` | `` and trims the result
-        to the message byte limit.  If no marine data is available the original
-        ``terrestrial`` string is returned unchanged.
+        if not heights:
+            return None
 
-        Parameters:
-            terrestrial (str): Already-formatted terrestrial forecast string.
-            latitude (float): Latitude in decimal degrees.
-            longitude (float): Longitude in decimal degrees.
+        now_height = heights[base_index] if base_index < len(heights) else None
+        if now_height is None:
+            return None
 
-        Returns:
-            str: The terrestrial forecast, optionally extended with sea-state data.
-        """
-        marine_data = self._get_marine_forecast(latitude, longitude)
-        if marine_data:
-            return self._trim_to_max_bytes(f"{terrestrial} | {marine_data}")
-        return terrestrial
+        slot_parts = [f"Now {round(now_height, 1)}m"]
+        for offset in offsets:
+            idx = min(base_index + offset, len(heights) - 1)
+            h = heights[idx]
+            if h is not None:
+                slot_parts.append(f"+{offset}h {round(h, 1)}m")
+
+        return self._trim_to_max_bytes("🌊 Waves: " + " | ".join(slot_parts))
 
     def generate_forecast(
         self, latitude: float, longitude: float, mode: str = CANONICAL_WEATHER_MODE
     ) -> str:
         """
-        Generate a concise one-line weather forecast for the given GPS coordinates and requested mode.
-
-        Marine weather data is automatically requested and, when the coordinates are at sea,
-        appended to the terrestrial forecast with wave height, period, and direction.
+        Generate a concise one-line terrestrial weather forecast for the given GPS coordinates and mode.
 
         Parameters:
             latitude (float): Latitude in decimal degrees.
@@ -234,11 +331,7 @@ class Plugin(BasePlugin):
                 terrestrial_forecast = self._build_daily_forecast(
                     data, units, temperature_unit, daily_days
                 )
-                return self._append_marine_forecast(
-                    terrestrial_forecast, latitude, longitude
-                )
-
-            # Extract relevant weather data
+                return terrestrial_forecast
             current_temp = data["current_weather"]["temperature"]
             current_weather_code = data["current_weather"]["weathercode"]
             is_day = data["current_weather"]["is_day"]
@@ -394,9 +487,7 @@ class Plugin(BasePlugin):
                     parts.append(f"Precip {precip_now}%")
 
                 terrestrial_forecast = self._trim_to_max_bytes(" | ".join(parts))
-                return self._append_marine_forecast(
-                    terrestrial_forecast, latitude, longitude
-                )
+                return terrestrial_forecast
 
             slots = [
                 slot
@@ -414,9 +505,7 @@ class Plugin(BasePlugin):
                 slots,
             )
 
-            return self._append_marine_forecast(
-                terrestrial_forecast, latitude, longitude
-            )
+            return terrestrial_forecast
 
         except (KeyError, IndexError, TypeError, ValueError, AttributeError):
             self.logger.exception("Malformed weather data")
@@ -684,8 +773,8 @@ class Plugin(BasePlugin):
                 coords = self._determine_mesh_location(meshtastic_client)
 
         weather_notice = "Cannot determine location"
+        mode = parsed_command
         if coords:
-            mode = parsed_command
             weather_notice = await asyncio.to_thread(
                 self.generate_forecast,
                 latitude=coords[0],
@@ -708,6 +797,28 @@ class Plugin(BasePlugin):
                 text=weather_notice,
                 channel=channel,
             )
+
+        # Fetch marine data and send as a separate message (Meshtastic has ~200 byte limit)
+        if coords:
+            marine = await asyncio.to_thread(
+                self.generate_marine_forecast,
+                coords[0],
+                coords[1],
+                mode,
+            )
+            if marine:
+                await asyncio.sleep(self.get_response_delay())
+                if is_direct_message:
+                    self.send_message(
+                        text=marine,
+                        destination_id=fromId,
+                    )
+                else:
+                    self.send_message(
+                        text=marine,
+                        channel=channel,
+                    )
+
         return True
 
     def get_matrix_commands(self) -> list[str]:
@@ -777,13 +888,23 @@ class Plugin(BasePlugin):
             )
             return True
 
-        forecast = await asyncio.to_thread(
+        terrestrial = await asyncio.to_thread(
             self.generate_forecast,
             latitude=coords[0],
             longitude=coords[1],
             mode=parsed_command,
         )
-        await self.send_matrix_message(room.room_id, forecast, formatted=False)
+        marine = await asyncio.to_thread(
+            self.generate_marine_forecast,
+            coords[0],
+            coords[1],
+            parsed_command,
+        )
+        if marine:
+            full_forecast = self._trim_to_max_bytes(f"{terrestrial} | {marine}")
+        else:
+            full_forecast = terrestrial
+        await self.send_matrix_message(room.room_id, full_forecast, formatted=False)
         return True
 
     async def _resolve_location_from_args(
