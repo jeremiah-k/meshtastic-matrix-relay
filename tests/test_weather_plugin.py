@@ -1585,10 +1585,11 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
     # ------------------------------------------------------------------
 
     async def test_handle_room_message_replies_to_event(self):
-        """handle_room_message should pass event.event_id as reply_to_event_id."""
+        """handle_room_message should send a reaction and not use reply_to_event_id."""
         self.plugin.matches = MagicMock(return_value=True)
         self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
         self.plugin.generate_forecast = MagicMock(return_value="Sunny 25°C")
 
         mock_client = MagicMock()
@@ -1609,14 +1610,18 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertTrue(result)
+        self.plugin.send_matrix_reaction.assert_called_once_with(
+            "!r", "$test_event_123", "✅"
+        )
         call_kwargs = self.plugin.send_matrix_message.call_args.kwargs
-        self.assertEqual(call_kwargs.get("reply_to_event_id"), "$test_event_123")
+        self.assertIsNone(call_kwargs.get("reply_to_event_id"))
 
-    async def test_handle_room_message_no_location_replies_to_event(self):
-        """'Cannot determine location' should also be sent as a reply."""
+    async def test_handle_room_message_no_location_sends_reaction(self):
+        """'Cannot determine location' should still send a reaction."""
         self.plugin.matches = MagicMock(return_value=True)
         self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
 
         mock_event = MagicMock()
         mock_event.event_id = "$no_loc_event"
@@ -1628,8 +1633,11 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
                 MagicMock(room_id="!r"), mock_event, "!weather"
             )
 
+        self.plugin.send_matrix_reaction.assert_called_once_with(
+            "!r", "$no_loc_event", "✅"
+        )
         call_kwargs = self.plugin.send_matrix_message.call_args.kwargs
-        self.assertEqual(call_kwargs.get("reply_to_event_id"), "$no_loc_event")
+        self.assertIsNone(call_kwargs.get("reply_to_event_id"))
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("mmrelay.plugins.weather_plugin.requests.get")

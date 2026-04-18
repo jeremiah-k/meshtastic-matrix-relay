@@ -218,7 +218,6 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        await self.send_matrix_message(
-            room.room_id, PING_RESPONSE, reply_to_event_id=event.event_id
-        )
+        await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
+        await self.send_matrix_message(room.room_id, PING_RESPONSE)
         return True

@@ -467,7 +467,6 @@ class TestMapPlugin(unittest.TestCase):
                 mock_room.room_id,
                 mock_image,
                 "location.png",
-                reply_to_event_id=mock_event.event_id,
             )
 
         asyncio.run(run_test())
@@ -889,10 +888,18 @@ class TestMapPlugin(unittest.TestCase):
                 )
 
             self.assertTrue(result)
-            mock_matrix_client.room_send.assert_awaited_once()
-            call_kwargs = mock_matrix_client.room_send.call_args.kwargs
-            self.assertEqual(call_kwargs["room_id"], mock_room.room_id)
-            self.assertIn("failed", call_kwargs["content"]["body"].lower())
+            self.assertGreaterEqual(mock_matrix_client.room_send.await_count, 1)
+            calls = mock_matrix_client.room_send.call_args_list
+            error_call = next(
+                (
+                    c
+                    for c in calls
+                    if "failed" in c.kwargs.get("content", {}).get("body", "").lower()
+                ),
+                None,
+            )
+            self.assertIsNotNone(error_call)
+            self.assertEqual(error_call.kwargs["room_id"], mock_room.room_id)
 
         asyncio.run(run_test())
 

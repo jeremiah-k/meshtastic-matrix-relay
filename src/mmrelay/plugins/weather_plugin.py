@@ -907,6 +907,8 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
+        await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
+
         parsed_command = self.get_matching_matrix_command(event)
         if not parsed_command:
             return False
@@ -931,7 +933,6 @@ class Plugin(BasePlugin):
                 room.room_id,
                 "Cannot determine location",
                 formatted=False,
-                reply_to_event_id=event.event_id,
             )
             return True
 
@@ -964,7 +965,6 @@ class Plugin(BasePlugin):
             room.room_id,
             full_forecast,
             formatted=False,
-            reply_to_event_id=event.event_id,
         )
         return True
 

@@ -525,11 +525,12 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
+        await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
+
         args = self.extract_command_args("map", full_message)
         if args is None:
             return False
 
-        # Accept zoom/size in any order, but reject unknown tokens
         token_pattern = r"(?:\s*(?:zoom=\d+|size=\d+,\s*\d+))*\s*$"
         if args and not re.fullmatch(token_pattern, args, flags=re.IGNORECASE):
             return False
@@ -562,11 +563,11 @@ class Plugin(BasePlugin):
             try:
                 width = int(self.config.get("image_width", 1000))
             except (TypeError, ValueError):
-                pass  # keep default
+                pass
             try:
                 height = int(self.config.get("image_height", 1000))
             except (TypeError, ValueError):
-                pass  # keep default
+                pass
             image_size = (width, height)
 
         width = max(1, min(image_size[0], MAX_MAP_IMAGE_SIZE))
@@ -586,7 +587,6 @@ class Plugin(BasePlugin):
                 room.room_id,
                 "Cannot generate map: Matrix client unavailable.",
                 formatted=False,
-                reply_to_event_id=event.event_id,
             )
             return True
         meshtastic_client = await _connect_meshtastic_async()
@@ -599,7 +599,6 @@ class Plugin(BasePlugin):
                 room.room_id,
                 "Cannot generate map: Meshtastic client unavailable.",
                 formatted=False,
-                reply_to_event_id=event.event_id,
             )
             return True
 
@@ -628,11 +627,9 @@ class Plugin(BasePlugin):
                 room.room_id,
                 "Cannot generate map: No nodes with location data found.",
                 formatted=False,
-                reply_to_event_id=event.event_id,
             )
             return True
 
-        # Offload CPU-bound rendering to keep the event loop responsive.
         pillow_image = await asyncio.to_thread(
             get_map,
             locations=locations,
@@ -644,7 +641,7 @@ class Plugin(BasePlugin):
 
         try:
             await send_image(
-                matrix_client, room.room_id, pillow_image, MAP_IMAGE_FILENAME, reply_to_event_id=event.event_id
+                matrix_client, room.room_id, pillow_image, MAP_IMAGE_FILENAME
             )
         except ImageUploadError:
             self.logger.exception("Failed to send map image")

@@ -165,9 +165,8 @@ class Plugin(BasePlugin):
             return False
         _ = full_message
 
+        await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
         response = await asyncio.to_thread(self.generate_response)
-        await self.send_matrix_message(
-            room.room_id, response, formatted=False, reply_to_event_id=event.event_id
-        )
+        await self.send_matrix_message(room.room_id, response, formatted=False)
 
         return True

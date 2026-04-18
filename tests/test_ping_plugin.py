@@ -941,6 +941,7 @@ class TestPingPluginMatrixHandling(unittest.TestCase):
         self.plugin = Plugin()
         self.plugin.logger = MagicMock()
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
 
     def test_handle_room_message_no_match(self):
         self.plugin.matches = MagicMock(return_value=False)
@@ -965,8 +966,11 @@ class TestPingPluginMatrixHandling(unittest.TestCase):
             result = await self.plugin.handle_room_message(room, event, "bot: !ping")
             self.assertTrue(result)
             self.plugin.matches.assert_called_once_with(event)
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "✅"
+            )
             self.plugin.send_matrix_message.assert_called_once_with(
-                "!test:matrix.org", PING_RESPONSE, reply_to_event_id=event.event_id
+                "!test:matrix.org", PING_RESPONSE
             )
 
         asyncio.run(run_test())

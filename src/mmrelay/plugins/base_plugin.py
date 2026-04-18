@@ -751,6 +751,41 @@ class BasePlugin(ABC):
             content=content,
         )
 
+    async def send_matrix_reaction(
+        self, room_id: str, event_id: str, emoji: str
+    ) -> None:
+        """
+        Send a reaction (emoji annotation) to a Matrix event.
+
+        Parameters:
+            room_id: Matrix room identifier.
+            event_id: The Matrix event ID to react to.
+            emoji: The emoji to send as a reaction (e.g. "✅").
+        """
+        from mmrelay.matrix_utils import connect_matrix
+
+        matrix_client = await connect_matrix()
+        if matrix_client is None:
+            self.logger.error("Failed to connect to Matrix client")
+            return
+
+        content: dict[str, Any] = {
+            "m.relates_to": {
+                "rel_type": "m.annotation",
+                "event_id": event_id,
+                "key": emoji,
+            }
+        }
+        try:
+            await matrix_client.room_send(
+                room_id=room_id,
+                message_type="m.reaction",
+                content=content,
+                ignore_unverified_devices=True,
+            )
+        except Exception:
+            self.logger.warning("Failed to send reaction", exc_info=True)
+
     def get_mesh_commands(self) -> list[str]:
         """
         List mesh/radio command names this plugin handles.

@@ -127,7 +127,6 @@ class Plugin(BasePlugin):
             ]
             reply = MSG_AVAILABLE_COMMANDS_PREFIX + ", ".join(sorted(set(commands)))
 
-        await self.send_matrix_message(
-            room.room_id, reply, reply_to_event_id=event.event_id
-        )
+        await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
+        await self.send_matrix_message(room.room_id, reply)
         return True

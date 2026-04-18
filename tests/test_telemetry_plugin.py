@@ -799,7 +799,7 @@ class TestTelemetryPlugin(unittest.TestCase):
                     room, event, "!batteryLevel"
                 )
                 self.assertTrue(result)
-                mock_matrix_client.room_send.assert_awaited_once()
+                self.assertGreaterEqual(mock_matrix_client.room_send.await_count, 1)
 
             asyncio.run(run_test())
 

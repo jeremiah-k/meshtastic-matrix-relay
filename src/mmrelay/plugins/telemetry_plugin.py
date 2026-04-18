@@ -183,6 +183,8 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
+        await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
+
         parsed_command = self.get_matching_matrix_command(event)
         if not parsed_command:
             return False
@@ -201,7 +203,6 @@ class Plugin(BasePlugin):
             )
             return False
 
-        # Compute the hourly averages for each node
         hourly_averages: dict[int, list[float]] = {}
 
         def calculate_averages(node_data_rows: list[dict[str, Any]]) -> None:
@@ -245,7 +246,6 @@ class Plugin(BasePlugin):
                     room.room_id,
                     f"No telemetry data found for node '{node}'.",
                     formatted=False,
-                    reply_to_event_id=event.event_id,
                 )
                 return True
         else:
@@ -253,7 +253,6 @@ class Plugin(BasePlugin):
                 node_data_rows = json.loads(node_data_json[0])
                 calculate_averages(node_data_rows)
 
-        # Compute the final hourly averages
         final_averages = {}
         for i, interval in enumerate(hourly_intervals[:-1]):
             if i in hourly_averages:
@@ -263,18 +262,14 @@ class Plugin(BasePlugin):
             else:
                 final_averages[interval] = 0.0
 
-        # Extract the hourly intervals and average values into separate lists
         hourly_intervals = list(final_averages.keys())
         average_values = list(final_averages.values())
 
-        # Convert the hourly intervals to strings
         hourly_strings = [hour.strftime(HOUR_FORMAT) for hour in hourly_intervals]
 
-        # Create the plot
         fig, ax = plt.subplots()
         ax.plot(hourly_strings, average_values)
 
-        # Set the plot title and axis labels
         if node:
             title = f"{node} Hourly {telemetry_option} Averages"
         else:
@@ -283,10 +278,8 @@ class Plugin(BasePlugin):
         ax.set_xlabel("Hour")
         ax.set_ylabel(f"{telemetry_option}")
 
-        # Rotate the x-axis labels for readability
         plt.xticks(rotation=GRAPH_XLABEL_ROTATION_DEGREES)
 
-        # Save the plot as a PIL image
         buf = io.BytesIO()
         fig.savefig(buf, format=GRAPH_IMAGE_FORMAT, bbox_inches="tight")
         plt.close(fig)
@@ -302,7 +295,6 @@ class Plugin(BasePlugin):
                 room.room_id,
                 pil_image,
                 TELEMETRY_GRAPH_FILENAME,
-                reply_to_event_id=event.event_id,
             )
         except ImageUploadError:
             self.logger.exception("Failed to send telemetry graph")
