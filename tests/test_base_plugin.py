@@ -752,6 +752,27 @@ class TestBasePlugin(unittest.TestCase):
         self.assertIn("text", call_args[1])  # kwargs should contain text
         self.assertEqual(call_args[1]["text"], "Test message")
 
+    @patch("mmrelay.plugins.base_plugin.queue_message")
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_send_message_reply_uses_send_text_reply(
+        self, mock_connect_meshtastic, mock_queue_message
+    ):
+        """send_message should route reply messages through send_text_reply."""
+        plugin = MockPlugin()
+        mock_client = MagicMock()
+        mock_connect_meshtastic.return_value = mock_client
+        mock_queue_message.return_value = True
+
+        result = plugin.send_message("Reply text", channel=2, reply_id=12345)
+
+        self.assertTrue(result)
+        mock_queue_message.assert_called_once()
+        call_args = mock_queue_message.call_args
+        self.assertEqual(call_args.kwargs["reply_id"], 12345)
+        self.assertEqual(call_args.kwargs["channelIndex"], 2)
+        self.assertIn("destinationId", call_args.kwargs)
+        self.assertEqual(call_args.args[0].__name__, "send_text_reply")
+
     def test_get_matrix_commands_default(self):
         """
         Test that get_matrix_commands returns a list containing the plugin name by default.
@@ -1487,6 +1508,27 @@ class TestBasePlugin(unittest.TestCase):
             call_kwargs = mock_client.room_send.call_args.kwargs
             self.assertIn("formatted_body", call_kwargs["content"])
             self.assertIn("format", call_kwargs["content"])
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_send_matrix_message_includes_reply_relation(self, mock_connect):
+        """send_matrix_message should attach m.relates_to when replying."""
+        mock_client = AsyncMock()
+        mock_connect.return_value = mock_client
+
+        async def run_test():
+            plugin = MockPlugin()
+            await plugin.send_matrix_message(
+                "!room:matrix.org",
+                "reply body",
+                formatted=False,
+                reply_to_event_id="$event123",
+            )
+            content = mock_client.room_send.call_args.kwargs["content"]
+            self.assertEqual(
+                content["m.relates_to"]["m.in_reply_to"]["event_id"], "$event123"
+            )
 
         asyncio.run(run_test())
 

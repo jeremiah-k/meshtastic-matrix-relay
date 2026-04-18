@@ -152,6 +152,7 @@ class Plugin(BasePlugin):
                     f"https://marine-api.open-meteo.com/v1/marine?"
                     f"latitude={latitude}&longitude={longitude}&"
                     f"hourly=wave_height,wave_direction,wave_period&"
+                    f"current=wave_height&"
                     f"timezone=auto&length_unit={units}"
                 )
 
@@ -164,18 +165,24 @@ class Plugin(BasePlugin):
             if mode_key == WEATHER_MODE_CURRENT:
                 return self._format_current_marine(data, units)
 
-            # Hourly mode: anchor to the current hour using datetime.now()
-            now = datetime.now()
-            base_index = now.hour
-            hourly_times = data.get("hourly", {}).get("time", [])
-            if hourly_times:
+            # Hourly mode: anchor to the current hour using the API's own current time
+            # (in the location's timezone via timezone=auto) rather than the server's
+            # local time, which may differ from the queried location.
+            current_time_str = data.get("current", {}).get("time")
+            base_index = 0
+            if current_time_str:
                 try:
-                    base_key = now.replace(
+                    current_time = datetime.fromisoformat(
+                        current_time_str.replace("Z", "+00:00")
+                    )
+                    base_key = current_time.replace(
                         minute=0, second=0, microsecond=0
                     ).strftime("%Y-%m-%dT%H:00")
-                    base_index = hourly_times.index(base_key)
-                except ValueError:
-                    pass
+                    hourly_times = data.get("hourly", {}).get("time", [])
+                    if hourly_times:
+                        base_index = hourly_times.index(base_key)
+                except (ValueError, AttributeError):
+                    base_index = datetime.now().hour
 
             mode_offsets = HOURLY_CONFIG.get(mode_key, HOURLY_CONFIG[WEATHER_MODE_CURRENT])
             offsets = [o for o in mode_offsets.get("offsets", ()) if isinstance(o, int)]
@@ -185,6 +192,13 @@ class Plugin(BasePlugin):
         except requests.exceptions.RequestException:
             self.logger.debug(
                 "Error fetching marine weather data for coordinates %f, %f",
+                latitude,
+                longitude,
+            )
+            return None
+        except Exception:
+            self.logger.exception(
+                "Unexpected error processing marine weather data for coordinates %f, %f",
                 latitude,
                 longitude,
             )
@@ -794,6 +808,7 @@ class Plugin(BasePlugin):
 
         weather_notice = "Cannot determine location"
         mode = parsed_command
+        reply_id = packet.get("id")
         if coords:
             weather_notice = await asyncio.to_thread(
                 self.generate_forecast,
@@ -810,12 +825,14 @@ class Plugin(BasePlugin):
             self.send_message(
                 text=weather_notice,
                 destination_id=fromId,
+                reply_id=reply_id,
             )
         else:
             # Respond in the same channel (broadcast)
             self.send_message(
                 text=weather_notice,
                 channel=channel,
+                reply_id=reply_id,
             )
 
         # Fetch marine data and send as a separate message (Meshtastic has ~200 byte limit)
@@ -841,11 +858,13 @@ class Plugin(BasePlugin):
                     self.send_message(
                         text=marine,
                         destination_id=fromId,
+                        reply_id=reply_id,
                     )
                 else:
                     self.send_message(
                         text=marine,
                         channel=channel,
+                        reply_id=reply_id,
                     )
 
         return True
@@ -914,6 +933,7 @@ class Plugin(BasePlugin):
                 room.room_id,
                 "Cannot determine location",
                 formatted=False,
+                reply_to_event_id=event.event_id,
             )
             return True
 
@@ -939,10 +959,10 @@ class Plugin(BasePlugin):
             units,
         )
         if marine:
-            full_forecast = self._trim_to_max_bytes(f"{terrestrial} | {marine}")
+            full_forecast = f"{terrestrial} | {marine}"
         else:
             full_forecast = terrestrial
-        await self.send_matrix_message(room.room_id, full_forecast, formatted=False)
+        await self.send_matrix_message(room.room_id, full_forecast, formatted=False, reply_to_event_id=event.event_id)
         return True
 
     async def _resolve_location_from_args(

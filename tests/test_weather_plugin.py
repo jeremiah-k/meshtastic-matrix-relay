@@ -1581,12 +1581,100 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result)
 
     # ------------------------------------------------------------------
+    # Reply support tests
+    # ------------------------------------------------------------------
+
+    async def test_handle_room_message_replies_to_event(self):
+        """handle_room_message should pass event.event_id as reply_to_event_id."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.generate_forecast = MagicMock(return_value="Sunny 25°C")
+
+        mock_client = MagicMock()
+        mock_client.nodes = {
+            "n1": {"position": {"latitude": 10.0, "longitude": 20.0}},
+        }
+
+        mock_event = MagicMock()
+        mock_event.event_id = "$test_event_123"
+        mock_event.body = "!weather"
+        mock_event.source = {"content": {"formatted_body": ""}}
+
+        with patch(
+            "mmrelay.meshtastic_utils.connect_meshtastic", return_value=mock_client
+        ):
+            result = await self.plugin.handle_room_message(
+                MagicMock(room_id="!r"), mock_event, "!weather"
+            )
+
+        self.assertTrue(result)
+        call_kwargs = self.plugin.send_matrix_message.call_args.kwargs
+        self.assertEqual(call_kwargs.get("reply_to_event_id"), "$test_event_123")
+
+    async def test_handle_room_message_no_location_replies_to_event(self):
+        """'Cannot determine location' should also be sent as a reply."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.send_matrix_message = AsyncMock()
+
+        mock_event = MagicMock()
+        mock_event.event_id = "$no_loc_event"
+        mock_event.body = "!weather"
+        mock_event.source = {"content": {"formatted_body": ""}}
+
+        with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=None):
+            await self.plugin.handle_room_message(
+                MagicMock(room_id="!r"), mock_event, "!weather"
+            )
+
+        call_kwargs = self.plugin.send_matrix_message.call_args.kwargs
+        self.assertEqual(call_kwargs.get("reply_to_event_id"), "$no_loc_event")
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    async def test_handle_meshtastic_message_reply_id_passed(
+        self, mock_get, mock_connect
+    ):
+        """handle_meshtastic_message should pass packet['id'] as reply_id to send_message."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = self.sample_weather_data
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = TEST_NODE_NUM
+        mock_client.nodes = {
+            TEST_MESHTASTIC_ID: {
+                "position": {"latitude": TEST_LAT_NYC, "longitude": TEST_LON_NYC}
+            }
+        }
+        mock_connect.return_value = mock_client
+
+        self.plugin.send_message = MagicMock()
+
+        packet = {
+            "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
+            "channel": 0,
+            "fromId": TEST_MESHTASTIC_ID,
+            "to": BROADCAST_NUM,
+            "id": 42,
+        }
+
+        await self.plugin.handle_meshtastic_message(packet, "f", "longname", "mesh")
+
+        call_kwargs = self.plugin.send_message.call_args.kwargs
+        self.assertEqual(call_kwargs.get("reply_id"), 42)
+
+    # ------------------------------------------------------------------
     # Marine forecast tests
     # ------------------------------------------------------------------
 
     def test_generate_marine_forecast_returns_formatted_string(self):
         """Marine API with valid data should return a formatted sea-state string."""
-        del self.plugin.generate_marine_forecast  # restore real method for direct testing
+        del (
+            self.plugin.generate_marine_forecast
+        )  # restore real method for direct testing
         marine_payload = {
             "current": {
                 "wave_height": 1.5,
@@ -1626,9 +1714,54 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             result = self.plugin.generate_marine_forecast(40.0, -10.0)
         self.assertIsNone(result)
 
+    def test_generate_marine_forecast_hourly_invalid_current_time_uses_now_hour(self):
+        """Hourly marine forecast should fall back to datetime.now().hour on parse errors."""
+        del (
+            self.plugin.generate_marine_forecast
+        )  # restore real method for direct testing
+        marine_payload = {
+            "current": {"time": "not-an-iso-time"},
+            "hourly": {
+                "time": [f"2023-08-20T{h:02d}:00" for h in range(24)],
+                "wave_height": [1.0 + i * 0.1 for i in range(24)],
+                "wave_direction": [180.0] * 24,
+                "wave_period": [7.0] * 24,
+            },
+        }
+
+        with (
+            patch("mmrelay.plugins.weather_plugin.requests.get") as mock_get,
+            patch("mmrelay.plugins.weather_plugin.datetime") as mock_datetime,
+            patch.object(
+                self.plugin, "_format_hourly_marine", return_value="🌊 fallback"
+            ) as mock_format,
+        ):
+            mock_get.return_value = _make_ok_response(marine_payload)
+            mock_datetime.fromisoformat.side_effect = ValueError("bad current time")
+            mock_datetime.now.return_value = MagicMock(hour=7)
+
+            result = self.plugin.generate_marine_forecast(40.0, -10.0, mode="hourly")
+
+        self.assertEqual(result, "🌊 fallback")
+        self.assertEqual(mock_format.call_args.args[1], 7)
+
+    def test_generate_marine_forecast_returns_none_on_unexpected_error(self):
+        """Unexpected processing errors should be logged and return None."""
+        del (
+            self.plugin.generate_marine_forecast
+        )  # restore real method for direct testing
+        self.plugin._normalize_mode = MagicMock(side_effect=RuntimeError("boom"))
+
+        result = self.plugin.generate_marine_forecast(40.0, -10.0, mode="hourly")
+
+        self.assertIsNone(result)
+        self.plugin.logger.exception.assert_called_once()
+
     def test_generate_marine_forecast_without_period_and_direction(self):
         """Marine forecast with only wave_height should omit period and direction."""
-        del self.plugin.generate_marine_forecast  # restore real method for direct testing
+        del (
+            self.plugin.generate_marine_forecast
+        )  # restore real method for direct testing
         marine_payload = {
             "current": {
                 "wave_height": 2.3,
@@ -1646,7 +1779,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
     def test_generate_marine_forecast_daily_mode_uses_daily_endpoint(self):
         """Daily mode should request daily marine fields, not current."""
-        del self.plugin.generate_marine_forecast  # restore real method for direct testing
+        del (
+            self.plugin.generate_marine_forecast
+        )  # restore real method for direct testing
         marine_payload = {
             "daily": {
                 "wave_height_max": [1.0, 1.5],
@@ -1668,7 +1803,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
     def test_generate_marine_forecast_current_mode_uses_current_endpoint(self):
         """Current (default) mode should request current marine fields."""
-        del self.plugin.generate_marine_forecast  # restore real method for direct testing
+        del (
+            self.plugin.generate_marine_forecast
+        )  # restore real method for direct testing
         marine_payload = {
             "current": {"wave_height": 1.0, "wave_direction": 90.0, "wave_period": 6.0}
         }
@@ -1682,10 +1819,13 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("hourly=", called_url)
 
     def test_generate_marine_forecast_hourly_mode_uses_hourly_endpoint(self):
-        """Hourly mode should request hourly marine fields only (no current block)."""
-        del self.plugin.generate_marine_forecast  # restore real method for direct testing
+        """Hourly mode should request hourly marine fields and current=wave_height for anchoring."""
+        del (
+            self.plugin.generate_marine_forecast
+        )  # restore real method for direct testing
         hourly_times = [f"2023-08-20T{h:02d}:00" for h in range(24)]
         marine_payload = {
+            "current": {"time": "2023-08-20T10:00"},
             "hourly": {
                 "time": hourly_times,
                 "wave_height": [1.0 + i * 0.1 for i in range(24)],
@@ -1699,8 +1839,8 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             called_url = mock_get.call_args.args[0]
 
         self.assertIn("hourly=", called_url)
+        self.assertIn("current=wave_height", called_url)
         self.assertNotIn("daily=", called_url)
-        self.assertNotIn("current=", called_url)
         self.assertIsNotNone(result)
         self.assertIn("🌊", result)
         self.assertIn("Now", result)
@@ -1708,7 +1848,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
     def test_format_hourly_marine_returns_none_when_no_heights(self):
         """_format_hourly_marine returns None when hourly array is empty."""
         data = {"hourly": {"time": [], "wave_height": []}}
-        result = self.plugin._format_hourly_marine(data, base_index=0, offsets=[3, 6, 12])
+        result = self.plugin._format_hourly_marine(
+            data, base_index=0, offsets=[3, 6, 12]
+        )
         self.assertIsNone(result)
 
     def test_format_hourly_marine_returns_none_when_base_height_is_none(self):
@@ -1719,7 +1861,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
                 "wave_height": [None] * 24,
             }
         }
-        result = self.plugin._format_hourly_marine(data, base_index=0, offsets=[3, 6, 12])
+        result = self.plugin._format_hourly_marine(
+            data, base_index=0, offsets=[3, 6, 12]
+        )
         self.assertIsNone(result)
 
     def test_format_daily_marine_returns_none_when_no_data(self):
@@ -1753,15 +1897,15 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = TEST_NODE_NUM
         mock_client.nodes = {
-            TEST_MESHTASTIC_ID: {
-                "position": {"latitude": 40.0, "longitude": -10.0}
-            }
+            TEST_MESHTASTIC_ID: {"position": {"latitude": 40.0, "longitude": -10.0}}
         }
         mock_connect.return_value = mock_client
 
         self.plugin.send_message = MagicMock()
         # Override marine mock to return data
-        self.plugin.generate_marine_forecast = MagicMock(return_value="🌊 Waves: 1.2m 7.5s 270°")
+        self.plugin.generate_marine_forecast = MagicMock(
+            return_value="🌊 Waves: 1.2m 7.5s 270°"
+        )
 
         packet = {
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
@@ -1787,7 +1931,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.plugin.get_require_bot_mention = MagicMock(return_value=False)
         self.plugin.send_matrix_message = AsyncMock()
         self.plugin.generate_forecast = MagicMock(return_value="Now: ☀️ Clear - 22°C")
-        self.plugin.generate_marine_forecast = MagicMock(return_value="🌊 Waves: 1.5m 8s 180°")
+        self.plugin.generate_marine_forecast = MagicMock(
+            return_value="🌊 Waves: 1.5m 8s 180°"
+        )
 
         mock_event = MagicMock()
         mock_event.body = "!weather 40.0 -10.0"
