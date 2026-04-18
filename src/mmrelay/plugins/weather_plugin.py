@@ -85,11 +85,106 @@ class Plugin(BasePlugin):
             return cmd
         return CANONICAL_WEATHER_MODE
 
+    def _is_in_ocean(self, latitude: float, longitude: float) -> bool:
+        """
+        Determine if coordinates are located in the ocean using elevation data.
+
+        Uses the Open-Elevation API to check if the location has negative elevation,
+        which indicates a position at or below sea level.
+
+        Parameters:
+            latitude (float): Latitude in decimal degrees.
+            longitude (float): Longitude in decimal degrees.
+
+        Returns:
+            bool: True if coordinates appear to be at sea (negative or zero elevation),
+                  False if on land, elevation data is unavailable, or API request fails.
+        """
+        try:
+            url = f"https://api.open-elevation.com/api/v1/lookup?locations={latitude},{longitude}"
+            response = requests.get(url, timeout=WEATHER_API_TIMEOUT_SECONDS)
+            response.raise_for_status()
+            data = response.json()
+            if data.get("results"):
+                elevation = data["results"][0].get("elevation", 1)
+                return elevation <= 0
+        except requests.exceptions.RequestException:
+            self.logger.debug(
+                "Could not determine elevation for coordinates %f, %f",
+                latitude,
+                longitude,
+            )
+        return False
+
+    def _get_marine_forecast(self, latitude: float, longitude: float) -> str:
+        """
+        Fetch marine weather data (wave height, period, and direction) for given coordinates.
+
+        Queries the Open-Meteo marine weather API to retrieve current wave conditions.
+        Returns a formatted string with sea state information or an error message.
+
+        Parameters:
+            latitude (float): Latitude in decimal degrees.
+            longitude (float): Longitude in decimal degrees.
+
+        Returns:
+            str: Formatted marine forecast string (e.g., "🌊 Sea State: Waves 1.5m (8.0s) 185°"),
+                 or an error message if data is unavailable.
+        """
+        try:
+            url = (
+                f"https://marine-api.open-meteo.com/v1/marine?"
+                f"latitude={latitude}&longitude={longitude}&"
+                f"hourly=wave_height,wave_direction,wave_period&"
+                f"timezone=auto"
+            )
+            response = requests.get(url, timeout=WEATHER_API_TIMEOUT_SECONDS)
+            response.raise_for_status()
+            data = response.json()
+
+            # Extract marine data
+            hourly = data.get("hourly", {})
+            wave_heights = hourly.get("wave_height", [])
+            wave_dirs = hourly.get("wave_direction", [])
+            wave_periods = hourly.get("wave_period", [])
+
+            if not wave_heights:
+                return "Marine data unavailable."
+
+            # Get current values (index 0 is the most recent)
+            current_wave_height = wave_heights[0] if wave_heights else None
+            current_wave_dir = wave_dirs[0] if wave_dirs else None
+            current_wave_period = wave_periods[0] if wave_periods else None
+
+            if current_wave_height is None:
+                return "Marine data unavailable."
+
+            marine_parts = [f"🌊 Sea State: Waves {round(current_wave_height, 1)}m"]
+
+            if current_wave_period is not None:
+                marine_parts[0] += f" ({round(current_wave_period, 1)}s)"
+
+            if current_wave_dir is not None:
+                marine_parts.append(f"{round(current_wave_dir)}{DEGREE_SYMBOL}")
+
+            return " ".join(marine_parts)
+
+        except requests.exceptions.RequestException:
+            self.logger.debug(
+                "Error fetching marine weather data for coordinates %f, %f",
+                latitude,
+                longitude,
+            )
+            return "Marine data unavailable."
+
     def generate_forecast(
         self, latitude: float, longitude: float, mode: str = CANONICAL_WEATHER_MODE
     ) -> str:
         """
         Generate a concise one-line weather forecast for the given GPS coordinates and requested mode.
+
+        If coordinates are detected to be at sea, marine weather data is automatically appended
+        to the terrestrial forecast including wave height, period, and direction.
 
         Parameters:
             latitude (float): Latitude in decimal degrees.
@@ -148,9 +243,14 @@ class Plugin(BasePlugin):
 
             # Daily fast-path - check before parsing current/hourly data
             if mode_key == WEATHER_MODE_DAILY:
-                return self._build_daily_forecast(
+                terrestrial_forecast = self._build_daily_forecast(
                     data, units, temperature_unit, daily_days
                 )
+                # Append marine data if location is at sea
+                if self._is_in_ocean(latitude, longitude):
+                    marine_data = self._get_marine_forecast(latitude, longitude)
+                    return self._trim_to_max_bytes(f"{terrestrial_forecast} | {marine_data}")
+                return terrestrial_forecast
 
             # Extract relevant weather data
             current_temp = data["current_weather"]["temperature"]
@@ -306,7 +406,15 @@ class Plugin(BasePlugin):
                     parts.append(wind_part)
                 if precip_now is not None:
                     parts.append(f"Precip {precip_now}%")
-                return self._trim_to_max_bytes(" | ".join(parts))
+
+                terrestrial_forecast = self._trim_to_max_bytes(" | ".join(parts))
+
+                # Append marine data if location is at sea
+                if self._is_in_ocean(latitude, longitude):
+                    marine_data = self._get_marine_forecast(latitude, longitude)
+                    return self._trim_to_max_bytes(f"{terrestrial_forecast} | {marine_data}")
+
+                return terrestrial_forecast
 
             slots = [
                 slot
@@ -315,7 +423,7 @@ class Plugin(BasePlugin):
                 ).get("slots", ())
                 if isinstance(slot, str)
             ]
-            return self._build_hourly_forecast(
+            terrestrial_forecast = self._build_hourly_forecast(
                 current_temp,
                 current_weather_code,
                 is_day,
@@ -323,6 +431,13 @@ class Plugin(BasePlugin):
                 temperature_unit,
                 slots,
             )
+
+            # Append marine data if location is at sea
+            if self._is_in_ocean(latitude, longitude):
+                marine_data = self._get_marine_forecast(latitude, longitude)
+                return self._trim_to_max_bytes(f"{terrestrial_forecast} | {marine_data}")
+
+            return terrestrial_forecast
 
         except (KeyError, IndexError, TypeError, ValueError, AttributeError):
             self.logger.exception("Malformed weather data")
