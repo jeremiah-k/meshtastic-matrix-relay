@@ -216,7 +216,10 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
 
         response = await asyncio.to_thread(self.generate_response)
         await self.send_matrix_message(
-            room_id=room.room_id, message=response, formatted=False
+            room_id=room.room_id,
+            message=response,
+            formatted=False,
+            reply_to_event_id=event.event_id,
         )
 
         return True

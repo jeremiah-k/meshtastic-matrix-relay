@@ -245,6 +245,7 @@ class Plugin(BasePlugin):
                     room.room_id,
                     f"No telemetry data found for node '{node}'.",
                     formatted=False,
+                    reply_to_event_id=event.event_id,
                 )
                 return True
         else:
@@ -297,7 +298,11 @@ class Plugin(BasePlugin):
 
         try:
             await send_image(
-                matrix_client, room.room_id, pil_image, TELEMETRY_GRAPH_FILENAME
+                matrix_client,
+                room.room_id,
+                pil_image,
+                TELEMETRY_GRAPH_FILENAME,
+                reply_to_event_id=event.event_id,
             )
         except ImageUploadError:
             self.logger.exception("Failed to send telemetry graph")

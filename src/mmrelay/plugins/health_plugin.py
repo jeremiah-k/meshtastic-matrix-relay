@@ -166,6 +166,8 @@ class Plugin(BasePlugin):
         _ = full_message
 
         response = await asyncio.to_thread(self.generate_response)
-        await self.send_matrix_message(room.room_id, response, formatted=False)
+        await self.send_matrix_message(
+            room.room_id, response, formatted=False, reply_to_event_id=event.event_id
+        )
 
         return True

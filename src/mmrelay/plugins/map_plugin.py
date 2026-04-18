@@ -586,6 +586,7 @@ class Plugin(BasePlugin):
                 room.room_id,
                 "Cannot generate map: Matrix client unavailable.",
                 formatted=False,
+                reply_to_event_id=event.event_id,
             )
             return True
         meshtastic_client = await _connect_meshtastic_async()
@@ -598,6 +599,7 @@ class Plugin(BasePlugin):
                 room.room_id,
                 "Cannot generate map: Meshtastic client unavailable.",
                 formatted=False,
+                reply_to_event_id=event.event_id,
             )
             return True
 
@@ -626,6 +628,7 @@ class Plugin(BasePlugin):
                 room.room_id,
                 "Cannot generate map: No nodes with location data found.",
                 formatted=False,
+                reply_to_event_id=event.event_id,
             )
             return True
 
@@ -641,7 +644,7 @@ class Plugin(BasePlugin):
 
         try:
             await send_image(
-                matrix_client, room.room_id, pillow_image, MAP_IMAGE_FILENAME
+                matrix_client, room.room_id, pillow_image, MAP_IMAGE_FILENAME, reply_to_event_id=event.event_id
             )
         except ImageUploadError:
             self.logger.exception("Failed to send map image")

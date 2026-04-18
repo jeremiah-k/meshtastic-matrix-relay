@@ -613,7 +613,7 @@ class BasePlugin(ABC):
             channel: Channel index to send the message on (defaults to 0).
             destination_id: Destination node ID for a direct message; if omitted the message is broadcast.
             reply_id: Meshtastic message ID to reply to; when provided the outgoing packet
-                      includes a ``reply_id`` field so clients render it as a threaded reply.
+                      includes a ``reply_id`` field so clients render it as a reply.
 
         Returns:
             `true` if the message was queued successfully, `false` otherwise.
@@ -638,7 +638,9 @@ class BasePlugin(ABC):
                 interface=meshtastic_client,
                 text=text,
                 reply_id=reply_id,
-                destinationId=destination_id if destination_id is not None else BROADCAST_NUM,
+                destinationId=(
+                    destination_id if destination_id is not None else BROADCAST_NUM
+                ),
                 channelIndex=channel,
             )
 
@@ -707,7 +709,11 @@ class BasePlugin(ABC):
         return None
 
     async def send_matrix_message(
-        self, room_id: str, message: str, formatted: bool = True, reply_to_event_id: str | None = None
+        self,
+        room_id: str,
+        message: str,
+        formatted: bool = True,
+        reply_to_event_id: str | None = None,
     ) -> RoomSendResponse | RoomSendError | None:
         """
         Send a message to a Matrix room, optionally converting Markdown to HTML.
@@ -717,7 +723,7 @@ class BasePlugin(ABC):
             message: Message content to send.
             formatted: If True, convert `message` from Markdown to HTML and include it as formatted content; otherwise send plain text only.
             reply_to_event_id: When provided, the outgoing event includes an ``m.relates_to``
-                               relation so Matrix clients render it as a threaded reply to that event.
+                               relation so Matrix clients render it as a reply to that event.
 
         Returns:
             The Matrix client's `room_send` response (`RoomSendResponse` or `RoomSendError`), or `None` if the Matrix client could not be obtained.
@@ -738,9 +744,7 @@ class BasePlugin(ABC):
             content["format"] = "org.matrix.custom.html"
             content["formatted_body"] = markdown.markdown(message)
         if reply_to_event_id:
-            content["m.relates_to"] = {
-                "m.in_reply_to": {"event_id": reply_to_event_id}
-            }
+            content["m.relates_to"] = {"m.in_reply_to": {"event_id": reply_to_event_id}}
         return await matrix_client.room_send(
             room_id=room_id,
             message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
