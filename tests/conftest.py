@@ -19,11 +19,11 @@ import contextlib
 import gc
 import inspect
 import logging
-
-# Preserve references to built-in modules that should NOT be mocked
 import queue
+import sqlite3
 import threading
 import time
+import traceback
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any, Generator
@@ -116,6 +116,51 @@ sys.modules["haversine"] = MagicMock()
 sys.modules["schedule"] = MagicMock()
 sys.modules["platformdirs"] = MagicMock()
 sys.modules["py_staticmaps"] = MagicMock()
+
+
+class _ConnectionProvenance:
+    """Track every sqlite3.connect() call with creation metadata."""
+
+    def __init__(self) -> None:
+        self._registry: dict[int, dict[str, Any]] = {}
+        self._current_nodeid: str = ""
+        self._real_connect = sqlite3.connect
+        self._patched: bool = False
+
+    def install(self) -> None:
+        if self._patched:
+            return
+        real_connect = self._real_connect
+        registry = self._registry
+        tracker = self
+
+        def _tracked_connect(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+            conn = real_connect(*args, **kwargs)
+            db_path = args[0] if args else kwargs.get("database", "?")
+            registry[id(conn)] = {
+                "conn_id": id(conn),
+                "db_path": str(db_path),
+                "test_nodeid": tracker._current_nodeid,
+                "thread_name": threading.current_thread().name,
+                "thread_id": threading.current_thread().ident,
+                "creation_stack": "".join(traceback.format_stack()),
+            }
+            return conn
+
+        sqlite3.connect = _tracked_connect
+        self._patched = True
+
+    def remove(self, conn: sqlite3.Connection) -> None:
+        self._registry.pop(id(conn), None)
+
+    def report_open(self) -> list[dict[str, Any]]:
+        return list(self._registry.values())
+
+    def clear(self) -> None:
+        self._registry.clear()
+
+
+_conn_provenance = _ConnectionProvenance()
 
 
 def _safe_is_done(future: Any) -> bool:
@@ -1441,3 +1486,35 @@ def clean_migration_home(
     state_file.unlink(missing_ok=True)
 
     yield home
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _install_sqlite_provenance():
+    _conn_provenance.install()
+    yield
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    report = outcome.get_result()
+    _conn_provenance._current_nodeid = item.nodeid
+    if report.when == "call" and report.failed:
+        open_conns = _conn_provenance.report_open()
+        if open_conns:
+            stacks = []
+            for entry in open_conns:
+                stacks.append(
+                    f"  LEAKED conn={entry['conn_id']} db={entry['db_path']} "
+                    f"created_in={entry['test_nodeid']} thread={entry['thread_name']}\n"
+                    f"{entry['creation_stack']}"
+                )
+            report.sections.append(
+                (
+                    "sqlite-connection-provenance",
+                    f"\n{len(open_conns)} OPEN sqlite connections at failure:\n"
+                    + "\n---\n".join(stacks),
+                )
+            )
+    if report.when == "teardown":
+        _conn_provenance.clear()
