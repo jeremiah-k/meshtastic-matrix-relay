@@ -11,6 +11,7 @@ This test module covers:
 """
 
 import asyncio
+import contextlib
 import os
 import sqlite3
 import tempfile
@@ -781,6 +782,41 @@ class TestDatabaseManager(unittest.TestCase):
         self.assertEqual(len(self.manager._connections), 0)
         self.assertFalse(hasattr(self.manager._thread_local, "connection"))
 
+    def test_close_closes_untracked_thread_local_connection(self):
+        """close() should explicitly close thread-local connection even if untracked."""
+        manager = DatabaseManager(self.db_path)
+        conn = manager._get_connection()
+        with manager._connections_lock:
+            manager._connections.clear()
+
+        manager.close()
+
+        with self.assertRaises(sqlite3.ProgrammingError):
+            conn.cursor()
+        self.assertFalse(hasattr(manager._thread_local, "connection"))
+
+    def test_finalize_closes_thread_local_connection_when_lock_unavailable(self):
+        """Finalizer should close thread-local connection even when lock snapshot is skipped."""
+
+        class _NeverAcquireLock:
+            def acquire(self, timeout: float | int = -1) -> bool:
+                return False
+
+            def release(self) -> None:  # pragma: no cover - defensive
+                raise AssertionError(
+                    "release() should not be called when acquire() fails"
+                )
+
+        manager = DatabaseManager(self.db_path)
+        conn = manager._get_connection()
+        manager._connections_lock = _NeverAcquireLock()  # type: ignore[assignment]
+
+        manager._finalize_unclosed_resources()
+
+        with self.assertRaises(sqlite3.ProgrammingError):
+            conn.cursor()
+        self.assertFalse(hasattr(manager._thread_local, "connection"))
+
     def test_close_rejected_during_active_database_operation(self):
         """close() should reject reentrant invocation from active DB work."""
 
@@ -1044,7 +1080,13 @@ def temp_db_manager() -> Generator[DatabaseManager, None, None]:
     try:
         yield manager
     finally:
-        manager.close()
+        try:
+            manager.close()
+        except Exception:
+            force_close = getattr(manager, "_force_close_unclosed_resources", None)
+            if callable(force_close):
+                with contextlib.suppress(Exception):
+                    force_close()
         os.unlink(db_path)
 
 

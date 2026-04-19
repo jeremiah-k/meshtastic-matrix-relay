@@ -22,8 +22,11 @@ import logging
 
 # Preserve references to built-in modules that should NOT be mocked
 import queue
+import sqlite3
 import threading
 import time
+import traceback
+import warnings
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any, Generator
@@ -118,6 +121,73 @@ sys.modules["platformdirs"] = MagicMock()
 sys.modules["py_staticmaps"] = MagicMock()
 
 
+class _ConnectionProvenance:
+    """Track every sqlite3.connect() call with creation metadata."""
+
+    def __init__(self) -> None:
+        self._registry: dict[int, dict[str, Any]] = {}
+        self._current_nodeid: str = ""
+        self._enabled: bool = True
+        self._real_connect = sqlite3.connect
+        self._patched: bool = False
+
+    @property
+    def current_nodeid(self) -> str:
+        return self._current_nodeid
+
+    @current_nodeid.setter
+    def current_nodeid(self, value: str) -> None:
+        self._current_nodeid = value
+
+    def install(self) -> None:
+        if self._patched:
+            return
+        real_connect = self._real_connect
+        registry = self._registry
+        tracker = self
+
+        def _tracked_connect(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+            conn = real_connect(*args, **kwargs)
+            if not tracker._enabled:
+                return conn
+            db_path = args[0] if args else kwargs.get("database", "?")
+            registry[id(conn)] = {
+                "conn_id": id(conn),
+                "db_path": db_path,
+                "test_nodeid": tracker._current_nodeid,
+                "thread_name": threading.current_thread().name,
+                "thread_id": threading.current_thread().ident,
+                "creation_stack": "".join(traceback.format_stack()),
+                "closed": False,
+            }
+            return conn
+
+        sqlite3.connect = _tracked_connect
+        self._patched = True
+
+    def mark_closed(self, conn: sqlite3.Connection) -> None:
+        entry = self._registry.pop(id(conn), None)
+        if entry is not None:
+            entry["closed"] = True
+
+    def report_open(self) -> list[dict[str, Any]]:
+        result = []
+        for conn_id, entry in list(self._registry.items()):
+            if entry.get("closed"):
+                del self._registry[conn_id]
+                continue
+            result.append(entry)
+        return result
+
+    def report_and_clear(self) -> list[dict[str, Any]]:
+        open_conns = self.report_open()
+        self._registry.clear()
+        return open_conns
+
+
+_conn_provenance = _ConnectionProvenance()
+
+
 def _safe_is_done(future: Any) -> bool:
     """
     Check future/task completion state while suppressing known state errors.
@@ -195,6 +265,38 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
             exc,
         )
         return
+
+
+def _close_leaked_sqlite_connections() -> None:
+    """
+    Best-effort close for leaked sqlite3 connections and DatabaseManager instances.
+    """
+    import mmrelay.db_runtime as db_runtime
+
+    for obj in gc.get_objects():
+        with contextlib.suppress(ReferenceError):
+            if isinstance(obj, db_runtime.DatabaseManager):
+                force_close = getattr(obj, "_force_close_unclosed_resources", None)
+                if callable(force_close):
+                    with contextlib.suppress(Exception):
+                        force_close()
+                else:
+                    with contextlib.suppress(Exception):
+                        obj._finalize_unclosed_resources()
+                continue
+            if isinstance(obj, sqlite3.Connection):
+                provenance = _conn_provenance._registry.get(id(obj))
+                if provenance is not None:
+                    logging.getLogger(__name__).warning(
+                        "LEAKED sqlite3.Connection %s created in test=%s thread=%s db=%s\n%s",
+                        id(obj),
+                        provenance.get("test_nodeid", "?"),
+                        provenance.get("thread_name", "?"),
+                        provenance.get("db_path", "?"),
+                        provenance.get("creation_stack", "<no stack>"),
+                    )
+                with contextlib.suppress(sqlite3.Error):
+                    obj.close()
 
 
 def cleanup_ble_future_state(module: Any) -> None:
@@ -824,6 +926,41 @@ def cleanup_asyncmock_objects(request):
 
 
 @pytest.fixture(autouse=True)
+def isolate_db_manager_state(request):
+    """
+    Reset db_utils manager/cache around every test to avoid leaked SQLite handles.
+    """
+    import mmrelay.db_utils as db_utils
+
+    db_utils._reset_db_manager()
+    db_utils.clear_db_path_cache()
+    _conn_provenance.current_nodeid = request.node.nodeid
+
+    try:
+        yield
+    finally:
+        db_utils._reset_db_manager()
+        db_utils.clear_db_path_cache()
+        open_conns = _conn_provenance.report_and_clear()
+        if open_conns:
+            stacks = []
+            for entry in open_conns:
+                stacks.append(
+                    f"  LEAKED conn={entry['conn_id']} db={entry['db_path']} "
+                    f"test={entry['test_nodeid']} thread={entry['thread_name']}\n"
+                    f"{entry['creation_stack']}"
+                )
+            logging.getLogger(__name__).error(
+                "LEAKED %d sqlite connections after %s:\n%s",
+                len(open_conns),
+                request.node.nodeid,
+                "\n---\n".join(stacks),
+            )
+        _close_leaked_sqlite_connections()
+        gc.collect()
+
+
+@pytest.fixture(autouse=True)
 def mock_submit_coro(monkeypatch):
     """
     Replace mmrelay.meshtastic_utils._submit_coro with a test helper that ensures passed coroutines are executed and awaited so AsyncMock coroutines run to completion.
@@ -1271,6 +1408,14 @@ def comprehensive_cleanup():
     # Set event loop to None to ensure clean state
     asyncio.set_event_loop(None)
 
+    # Reset global db manager/cache before forcing GC of lingering resources.
+    with contextlib.suppress(Exception):
+        import mmrelay.db_utils as db_utils
+
+        db_utils._reset_db_manager()
+        db_utils.clear_db_path_cache()
+    _close_leaked_sqlite_connections()
+
     # Force garbage collection to clean up any remaining resources
     gc.collect()
 
@@ -1286,6 +1431,7 @@ def comprehensive_cleanup():
             thread.join(timeout=0.1)
 
     # Force another garbage collection after thread cleanup
+    _close_leaked_sqlite_connections()
     gc.collect()
 
 
@@ -1379,6 +1525,12 @@ def test_config():
         ],
         "matrix": {"bot_user_id": TEST_BOT_USER_ID},
     }
+
+
+@pytest.fixture(scope="session", autouse=True)
+def install_connection_provenance():
+    _conn_provenance.install()
+    yield
 
 
 @pytest.fixture(scope="session", autouse=True)

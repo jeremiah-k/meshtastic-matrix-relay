@@ -677,6 +677,41 @@ class TestDatabaseManagerReset(unittest.TestCase):
             new_manager = _get_db_manager()
             self.assertIsNot(new_manager, manager)
 
+    def test_reset_db_manager_closes_untracked_thread_local_connection(self):
+        """_reset_db_manager should close thread-local connection even if not tracked."""
+        with patch("mmrelay.db_utils.get_db_path", return_value=self.db_path):
+            manager = _get_db_manager()
+            conn = manager._get_connection()
+            with manager._connections_lock:
+                manager._connections.clear()
+
+            _reset_db_manager()
+
+            with self.assertRaises(sqlite3.ProgrammingError):
+                conn.cursor()
+
+    def test_close_manager_safely_forces_cleanup_when_close_raises(self):
+        """_close_manager_safely should reclaim handles via deterministic fallback."""
+        with patch("mmrelay.db_utils.get_db_path", return_value=self.db_path):
+            manager = _get_db_manager()
+            conn = manager._get_connection()
+            with manager._connections_lock:
+                manager._connections.clear()
+
+            with (
+                patch.object(manager, "close", side_effect=Exception("Close error")),
+                patch.object(
+                    manager,
+                    "_force_close_unclosed_resources",
+                    wraps=manager._force_close_unclosed_resources,
+                ) as mock_force_close,
+            ):
+                mmrelay.db_utils._close_manager_safely(manager)
+
+            mock_force_close.assert_called_once()
+            with self.assertRaises(sqlite3.ProgrammingError):
+                conn.cursor()
+
     def test_get_db_manager_runtime_error_on_init_failure(self):
         """Test that _get_db_manager raises RuntimeError when DatabaseManager initialization fails."""
         # Reset manager to None first

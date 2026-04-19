@@ -35,15 +35,10 @@ class TestMeshtasticUtilsCoverage(unittest.TestCase):
 
         # Create a very long output string (> 4096 chars)
         long_output = "firmware_version: 1.2.3\n" + "x" * 5000
-
-        # Mock the stdout capture
-        with patch("sys.stdout", new_callable=lambda: Mock()):
-            with patch("io.StringIO") as mock_stringio:
-                mock_output = Mock()
-                mock_output.getvalue.return_value = long_output
-                mock_stringio.return_value = mock_output
-
-                result = meshtastic_utils._get_device_metadata(mock_interface)
+        mock_interface.localNode.getMetadata = Mock(
+            side_effect=lambda: sys.stdout.write(long_output)
+        )
+        result = meshtastic_utils._get_device_metadata(mock_interface)
 
         # Should truncate and add ellipsis
         self.assertIn("raw_output", result)
@@ -68,28 +63,23 @@ class TestMeshtasticUtilsCoverage(unittest.TestCase):
 
         for output, expected in test_cases:
             with self.subTest(output=output):
-                # Mock the stdout capture
-                with patch("io.StringIO") as mock_stringio:
-                    mock_output = Mock()
-                    mock_output.getvalue.return_value = output
-                    mock_stringio.return_value = mock_output
-
-                    result = meshtastic_utils._get_device_metadata(mock_interface)
-                    self.assertEqual(result["firmware_version"], expected)
-                    self.assertTrue(result["success"])
+                mock_interface.localNode.getMetadata = Mock(
+                    side_effect=lambda text=output: sys.stdout.write(text)
+                )
+                result = meshtastic_utils._get_device_metadata(mock_interface)
+                self.assertEqual(result["firmware_version"], expected)
+                self.assertTrue(result["success"])
 
     def test_get_device_metadata_no_firmware_version_found(self):
         """Test when no firmware version is found in output"""
         mock_interface = Mock()
         mock_interface.localNode = Mock()
 
-        # Mock the stdout capture with output that has no firmware version
-        with patch("io.StringIO") as mock_stringio:
-            mock_output = Mock()
-            mock_output.getvalue.return_value = "some other output"
-            mock_stringio.return_value = mock_output
-
-            result = meshtastic_utils._get_device_metadata(mock_interface)
+        # Exercise capture path with output that has no firmware version
+        mock_interface.localNode.getMetadata = Mock(
+            side_effect=lambda: sys.stdout.write("some other output")
+        )
+        result = meshtastic_utils._get_device_metadata(mock_interface)
 
         self.assertEqual(result["firmware_version"], "unknown")
         self.assertFalse(result["success"])

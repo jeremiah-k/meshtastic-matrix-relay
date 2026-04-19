@@ -585,13 +585,36 @@ def get_db_path() -> str:
 
 def _close_manager_safely(manager: DatabaseManager | None) -> None:
     """
-    Close the given DatabaseManager if provided, suppressing any exceptions raised during close.
+    Close the given DatabaseManager if provided.
 
-    Closes the manager when non-None; any exception raised by the manager's close() is ignored.
+    If close() fails, run deterministic fallback cleanup to avoid leaked sqlite
+    connections during teardown.
     """
-    if manager:
+    if manager is None:
+        return
+
+    try:
+        manager.close()
+        return
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except Exception:
+        logger.debug(
+            "Database manager close failed; forcing deterministic cleanup",
+            exc_info=True,
+        )
+
+    force_close = getattr(manager, "_force_close_unclosed_resources", None)
+    if callable(force_close):
         with contextlib.suppress(Exception):
-            manager.close()
+            force_close()
+        return
+
+    finalizer = getattr(manager, "_finalize_unclosed_resources", None)
+    if callable(finalizer):
+        logger.debug("Falling back to best-effort manager finalizer cleanup")
+        with contextlib.suppress(Exception):
+            finalizer()
 
 
 def _reset_db_manager() -> None:
