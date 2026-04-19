@@ -297,7 +297,13 @@ class TestConnectMeshtastic:
                 "TCPInterface",
                 return_value=None,
             ),
-            patch.object(mu, "time"),
+            patch.object(mu.time, "sleep"),
+            patch.object(mu, "logger") as mock_logger,
         ):
             result = _connect_meshtastic_impl()
             assert result is None
+            mock_logger.error.assert_any_call(
+                "Meshtastic %s connection path completed without a client.",
+                "tcp",
+            )
+            assert mu.meshtastic_client is None

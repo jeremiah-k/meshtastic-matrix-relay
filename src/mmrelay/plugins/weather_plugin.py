@@ -935,7 +935,7 @@ class Plugin(BasePlugin):
                     "Cannot determine location",
                     formatted=False,
                 )
-                await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
+                await self.send_matrix_reaction(room.room_id, event.event_id, "❌")
                 return True
 
             terrestrial = await asyncio.to_thread(

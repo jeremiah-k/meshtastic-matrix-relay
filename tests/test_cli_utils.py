@@ -767,10 +767,13 @@ class TestLogoutMatrixBot:
         mock_logger = MagicMock()
         mock_get_logger.return_value = mock_logger
 
-        result = await logout_matrix_bot(password="test_password")
+        test_password = "test_password"
+        result = await logout_matrix_bot(password=test_password)
 
         assert result is False
-        mock_logger.error.assert_called_once()
+        mock_logger.error.assert_called_once_with(
+            "Matrix-nio library not available. Cannot perform logout."
+        )
         mock_print.assert_called_once()
 
     @pytest.mark.asyncio

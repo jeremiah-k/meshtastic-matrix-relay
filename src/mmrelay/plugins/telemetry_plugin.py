@@ -200,8 +200,7 @@ class Plugin(BasePlugin):
                 self.logger.warning(
                     "Matrix client unavailable; skipping telemetry graph generation"
                 )
-                await self.send_matrix_reaction(room.room_id, event.event_id, "❌")
-                return False
+                return True
 
             hourly_averages: dict[int, list[float]] = {}
 
@@ -247,7 +246,7 @@ class Plugin(BasePlugin):
                         f"No telemetry data found for node '{node}'.",
                         formatted=False,
                     )
-                    await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
+                    await self.send_matrix_reaction(room.room_id, event.event_id, "❌")
                     return True
             else:
                 for node_data_json in self.get_data():

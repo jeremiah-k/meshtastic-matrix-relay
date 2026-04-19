@@ -98,6 +98,8 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         # Default: marine returns no data (land coordinates)
         self.plugin.generate_marine_forecast = MagicMock(return_value=None)
 
+        self.plugin.send_matrix_reaction = AsyncMock()
+
         # Sample weather API response for 2 days (48 hours)
         # Current time is set to 10:00
         self.sample_weather_data = {
@@ -1529,6 +1531,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
         self.plugin.get_require_bot_mention = MagicMock(return_value=False)
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
 
         mock_event = MagicMock()
         mock_event.body = "!weather"
@@ -1635,7 +1638,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             )
 
         self.plugin.send_matrix_reaction.assert_called_once_with(
-            "!r", "$no_loc_event", "✅"
+            "!r", "$no_loc_event", "❌"
         )
         call_kwargs = self.plugin.send_matrix_message.call_args.kwargs
         self.assertIsNone(call_kwargs.get("reply_to_event_id"))

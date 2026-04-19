@@ -846,7 +846,7 @@ class TestMapPlugin(unittest.TestCase):
             mock_get_map.assert_not_called()
             _mock_send_image.assert_not_called()
             self.plugin.send_matrix_reaction.assert_called_once_with(
-                "!test:example.com", mock_event.event_id, "✅"
+                "!test:example.com", mock_event.event_id, "❌"
             )
 
         asyncio.run(run_test())
@@ -1136,11 +1136,9 @@ class TestMapPluginHandleRoomMessage(unittest.TestCase):
                 )
 
             self.assertTrue(result)
-            self.plugin.send_matrix_message.assert_awaited_once()
+            self.plugin.send_matrix_message.assert_not_awaited()
+            self.plugin.send_matrix_reaction.assert_not_called()
             mock_get_map.assert_not_called()
-            self.plugin.send_matrix_reaction.assert_called_once_with(
-                "!test:example.com", mock_event.event_id, "❌"
-            )
 
         asyncio.run(run_test())
 

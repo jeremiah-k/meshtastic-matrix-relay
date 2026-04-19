@@ -685,10 +685,8 @@ class TestTelemetryPlugin(unittest.TestCase):
                 result = await self.plugin.handle_room_message(
                     room, event, "!batteryLevel"
                 )
-                self.assertFalse(result)
-                self.plugin.send_matrix_reaction.assert_called_once_with(
-                    "!r", event.event_id, "❌"
-                )
+                self.assertTrue(result)
+                self.plugin.send_matrix_reaction.assert_not_called()
 
             asyncio.run(run_test())
 
@@ -724,7 +722,7 @@ class TestTelemetryPlugin(unittest.TestCase):
                     self.plugin.send_matrix_message.call_args.args[1],
                 )
                 self.plugin.send_matrix_reaction.assert_called_once_with(
-                    "!r", event.event_id, "✅"
+                    "!r", event.event_id, "❌"
                 )
 
             asyncio.run(run_test())

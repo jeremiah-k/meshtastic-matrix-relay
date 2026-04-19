@@ -602,7 +602,7 @@ class BasePlugin(ABC):
         self,
         text: str,
         channel: int = 0,
-        destination_id: int | None = None,
+        destination_id: str | int | None = None,
         reply_id: int | None = None,
     ) -> bool:
         """
@@ -611,7 +611,7 @@ class BasePlugin(ABC):
         Parameters:
             text: Message content to send.
             channel: Channel index to send the message on (defaults to 0).
-            destination_id: Destination node ID for a direct message; if omitted the message is broadcast.
+            destination_id: Destination node ID (string Meshtastic ID or integer) for a direct message; if omitted the message is broadcast.
             reply_id: Meshtastic message ID to reply to; when provided the outgoing packet
                       includes a ``reply_id`` field so clients render it as a reply.
 
