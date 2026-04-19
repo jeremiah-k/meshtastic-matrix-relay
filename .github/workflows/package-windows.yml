@@ -65,9 +65,9 @@ jobs:
       - name: Build installer
         # Intentionally using a SHA-pinned action that supports `filepath` + `options`.
         # Keep this pinned to control supply-chain risk and avoid interface drift.
-        uses: sharktide/iscc-cli@6f80e2e08ffc0606116be38199a77902d266b09a # v1.0.0
+        uses: sharktide/iscc-cli@c94f2cbc0fc82dede0efad402dca3dfa3a1ede2a # v1.0.0
         with:
-          filepath: "./scripts/mmrelay.iss"
+          filepath: ./scripts/mmrelay.iss
           options: "/DAppVersion=${{ env.FILE_VERSION }}"
 
       - name: Upload installer as artifact

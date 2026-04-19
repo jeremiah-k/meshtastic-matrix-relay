@@ -214,9 +214,16 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
             return False
         _ = full_message
 
-        response = await asyncio.to_thread(self.generate_response)
-        await self.send_matrix_message(
-            room_id=room.room_id, message=response, formatted=False
-        )
-
+        try:
+            response = await asyncio.to_thread(self.generate_response)
+            await self.send_matrix_message(
+                room_id=room.room_id,
+                message=response,
+                formatted=False,
+            )
+        except Exception:
+            self.logger.exception("Error handling nodes command")
+            await self.send_matrix_reaction(room.room_id, event.event_id, "❌")
+            return True
+        await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
         return True

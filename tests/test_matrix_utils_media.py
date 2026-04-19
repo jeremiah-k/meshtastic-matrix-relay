@@ -95,6 +95,34 @@ async def test_send_room_image_raises_on_missing_content_uri():
         )
 
 
+async def test_send_room_image_with_reply_to_event_id():
+    """
+    Test that send_room_image includes m.relates_to in-reply-to when reply_to_event_id is provided.
+    """
+    mock_client = MagicMock()
+    mock_client.room_send = AsyncMock()
+    mock_upload_response = MagicMock()
+    mock_upload_response.content_uri = "mxc://matrix.org/test123"
+
+    await send_room_image(
+        mock_client,
+        "!room:matrix.org",
+        mock_upload_response,
+        "test.png",
+        reply_to_event_id="$event",
+    )
+
+    mock_client.room_send.assert_called_once()
+    call_args = mock_client.room_send.call_args
+    assert call_args[1]["room_id"] == "!room:matrix.org"
+    assert call_args[1]["message_type"] == MATRIX_EVENT_TYPE_ROOM_MESSAGE
+    content = call_args[1]["content"]
+    assert content["msgtype"] == "m.image"
+    assert content["url"] == "mxc://matrix.org/test123"
+    assert content["body"] == "test.png"
+    assert content["m.relates_to"] == {"m.in_reply_to": {"event_id": "$event"}}
+
+
 async def test_send_image():
     """
     Test that send_image combines upload_image and send_room_image correctly.
@@ -124,6 +152,7 @@ async def test_send_image():
                 "!room:matrix.org",
                 upload_response=mock_upload_response,
                 filename="test.png",
+                reply_to_event_id=None,
             )
 
 

@@ -37,6 +37,7 @@ class TestHealthPlugin(unittest.TestCase):
 
         # Mock Matrix client methods
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
 
         # Create sample node data for testing
         self.sample_nodes = {
@@ -250,7 +251,7 @@ class TestHealthPlugin(unittest.TestCase):
         Test that handle_meshtastic_message consistently returns False regardless of input.
         """
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that the plugin's handle_meshtastic_message method returns False when called with sample input.
             """
@@ -270,7 +271,7 @@ class TestHealthPlugin(unittest.TestCase):
         room = MagicMock()
         event = MagicMock()
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that `handle_room_message` returns False when the event does not match and ensures no Matrix message is sent.
             """
@@ -278,6 +279,7 @@ class TestHealthPlugin(unittest.TestCase):
             self.assertFalse(result)
             self.plugin.matches.assert_called_once_with(event)
             self.plugin.send_matrix_message.assert_not_called()
+            self.plugin.send_matrix_reaction.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -320,7 +322,7 @@ class TestHealthPlugin(unittest.TestCase):
         room.room_id = "!test:matrix.org"
         event = MagicMock()
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that a Matrix room message event matching the plugin triggers a health summary message to be sent.
 
@@ -337,6 +339,31 @@ class TestHealthPlugin(unittest.TestCase):
             self.assertEqual(call_args[0][0], "!test:matrix.org")  # room_id
             self.assertIn("Nodes: 5", call_args[0][1])  # message content
             self.assertEqual(call_args.kwargs["formatted"], False)
+
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "✅"
+            )
+
+        asyncio.run(run_test())
+
+    def test_handle_room_message_exception_handler(self):
+        """Test exception handler in handle_room_message (lines 171-174)."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.generate_response = MagicMock(side_effect=RuntimeError("boom"))
+
+        room = MagicMock()
+        room.room_id = "!test:matrix.org"
+        event = MagicMock()
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_room_message(room, event, "full_message")
+            self.assertTrue(result)
+            self.plugin.logger.exception.assert_called_once_with(
+                "Error handling health command"
+            )
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "❌"
+            )
 
         asyncio.run(run_test())
 

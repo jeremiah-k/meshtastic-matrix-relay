@@ -671,7 +671,7 @@ class TestBasePlugin(unittest.TestCase):
         mock_matrix_client = AsyncMock()
         mock_connect_matrix.return_value = mock_matrix_client
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that sending a Matrix message via the plugin calls the Matrix client's room_send method with the correct parameters.
             """
@@ -1021,7 +1021,7 @@ class TestBasePlugin(unittest.TestCase):
         plugin = MockPlugin()
         mock_connect_matrix.side_effect = RuntimeError("Connection failed")
 
-        async def run_test():
+        async def run_test() -> None:
             with self.assertRaises(RuntimeError):
                 await plugin.send_matrix_message("!room:matrix.org", "Test message")
 
@@ -1035,7 +1035,7 @@ class TestBasePlugin(unittest.TestCase):
         mock_client.room_send.side_effect = RuntimeError("Send failed")
         mock_connect_matrix.return_value = mock_client
 
-        async def run_test():
+        async def run_test() -> None:
             # Should raise an exception due to send failure
             with self.assertRaises(RuntimeError):
                 await plugin.send_matrix_message("!room:matrix.org", "Test message")
@@ -1488,7 +1488,7 @@ class TestBasePlugin(unittest.TestCase):
         """send_matrix_message should return None when Matrix client is unavailable."""
         mock_connect.return_value = None
 
-        async def run_test():
+        async def run_test() -> None:
             result = await MockPlugin().send_matrix_message("!room:matrix.org", "test")
             self.assertIsNone(result)
 
@@ -1500,7 +1500,7 @@ class TestBasePlugin(unittest.TestCase):
         mock_client = AsyncMock()
         mock_connect.return_value = mock_client
 
-        async def run_test():
+        async def run_test() -> None:
             plugin = MockPlugin()
             await plugin.send_matrix_message(
                 "!room:matrix.org", "**bold**", formatted=True
@@ -1517,7 +1517,7 @@ class TestBasePlugin(unittest.TestCase):
         mock_client = AsyncMock()
         mock_connect.return_value = mock_client
 
-        async def run_test():
+        async def run_test() -> None:
             plugin = MockPlugin()
             await plugin.send_matrix_message(
                 "!room:matrix.org",
@@ -1642,6 +1642,59 @@ class TestBasePlugin(unittest.TestCase):
         plugin = MockPlugin()
         self.assertIsNone(plugin.parse_mesh_bang_command(12345, ("weather",)))
         self.assertIsNone(plugin.parse_mesh_bang_command("!weather", ()))
+
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_send_matrix_reaction_success(self, mock_connect):
+        """Test send_matrix_reaction sends reaction when client available (lines 768-785)."""
+        plugin = MockPlugin()
+        plugin.logger = MagicMock()
+        mock_client = AsyncMock()
+        mock_connect.return_value = mock_client
+
+        async def run_test() -> None:
+            await plugin.send_matrix_reaction("!room:matrix.org", "$event_id", "✅")
+            mock_client.room_send.assert_called_once()
+            call_kwargs = mock_client.room_send.call_args.kwargs
+            self.assertEqual(call_kwargs["room_id"], "!room:matrix.org")
+            self.assertEqual(call_kwargs["message_type"], "m.reaction")
+            self.assertEqual(
+                call_kwargs["content"]["m.relates_to"]["event_id"], "$event_id"
+            )
+            self.assertEqual(call_kwargs["content"]["m.relates_to"]["key"], "✅")
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_send_matrix_reaction_no_client(self, mock_connect):
+        """Test send_matrix_reaction logs error when client is None (lines 768-770)."""
+        plugin = MockPlugin()
+        plugin.logger = MagicMock()
+        mock_connect.return_value = None
+
+        async def run_test() -> None:
+            await plugin.send_matrix_reaction("!room", "$event", "✅")
+            plugin.logger.error.assert_called_once_with(
+                "Failed to connect to Matrix client"
+            )
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_send_matrix_reaction_send_exception(self, mock_connect):
+        """Test send_matrix_reaction catches send exception (lines 786-787)."""
+        plugin = MockPlugin()
+        plugin.logger = MagicMock()
+        mock_client = AsyncMock()
+        mock_client.room_send.side_effect = RuntimeError("send failed")
+        mock_connect.return_value = mock_client
+
+        async def run_test() -> None:
+            await plugin.send_matrix_reaction("!room", "$event", "✅")
+            plugin.logger.warning.assert_called_once_with(
+                "Failed to send reaction", exc_info=True
+            )
+
+        asyncio.run(run_test())
 
 
 if __name__ == "__main__":

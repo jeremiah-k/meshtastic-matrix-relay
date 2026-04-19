@@ -164,18 +164,17 @@ class Plugin(BasePlugin):
 
         await asyncio.sleep(self.get_response_delay())
 
+        reply_id = packet.get("id")
+
         if is_direct_message:
-            await asyncio.to_thread(
-                meshtastic_client.sendText,
+            self.send_message(
                 text=reply_message,
-                destinationId=from_id,
+                channel=channel,
+                destination_id=from_id,
+                reply_id=reply_id,
             )
         else:
-            await asyncio.to_thread(
-                meshtastic_client.sendText,
-                text=reply_message,
-                channelIndex=channel,
-            )
+            self.send_message(text=reply_message, channel=channel, reply_id=reply_id)
         return True
 
     def get_matrix_commands(self) -> list[str]:
@@ -222,5 +221,11 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        await self.send_matrix_message(room.room_id, PING_RESPONSE)
+        try:
+            await self.send_matrix_message(room.room_id, PING_RESPONSE)
+        except Exception:
+            self.logger.exception("Error handling ping command")
+            await self.send_matrix_reaction(room.room_id, event.event_id, "❌")
+            return True
+        await self.send_matrix_reaction(room.room_id, event.event_id, "✅")
         return True

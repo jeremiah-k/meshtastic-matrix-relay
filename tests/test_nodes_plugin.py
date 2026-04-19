@@ -163,6 +163,7 @@ class TestNodesPlugin(unittest.TestCase):
 
         # Mock Matrix client methods
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
 
         # Mock meshtastic client with sample node data
         self.mock_meshtastic_client = MagicMock()
@@ -416,7 +417,7 @@ class TestNodesPlugin(unittest.TestCase):
         Test that handle_meshtastic_message always returns False regardless of input.
         """
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that handle_meshtastic_message always returns False.
             """
@@ -438,7 +439,7 @@ class TestNodesPlugin(unittest.TestCase):
         room = MagicMock()
         event = MagicMock()
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that handle_room_message returns False and does not send a Matrix message when the event does not match.
 
@@ -448,6 +449,7 @@ class TestNodesPlugin(unittest.TestCase):
             self.assertFalse(result)
             self.plugin.matches.assert_called_once_with(event)
             self.plugin.send_matrix_message.assert_not_called()
+            self.plugin.send_matrix_reaction.assert_not_called()
 
         import asyncio
 
@@ -465,7 +467,7 @@ class TestNodesPlugin(unittest.TestCase):
         room.room_id = "!test:matrix.org"
         event = MagicMock()
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that a room message matching the plugin's criteria triggers a Matrix message with correct node information.
 
@@ -483,6 +485,10 @@ class TestNodesPlugin(unittest.TestCase):
             self.assertEqual(call_args.kwargs["room_id"], "!test:matrix.org")
             self.assertIn("Nodes: 3", call_args.kwargs["message"])
             self.assertEqual(call_args.kwargs["formatted"], False)
+
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "✅"
+            )
 
         import asyncio
 
@@ -678,6 +684,29 @@ class TestNodesPlugin(unittest.TestCase):
         self.assertIn("NUL Null Hops Node", response)
         # Should have two instances of "? hops away"
         self.assertEqual(response.count("? hops away"), 2)
+
+    def test_handle_room_message_exception_handler(self):
+        """Test exception handler in handle_room_message (lines 224-227)."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.generate_response = MagicMock(side_effect=RuntimeError("boom"))
+
+        room = MagicMock()
+        room.room_id = "!test:matrix.org"
+        event = MagicMock()
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_room_message(room, event, "full_message")
+            self.assertTrue(result)
+            self.plugin.logger.exception.assert_called_once_with(
+                "Error handling nodes command"
+            )
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "❌"
+            )
+
+        import asyncio
+
+        asyncio.run(run_test())
 
 
 if __name__ == "__main__":

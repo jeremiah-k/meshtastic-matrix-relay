@@ -98,6 +98,8 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         # Default: marine returns no data (land coordinates)
         self.plugin.generate_marine_forecast = MagicMock(return_value=None)
 
+        self.plugin.send_matrix_reaction = AsyncMock()
+
         # Sample weather API response for 2 days (48 hours)
         # Current time is set to 10:00
         self.sample_weather_data = {
@@ -904,6 +906,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.plugin.send_message.assert_called_once()
         call_args = self.plugin.send_message.call_args
         self.assertEqual(call_args.kwargs["destination_id"], TEST_MESHTASTIC_ID)
+        self.assertEqual(call_args.kwargs["channel"], 0)
         self.assertIn(
             _normalize_emoji("Now: 🌤️ Mainly clear"),
             _normalize_emoji(call_args.kwargs["text"]),
@@ -1528,6 +1531,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
         self.plugin.get_require_bot_mention = MagicMock(return_value=False)
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
 
         mock_event = MagicMock()
         mock_event.body = "!weather"
@@ -1585,10 +1589,11 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
     # ------------------------------------------------------------------
 
     async def test_handle_room_message_replies_to_event(self):
-        """handle_room_message should pass event.event_id as reply_to_event_id."""
+        """handle_room_message should send a reaction and not use reply_to_event_id."""
         self.plugin.matches = MagicMock(return_value=True)
         self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
         self.plugin.generate_forecast = MagicMock(return_value="Sunny 25°C")
 
         mock_client = MagicMock()
@@ -1609,14 +1614,89 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertTrue(result)
+        self.plugin.send_matrix_reaction.assert_called_once_with(
+            "!r", "$test_event_123", "✅"
+        )
         call_kwargs = self.plugin.send_matrix_message.call_args.kwargs
-        self.assertEqual(call_kwargs.get("reply_to_event_id"), "$test_event_123")
+        self.assertIsNone(call_kwargs.get("reply_to_event_id"))
 
-    async def test_handle_room_message_no_location_replies_to_event(self):
-        """'Cannot determine location' should also be sent as a reply."""
+    async def test_handle_room_message_no_parsed_command_returns_false(self):
+        """Should return False when get_matching_matrix_command returns None (line 914)."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value=None)
+
+        mock_event = MagicMock()
+        mock_event.body = "!weather"
+        mock_event.source = {"content": {"formatted_body": ""}}
+
+        result = await self.plugin.handle_room_message(
+            MagicMock(room_id="!r"), mock_event, "!weather"
+        )
+        self.assertFalse(result)
+
+    async def test_handle_room_message_invalid_units_fallback_to_metric(self):
+        """Invalid units in config should fall back to metric (lines 953-954)."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.get_require_bot_mention = MagicMock(return_value=False)
+        self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
+        self.plugin.generate_forecast = MagicMock(return_value="Sunny 25°C")
+        self.plugin.generate_marine_forecast = MagicMock(return_value=None)
+        self.plugin.config = {"units": "bogus"}
+
+        mock_client = MagicMock()
+        mock_client.nodes = {
+            "n1": {"position": {"latitude": 10.0, "longitude": 20.0}},
+        }
+
+        mock_event = MagicMock()
+        mock_event.body = "!weather"
+        mock_event.source = {"content": {"formatted_body": ""}}
+
+        with patch(
+            "mmrelay.meshtastic_utils.connect_meshtastic", return_value=mock_client
+        ):
+            result = await self.plugin.handle_room_message(
+                MagicMock(room_id="!r"), mock_event, "!weather"
+            )
+
+        self.assertTrue(result)
+        marine_call = self.plugin.generate_marine_forecast.call_args
+        self.assertEqual(marine_call.args[3], "metric")
+
+    async def test_handle_room_message_exception_handler(self):
+        """Exception in handle_room_message should log and send reaction (lines 973-975)."""
         self.plugin.matches = MagicMock(return_value=True)
         self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
+        self.plugin._resolve_location_from_args = AsyncMock(
+            side_effect=RuntimeError("boom")
+        )
+
+        mock_event = MagicMock()
+        mock_event.event_id = "$err_event"
+        mock_event.body = "!weather"
+        mock_event.source = {"content": {"formatted_body": ""}}
+
+        result = await self.plugin.handle_room_message(
+            MagicMock(room_id="!r"), mock_event, "!weather"
+        )
+        self.assertTrue(result)
+        self.plugin.logger.exception.assert_called_once_with(
+            "Error handling weather command"
+        )
+        self.plugin.send_matrix_reaction.assert_called_once_with(
+            "!r", "$err_event", "❌"
+        )
+
+    async def test_handle_room_message_no_location_sends_reaction(self):
+        """'Cannot determine location' should still send a reaction."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
 
         mock_event = MagicMock()
         mock_event.event_id = "$no_loc_event"
@@ -1628,8 +1708,11 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
                 MagicMock(room_id="!r"), mock_event, "!weather"
             )
 
+        self.plugin.send_matrix_reaction.assert_called_once_with(
+            "!r", "$no_loc_event", "❌"
+        )
         call_kwargs = self.plugin.send_matrix_message.call_args.kwargs
-        self.assertEqual(call_kwargs.get("reply_to_event_id"), "$no_loc_event")
+        self.assertIsNone(call_kwargs.get("reply_to_event_id"))
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("mmrelay.plugins.weather_plugin.requests.get")
@@ -1665,6 +1748,51 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
         call_kwargs = self.plugin.send_message.call_args.kwargs
         self.assertEqual(call_kwargs.get("reply_id"), 42)
+        self.assertEqual(call_kwargs.get("channel"), 0)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    async def test_handle_meshtastic_dm_reply_id_and_channel(
+        self, mock_get, mock_connect
+    ):
+        """DM weather responses should propagate reply_id, channel, and destination_id."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = self.sample_weather_data
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = TEST_NODE_NUM
+        mock_client.nodes = {
+            TEST_MESHTASTIC_ID: {
+                "position": {"latitude": TEST_LAT_NYC, "longitude": TEST_LON_NYC}
+            }
+        }
+        mock_connect.return_value = mock_client
+
+        self.plugin.send_message = MagicMock()
+
+        packet = {
+            "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
+            "channel": 2,
+            "fromId": TEST_MESHTASTIC_ID,
+            "to": TEST_NODE_NUM,
+            "id": 99,
+        }
+
+        result = await self.plugin.handle_meshtastic_message(
+            packet, "formatted_message", "longname", "meshnet_name"
+        )
+
+        self.assertTrue(result)
+        self.plugin.send_message.assert_called_once()
+        call_kwargs = self.plugin.send_message.call_args.kwargs
+        self.assertEqual(call_kwargs["reply_id"], 99)
+        self.assertEqual(call_kwargs["channel"], 2)
+        self.assertEqual(call_kwargs["destination_id"], TEST_MESHTASTIC_ID)
+        self.plugin.is_channel_enabled.assert_called_once_with(
+            2, is_direct_message=True
+        )
 
     # ------------------------------------------------------------------
     # Marine forecast tests
@@ -1853,6 +1981,22 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsNone(result)
 
+    def test_format_hourly_marine_returns_none_when_all_slots_none(self):
+        """_format_hourly_marine returns None when every slot resolves to None (line 306-307)."""
+        times = [f"2023-08-20T{h:02d}:00" for h in range(24)]
+        data = {
+            "hourly": {
+                "time": times,
+                "wave_height": [None] * 24,
+                "wave_direction": [None] * 24,
+                "wave_period": [None] * 24,
+            }
+        }
+        result = self.plugin._format_hourly_marine(
+            data, base_index=10, offsets=[3, 6, 12]
+        )
+        self.assertIsNone(result)
+
     def test_format_hourly_marine_returns_none_when_base_height_is_none(self):
         """_format_hourly_marine returns None when height at base_index is None."""
         data = {
@@ -1941,7 +2085,8 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.plugin.send_message = MagicMock()
         # Marine string long enough to push combined over 200 bytes
         self.plugin.generate_marine_forecast = MagicMock(
-            return_value="🌊 " + "W" * 200  # 205 bytes alone, guaranteed to exceed limit combined
+            return_value="🌊 "
+            + "W" * 200  # 205 bytes alone, guaranteed to exceed limit combined
         )
 
         packet = {

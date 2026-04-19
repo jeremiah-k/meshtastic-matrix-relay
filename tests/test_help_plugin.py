@@ -47,6 +47,7 @@ class TestHelpPlugin(unittest.TestCase):
 
         # Mock Matrix client methods
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
 
         # Create mock plugins for testing
         self.mock_plugin1 = MagicMock()
@@ -93,7 +94,7 @@ class TestHelpPlugin(unittest.TestCase):
         Test that handle_meshtastic_message always returns False, regardless of input.
         """
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that handle_meshtastic_message always returns False for the help plugin.
             """
@@ -120,7 +121,7 @@ class TestHelpPlugin(unittest.TestCase):
             patch("mmrelay.matrix_utils.bot_user_name", "TestBot"),
         ):
 
-            async def run_test():
+            async def run_test() -> None:
                 """
                 Verify that handle_room_message returns False and does not send a Matrix message when the event does not match the help command.
 
@@ -133,6 +134,7 @@ class TestHelpPlugin(unittest.TestCase):
                 )
                 self.assertFalse(result)
                 self.plugin.send_matrix_message.assert_not_called()
+                self.plugin.send_matrix_reaction.assert_not_called()
 
             asyncio.run(run_test())
 
@@ -157,7 +159,7 @@ class TestHelpPlugin(unittest.TestCase):
         event.body = full_message
         event.source = {"content": {"formatted_body": ""}}
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Run assertions that handling a general "!help" room message results in a command list being sent.
 
@@ -168,6 +170,9 @@ class TestHelpPlugin(unittest.TestCase):
             self.assertTrue(result)
             self.plugin.matches.assert_called_once_with(event)
             self.plugin.send_matrix_message.assert_called_once()
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "✅"
+            )
 
             # Check the call arguments
             call_args = self.plugin.send_matrix_message.call_args
@@ -204,7 +209,7 @@ class TestHelpPlugin(unittest.TestCase):
         event.body = full_message
         event.source = {"content": {"formatted_body": ""}}
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Run the test that requesting help for a specific command results in a single sent message containing the command and its description.
 
@@ -214,6 +219,9 @@ class TestHelpPlugin(unittest.TestCase):
 
             self.assertTrue(result)
             self.plugin.send_matrix_message.assert_called_once()
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "✅"
+            )
 
             # Check the call arguments
             call_args = self.plugin.send_matrix_message.call_args
@@ -250,7 +258,7 @@ class TestHelpPlugin(unittest.TestCase):
         event.body = full_message
         event.source = {"content": {"formatted_body": ""}}
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that requesting help for a nonexistent command returns an appropriate error message.
 
@@ -260,6 +268,9 @@ class TestHelpPlugin(unittest.TestCase):
 
             self.assertTrue(result)
             self.plugin.send_matrix_message.assert_called_once()
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "✅"
+            )
 
             # Check the call arguments
             call_args = self.plugin.send_matrix_message.call_args
@@ -292,7 +303,7 @@ class TestHelpPlugin(unittest.TestCase):
         event.body = full_message
         event.source = {"content": {"formatted_body": ""}}
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that the help plugin's room message handler returns True and sends a message containing all available commands from loaded plugins.
             """
@@ -307,6 +318,10 @@ class TestHelpPlugin(unittest.TestCase):
             self.assertIn("cmd2", message)
             self.assertIn("cmd3", message)
             self.assertIn("weather", message)
+
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "✅"
+            )
 
         asyncio.run(run_test())
 
@@ -334,7 +349,7 @@ class TestHelpPlugin(unittest.TestCase):
         event.body = full_message
         event.source = {"content": {"formatted_body": ""}}
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Runs an asynchronous test to verify that requesting help for a specific command returns the correct help message, including the command and its plugin description.
             """
@@ -350,6 +365,10 @@ class TestHelpPlugin(unittest.TestCase):
                     command="cmd2", description="Multi-command plugin"
                 ),
                 message,
+            )
+
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "✅"
             )
 
         asyncio.run(run_test())
@@ -376,7 +395,7 @@ class TestHelpPlugin(unittest.TestCase):
         event.body = full_message
         event.source = {"content": {"formatted_body": ""}}
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Run the asynchronous test that verifies the help plugin reports no commands when no plugins are loaded.
 
@@ -390,6 +409,37 @@ class TestHelpPlugin(unittest.TestCase):
 
             # Should show empty command list
             self.assertEqual(message, MSG_AVAILABLE_COMMANDS_PREFIX)
+
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "✅"
+            )
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.help_plugin.load_plugins")
+    def test_handle_room_message_send_exception(self, mock_load_plugins):
+        """Test exception handler in handle_room_message (lines 132-135)."""
+        mock_load_plugins.return_value = []
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.send_matrix_message.side_effect = RuntimeError("send failed")
+
+        room = MagicMock()
+        room.room_id = "!test:matrix.org"
+        full_message = "!help"
+        event = MagicMock()
+        event.body = full_message
+        event.source = {"content": {"formatted_body": ""}}
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_room_message(room, event, full_message)
+
+            self.assertTrue(result)
+            self.plugin.logger.exception.assert_called_once_with(
+                "Error handling help command"
+            )
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "❌"
+            )
 
         asyncio.run(run_test())
 

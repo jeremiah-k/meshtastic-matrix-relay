@@ -1,6 +1,7 @@
 import io
 import os
 from types import SimpleNamespace
+from typing import Any
 
 from nio import RoomSendError, UploadError, UploadResponse
 from PIL import Image
@@ -90,6 +91,7 @@ async def send_room_image(
     room_id: str,
     upload_response: UploadResponse | UploadError | SimpleNamespace | None,
     filename: str = "image.png",
+    reply_to_event_id: str | None = None,
 ) -> None:
     """
     Send an uploaded image to a Matrix room.
@@ -101,20 +103,24 @@ async def send_room_image(
         room_id (str): Target Matrix room ID.
         upload_response (UploadResponse | UploadError | SimpleNamespace | None): Result from an upload operation; must provide a `content_uri` attribute on success.
         filename (str): Filename to include as the message body (defaults to "image.png").
+        reply_to_event_id (str | None): Optional event ID to reply to.
 
     Raises:
         ImageUploadError: If `upload_response` does not contain a `content_uri`.
     """
     content_uri = getattr(upload_response, "content_uri", None)
     if content_uri:
+        content: dict[str, Any] = {
+            "msgtype": "m.image",
+            "url": content_uri,
+            "body": filename,
+        }
+        if reply_to_event_id:
+            content["m.relates_to"] = {"m.in_reply_to": {"event_id": reply_to_event_id}}
         send_response = await client.room_send(
             room_id=room_id,
             message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
-            content={
-                "msgtype": "m.image",
-                "url": content_uri,
-                "body": filename,
-            },
+            content=content,
         )
         if isinstance(send_response, RoomSendError):
             facade.logger.error(
@@ -140,16 +146,24 @@ async def send_image(
     room_id: str,
     image: Image.Image,
     filename: str = "image.png",
+    reply_to_event_id: str | None = None,
 ) -> None:
     """
     Upload a Pillow Image to the Matrix content repository and send it to a room.
 
     Uploads the provided PIL Image, stores it in the client's content repository, and sends it to the specified room as an `m.image` message using the given filename.
 
+    Parameters:
+        reply_to_event_id (str | None): Optional event ID to reply to.
+
     Raises:
         ImageUploadError: If the upload or send operation fails.
     """
     response = await facade.upload_image(client=client, image=image, filename=filename)
     await facade.send_room_image(
-        client, room_id, upload_response=response, filename=filename
+        client,
+        room_id,
+        upload_response=response,
+        filename=filename,
+        reply_to_event_id=reply_to_event_id,
     )

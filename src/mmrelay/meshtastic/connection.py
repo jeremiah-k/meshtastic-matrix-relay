@@ -39,6 +39,7 @@ __all__ = [
     "_get_connect_time_probe_settings",
     "_rollback_connect_attempt_state",
     "_schedule_connect_time_calibration_probe",
+    "ConnectionCompletedWithoutClientError",
     "connect_meshtastic",
     "serial_port_exists",
 ]
@@ -46,6 +47,17 @@ __all__ = [
 
 class BLEDiscoveryTransientError(Exception):
     """Retryable BLE discovery/setup failure that should not consume timeout budget."""
+
+
+class ConnectionCompletedWithoutClientError(ConnectionError):
+    """Connection path returned without producing a usable client."""
+
+
+def _raise_no_client(connection_type: str) -> None:
+    """Raise ConnectionCompletedWithoutClientError for the given connection type."""
+    raise ConnectionCompletedWithoutClientError(
+        f"Meshtastic {connection_type} connection completed without a client."
+    )
 
 
 def serial_port_exists(port_name: str) -> bool:
@@ -1106,6 +1118,13 @@ def _connect_meshtastic_impl(
             else:
                 facade.logger.error(f"Unknown connection type: {connection_type}")
                 return None
+
+            if client is None:
+                facade.logger.error(
+                    "Meshtastic %s connection path completed without a client.",
+                    connection_type,
+                )
+                _raise_no_client(connection_type)
 
             successful = True
 

@@ -71,6 +71,7 @@ class TestDropPlugin(unittest.TestCase):
         self.plugin.store_node_data = MagicMock()
         self.plugin.get_node_data = MagicMock(return_value=[])
         self.plugin.set_node_data = MagicMock()
+        self.plugin.send_message = MagicMock()
 
         # Mock meshtastic client
         self.mock_meshtastic_client = MagicMock()
@@ -310,8 +311,8 @@ class TestDropPlugin(unittest.TestCase):
             )
 
             # Should send the message to the node
-            self.mock_meshtastic_client.sendText.assert_called_once_with(
-                text="Pickup this message", destinationId="!12345678"
+            self.plugin.send_message.assert_called_once_with(
+                text="Pickup this message", destination_id="!12345678"
             )
 
             # Should clear the messages (empty list)
@@ -358,8 +359,7 @@ class TestDropPlugin(unittest.TestCase):
                 packet, "formatted_message", "longname", "meshnet_name"
             )
 
-            # Should not send the message
-            self.mock_meshtastic_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
             # Should keep the message in storage
             self.plugin.set_node_data.assert_called_once_with(
@@ -408,8 +408,7 @@ class TestDropPlugin(unittest.TestCase):
                 packet, "formatted_message", "longname", "meshnet_name"
             )
 
-            # Should not send the message
-            self.mock_meshtastic_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
             # Should keep the message in storage (can't pick up own messages)
             self.plugin.set_node_data.assert_called_once_with(
@@ -457,8 +456,7 @@ class TestDropPlugin(unittest.TestCase):
                 packet, "formatted_message", "longname", "meshnet_name"
             )
 
-            # Should not send the message (distance defaults to 1000km, out of range)
-            self.mock_meshtastic_client.sendText.assert_not_called()
+            self.plugin.send_message.assert_not_called()
 
             # Should keep the message in storage
             self.plugin.set_node_data.assert_called_once_with(

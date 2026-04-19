@@ -602,7 +602,7 @@ class BasePlugin(ABC):
         self,
         text: str,
         channel: int = 0,
-        destination_id: int | None = None,
+        destination_id: str | int | None = None,
         reply_id: int | None = None,
     ) -> bool:
         """
@@ -611,9 +611,9 @@ class BasePlugin(ABC):
         Parameters:
             text: Message content to send.
             channel: Channel index to send the message on (defaults to 0).
-            destination_id: Destination node ID for a direct message; if omitted the message is broadcast.
+            destination_id: Destination node ID (string Meshtastic ID or integer) for a direct message; if omitted the message is broadcast.
             reply_id: Meshtastic message ID to reply to; when provided the outgoing packet
-                      includes a ``reply_id`` field so clients render it as a threaded reply.
+                      includes a ``reply_id`` field so clients render it as a reply.
 
         Returns:
             `true` if the message was queued successfully, `false` otherwise.
@@ -638,7 +638,9 @@ class BasePlugin(ABC):
                 interface=meshtastic_client,
                 text=text,
                 reply_id=reply_id,
-                destinationId=destination_id if destination_id is not None else BROADCAST_NUM,
+                destinationId=(
+                    destination_id if destination_id is not None else BROADCAST_NUM
+                ),
                 channelIndex=channel,
             )
 
@@ -646,7 +648,7 @@ class BasePlugin(ABC):
             "text": text,
             "channelIndex": channel,
         }
-        if destination_id:
+        if destination_id is not None:
             send_kwargs["destinationId"] = destination_id
 
         return queue_message(
@@ -707,7 +709,11 @@ class BasePlugin(ABC):
         return None
 
     async def send_matrix_message(
-        self, room_id: str, message: str, formatted: bool = True, reply_to_event_id: str | None = None
+        self,
+        room_id: str,
+        message: str,
+        formatted: bool = True,
+        reply_to_event_id: str | None = None,
     ) -> RoomSendResponse | RoomSendError | None:
         """
         Send a message to a Matrix room, optionally converting Markdown to HTML.
@@ -717,7 +723,7 @@ class BasePlugin(ABC):
             message: Message content to send.
             formatted: If True, convert `message` from Markdown to HTML and include it as formatted content; otherwise send plain text only.
             reply_to_event_id: When provided, the outgoing event includes an ``m.relates_to``
-                               relation so Matrix clients render it as a threaded reply to that event.
+                               relation so Matrix clients render it as a reply to that event.
 
         Returns:
             The Matrix client's `room_send` response (`RoomSendResponse` or `RoomSendError`), or `None` if the Matrix client could not be obtained.
@@ -730,7 +736,7 @@ class BasePlugin(ABC):
             self.logger.error("Failed to connect to Matrix client")
             return None
 
-        content = {
+        content: dict[str, Any] = {
             "msgtype": "m.text",
             "body": message,
         }
@@ -738,14 +744,47 @@ class BasePlugin(ABC):
             content["format"] = "org.matrix.custom.html"
             content["formatted_body"] = markdown.markdown(message)
         if reply_to_event_id:
-            content["m.relates_to"] = {
-                "m.in_reply_to": {"event_id": reply_to_event_id}
-            }
+            content["m.relates_to"] = {"m.in_reply_to": {"event_id": reply_to_event_id}}
         return await matrix_client.room_send(
             room_id=room_id,
             message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
             content=content,
         )
+
+    async def send_matrix_reaction(
+        self, room_id: str, event_id: str, emoji: str
+    ) -> None:
+        """
+        Send a reaction (emoji annotation) to a Matrix event.
+
+        Parameters:
+            room_id: Matrix room identifier.
+            event_id: The Matrix event ID to react to.
+            emoji: The emoji to send as a reaction (e.g. "✅").
+        """
+        from mmrelay.matrix_utils import connect_matrix
+
+        matrix_client = await connect_matrix()
+        if matrix_client is None:
+            self.logger.error("Failed to connect to Matrix client")
+            return
+
+        content: dict[str, Any] = {
+            "m.relates_to": {
+                "rel_type": "m.annotation",
+                "event_id": event_id,
+                "key": emoji,
+            }
+        }
+        try:
+            await matrix_client.room_send(
+                room_id=room_id,
+                message_type="m.reaction",
+                content=content,
+                ignore_unverified_devices=True,
+            )
+        except Exception:
+            self.logger.warning("Failed to send reaction", exc_info=True)
 
     def get_mesh_commands(self) -> list[str]:
         """

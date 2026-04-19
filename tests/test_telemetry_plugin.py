@@ -14,7 +14,7 @@ import asyncio
 import os
 import sys
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Add src to path for imports
@@ -41,6 +41,7 @@ class TestTelemetryPlugin(unittest.TestCase):
 
         # Mock Matrix client methods
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
         self.plugin.send_room_image = AsyncMock()
         self.plugin.upload_image = AsyncMock()
         self.plugin.get_require_bot_mention = MagicMock(return_value=False)
@@ -159,7 +160,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             },
         }
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that a valid telemetry message is processed and stored correctly by the plugin.
 
@@ -209,7 +210,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             },
         }
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests handling of a Meshtastic telemetry message with partial device metrics, verifying that missing metrics are stored as None to preserve data integrity.
             """
@@ -241,7 +242,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "Hello world"},
         }
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Verify the plugin ignores a non-telemetry Meshtastic packet.
 
@@ -276,7 +277,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             },
         }
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Verify that a telemetry packet missing deviceMetrics is ignored by the plugin.
 
@@ -308,7 +309,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             }
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "longname", "meshnet_name"
             )
@@ -324,7 +325,7 @@ class TestTelemetryPlugin(unittest.TestCase):
     def test_handle_meshtastic_message_non_dict_decoded(self):
         """Non-dict decoded should return False immediately."""
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(
                 {"decoded": "not_a_dict"}, "f", "l", "m"
             )
@@ -335,7 +336,7 @@ class TestTelemetryPlugin(unittest.TestCase):
     def test_handle_meshtastic_message_no_decoded(self):
         """Packet with no decoded key should return False."""
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message({}, "f", "l", "m")
             self.assertFalse(result)
 
@@ -355,7 +356,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             },
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(packet, "f", "l", "m")
             self.assertFalse(result)
             stored = self.plugin.set_node_data.call_args.kwargs["node_data"]
@@ -377,7 +378,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             },
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(packet, "f", "l", "m")
             self.assertFalse(result)
             stored = self.plugin.set_node_data.call_args.kwargs["node_data"]
@@ -400,7 +401,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             },
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(packet, "f", "l", "m")
             self.assertFalse(result)
             stored = self.plugin.set_node_data.call_args.kwargs["node_data"]
@@ -423,7 +424,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             },
         }
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_meshtastic_message(packet, "f", "l", "m")
             self.assertFalse(result)
             stored = self.plugin.set_node_data.call_args.kwargs["node_data"]
@@ -474,7 +475,7 @@ class TestTelemetryPlugin(unittest.TestCase):
         room = MagicMock()
         event = MagicMock()
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that handling a room message returns False and verifies that the matches method is called once with the event.
             """
@@ -503,7 +504,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             patch("mmrelay.matrix_utils.bot_user_name", "TestBot"),
         ):
 
-            async def run_test():
+            async def run_test() -> None:
                 """
                 Runs the test for handling a Matrix room message and asserts that the result is False.
                 """
@@ -520,7 +521,7 @@ class TestTelemetryPlugin(unittest.TestCase):
     @patch("mmrelay.plugins.telemetry_plugin.plt.xticks")
     @patch("mmrelay.plugins.telemetry_plugin.plt.subplots")
     def test_handle_room_message_valid_command_no_node(
-        self, mock_subplots, mock_xticks, mock_send_image, mock_upload, mock_connect
+        self, mock_subplots, _mock_xticks, mock_send_image, mock_upload, mock_connect
     ):
         """
         Test that handle_room_message processes a valid command without a specified node, generates a plot, uploads the image, and sends it to the Matrix room.
@@ -558,7 +559,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             event.body = full_message
             event.source = {"content": {"formatted_body": ""}}
 
-            async def run_test():
+            async def run_test() -> None:
                 """
                 Run the async test that verifies handle_room_message processes a room message to produce and send a plot image.
 
@@ -577,6 +578,11 @@ class TestTelemetryPlugin(unittest.TestCase):
                 mock_ax.set_xlabel.assert_called_once_with("Hour")
                 mock_ax.set_ylabel.assert_called_once_with("batteryLevel")
 
+                # Should send success reaction
+                self.plugin.send_matrix_reaction.assert_called_once_with(
+                    "!test:matrix.org", event.event_id, "✅"
+                )
+
                 # Should upload and send image
                 mock_upload.assert_called_once()
                 mock_send_image.assert_called_once()
@@ -591,7 +597,7 @@ class TestTelemetryPlugin(unittest.TestCase):
     @patch("mmrelay.plugins.telemetry_plugin.plt.xticks")
     @patch("mmrelay.plugins.telemetry_plugin.plt.subplots")
     def test_handle_room_message_with_specific_node(
-        self, mock_subplots, mock_xticks, mock_send_image, mock_upload, mock_connect
+        self, mock_subplots, _mock_xticks, _mock_send_image, _mock_upload, _mock_connect
     ):
         """
         Test that handle_room_message processes a valid command with a specific node parameter, generates a voltage graph for the node, uploads the image, and sends it to the Matrix room.
@@ -634,7 +640,7 @@ class TestTelemetryPlugin(unittest.TestCase):
                 patch("mmrelay.matrix_utils.bot_user_name", "TestBot"),
             ):
 
-                async def run_test():
+                async def run_test() -> None:
                     """
                     Verify that handling a room message for a specific node requests that node's data and includes the node and metric in the plot title.
 
@@ -654,6 +660,10 @@ class TestTelemetryPlugin(unittest.TestCase):
                     self.assertIn("NodeABC", title_call)
                     self.assertIn("voltage", title_call)
 
+                    self.plugin.send_matrix_reaction.assert_called_once_with(
+                        "!test:matrix.org", event.event_id, "✅"
+                    )
+
                 asyncio.run(run_test())
 
     def test_handle_room_message_matrix_unavailable(self):
@@ -666,7 +676,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             patch("mmrelay.matrix_utils.connect_matrix", return_value=None),
         ):
 
-            async def run_test():
+            async def run_test() -> None:
                 room = MagicMock()
                 room.room_id = "!r"
                 event = MagicMock()
@@ -675,13 +685,14 @@ class TestTelemetryPlugin(unittest.TestCase):
                 result = await self.plugin.handle_room_message(
                     room, event, "!batteryLevel"
                 )
-                self.assertFalse(result)
+                self.assertTrue(result)
+                self.plugin.send_matrix_reaction.assert_not_called()
 
             asyncio.run(run_test())
 
     @patch("mmrelay.matrix_utils.connect_matrix")
     @patch("mmrelay.matrix_utils.send_image")
-    def test_handle_room_message_node_no_data(self, mock_send, mock_connect):
+    def test_handle_room_message_node_no_data(self, _mock_send, mock_connect):
         self.plugin.matches = MagicMock(return_value=True)
         self.plugin.get_matching_matrix_command = MagicMock(return_value="batteryLevel")
         self.plugin.get_node_data.return_value = None
@@ -695,7 +706,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             patch("mmrelay.matrix_utils.bot_user_name", "Bot"),
         ):
 
-            async def run_test():
+            async def run_test() -> None:
                 room = MagicMock()
                 room.room_id = "!r"
                 event = MagicMock()
@@ -710,17 +721,20 @@ class TestTelemetryPlugin(unittest.TestCase):
                     "No telemetry data",
                     self.plugin.send_matrix_message.call_args.args[1],
                 )
+                self.plugin.send_matrix_reaction.assert_called_once_with(
+                    "!r", event.event_id, "❌"
+                )
 
             asyncio.run(run_test())
 
     @patch("mmrelay.matrix_utils.connect_matrix")
     @patch("mmrelay.matrix_utils.send_image")
-    def test_handle_room_message_all_nodes_data(self, mock_send, mock_connect):
+    def test_handle_room_message_all_nodes_data(self, _mock_send, mock_connect):
         import json
 
         self.plugin.matches = MagicMock(return_value=True)
         self.plugin.get_matching_matrix_command = MagicMock(return_value="batteryLevel")
-        now_ts = datetime.now().timestamp()
+        now_ts = datetime.now(timezone.utc).timestamp()
         self.plugin.get_data.return_value = [
             (json.dumps([{"time": now_ts, "batteryLevel": 80}]),)
         ]
@@ -745,7 +759,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             )
             mock_image_class.open.return_value.__exit__ = MagicMock(return_value=False)
 
-            async def run_test():
+            async def run_test() -> None:
                 room = MagicMock()
                 room.room_id = "!r"
                 event = MagicMock()
@@ -755,6 +769,9 @@ class TestTelemetryPlugin(unittest.TestCase):
                     room, event, "!batteryLevel"
                 )
                 self.assertTrue(result)
+                self.plugin.send_matrix_reaction.assert_called_once_with(
+                    "!r", event.event_id, "✅"
+                )
 
             asyncio.run(run_test())
 
@@ -789,7 +806,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             )
             mock_image_class.open.return_value.__exit__ = MagicMock(return_value=False)
 
-            async def run_test():
+            async def run_test() -> None:
                 room = MagicMock()
                 room.room_id = "!r"
                 event = MagicMock()
@@ -799,7 +816,155 @@ class TestTelemetryPlugin(unittest.TestCase):
                     room, event, "!batteryLevel"
                 )
                 self.assertTrue(result)
-                mock_matrix_client.room_send.assert_awaited_once()
+                self.assertGreaterEqual(mock_matrix_client.room_send.await_count, 1)
+                self.plugin.send_matrix_reaction.assert_called_once_with(
+                    "!r", event.event_id, "❌"
+                )
+
+            asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    @patch("mmrelay.matrix_utils.upload_image")
+    @patch("mmrelay.matrix_utils.send_room_image")
+    @patch("mmrelay.plugins.telemetry_plugin.plt.xticks")
+    @patch("mmrelay.plugins.telemetry_plugin.plt.subplots")
+    def test_handle_room_message_calculate_averages_non_dict_record(
+        self, mock_subplots, _mock_xticks, _mock_send_image, _mock_upload, mock_connect
+    ):
+        import json
+
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="batteryLevel")
+
+        now_ts = datetime.now(timezone.utc).timestamp()
+        self.plugin.get_data.return_value = [
+            (json.dumps(["not_a_dict", {"time": now_ts, "batteryLevel": 80}]),)
+        ]
+
+        mock_matrix_client = AsyncMock()
+        mock_connect.return_value = mock_matrix_client
+        mock_fig = MagicMock()
+        mock_ax = MagicMock()
+        mock_subplots.return_value = (mock_fig, mock_ax)
+        mock_canvas = MagicMock()
+        mock_fig.canvas = mock_canvas
+
+        with (
+            patch("mmrelay.plugins.telemetry_plugin.Image") as mock_image_class,
+            patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "Bot"),
+        ):
+            mock_img = MagicMock()
+            mock_img.mode = "RGBA"
+            mock_image_class.open.return_value.__enter__ = MagicMock(
+                return_value=mock_img
+            )
+            mock_image_class.open.return_value.__exit__ = MagicMock(return_value=False)
+
+            async def run_test() -> None:
+                room = MagicMock()
+                room.room_id = "!r"
+                event = MagicMock()
+                event.body = "!batteryLevel"
+                event.source = {"content": {"formatted_body": ""}}
+                result = await self.plugin.handle_room_message(
+                    room, event, "!batteryLevel"
+                )
+                self.assertTrue(result)
+                mock_ax.plot.assert_called_once()
+
+            asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    @patch("mmrelay.matrix_utils.upload_image")
+    @patch("mmrelay.matrix_utils.send_room_image")
+    @patch("mmrelay.plugins.telemetry_plugin.plt.xticks")
+    @patch("mmrelay.plugins.telemetry_plugin.plt.subplots")
+    def test_handle_room_message_calculate_averages_none_timestamp_and_value(
+        self, mock_subplots, _mock_xticks, _mock_send_image, _mock_upload, mock_connect
+    ):
+        import json
+
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="batteryLevel")
+
+        self.plugin.get_data.return_value = [
+            (
+                json.dumps(
+                    [
+                        {"time": None, "batteryLevel": 80},
+                        {"time": 12345, "batteryLevel": None},
+                        {"time": None, "batteryLevel": None},
+                        {"time": "not_a_number", "batteryLevel": 80},
+                        {"time": float("inf"), "batteryLevel": 50},
+                    ]
+                ),
+            )
+        ]
+
+        mock_matrix_client = AsyncMock()
+        mock_connect.return_value = mock_matrix_client
+        mock_fig = MagicMock()
+        mock_ax = MagicMock()
+        mock_subplots.return_value = (mock_fig, mock_ax)
+
+        with (
+            patch("mmrelay.plugins.telemetry_plugin.Image") as mock_image_class,
+            patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "Bot"),
+        ):
+            mock_img = MagicMock()
+            mock_img.mode = "RGBA"
+            mock_image_class.open.return_value.__enter__ = MagicMock(
+                return_value=mock_img
+            )
+            mock_image_class.open.return_value.__exit__ = MagicMock(return_value=False)
+
+            async def run_test() -> None:
+                room = MagicMock()
+                room.room_id = "!r"
+                event = MagicMock()
+                event.body = "!batteryLevel"
+                event.source = {"content": {"formatted_body": ""}}
+                result = await self.plugin.handle_room_message(
+                    room, event, "!batteryLevel"
+                )
+                self.assertTrue(result)
+                mock_ax.plot.assert_called_once()
+
+            asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    @patch("mmrelay.matrix_utils.send_image")
+    def test_handle_room_message_generic_exception(self, _mock_send, mock_connect):
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="batteryLevel")
+        self.plugin.get_data.side_effect = RuntimeError("unexpected error")
+
+        mock_matrix_client = MagicMock()
+        mock_connect.return_value = mock_matrix_client
+
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "Bot"),
+        ):
+
+            async def run_test() -> None:
+                room = MagicMock()
+                room.room_id = "!r"
+                event = MagicMock()
+                event.body = "!batteryLevel"
+                event.source = {"content": {"formatted_body": ""}}
+                result = await self.plugin.handle_room_message(
+                    room, event, "!batteryLevel"
+                )
+                self.assertTrue(result)
+                self.plugin.send_matrix_reaction.assert_called_once_with(
+                    "!r", event.event_id, "❌"
+                )
+                self.plugin.logger.exception.assert_called_once_with(
+                    "Error handling telemetry command"
+                )
 
             asyncio.run(run_test())
 
