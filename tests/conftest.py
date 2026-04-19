@@ -830,13 +830,12 @@ def isolate_db_manager_state():
     """
     import mmrelay.db_utils as db_utils
 
-    with contextlib.suppress(Exception):
-        db_utils._reset_db_manager()
-        db_utils.clear_db_path_cache()
+    db_utils._reset_db_manager()
+    db_utils.clear_db_path_cache()
 
-    yield
-
-    with contextlib.suppress(Exception):
+    try:
+        yield
+    finally:
         db_utils._reset_db_manager()
         db_utils.clear_db_path_cache()
 

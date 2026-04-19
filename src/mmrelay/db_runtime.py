@@ -525,15 +525,17 @@ class DatabaseManager:
             with suppress(sqlite3.Error):
                 conn.close()
 
-        if hasattr(self._thread_local, "connection"):
+        thread_local = getattr(self, "_thread_local", None)
+        if thread_local is not None and hasattr(thread_local, "connection"):
             with suppress(AttributeError):
-                del self._thread_local.connection
+                del thread_local.connection
 
     def __del__(self) -> None:
         """
         Ensure leaked connections/executors are cleaned up if close() was skipped.
         """
-        self._finalize_unclosed_resources()
+        with suppress(Exception):
+            self._finalize_unclosed_resources()
 
     def close(self) -> None:
         """
