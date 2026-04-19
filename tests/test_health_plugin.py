@@ -251,7 +251,7 @@ class TestHealthPlugin(unittest.TestCase):
         Test that handle_meshtastic_message consistently returns False regardless of input.
         """
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that the plugin's handle_meshtastic_message method returns False when called with sample input.
             """
@@ -271,7 +271,7 @@ class TestHealthPlugin(unittest.TestCase):
         room = MagicMock()
         event = MagicMock()
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that `handle_room_message` returns False when the event does not match and ensures no Matrix message is sent.
             """
@@ -322,7 +322,7 @@ class TestHealthPlugin(unittest.TestCase):
         room.room_id = "!test:matrix.org"
         event = MagicMock()
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that a Matrix room message event matching the plugin triggers a health summary message to be sent.
 
