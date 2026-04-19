@@ -22,7 +22,7 @@ A powerful and easy-to-use relay between Meshtastic devices and Matrix chat room
 
 > **Encryption note**: MMRelay supports encrypted Matrix rooms (Matrix E2EE). For details on how this works and its security implications, see the [E2EE Setup Guide](docs/E2EE.md).
 >
-> **Improved BLE stability (v1.3.3)**: BLE reliability improved in v1.3.3 after switching BLE handling to [mtjk](https://github.com/jeremiah-k/mtjk).
+> **Improved BLE stability (v1.3.3)**: The Meshtastic Python library has been replaced with [mtjk](https://github.com/jeremiah-k/mtjk), a fork with BLE reliability improvements (auto-reconnection, state management, notification recovery) along with thread-safety and connection handling fixes. Changes may be upstreamed selectively once they've been battle-tested here. See the [Refactor Program](https://github.com/jeremiah-k/mtjk/blob/develop/REFACTOR_PROGRAM.md) for scope and rationale.
 
 ## Documentation
 
