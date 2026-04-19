@@ -14,7 +14,7 @@ import threading
 from collections.abc import Callable
 from concurrent.futures import CancelledError as ConcurrentCancelledError
 from concurrent.futures import Future, ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from functools import lru_cache
 from typing import Any, Generator, Optional
 
@@ -494,6 +494,46 @@ class DatabaseManager:
     # ------------------------------------------------------------------ #
     # Lifecycle
     # ------------------------------------------------------------------ #
+
+    def _finalize_unclosed_resources(self) -> None:
+        """
+        Best-effort cleanup path for leaked managers during garbage collection.
+
+        This path intentionally avoids blocking waits so object finalization cannot
+        deadlock test teardown or interpreter shutdown.
+        """
+        with suppress(Exception):
+            with self._executor_lock:
+                self._accepting_submissions = False
+                self._closing = True
+
+        executor = getattr(self, "_async_executor", None)
+        if executor is not None:
+            try:
+                executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                with suppress(Exception):
+                    executor.shutdown(wait=False)
+
+        connections: list[sqlite3.Connection] = []
+        with suppress(Exception):
+            with self._connections_lock:
+                connections = list(self._connections)
+                self._connections.clear()
+
+        for conn in connections:
+            with suppress(sqlite3.Error):
+                conn.close()
+
+        if hasattr(self._thread_local, "connection"):
+            with suppress(AttributeError):
+                del self._thread_local.connection
+
+    def __del__(self) -> None:
+        """
+        Ensure leaked connections/executors are cleaned up if close() was skipped.
+        """
+        self._finalize_unclosed_resources()
 
     def close(self) -> None:
         """

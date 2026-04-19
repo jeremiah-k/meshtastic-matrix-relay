@@ -38,7 +38,7 @@ class TestMeshtasticUtilsCoverage(unittest.TestCase):
 
         # Mock the stdout capture
         with patch("sys.stdout", new_callable=lambda: Mock()):
-            with patch("io.StringIO") as mock_stringio:
+            with patch("mmrelay.meshtastic.metadata.io.StringIO") as mock_stringio:
                 mock_output = Mock()
                 mock_output.getvalue.return_value = long_output
                 mock_stringio.return_value = mock_output
@@ -69,7 +69,7 @@ class TestMeshtasticUtilsCoverage(unittest.TestCase):
         for output, expected in test_cases:
             with self.subTest(output=output):
                 # Mock the stdout capture
-                with patch("io.StringIO") as mock_stringio:
+                with patch("mmrelay.meshtastic.metadata.io.StringIO") as mock_stringio:
                     mock_output = Mock()
                     mock_output.getvalue.return_value = output
                     mock_stringio.return_value = mock_output
@@ -84,7 +84,7 @@ class TestMeshtasticUtilsCoverage(unittest.TestCase):
         mock_interface.localNode = Mock()
 
         # Mock the stdout capture with output that has no firmware version
-        with patch("io.StringIO") as mock_stringio:
+        with patch("mmrelay.meshtastic.metadata.io.StringIO") as mock_stringio:
             mock_output = Mock()
             mock_output.getvalue.return_value = "some other output"
             mock_stringio.return_value = mock_output

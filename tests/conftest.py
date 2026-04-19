@@ -824,6 +824,24 @@ def cleanup_asyncmock_objects(request):
 
 
 @pytest.fixture(autouse=True)
+def isolate_db_manager_state():
+    """
+    Reset db_utils manager/cache around every test to avoid leaked SQLite handles.
+    """
+    import mmrelay.db_utils as db_utils
+
+    with contextlib.suppress(Exception):
+        db_utils._reset_db_manager()
+        db_utils.clear_db_path_cache()
+
+    yield
+
+    with contextlib.suppress(Exception):
+        db_utils._reset_db_manager()
+        db_utils.clear_db_path_cache()
+
+
+@pytest.fixture(autouse=True)
 def mock_submit_coro(monkeypatch):
     """
     Replace mmrelay.meshtastic_utils._submit_coro with a test helper that ensures passed coroutines are executed and awaited so AsyncMock coroutines run to completion.

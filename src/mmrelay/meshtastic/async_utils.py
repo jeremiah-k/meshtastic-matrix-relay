@@ -184,13 +184,12 @@ def _submit_coro(
     except RuntimeError:
         # No running loop: check if we can safely create a new loop
         try:
-            # Try to get the current event loop policy and create a new loop
-            # This is safer than asyncio.run() which can cause deadlocks
-            policy = facade.asyncio.get_event_loop_policy()
+            # Create a temporary event loop directly. Avoid policy APIs because
+            # get_event_loop_policy() is deprecated on newer Python versions.
             facade.logger.debug(
                 "No running event loop detected; creating a temporary loop to execute coroutine"
             )
-            new_loop = policy.new_event_loop()
+            new_loop = facade.asyncio.new_event_loop()
             facade.asyncio.set_event_loop(new_loop)
             try:
                 result = new_loop.run_until_complete(coro)
