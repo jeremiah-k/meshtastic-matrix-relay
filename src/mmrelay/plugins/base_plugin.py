@@ -648,7 +648,7 @@ class BasePlugin(ABC):
             "text": text,
             "channelIndex": channel,
         }
-        if destination_id:
+        if destination_id is not None:
             send_kwargs["destinationId"] = destination_id
 
         return queue_message(

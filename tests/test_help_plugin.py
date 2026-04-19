@@ -94,7 +94,7 @@ class TestHelpPlugin(unittest.TestCase):
         Test that handle_meshtastic_message always returns False, regardless of input.
         """
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that handle_meshtastic_message always returns False for the help plugin.
             """
@@ -121,7 +121,7 @@ class TestHelpPlugin(unittest.TestCase):
             patch("mmrelay.matrix_utils.bot_user_name", "TestBot"),
         ):
 
-            async def run_test():
+            async def run_test() -> None:
                 """
                 Verify that handle_room_message returns False and does not send a Matrix message when the event does not match the help command.
 
@@ -159,7 +159,7 @@ class TestHelpPlugin(unittest.TestCase):
         event.body = full_message
         event.source = {"content": {"formatted_body": ""}}
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Run assertions that handling a general "!help" room message results in a command list being sent.
 
@@ -209,7 +209,7 @@ class TestHelpPlugin(unittest.TestCase):
         event.body = full_message
         event.source = {"content": {"formatted_body": ""}}
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Run the test that requesting help for a specific command results in a single sent message containing the command and its description.
 
@@ -258,7 +258,7 @@ class TestHelpPlugin(unittest.TestCase):
         event.body = full_message
         event.source = {"content": {"formatted_body": ""}}
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that requesting help for a nonexistent command returns an appropriate error message.
 
@@ -303,7 +303,7 @@ class TestHelpPlugin(unittest.TestCase):
         event.body = full_message
         event.source = {"content": {"formatted_body": ""}}
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that the help plugin's room message handler returns True and sends a message containing all available commands from loaded plugins.
             """
@@ -349,7 +349,7 @@ class TestHelpPlugin(unittest.TestCase):
         event.body = full_message
         event.source = {"content": {"formatted_body": ""}}
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Runs an asynchronous test to verify that requesting help for a specific command returns the correct help message, including the command and its plugin description.
             """
@@ -395,7 +395,7 @@ class TestHelpPlugin(unittest.TestCase):
         event.body = full_message
         event.source = {"content": {"formatted_body": ""}}
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Run the asynchronous test that verifies the help plugin reports no commands when no plugins are loaded.
 
@@ -430,7 +430,7 @@ class TestHelpPlugin(unittest.TestCase):
         event.body = full_message
         event.source = {"content": {"formatted_body": ""}}
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_room_message(room, event, full_message)
 
             self.assertTrue(result)

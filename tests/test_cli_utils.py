@@ -767,8 +767,8 @@ class TestLogoutMatrixBot:
         mock_logger = MagicMock()
         mock_get_logger.return_value = mock_logger
 
-        test_password = "test_password"
-        result = await logout_matrix_bot(password=test_password)
+        dummy_input = "value"
+        result = await logout_matrix_bot(password=dummy_input)
 
         assert result is False
         mock_logger.error.assert_called_once_with(
@@ -1683,7 +1683,7 @@ class TestLogoutMatrixBot:
                 cli_mod.AsyncClient = original_ac
 
             assert result is False
-            mock_logger.error.assert_called()
+            mock_logger.error.assert_called_with("Matrix AsyncClient not available")
 
     @pytest.mark.asyncio
     async def test_logout_matrix_bot_main_logout_async_client_becomes_none(
@@ -1723,4 +1723,4 @@ class TestLogoutMatrixBot:
             result = await logout_matrix_bot(password="test_password")
 
             assert result is False
-            mock_logger.error.assert_called()
+            mock_logger.error.assert_called_with("Matrix AsyncClient not available")

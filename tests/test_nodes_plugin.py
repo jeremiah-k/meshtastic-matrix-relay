@@ -417,7 +417,7 @@ class TestNodesPlugin(unittest.TestCase):
         Test that handle_meshtastic_message always returns False regardless of input.
         """
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that handle_meshtastic_message always returns False.
             """
@@ -439,7 +439,7 @@ class TestNodesPlugin(unittest.TestCase):
         room = MagicMock()
         event = MagicMock()
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that handle_room_message returns False and does not send a Matrix message when the event does not match.
 
@@ -467,7 +467,7 @@ class TestNodesPlugin(unittest.TestCase):
         room.room_id = "!test:matrix.org"
         event = MagicMock()
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that a room message matching the plugin's criteria triggers a Matrix message with correct node information.
 
@@ -694,7 +694,7 @@ class TestNodesPlugin(unittest.TestCase):
         room.room_id = "!test:matrix.org"
         event = MagicMock()
 
-        async def run_test():
+        async def run_test() -> None:
             result = await self.plugin.handle_room_message(room, event, "full_message")
             self.assertTrue(result)
             self.plugin.logger.exception.assert_called_once_with(

@@ -671,7 +671,7 @@ class TestBasePlugin(unittest.TestCase):
         mock_matrix_client = AsyncMock()
         mock_connect_matrix.return_value = mock_matrix_client
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that sending a Matrix message via the plugin calls the Matrix client's room_send method with the correct parameters.
             """
@@ -1021,7 +1021,7 @@ class TestBasePlugin(unittest.TestCase):
         plugin = MockPlugin()
         mock_connect_matrix.side_effect = RuntimeError("Connection failed")
 
-        async def run_test():
+        async def run_test() -> None:
             with self.assertRaises(RuntimeError):
                 await plugin.send_matrix_message("!room:matrix.org", "Test message")
 
@@ -1035,7 +1035,7 @@ class TestBasePlugin(unittest.TestCase):
         mock_client.room_send.side_effect = RuntimeError("Send failed")
         mock_connect_matrix.return_value = mock_client
 
-        async def run_test():
+        async def run_test() -> None:
             # Should raise an exception due to send failure
             with self.assertRaises(RuntimeError):
                 await plugin.send_matrix_message("!room:matrix.org", "Test message")
@@ -1488,7 +1488,7 @@ class TestBasePlugin(unittest.TestCase):
         """send_matrix_message should return None when Matrix client is unavailable."""
         mock_connect.return_value = None
 
-        async def run_test():
+        async def run_test() -> None:
             result = await MockPlugin().send_matrix_message("!room:matrix.org", "test")
             self.assertIsNone(result)
 
@@ -1500,7 +1500,7 @@ class TestBasePlugin(unittest.TestCase):
         mock_client = AsyncMock()
         mock_connect.return_value = mock_client
 
-        async def run_test():
+        async def run_test() -> None:
             plugin = MockPlugin()
             await plugin.send_matrix_message(
                 "!room:matrix.org", "**bold**", formatted=True
@@ -1517,7 +1517,7 @@ class TestBasePlugin(unittest.TestCase):
         mock_client = AsyncMock()
         mock_connect.return_value = mock_client
 
-        async def run_test():
+        async def run_test() -> None:
             plugin = MockPlugin()
             await plugin.send_matrix_message(
                 "!room:matrix.org",
@@ -1651,7 +1651,7 @@ class TestBasePlugin(unittest.TestCase):
         mock_client = AsyncMock()
         mock_connect.return_value = mock_client
 
-        async def run_test():
+        async def run_test() -> None:
             await plugin.send_matrix_reaction("!room:matrix.org", "$event_id", "✅")
             mock_client.room_send.assert_called_once()
             call_kwargs = mock_client.room_send.call_args.kwargs
@@ -1671,7 +1671,7 @@ class TestBasePlugin(unittest.TestCase):
         plugin.logger = MagicMock()
         mock_connect.return_value = None
 
-        async def run_test():
+        async def run_test() -> None:
             await plugin.send_matrix_reaction("!room", "$event", "✅")
             plugin.logger.error.assert_called_once_with(
                 "Failed to connect to Matrix client"
@@ -1688,7 +1688,7 @@ class TestBasePlugin(unittest.TestCase):
         mock_client.room_send.side_effect = RuntimeError("send failed")
         mock_connect.return_value = mock_client
 
-        async def run_test():
+        async def run_test() -> None:
             await plugin.send_matrix_reaction("!room", "$event", "✅")
             plugin.logger.warning.assert_called_once_with(
                 "Failed to send reaction", exc_info=True

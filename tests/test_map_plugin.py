@@ -251,7 +251,7 @@ class TestImageUploadAndSend(unittest.TestCase):
         Asynchronously tests that the image upload function saves an image to a buffer, uploads it via the client, and returns the correct upload response.
         """
 
-        async def run_test():
+        async def run_test() -> None:
             # Mock image save
             """
             Execute an asynchronous test that verifies upload_image uploads image bytes and returns the upload response.
@@ -278,7 +278,7 @@ class TestImageUploadAndSend(unittest.TestCase):
         Asynchronously verifies that an image message is sent to the specified Matrix room with the correct content using the client.
         """
 
-        async def run_test():
+        async def run_test() -> None:
             room_id = "!test:example.com"
 
             await send_room_image(
@@ -306,7 +306,7 @@ class TestImageUploadAndSend(unittest.TestCase):
         Calls send_image with a mock client, room ID, image, and filename; asserts that upload_image is awaited with the client, image, and filename, and that send_room_image is awaited with the client, room ID, upload response, and filename.
         """
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Verify that send_image uploads the provided image and then sends the resulting upload response to the specified Matrix room.
 
@@ -381,7 +381,7 @@ class TestMapPlugin(unittest.TestCase):
         Tests that handle_meshtastic_message returns False when called with a Meshtastic message.
         """
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that the plugin's `handle_meshtastic_message` method returns False when invoked with a sample message.
             """
@@ -426,7 +426,7 @@ class TestMapPlugin(unittest.TestCase):
         Asserts that when the plugin matches a "!map" command it calls get_map once and calls send_image with the Matrix client, the originating room ID, the generated image, and the filename "location.png".
         """
 
-        async def run_test():
+        async def run_test() -> None:
             # Setup mocks
             """
             Asynchronously tests that the plugin processes a "!map" room message by generating a map image and sending it to the Matrix room.
@@ -492,7 +492,7 @@ class TestMapPlugin(unittest.TestCase):
         Mocks Matrix and Meshtastic clients and a map image; asserts get_map was called with zoom=15 and the plugin handler returned True.
         """
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Verify the plugin handles a "!map zoom=15" room message and forwards zoom=15 to the map generator.
 
@@ -555,7 +555,7 @@ class TestMapPlugin(unittest.TestCase):
         This test verifies that when a user specifies an image size (e.g., "!map size=500,400"), the map generation function receives the correct `image_size` parameter and the plugin returns True.
         """
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Verify that a "!map size=500,400" room command produces a map request using the specified image size.
 
@@ -607,7 +607,7 @@ class TestMapPlugin(unittest.TestCase):
         Verifies that the plugin's handle_room_message method returns False if the incoming message does not correspond to the map command.
         """
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Asynchronously tests that the plugin's handle_room_message method returns False when the message does not match the plugin command.
             """
@@ -642,7 +642,7 @@ class TestMapPlugin(unittest.TestCase):
         and verifies get_map was invoked with zoom set to configured value 10.
         """
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Verify invalid zoom input falls back to plugin-configured zoom.
 
@@ -701,7 +701,7 @@ class TestMapPlugin(unittest.TestCase):
     ):
         """Invalid configured zoom should fall back to default when no zoom arg is provided."""
 
-        async def run_test():
+        async def run_test() -> None:
             self.plugin.config["zoom"] = "bad-zoom"
 
             mock_room = MagicMock()
@@ -754,7 +754,7 @@ class TestMapPlugin(unittest.TestCase):
         Asserts that the plugin processes the command successfully and calls get_map with image_size set to (1000, 1000).
         """
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Verify that handling a room "!map" command caps oversized image size parameters to the configured maximum.
 
@@ -814,7 +814,7 @@ class TestMapPlugin(unittest.TestCase):
         Ensure a friendly notice is sent when no nodes contain location data.
         """
 
-        async def run_test():
+        async def run_test() -> None:
             """
             Execute the plugin's room-message handler for a "!map" command when no node locations are available.
 
@@ -864,7 +864,7 @@ class TestMapPlugin(unittest.TestCase):
     ):
         """Image upload errors should send a notice and return True."""
 
-        async def run_test():
+        async def run_test() -> None:
             mock_room = MagicMock()
             mock_room.room_id = "!test:example.com"
             mock_event = MagicMock()
@@ -1015,14 +1015,8 @@ class TestMapPluginHandleRoomMessage(unittest.TestCase):
         self.plugin.plugin_name = None
         self.assertEqual(self.plugin.get_matrix_commands(), [])
 
-    @patch("mmrelay.matrix_utils.send_image")
-    @patch("mmrelay.plugins.map_plugin.get_map")
-    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
-    @patch("mmrelay.matrix_utils.connect_matrix")
-    def test_handle_room_message_invalid_args(
-        self, mock_connect_matrix, mock_connect_mesh, mock_get_map, mock_send_image
-    ):
-        async def run_test():
+    def test_handle_room_message_invalid_args(self):
+        async def run_test() -> None:
             mock_room = MagicMock()
             mock_room.room_id = "!test:example.com"
             mock_event = MagicMock()
@@ -1036,16 +1030,10 @@ class TestMapPluginHandleRoomMessage(unittest.TestCase):
 
         asyncio.run(run_test())
 
-    @patch("mmrelay.matrix_utils.send_image")
-    @patch("mmrelay.plugins.map_plugin.get_map")
-    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
-    @patch("mmrelay.matrix_utils.connect_matrix")
-    def test_handle_room_message_extract_args_returns_none(
-        self, mock_connect_matrix, mock_connect_mesh, mock_get_map, mock_send_image
-    ):
+    def test_handle_room_message_extract_args_returns_none(self):
         """Test that extract_command_args returning None causes early return (lines 529-530)."""
 
-        async def run_test():
+        async def run_test() -> None:
             self.plugin.matches = MagicMock(return_value=True)
             self.plugin.extract_command_args = MagicMock(return_value=None)
 
@@ -1068,7 +1056,7 @@ class TestMapPluginHandleRoomMessage(unittest.TestCase):
     def test_handle_room_message_config_zoom_out_of_range(
         self, mock_connect_matrix, mock_connect_mesh, mock_get_map, mock_send_image
     ):
-        async def run_test():
+        async def run_test() -> None:
             self.plugin.config["zoom"] = 50
             mock_room = MagicMock()
             mock_room.room_id = "!test:example.com"
@@ -1106,7 +1094,7 @@ class TestMapPluginHandleRoomMessage(unittest.TestCase):
     def test_handle_room_message_image_size_config_fallback(
         self, mock_connect_matrix, mock_connect_mesh, mock_get_map, mock_send_image
     ):
-        async def run_test():
+        async def run_test() -> None:
             self.plugin.config["image_width"] = "bad"
             self.plugin.config["image_height"] = "bad"
             mock_room = MagicMock()
@@ -1146,7 +1134,7 @@ class TestMapPluginHandleRoomMessage(unittest.TestCase):
     def test_handle_room_message_matrix_unavailable(
         self, mock_connect_matrix, mock_connect_mesh, mock_get_map, mock_send_image
     ):
-        async def run_test():
+        async def run_test() -> None:
             mock_connect_matrix.return_value = None
             self.plugin.send_matrix_message = AsyncMock()
 
@@ -1174,7 +1162,7 @@ class TestMapPluginHandleRoomMessage(unittest.TestCase):
     def test_handle_room_message_meshtastic_unavailable(
         self, mock_connect_matrix, mock_connect_mesh, mock_get_map, mock_send_image
     ):
-        async def run_test():
+        async def run_test() -> None:
             mock_matrix_client = MagicMock()
             mock_matrix_client.room_send = AsyncMock()
             mock_connect_matrix.return_value = mock_matrix_client
@@ -1208,7 +1196,7 @@ class TestMapPluginHandleRoomMessage(unittest.TestCase):
     def test_handle_room_message_meshtastic_no_nodes(
         self, mock_connect_matrix, mock_connect_mesh, mock_get_map, mock_send_image
     ):
-        async def run_test():
+        async def run_test() -> None:
             mock_matrix_client = MagicMock()
             mock_matrix_client.room_send = AsyncMock()
             mock_connect_matrix.return_value = mock_matrix_client
@@ -1250,7 +1238,7 @@ class TestMapPluginHandleRoomMessage(unittest.TestCase):
 
         with patch.object(self.plugin, "matches", return_value=True):
 
-            async def run_test():
+            async def run_test() -> None:
                 result = await self.plugin.handle_room_message(
                     mock_room, mock_event, "!map"
                 )
