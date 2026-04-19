@@ -534,6 +534,8 @@ class DatabaseManager:
         """
         Ensure leaked connections/executors are cleaned up if close() was skipped.
         """
+        if not hasattr(self, "_thread_local"):
+            return
         with suppress(Exception):
             self._finalize_unclosed_resources()
 
