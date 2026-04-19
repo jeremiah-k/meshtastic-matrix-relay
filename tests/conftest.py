@@ -22,6 +22,7 @@ import logging
 
 # Preserve references to built-in modules that should NOT be mocked
 import queue
+import sqlite3
 import threading
 import time
 from concurrent.futures import Future
@@ -195,6 +196,23 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
             exc,
         )
         return
+
+
+def _close_leaked_sqlite_connections() -> None:
+    """
+    Best-effort close for leaked sqlite3 connections and DatabaseManager instances.
+    """
+    import mmrelay.db_runtime as db_runtime
+
+    for obj in gc.get_objects():
+        with contextlib.suppress(ReferenceError):
+            if isinstance(obj, db_runtime.DatabaseManager):
+                with contextlib.suppress(Exception):
+                    obj._finalize_unclosed_resources()
+                continue
+            if isinstance(obj, sqlite3.Connection):
+                with contextlib.suppress(sqlite3.Error):
+                    obj.close()
 
 
 def cleanup_ble_future_state(module: Any) -> None:
@@ -1288,6 +1306,14 @@ def comprehensive_cleanup():
     # Set event loop to None to ensure clean state
     asyncio.set_event_loop(None)
 
+    # Reset global db manager/cache before forcing GC of lingering resources.
+    with contextlib.suppress(Exception):
+        import mmrelay.db_utils as db_utils
+
+        db_utils._reset_db_manager()
+        db_utils.clear_db_path_cache()
+    _close_leaked_sqlite_connections()
+
     # Force garbage collection to clean up any remaining resources
     gc.collect()
 
@@ -1303,6 +1329,7 @@ def comprehensive_cleanup():
             thread.join(timeout=0.1)
 
     # Force another garbage collection after thread cleanup
+    _close_leaked_sqlite_connections()
     gc.collect()
 
 
