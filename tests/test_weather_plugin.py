@@ -1620,6 +1620,77 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         call_kwargs = self.plugin.send_matrix_message.call_args.kwargs
         self.assertIsNone(call_kwargs.get("reply_to_event_id"))
 
+    async def test_handle_room_message_no_parsed_command_returns_false(self):
+        """Should return False when get_matching_matrix_command returns None (line 914)."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value=None)
+
+        mock_event = MagicMock()
+        mock_event.body = "!weather"
+        mock_event.source = {"content": {"formatted_body": ""}}
+
+        result = await self.plugin.handle_room_message(
+            MagicMock(room_id="!r"), mock_event, "!weather"
+        )
+        self.assertFalse(result)
+
+    async def test_handle_room_message_invalid_units_fallback_to_metric(self):
+        """Invalid units in config should fall back to metric (lines 953-954)."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.get_require_bot_mention = MagicMock(return_value=False)
+        self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
+        self.plugin.generate_forecast = MagicMock(return_value="Sunny 25°C")
+        self.plugin.generate_marine_forecast = MagicMock(return_value=None)
+        self.plugin.config = {"units": "bogus"}
+
+        mock_client = MagicMock()
+        mock_client.nodes = {
+            "n1": {"position": {"latitude": 10.0, "longitude": 20.0}},
+        }
+
+        mock_event = MagicMock()
+        mock_event.body = "!weather"
+        mock_event.source = {"content": {"formatted_body": ""}}
+
+        with patch(
+            "mmrelay.meshtastic_utils.connect_meshtastic", return_value=mock_client
+        ):
+            result = await self.plugin.handle_room_message(
+                MagicMock(room_id="!r"), mock_event, "!weather"
+            )
+
+        self.assertTrue(result)
+        marine_call = self.plugin.generate_marine_forecast.call_args
+        self.assertEqual(marine_call.args[3], "metric")
+
+    async def test_handle_room_message_exception_handler(self):
+        """Exception in handle_room_message should log and send reaction (lines 973-975)."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_matrix_reaction = AsyncMock()
+        self.plugin._resolve_location_from_args = AsyncMock(
+            side_effect=RuntimeError("boom")
+        )
+
+        mock_event = MagicMock()
+        mock_event.event_id = "$err_event"
+        mock_event.body = "!weather"
+        mock_event.source = {"content": {"formatted_body": ""}}
+
+        result = await self.plugin.handle_room_message(
+            MagicMock(room_id="!r"), mock_event, "!weather"
+        )
+        self.assertTrue(result)
+        self.plugin.logger.exception.assert_called_once_with(
+            "Error handling weather command"
+        )
+        self.plugin.send_matrix_reaction.assert_called_once_with(
+            "!r", "$err_event", "❌"
+        )
+
     async def test_handle_room_message_no_location_sends_reaction(self):
         """'Cannot determine location' should still send a reaction."""
         self.plugin.matches = MagicMock(return_value=True)
@@ -1907,6 +1978,22 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         data = {"hourly": {"time": [], "wave_height": []}}
         result = self.plugin._format_hourly_marine(
             data, base_index=0, offsets=[3, 6, 12]
+        )
+        self.assertIsNone(result)
+
+    def test_format_hourly_marine_returns_none_when_all_slots_none(self):
+        """_format_hourly_marine returns None when every slot resolves to None (line 306-307)."""
+        times = [f"2023-08-20T{h:02d}:00" for h in range(24)]
+        data = {
+            "hourly": {
+                "time": times,
+                "wave_height": [None] * 24,
+                "wave_direction": [None] * 24,
+                "wave_period": [None] * 24,
+            }
+        }
+        result = self.plugin._format_hourly_marine(
+            data, base_index=10, offsets=[3, 6, 12]
         )
         self.assertIsNone(result)
 

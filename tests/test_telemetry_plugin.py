@@ -823,6 +823,151 @@ class TestTelemetryPlugin(unittest.TestCase):
 
             asyncio.run(run_test())
 
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    @patch("mmrelay.matrix_utils.upload_image")
+    @patch("mmrelay.matrix_utils.send_room_image")
+    @patch("mmrelay.plugins.telemetry_plugin.plt.xticks")
+    @patch("mmrelay.plugins.telemetry_plugin.plt.subplots")
+    def test_handle_room_message_calculate_averages_non_dict_record(
+        self, mock_subplots, mock_xticks, mock_send_image, mock_upload, mock_connect
+    ):
+        import json
+
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="batteryLevel")
+
+        now_ts = datetime.now().timestamp()
+        self.plugin.get_data.return_value = [
+            (json.dumps(["not_a_dict", {"time": now_ts, "batteryLevel": 80}]),)
+        ]
+
+        mock_matrix_client = AsyncMock()
+        mock_connect.return_value = mock_matrix_client
+        mock_fig = MagicMock()
+        mock_ax = MagicMock()
+        mock_subplots.return_value = (mock_fig, mock_ax)
+        mock_canvas = MagicMock()
+        mock_fig.canvas = mock_canvas
+
+        with (
+            patch("mmrelay.plugins.telemetry_plugin.Image") as mock_image_class,
+            patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "Bot"),
+        ):
+            mock_img = MagicMock()
+            mock_img.mode = "RGBA"
+            mock_image_class.open.return_value.__enter__ = MagicMock(
+                return_value=mock_img
+            )
+            mock_image_class.open.return_value.__exit__ = MagicMock(return_value=False)
+
+            async def run_test():
+                room = MagicMock()
+                room.room_id = "!r"
+                event = MagicMock()
+                event.body = "!batteryLevel"
+                event.source = {"content": {"formatted_body": ""}}
+                result = await self.plugin.handle_room_message(
+                    room, event, "!batteryLevel"
+                )
+                self.assertTrue(result)
+                mock_ax.plot.assert_called_once()
+
+            asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    @patch("mmrelay.matrix_utils.upload_image")
+    @patch("mmrelay.matrix_utils.send_room_image")
+    @patch("mmrelay.plugins.telemetry_plugin.plt.xticks")
+    @patch("mmrelay.plugins.telemetry_plugin.plt.subplots")
+    def test_handle_room_message_calculate_averages_none_timestamp_and_value(
+        self, mock_subplots, mock_xticks, mock_send_image, mock_upload, mock_connect
+    ):
+        import json
+
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="batteryLevel")
+
+        self.plugin.get_data.return_value = [
+            (
+                json.dumps(
+                    [
+                        {"time": None, "batteryLevel": 80},
+                        {"time": 12345, "batteryLevel": None},
+                        {"time": None, "batteryLevel": None},
+                        {"time": "not_a_number", "batteryLevel": 80},
+                        {"time": float("inf"), "batteryLevel": 50},
+                    ]
+                ),
+            )
+        ]
+
+        mock_matrix_client = AsyncMock()
+        mock_connect.return_value = mock_matrix_client
+        mock_fig = MagicMock()
+        mock_ax = MagicMock()
+        mock_subplots.return_value = (mock_fig, mock_ax)
+
+        with (
+            patch("mmrelay.plugins.telemetry_plugin.Image") as mock_image_class,
+            patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "Bot"),
+        ):
+            mock_img = MagicMock()
+            mock_img.mode = "RGBA"
+            mock_image_class.open.return_value.__enter__ = MagicMock(
+                return_value=mock_img
+            )
+            mock_image_class.open.return_value.__exit__ = MagicMock(return_value=False)
+
+            async def run_test():
+                room = MagicMock()
+                room.room_id = "!r"
+                event = MagicMock()
+                event.body = "!batteryLevel"
+                event.source = {"content": {"formatted_body": ""}}
+                result = await self.plugin.handle_room_message(
+                    room, event, "!batteryLevel"
+                )
+                self.assertTrue(result)
+                mock_ax.plot.assert_called_once()
+
+            asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    @patch("mmrelay.matrix_utils.send_image")
+    def test_handle_room_message_generic_exception(self, mock_send, mock_connect):
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command = MagicMock(return_value="batteryLevel")
+        self.plugin.get_data.side_effect = RuntimeError("unexpected error")
+
+        mock_matrix_client = MagicMock()
+        mock_connect.return_value = mock_matrix_client
+
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "Bot"),
+        ):
+
+            async def run_test():
+                room = MagicMock()
+                room.room_id = "!r"
+                event = MagicMock()
+                event.body = "!batteryLevel"
+                event.source = {"content": {"formatted_body": ""}}
+                result = await self.plugin.handle_room_message(
+                    room, event, "!batteryLevel"
+                )
+                self.assertTrue(result)
+                self.plugin.send_matrix_reaction.assert_called_once_with(
+                    "!r", event.event_id, "❌"
+                )
+                self.plugin.logger.exception.assert_called_once_with(
+                    "Error handling telemetry command"
+                )
+
+            asyncio.run(run_test())
+
 
 if __name__ == "__main__":
     unittest.main()

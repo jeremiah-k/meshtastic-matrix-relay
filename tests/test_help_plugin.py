@@ -416,6 +416,33 @@ class TestHelpPlugin(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    @patch("mmrelay.plugins.help_plugin.load_plugins")
+    def test_handle_room_message_send_exception(self, mock_load_plugins):
+        """Test exception handler in handle_room_message (lines 132-135)."""
+        mock_load_plugins.return_value = []
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.send_matrix_message.side_effect = RuntimeError("send failed")
+
+        room = MagicMock()
+        room.room_id = "!test:matrix.org"
+        full_message = "!help"
+        event = MagicMock()
+        event.body = full_message
+        event.source = {"content": {"formatted_body": ""}}
+
+        async def run_test():
+            result = await self.plugin.handle_room_message(room, event, full_message)
+
+            self.assertTrue(result)
+            self.plugin.logger.exception.assert_called_once_with(
+                "Error handling help command"
+            )
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "❌"
+            )
+
+        asyncio.run(run_test())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -685,6 +685,29 @@ class TestNodesPlugin(unittest.TestCase):
         # Should have two instances of "? hops away"
         self.assertEqual(response.count("? hops away"), 2)
 
+    def test_handle_room_message_exception_handler(self):
+        """Test exception handler in handle_room_message (lines 224-227)."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.generate_response = MagicMock(side_effect=RuntimeError("boom"))
+
+        room = MagicMock()
+        room.room_id = "!test:matrix.org"
+        event = MagicMock()
+
+        async def run_test():
+            result = await self.plugin.handle_room_message(room, event, "full_message")
+            self.assertTrue(result)
+            self.plugin.logger.exception.assert_called_once_with(
+                "Error handling nodes command"
+            )
+            self.plugin.send_matrix_reaction.assert_called_once_with(
+                "!test:matrix.org", event.event_id, "❌"
+            )
+
+        import asyncio
+
+        asyncio.run(run_test())
+
 
 if __name__ == "__main__":
     unittest.main()

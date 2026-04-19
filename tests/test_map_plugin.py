@@ -1040,6 +1040,31 @@ class TestMapPluginHandleRoomMessage(unittest.TestCase):
     @patch("mmrelay.plugins.map_plugin.get_map")
     @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
     @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_handle_room_message_extract_args_returns_none(
+        self, mock_connect_matrix, mock_connect_mesh, mock_get_map, mock_send_image
+    ):
+        """Test that extract_command_args returning None causes early return (lines 529-530)."""
+
+        async def run_test():
+            self.plugin.matches = MagicMock(return_value=True)
+            self.plugin.extract_command_args = MagicMock(return_value=None)
+
+            mock_room = MagicMock()
+            mock_room.room_id = "!test:example.com"
+            mock_event = MagicMock()
+            mock_event.body = "!map"
+
+            result = await self.plugin.handle_room_message(
+                mock_room, mock_event, "!map"
+            )
+            self.assertFalse(result)
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.send_image")
+    @patch("mmrelay.plugins.map_plugin.get_map")
+    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
+    @patch("mmrelay.matrix_utils.connect_matrix")
     def test_handle_room_message_config_zoom_out_of_range(
         self, mock_connect_matrix, mock_connect_mesh, mock_get_map, mock_send_image
     ):
@@ -1207,6 +1232,34 @@ class TestMapPluginHandleRoomMessage(unittest.TestCase):
             self.plugin.send_matrix_message.assert_awaited_once()
 
         asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.send_image")
+    @patch("mmrelay.plugins.map_plugin.get_map")
+    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_handle_room_message_generic_exception(
+        self, mock_connect_matrix, mock_connect_mesh, mock_get_map, mock_send_image
+    ):
+        """Test generic exception handler in handle_room_message (lines 664-669)."""
+        mock_connect_matrix.side_effect = RuntimeError("unexpected boom")
+
+        mock_room = MagicMock()
+        mock_room.room_id = "!test:example.com"
+        mock_event = MagicMock()
+        mock_event.body = "!map"
+
+        with patch.object(self.plugin, "matches", return_value=True):
+
+            async def run_test():
+                result = await self.plugin.handle_room_message(
+                    mock_room, mock_event, "!map"
+                )
+                self.assertTrue(result)
+                self.plugin.send_matrix_reaction.assert_called_once_with(
+                    "!test:example.com", mock_event.event_id, "❌"
+                )
+
+            asyncio.run(run_test())
 
 
 if __name__ == "__main__":
