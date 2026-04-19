@@ -138,6 +138,7 @@ class Plugin(BasePlugin):
                     f"https://marine-api.open-meteo.com/v1/marine?"
                     f"latitude={latitude}&longitude={longitude}&"
                     f"daily=wave_height_max,wave_direction_dominant,wave_period_max&"
+                    f"forecast_days={DAILY_FORECAST_DAYS}&"
                     f"timezone=auto&length_unit={units}"
                 )
             elif mode_key == WEATHER_MODE_CURRENT:
@@ -217,13 +218,13 @@ class Plugin(BasePlugin):
             return None
 
         height_unit = "ft" if units == WEATHER_UNITS_IMPERIAL else "m"
-        parts = [f"🌊 Sea State: Waves {round(wave_height, 1)}{height_unit}"]
+        result = f"🌊 Waves {round(wave_height, 1)}{height_unit}"
         if wave_period is not None:
-            parts[0] += f" ({round(wave_period, 1)}s)"
+            result += f" ({round(wave_period, 1)}s)"
         if wave_dir is not None:
-            parts.append(f"{round(wave_dir)}{DEGREE_SYMBOL}")
+            result += f" {round(wave_dir)}{DEGREE_SYMBOL}"
 
-        return " ".join(parts)
+        return result
 
     def _format_daily_marine(self, data: dict, units: str = "metric") -> str | None:
         """Format daily marine API response into a multi-day single-line string."""
@@ -246,7 +247,7 @@ class Plugin(BasePlugin):
             except (IndexError, ValueError):
                 label = f"D{i}"
 
-            part = f"{label} {round(height, 1)}{height_unit}"
+            part = f"{label}: {round(height, 1)}{height_unit}"
             period = periods[i] if i < len(periods) else None
             direction = directions[i] if i < len(directions) else None
             if period is not None:
@@ -258,7 +259,7 @@ class Plugin(BasePlugin):
         if not day_parts:
             return None
 
-        return self._trim_to_max_bytes("🌊 Waves: " + " | ".join(day_parts))
+        return self._trim_to_max_bytes("🌊 Waves " + " | ".join(day_parts))
 
     def _format_hourly_marine(
         self, data: dict, base_index: int, offsets: list[int], units: str = "metric"
@@ -282,7 +283,7 @@ class Plugin(BasePlugin):
             h = heights[idx] if idx < len(heights) else None
             if h is None:
                 return None
-            part = f"{label} {round(h, 1)}{height_unit}"
+            part = f"{label}: {round(h, 1)}{height_unit}"
             p = periods[idx] if idx < len(periods) else None
             d = directions[idx] if idx < len(directions) else None
             if p is not None:
@@ -306,7 +307,7 @@ class Plugin(BasePlugin):
         if not slot_parts:
             return None
 
-        return self._trim_to_max_bytes("🌊 Waves: " + " | ".join(slot_parts))
+        return self._trim_to_max_bytes("🌊 Waves " + " | ".join(slot_parts))
 
     def generate_forecast(
         self, latitude: float, longitude: float, mode: str = CANONICAL_WEATHER_MODE
