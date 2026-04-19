@@ -495,6 +495,78 @@ class DatabaseManager:
     # Lifecycle
     # ------------------------------------------------------------------ #
 
+    def _pop_thread_local_connection(self) -> sqlite3.Connection | None:
+        """
+        Return and clear the current thread-local connection, if present.
+        """
+        thread_local = getattr(self, "_thread_local", None)
+        if thread_local is None:
+            return None
+
+        conn = getattr(thread_local, "connection", None)
+        with suppress(AttributeError):
+            del thread_local.connection
+
+        if isinstance(conn, sqlite3.Connection):
+            return conn
+        return None
+
+    @staticmethod
+    def _close_connections(
+        connections: list[sqlite3.Connection], *, log_errors: bool
+    ) -> None:
+        """
+        Close connections once each, deduping by identity.
+        """
+        seen_ids: set[int] = set()
+        for conn in connections:
+            conn_id = id(conn)
+            if conn_id in seen_ids:
+                continue
+            seen_ids.add(conn_id)
+            try:
+                conn.close()
+            except sqlite3.Error:
+                if log_errors:
+                    logger.debug(
+                        "Error closing connection during shutdown", exc_info=True
+                    )
+
+    def _force_close_unclosed_resources(self) -> None:
+        """
+        Deterministically reclaim executor and SQLite resources.
+
+        This path is intended for explicit teardown fallbacks (for example, when
+        close() raised) and uses blocking lock acquisition so it does not skip
+        tracked connection cleanup.
+        """
+        with suppress(Exception):
+            with self._executor_lock:
+                self._accepting_submissions = False
+                self._closing = True
+
+        executor = getattr(self, "_async_executor", None)
+        if executor is not None:
+            try:
+                executor.shutdown(wait=True, cancel_futures=True)
+            except TypeError:
+                with suppress(Exception):
+                    executor.shutdown(wait=True)
+
+        connections: list[sqlite3.Connection] = []
+        with suppress(Exception):
+            with self._connections_lock:
+                while self._active_sync_count > 0:
+                    self._active_sync_condition.wait()
+                connections = list(self._connections)
+                self._connections.clear()
+
+        thread_connection = self._pop_thread_local_connection()
+        if thread_connection is not None:
+            connections.append(thread_connection)
+
+        self._close_connections(connections, log_errors=False)
+
     def _finalize_unclosed_resources(self) -> None:
         """
         Best-effort cleanup path for leaked managers during garbage collection.
@@ -525,10 +597,10 @@ class DatabaseManager:
             with suppress(sqlite3.Error):
                 conn.close()
 
-        thread_local = getattr(self, "_thread_local", None)
-        if thread_local is not None and hasattr(thread_local, "connection"):
-            with suppress(AttributeError):
-                del thread_local.connection
+        thread_connection = self._pop_thread_local_connection()
+        if thread_connection is not None:
+            with suppress(sqlite3.Error):
+                thread_connection.close()
 
     def __del__(self) -> None:
         """
@@ -562,19 +634,11 @@ class DatabaseManager:
                 self._active_sync_condition.wait()
             connections = list(self._connections)
             self._connections.clear()
-            for conn in connections:
-                try:
-                    conn.close()
-                except sqlite3.Error:
-                    logger.debug(
-                        "Error closing connection during shutdown", exc_info=True
-                    )
+        thread_connection = self._pop_thread_local_connection()
+        if thread_connection is not None:
+            connections.append(thread_connection)
 
-        if hasattr(self._thread_local, "connection"):
-            try:
-                del self._thread_local.connection
-            except AttributeError:
-                pass
+        self._close_connections(connections, log_errors=True)
 
 
 # Convenience alias for type hints

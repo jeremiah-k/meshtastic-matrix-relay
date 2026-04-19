@@ -587,8 +587,8 @@ def _close_manager_safely(manager: DatabaseManager | None) -> None:
     """
     Close the given DatabaseManager if provided.
 
-    If close() fails, run the manager's best-effort finalizer to avoid leaked
-    sqlite connections during teardown.
+    If close() fails, run deterministic fallback cleanup to avoid leaked sqlite
+    connections during teardown.
     """
     if manager is None:
         return
@@ -599,10 +599,20 @@ def _close_manager_safely(manager: DatabaseManager | None) -> None:
     except (KeyboardInterrupt, SystemExit):
         raise
     except Exception:
-        logger.debug("Database manager close failed; forcing finalizer", exc_info=True)
+        logger.debug(
+            "Database manager close failed; forcing deterministic cleanup",
+            exc_info=True,
+        )
+
+    force_close = getattr(manager, "_force_close_unclosed_resources", None)
+    if callable(force_close):
+        with contextlib.suppress(Exception):
+            force_close()
+        return
 
     finalizer = getattr(manager, "_finalize_unclosed_resources", None)
     if callable(finalizer):
+        logger.debug("Falling back to best-effort manager finalizer cleanup")
         with contextlib.suppress(Exception):
             finalizer()
 
