@@ -11,6 +11,7 @@ This test module covers:
 """
 
 import asyncio
+import contextlib
 import os
 import sqlite3
 import tempfile
@@ -1079,7 +1080,13 @@ def temp_db_manager() -> Generator[DatabaseManager, None, None]:
     try:
         yield manager
     finally:
-        manager.close()
+        try:
+            manager.close()
+        except Exception:
+            force_close = getattr(manager, "_force_close_unclosed_resources", None)
+            if callable(force_close):
+                with contextlib.suppress(Exception):
+                    force_close()
         os.unlink(db_path)
 
 

@@ -255,6 +255,15 @@ class DatabaseManager:
 
         with self._connections_lock:
             self._connections.add(conn)
+        logger.debug(
+            "DB conn created: id=%d path=%s manager=%d thread=%s(%d) pool_size=%d",
+            id(conn),
+            self._path,
+            id(self),
+            threading.current_thread().name,
+            threading.current_thread().ident,
+            len(self._connections),
+        )
         return conn
 
     def _get_connection(self) -> sqlite3.Connection:
@@ -638,6 +647,12 @@ class DatabaseManager:
         if thread_connection is not None:
             connections.append(thread_connection)
 
+        logger.debug(
+            "DB manager close: id=%d path=%s closing %d connections",
+            id(self),
+            self._path,
+            len(connections),
+        )
         self._close_connections(connections, log_errors=True)
 
 
