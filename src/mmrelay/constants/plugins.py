@@ -108,7 +108,8 @@ SENSITIVE_URL_PARAMS: Final[frozenset[str]] = frozenset(
 )
 
 # Weather plugin constants
-WEATHER_COMMANDS: Final[tuple[str, ...]] = ("weather", "hourly", "daily")
+WEATHER_COMMANDS: Final[tuple[str, ...]] = ("weather", "hourly", "daily", "meteo")
+WEATHER_ALIASES: Final[dict[str, str]] = {"meteo": "daily"}
 
 # Weather mode constants
 WEATHER_MODE_CURRENT: Final[str] = "weather"

@@ -43,6 +43,7 @@ from mmrelay.constants.plugins import (
     OPEN_METEO_TIMEZONE_AUTO,
     WEATHER_API_TIMEOUT_SECONDS,
     WEATHER_CODE_TEXT_MAPPING,
+    WEATHER_ALIASES,
     WEATHER_COMMANDS,
     WEATHER_MODE_CURRENT,
     WEATHER_MODE_DAILY,
@@ -81,6 +82,7 @@ class Plugin(BasePlugin):
             str: A valid mode from WEATHER_COMMANDS. Unrecognized or empty inputs yield the default.
         """
         cmd = (mode or CANONICAL_WEATHER_MODE).lower()
+        cmd = WEATHER_ALIASES.get(cmd, cmd)
         if cmd in WEATHER_COMMANDS:
             return cmd
         return CANONICAL_WEATHER_MODE
