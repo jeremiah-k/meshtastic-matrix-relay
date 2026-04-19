@@ -16,9 +16,11 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.python-version == '3.14' }}
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -46,13 +48,8 @@ jobs:
           # Run full suite (including performance tests) now that they are fast and deterministic
           python -m pytest tests/ -v --cov --cov-report=xml --cov-report=html --junitxml=junit.xml
 
-      - name: Debug Python version for codecov
-        run: |
-          echo "Current Python version: ${{ matrix.python-version }}"
-          echo "Will upload coverage: ${{ matrix.python-version == '3.11' }}"
-
       - name: Upload coverage reports to Codecov
-        if: matrix.python-version == '3.11'
+        if: matrix.python-version == '3.13'
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
