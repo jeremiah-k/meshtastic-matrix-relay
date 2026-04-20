@@ -124,6 +124,11 @@ plugins:
     #require_bot_mention: true  # Override global setting for this plugin only
     units: imperial # Options: metric, imperial - Default is metric
     #channels: [] # Empty list, will only respond to DMs
+    # Optional command aliases. Map any name to a canonical command (weather, hourly, daily).
+    # Useful for shorter or locale-specific alternatives (e.g. !meteo → !daily).
+    #command_aliases:
+    #  meteo: daily
+    #  wx: weather
   nodes:
     active: true
     #require_bot_mention: true  # Override global setting for this plugin only
