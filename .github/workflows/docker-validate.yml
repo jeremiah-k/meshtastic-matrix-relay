@@ -73,6 +73,7 @@ jobs:
         with:
           name: MMRelay_docker_${{ env.FILE_VERSION }}
           path: /tmp/mmrelay-docker.tar
+          retention-days: 7
 
       - name: Smoke test — load and run image
         run: |

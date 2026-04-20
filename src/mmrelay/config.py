@@ -355,6 +355,9 @@ def get_explicit_credentials_path(config: Mapping[str, Any] | None) -> str | Non
     Returns:
         str | None: The configured credentials path string, or `None` if not set.
 
+    Precedence: MMRELAY_CREDENTIALS_PATH env var > top-level credentials_path > matrix.credentials_path.
+    All three sources are deprecated in favor of MMRELAY_HOME. Warnings are emitted once per process.
+
     Raises:
         InvalidCredentialsPathTypeError: If a found `credentials_path` value exists but is not a string.
     """
@@ -425,6 +428,9 @@ def get_plugin_data_dir(
     Returns:
         str: Absolute path to the resolved plugins directory or the plugin-specific data directory.
     """
+    # Note: This is the side-effect-bearing wrapper. The pure path resolver lives in
+    # mmrelay.paths.get_plugin_data_dir(). This version ensures directories exist and
+    # infers plugin_type from relay_config when not explicitly provided.
     plugins_data_dir = str(get_plugins_dir())
     os.makedirs(plugins_data_dir, exist_ok=True)
 
@@ -1423,64 +1429,6 @@ def load_config(
         else:
             logger.error(msg_suggest_generate_config())
     return {}
-
-
-def _resolve_credentials_path(
-    path_override: str | None, *, allow_relay_config_sources: bool
-) -> tuple[str, str]:
-    """
-    Resolve the filesystem path to credentials.json and its containing directory.
-
-    If an explicit path_override is provided (file or directory), or if allow_relay_config_sources
-    is True and an override is present via the MMRELAY_CREDENTIALS_PATH environment variable,
-    relay_config["credentials_path"], or relay_config["matrix"]["credentials_path"], that value
-    is resolved and normalized. If the resolved candidate refers to a directory (including when
-    it ends with a path separator) `credentials.json` is appended. When no override is found,
-    the function returns the default credentials path under the application's home MATRIX_DIRNAME.
-
-    Parameters:
-        path_override (str | None): Explicit file or directory path supplied by the caller.
-            If this points to a directory (or ends with a path separator), `credentials.json`
-            will be appended. Tilde-expansion and absolute path normalization are applied.
-        allow_relay_config_sources (bool): If True, also consider MMRELAY_CREDENTIALS_PATH and
-            the relay_config keys `credentials_path` and `matrix.credentials_path` as candidate
-            overrides when path_override is None.
-
-    Returns:
-        tuple[str, str]: (credentials_path, config_dir) where `credentials_path` is the
-        absolute path to the credentials.json file and `config_dir` is the directory that
-        will contain that file.
-    """
-    candidate = path_override
-
-    if not candidate and allow_relay_config_sources:
-        candidate = os.getenv("MMRELAY_CREDENTIALS_PATH")
-        if not candidate:
-            candidate = relay_config.get("credentials_path")
-        if not candidate:
-            matrix_config = relay_config.get(CONFIG_SECTION_MATRIX, {})
-            if isinstance(matrix_config, dict):
-                candidate = matrix_config.get("credentials_path")
-
-    if candidate:
-        candidate = os.path.abspath(os.path.expanduser(candidate))
-        path_is_dir = os.path.isdir(candidate)
-        if not path_is_dir:
-            path_is_dir = bool(
-                candidate.endswith(os.path.sep)
-                or (os.path.altsep and candidate.endswith(os.path.altsep))
-            )
-        if path_is_dir:
-            candidate = os.path.join(candidate, CREDENTIALS_FILENAME)
-        config_dir = os.path.dirname(candidate)
-        if not config_dir:
-            config_dir = str(get_home_dir())
-            candidate = os.path.join(config_dir, os.path.basename(candidate))
-        return candidate, config_dir
-
-    base_dir = str(get_home_dir())
-    matrix_dir = os.path.join(base_dir, MATRIX_DIRNAME)
-    return os.path.join(matrix_dir, CREDENTIALS_FILENAME), matrix_dir
 
 
 def validate_yaml_syntax(

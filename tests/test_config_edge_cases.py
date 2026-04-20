@@ -1055,82 +1055,6 @@ class TestConfigAdditionalCoverage(unittest.TestCase):
         assert is_valid is False
         assert parsed is None
 
-    @patch("mmrelay.config.relay_config", {"credentials_path": "/custom/creds.json"})
-    @patch("os.path.isdir", return_value=False)
-    @patch("os.path.abspath", side_effect=lambda x: x)
-    @patch("os.path.expanduser", side_effect=lambda x: x)
-    def test_resolve_credentials_path_relay_config(
-        self, mock_expand, mock_abs, mock_isdir
-    ):
-        from mmrelay.config import _resolve_credentials_path
-
-        result = _resolve_credentials_path(None, allow_relay_config_sources=True)
-        assert result[0] == "/custom/creds.json"
-
-    @patch(
-        "mmrelay.config.relay_config", {"matrix": {"credentials_path": "/matrix/creds"}}
-    )
-    @patch("os.path.isdir", return_value=False)
-    @patch("os.path.abspath", side_effect=lambda x: x)
-    @patch("os.path.expanduser", side_effect=lambda x: x)
-    def test_resolve_credentials_path_matrix_section(
-        self, mock_expand, mock_abs, mock_isdir
-    ):
-        from mmrelay.config import _resolve_credentials_path
-
-        result = _resolve_credentials_path(None, allow_relay_config_sources=True)
-        assert result[0] == "/matrix/creds"
-
-    @patch("mmrelay.config.relay_config", {})
-    @patch("mmrelay.config.get_home_dir", return_value=Path("/home/user"))
-    def test_resolve_credentials_path_default(self, mock_home):
-        from mmrelay.config import _resolve_credentials_path
-
-        result = _resolve_credentials_path(None, allow_relay_config_sources=False)
-        assert "matrix" in result[1]
-        assert CREDENTIALS_FILENAME in result[0]
-
-    @patch("mmrelay.config.relay_config", {})
-    @patch("os.path.isdir", return_value=True)
-    @patch("os.path.abspath", side_effect=lambda x: x)
-    @patch("os.path.expanduser", side_effect=lambda x: x)
-    def test_resolve_credentials_path_directory_appends_filename(
-        self, mock_expand, mock_abs, mock_isdir
-    ):
-        from mmrelay.config import _resolve_credentials_path
-
-        result = _resolve_credentials_path(
-            "/some/dir", allow_relay_config_sources=False
-        )
-        assert result[0].endswith(CREDENTIALS_FILENAME)
-
-    @patch("mmrelay.config.relay_config", {})
-    @patch("os.path.isdir", return_value=False)
-    @patch("mmrelay.config.get_home_dir", return_value=Path("/home"))
-    def test_resolve_credentials_path_empty_dirname(self, mock_home, mock_isdir):
-        from mmrelay.config import _resolve_credentials_path
-
-        result = _resolve_credentials_path(
-            "creds.json", allow_relay_config_sources=False
-        )
-        assert result[0].endswith("creds.json")
-
-    @patch("mmrelay.config.relay_config", {})
-    @patch("os.path.isdir", return_value=False)
-    @patch(
-        "os.path.abspath",
-        side_effect=lambda x: "/abs/" + x if not x.startswith("/") else x,
-    )
-    @patch("os.path.expanduser", side_effect=lambda x: x)
-    @patch("os.getenv", return_value="/env/creds.json")
-    def test_resolve_credentials_path_env_var(
-        self, mock_env, mock_expand, mock_abs, mock_isdir
-    ):
-        from mmrelay.config import _resolve_credentials_path
-
-        result = _resolve_credentials_path(None, allow_relay_config_sources=True)
-        assert "env" in result[0]
-
     def test_backward_compat_alias(self):
         from mmrelay.config import (
             get_candidate_credentials_paths,
@@ -1140,6 +1064,167 @@ class TestConfigAdditionalCoverage(unittest.TestCase):
         result1 = get_candidate_credentials_paths(include_base_data=False)
         result2 = get_credentials_search_paths(include_base_data=False)
         assert result1 == result2
+
+
+class TestLegacyPathOverrideWarnings(unittest.TestCase):
+    def setUp(self):
+        import mmrelay.config
+
+        mmrelay.config._legacy_path_override_warning_shown = False
+
+    def test_warn_on_mmrelay_credentials_path_env_var(self):
+        from mmrelay.config import _warn_on_legacy_path_overrides
+
+        with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": "/some/path"}):
+            with patch("mmrelay.config.logger") as mock_logger:
+                _warn_on_legacy_path_overrides(None)
+                warning_calls = [
+                    str(call) for call in mock_logger.warning.call_args_list
+                ]
+                assert any(
+                    "MMRELAY_CREDENTIALS_PATH" in msg for msg in warning_calls
+                ), f"No warning mentioning MMRELAY_CREDENTIALS_PATH in {warning_calls}"
+                assert any(
+                    "MMRELAY_HOME" in msg for msg in warning_calls
+                ), f"No warning mentioning MMRELAY_HOME in {warning_calls}"
+
+    def test_warn_on_top_level_credentials_path_config(self):
+        from mmrelay.config import _warn_on_legacy_path_overrides
+
+        config = {"credentials_path": "/some/path"}
+        with patch("mmrelay.config.logger") as mock_logger:
+            _warn_on_legacy_path_overrides(config)
+            warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
+            assert any(
+                "credentials_path" in msg for msg in warning_calls
+            ), f"No warning mentioning credentials_path in {warning_calls}"
+            assert any(
+                "MMRELAY_HOME" in msg for msg in warning_calls
+            ), f"No warning mentioning MMRELAY_HOME in {warning_calls}"
+
+    def test_warn_on_matrix_credentials_path_config(self):
+        from mmrelay.config import _warn_on_legacy_path_overrides
+
+        config = {"matrix": {"credentials_path": "/some/path"}}
+        with patch("mmrelay.config.logger") as mock_logger:
+            _warn_on_legacy_path_overrides(config)
+            warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
+            assert any(
+                "matrix.credentials_path" in msg for msg in warning_calls
+            ), f"No warning mentioning matrix.credentials_path in {warning_calls}"
+
+    def test_warn_on_matrix_e2ee_store_path_config(self):
+        from mmrelay.config import _warn_on_legacy_path_overrides
+
+        config = {"matrix": {"e2ee": {"store_path": "/some/path"}}}
+        with patch("mmrelay.config.logger") as mock_logger:
+            _warn_on_legacy_path_overrides(config)
+            warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
+            assert any(
+                "e2ee" in msg and "store_path" in msg for msg in warning_calls
+            ), f"No warning mentioning e2ee store_path in {warning_calls}"
+
+    def test_warn_on_matrix_encryption_store_path_config(self):
+        from mmrelay.config import _warn_on_legacy_path_overrides
+
+        config = {"matrix": {"encryption": {"store_path": "/some/path"}}}
+        with patch("mmrelay.config.logger") as mock_logger:
+            _warn_on_legacy_path_overrides(config)
+            warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
+            assert any(
+                "encryption" in msg and "store_path" in msg for msg in warning_calls
+            ), f"No warning mentioning encryption store_path in {warning_calls}"
+
+    def test_warning_emitted_once_per_process(self):
+        from mmrelay.config import _warn_on_legacy_path_overrides
+
+        config = {"credentials_path": "/some/path"}
+        with patch("mmrelay.config.logger") as mock_logger:
+            _warn_on_legacy_path_overrides(config)
+            _warn_on_legacy_path_overrides(config)
+            assert mock_logger.warning.call_count == 1
+
+    def test_no_warning_when_no_legacy_overrides(self):
+        from mmrelay.config import _warn_on_legacy_path_overrides
+
+        with patch.dict(os.environ, {}, clear=False):
+            with patch("mmrelay.config.logger") as mock_logger:
+                _warn_on_legacy_path_overrides({})
+                mock_logger.warning.assert_not_called()
+
+    def test_no_warning_with_mmrelay_home_only(self):
+        from mmrelay.config import _warn_on_legacy_path_overrides
+
+        with patch.dict(os.environ, {"MMRELAY_HOME": "/home/mmrelay"}):
+            with patch("mmrelay.config.logger") as mock_logger:
+                _warn_on_legacy_path_overrides({})
+                mock_logger.warning.assert_not_called()
+
+    def test_warning_includes_removal_version(self):
+        from mmrelay.config import _warn_on_legacy_path_overrides
+
+        config = {"credentials_path": "/some/path"}
+        with patch("mmrelay.config.logger") as mock_logger:
+            _warn_on_legacy_path_overrides(config)
+            warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
+            assert any(
+                "1.4" in msg for msg in warning_calls
+            ), f"No warning mentioning 1.4 in {warning_calls}"
+
+    def test_get_explicit_credentials_path_warns_on_env_var(self):
+        from mmrelay.config import get_explicit_credentials_path
+
+        with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": "/env/creds.json"}):
+            with patch("mmrelay.config.logger") as mock_logger:
+                result = get_explicit_credentials_path(None)
+                assert result == "/env/creds.json"
+                warning_calls = [
+                    str(call) for call in mock_logger.warning.call_args_list
+                ]
+                assert any(
+                    "MMRELAY_CREDENTIALS_PATH" in msg for msg in warning_calls
+                ), f"No warning mentioning MMRELAY_CREDENTIALS_PATH in {warning_calls}"
+                assert any(
+                    "MMRELAY_HOME" in msg for msg in warning_calls
+                ), f"No warning mentioning MMRELAY_HOME in {warning_calls}"
+
+    def test_get_explicit_credentials_path_no_double_warn(self):
+        from mmrelay.config import (
+            _warn_on_legacy_path_overrides,
+            get_explicit_credentials_path,
+        )
+
+        config = {"credentials_path": "/some/path"}
+        with patch("mmrelay.config.logger") as mock_logger:
+            _warn_on_legacy_path_overrides(config)
+            with patch.dict(
+                os.environ, {"MMRELAY_CREDENTIALS_PATH": "/env/creds.json"}
+            ):
+                get_explicit_credentials_path(None)
+            assert mock_logger.warning.call_count == 1
+
+    def test_precedence_env_var_over_config(self):
+        from mmrelay.config import get_explicit_credentials_path
+
+        with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": "/env/path"}):
+            with patch("mmrelay.config.logger"):
+                result = get_explicit_credentials_path(
+                    {"credentials_path": "/config/path"}
+                )
+                assert result == "/env/path"
+
+    def test_precedence_top_level_over_matrix_section(self):
+        from mmrelay.config import get_explicit_credentials_path
+
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("mmrelay.config.logger"):
+                result = get_explicit_credentials_path(
+                    {
+                        "credentials_path": "/top/path",
+                        "matrix": {"credentials_path": "/matrix/path"},
+                    }
+                )
+                assert result == "/top/path"
 
 
 if __name__ == "__main__":
