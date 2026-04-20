@@ -8,7 +8,7 @@ event loop (with Runner or manual new_event_loop) to execute a coroutine.
 import asyncio
 from collections.abc import Coroutine
 from types import TracebackType
-from typing import Any, Self
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -47,7 +47,7 @@ class TestSubmitCoroNoLoopFallback:
                 """
                 self._runner = MagicMock()
 
-            def __enter__(self) -> Self:
+            def __enter__(self) -> "FakeRunner":
                 """
                 Enter the context manager and provide the context object.
 
