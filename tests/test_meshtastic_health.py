@@ -239,7 +239,7 @@ class TestHandleProbeAckCallback:
         _handle_probe_ack_callback(local_node, {"decoded": {}, "from": 1234})
         assert ack.receivedImplAck is True
 
-    def test_routing_error_reason_none_falls_through(self):
+    def test_routing_without_error_reason_falls_through(self):
         from mmrelay.meshtastic.health import _handle_probe_ack_callback
 
         local_node = MagicMock()
