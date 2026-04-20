@@ -6,6 +6,8 @@ Covers:
 - _get_db_manager lines 778-779: RuntimeError when manager_to_return is None
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from mmrelay.db_utils import (
@@ -37,25 +39,20 @@ class TestCloseManagerSafelyKeyboardInterrupt:
     """Tests for _close_manager_safely re-raising KeyboardInterrupt."""
 
     def test_keyboard_interrupt_is_reraised(self):
-        mock_mgr = type(
-            "FakeMgr",
-            (),
-            {"close": lambda self: (_ for _ in ()).throw(KeyboardInterrupt("ctrl-c"))},
-        )()
+        mock_mgr = MagicMock()
+        mock_mgr.close.side_effect = KeyboardInterrupt("ctrl-c")
         with pytest.raises(KeyboardInterrupt):
             _close_manager_safely(mock_mgr)
 
     def test_system_exit_is_reraised(self):
-        mock_mgr = type(
-            "FakeMgr", (), {"close": lambda self: (_ for _ in ()).throw(SystemExit(1))}
-        )()
+        mock_mgr = MagicMock()
+        mock_mgr.close.side_effect = SystemExit(1)
         with pytest.raises(SystemExit):
             _close_manager_safely(mock_mgr)
 
     def test_generic_exception_is_logged(self, caplog):
         import logging
         import sqlite3
-        from unittest.mock import MagicMock
 
         import mmrelay.db_utils
 
@@ -71,8 +68,6 @@ class TestCloseManagerSafelyKeyboardInterrupt:
         )
 
     def test_runtime_error_is_reraised(self):
-        from unittest.mock import MagicMock
-
         mock_mgr = MagicMock()
         mock_mgr.close.side_effect = RuntimeError("close failed")
         with pytest.raises(RuntimeError, match="close failed"):
@@ -91,8 +86,6 @@ class TestGetDbManagerNullReturn:
 
         Patches get_db_path and _resolve_database_options to fixed values and forces DatabaseManager construction to raise RuntimeError; resets the cached manager state and asserts that calling _get_db_manager() raises a RuntimeError with a message matching "init failed" or "initialization failed".
         """
-        from unittest.mock import patch
-
         with (
             patch(
                 "mmrelay.db_utils.get_db_path",
@@ -102,13 +95,11 @@ class TestGetDbManagerNullReturn:
                 "mmrelay.db_utils._resolve_database_options",
                 return_value=(True, 5000, {}),
             ),
-        ):
-            with patch(
+            patch(
                 "mmrelay.db_utils.DatabaseManager",
                 side_effect=RuntimeError("init failed"),
-            ):
-                _reset_db_manager()
-                with pytest.raises(
-                    RuntimeError, match="init failed|initialization failed"
-                ):
-                    _get_db_manager()
+            ),
+        ):
+            _reset_db_manager()
+            with pytest.raises(RuntimeError, match="init failed|initialization failed"):
+                _get_db_manager()

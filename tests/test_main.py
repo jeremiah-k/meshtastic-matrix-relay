@@ -3156,7 +3156,7 @@ class TestStartupRollback(unittest.TestCase):
             """
             return check_conn_sentinel
 
-        def mock_create_task(coro: Any, *_args: Any, **_kwargs: Any) -> Any:
+        def mock_create_task(coro: object, *_args: object, **_kwargs: object) -> object:
             """
             Provide a test stub for asyncio.create_task that returns prebuilt mock tasks for recognized inputs and fails for anything unexpected.
 

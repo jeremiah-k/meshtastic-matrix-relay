@@ -684,11 +684,13 @@ class TestDatabaseManager(unittest.TestCase):
         result1, result2 = asyncio.run(run_test())
         self.assertEqual((result1, result2), ("first", "second"))
 
-        with contextlib.closing(sqlite3.connect(self.db_path)) as conn:
-            with conn as managed_conn:
-                count = managed_conn.execute(
-                    "SELECT COUNT(*) FROM test_async_close"
-                ).fetchone()[0]
+        with (
+            contextlib.closing(sqlite3.connect(self.db_path)) as conn,
+            conn as managed_conn,
+        ):
+            count = managed_conn.execute(
+                "SELECT COUNT(*) FROM test_async_close"
+            ).fetchone()[0]
         self.assertEqual(count, 2)
 
     def test_thread_local_connections(self):

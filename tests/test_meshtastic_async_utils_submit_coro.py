@@ -118,10 +118,13 @@ class TestSubmitCoroNoLoopFallback:
         mock_asyncio.AbstractEventLoop = real_asyncio.AbstractEventLoop
 
         coro = self._make_coro()
-        with patch.object(mu, "asyncio", mock_asyncio):
-            result = _submit_coro(coro)
-        assert result is not None
-        assert result.result(timeout=2) == 42
+        try:
+            with patch.object(mu, "asyncio", mock_asyncio):
+                result = _submit_coro(coro)
+            assert result is not None
+            assert result.result(timeout=2) == 42
+        finally:
+            asyncio.set_event_loop(None)
 
     def test_fallback_sets_event_loop_none_on_cleanup(self):
         from mmrelay.meshtastic.async_utils import _submit_coro

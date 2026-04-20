@@ -1189,7 +1189,7 @@ class TestMigrateDatabaseEdgeCases:
         with mock.patch("sqlite3.connect") as mock_connect:
             mock_conn = mock.MagicMock()
             mock_conn.execute.return_value.fetchone.return_value = ["corrupted"]
-            mock_connect.return_value.__enter__.return_value = mock_conn
+            mock_connect.return_value = mock_conn
 
             with pytest.raises(MigrationError) as exc_info:
                 migrate_database([legacy_root_dir], new_home, dry_run=False, force=True)
@@ -1245,7 +1245,7 @@ class TestMigrateDatabaseEdgeCases:
         with mock.patch("sqlite3.connect") as mock_connect:
             mock_conn = mock.MagicMock()
             mock_conn.execute.return_value.fetchone.return_value = ["corrupted"]
-            mock_connect.return_value.__enter__.return_value = mock_conn
+            mock_connect.return_value = mock_conn
 
             with pytest.raises(MigrationError) as exc_info:
                 migrate_database([legacy_root_dir], new_home, dry_run=False, force=True)

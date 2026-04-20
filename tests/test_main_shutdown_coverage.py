@@ -10,7 +10,6 @@ Covers:
 import asyncio
 import unittest
 from collections.abc import Generator
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
@@ -30,7 +29,7 @@ from tests.helpers import (
 _make_patched_get_running_loop = make_patched_get_running_loop
 
 
-def _make_async_return(value):
+def _make_async_return(value: object) -> MagicMock:
     """
     Create an async function that ignores its arguments and always returns the given value.
 
@@ -41,7 +40,7 @@ def _make_async_return(value):
         async_callable (callable): An async function that accepts any arguments and returns `value` when awaited.
     """
 
-    async def _async_return(*_args, **_kwargs):
+    async def _async_return(*_args: object, **_kwargs: object) -> object:
         return value
 
     return _async_return
@@ -50,7 +49,7 @@ def _make_async_return(value):
 class _ImmediateAwaitable:
     """Lightweight awaitable that resolves immediately without creating coroutines."""
 
-    def __init__(self, value: Any = None) -> None:
+    def __init__(self, value: object = None) -> None:
         """
         Initialize the awaitable that immediately returns a stored value when awaited.
 
@@ -59,7 +58,7 @@ class _ImmediateAwaitable:
         """
         self._value = value
 
-    def __await__(self) -> Generator[None, None, Any]:
+    def __await__(self) -> Generator[None, None, object]:
         """
         Provide the generator required by the await protocol and immediately yield the wrapped value.
 
@@ -86,7 +85,7 @@ def _make_matrix_client_with_awaitable_close() -> MagicMock:
     return client
 
 
-async def _async_noop(*_args, **_kwargs) -> None:
+async def _async_noop(*_args: object, **_kwargs: object) -> None:
     """
     Immediately completes without performing any action.
 
@@ -192,7 +191,9 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
 
             runtime_error = RuntimeError("background task exploded")
 
-            async def _check_connection_that_raises_after_delay(*_args, **_kwargs):
+            async def _check_connection_that_raises_after_delay(
+                *_args: object, **_kwargs: object
+            ) -> None:
                 await asyncio.sleep(0.5)
                 raise runtime_error
 
@@ -269,14 +270,18 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
             original_wait_for = asyncio.wait_for
             wait_for_call_count = 0
 
-            async def _wait_for_that_times_out_on_gather(coro, timeout):
+            async def _wait_for_that_times_out_on_gather(
+                coro: object, timeout: object = None
+            ) -> None:
                 nonlocal wait_for_call_count
                 wait_for_call_count += 1
                 if wait_for_call_count >= 2:
                     raise asyncio.TimeoutError()
                 return await original_wait_for(coro, timeout)
 
-            async def _check_connection_that_ignores_cancel(*_args, **_kwargs):
+            async def _check_connection_that_ignores_cancel(
+                *_args: object, **_kwargs: object
+            ) -> None:
                 try:
                     while True:
                         await asyncio.sleep(10)
@@ -377,7 +382,9 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
             captured_future = None
             cancel_observed = False
 
-            def _capture_reconnect_future(*_args, **_kwargs):
+            def _capture_reconnect_future(
+                *_args: object, **_kwargs: object
+            ) -> MagicMock:
                 """
                 Create and store a long-running reconnect task and record it in module state.
 
@@ -389,7 +396,7 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
                 nonlocal captured_future
                 nonlocal cancel_observed
 
-                async def _fake_reconnect():
+                async def _fake_reconnect() -> None:
                     nonlocal cancel_observed
                     try:
                         await asyncio.sleep(300)
@@ -403,7 +410,7 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
                 return None
 
             async def _capture_reconnect_future_async(
-                *_args: Any, **_kwargs: Any
+                *_args: object, **_kwargs: object
             ) -> None:
                 """
                 Trigger creation and capture of the reconnect task/future during tests.

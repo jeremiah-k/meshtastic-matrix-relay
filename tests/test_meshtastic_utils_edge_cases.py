@@ -297,6 +297,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         mock_interface = MagicMock()
 
+        class _PluginFailure(RuntimeError):
+            """Test-specific plugin failure."""
+
         def _submit_coro_mock(coro, loop=None):
             """
             Run an awaitable immediately and return a concurrent.futures.Future completed with its outcome.
@@ -315,7 +318,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 # Execute the coroutine to trigger the exception
                 result = asyncio.run(coro)
                 f.set_result(result)
-            except Exception as e:
+            except _PluginFailure as e:
                 f.set_exception(e)
             finally:
                 if asyncio.iscoroutine(coro):
@@ -330,7 +333,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             mock_plugin = MagicMock()
             mock_plugin.plugin_name = "test_plugin"
             mock_plugin.handle_meshtastic_message = AsyncMock(
-                side_effect=Exception("Plugin failed")
+                side_effect=_PluginFailure("Plugin failed")
             )
             mock_load_plugins.return_value = [mock_plugin]
             mock_submit_coro.side_effect = _submit_coro_mock
@@ -539,19 +542,22 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             }
             mmrelay.meshtastic_utils.event_loop = MagicMock()
 
+            class _MatrixRelayFailure(RuntimeError):
+                """Test-specific Matrix relay failure."""
+
             def _submit_raises(coro: object, **_kwargs: object) -> NoReturn:
                 """
-                Close the given coroutine (if one) and unconditionally raise an exception indicating matrix relay failure.
+                Close the given coroutine (if one) and raise Matrix relay failure.
 
                 Parameters:
-                    coro: A coroutine or any object; if `coro` is a coroutine it will be closed before raising.
+                    coro: A coroutine or any object; if coroutine it will be closed before raising.
 
                 Raises:
-                    Exception: Always raised with the message "Matrix relay failed".
+                    _MatrixRelayFailure: Always raised.
                 """
                 if asyncio.iscoroutine(coro):
                     coro.close()
-                raise Exception("Matrix relay failed")
+                raise _MatrixRelayFailure("Matrix relay failed")
 
             mock_submit_coro.side_effect = _submit_raises
             on_meshtastic_message(packet, mock_interface)
