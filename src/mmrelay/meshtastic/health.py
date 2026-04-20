@@ -383,9 +383,21 @@ def _handle_probe_ack_callback(local_node: Any, packet: Any) -> None:
 
     decoded = packet.get("decoded") if isinstance(packet, dict) else None
     routing = decoded.get("routing") if isinstance(decoded, dict) else None
+    request_id = decoded.get("requestId") if isinstance(decoded, dict) else None
+    port_num = decoded.get("portnum") if isinstance(decoded, dict) else None
+    facade.logger.debug(
+        "[HEALTH_CHECK] Probe ACK callback invoked: portnum=%s requestId=%s has_routing=%s",
+        port_num,
+        request_id,
+        routing is not None,
+    )
     if isinstance(routing, dict):
         error_reason = routing.get("errorReason")
         if error_reason and error_reason != "NONE":
+            facade.logger.debug(
+                "[HEALTH_CHECK] Probe ACK callback routing errorReason=%s",
+                error_reason,
+            )
             if hasattr(ack_state, "receivedNak"):
                 ack_state.receivedNak = True
                 return
@@ -459,6 +471,12 @@ def _probe_device_connection(
         ack_state = getattr(getattr(local_node, "iface", None), "_acknowledgment", None)
     if ack_state is not None:
         facade._reset_probe_ack_state(ack_state)
+
+    facade.logger.debug(
+        "[HEALTH_CHECK] Sending metadata probe: ack_state=%s local_node=%s",
+        "available" if ack_state is not None else "unavailable",
+        "available" if local_node is not None else "unavailable",
+    )
 
     request = facade.admin_pb2.AdminMessage()
     request.get_device_metadata_request = True

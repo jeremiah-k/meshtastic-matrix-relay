@@ -791,7 +791,13 @@ def test_connect_meshtastic_schedules_one_shot_probe_when_periodic_health_disabl
         patch(
             "mmrelay.meshtastic_utils._probe_device_connection"
         ) as mock_probe_device_connection,
+        patch(
+            "mmrelay.meshtastic_utils.time.monotonic",
+            return_value=1_000.0,
+        ),
     ):
+        mu._startup_packet_drain_applied = True
+        mu._relay_startup_drain_deadline_monotonic_secs = None
         config = {
             "meshtastic": {
                 "connection_type": CONNECTION_TYPE_TCP,
@@ -831,7 +837,13 @@ def test_connect_meshtastic_probe_invalid_override_inherits_parent_enabled():
             return_value={"firmware_version": "unknown", "success": False},
         ),
         patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit_probe,
+        patch(
+            "mmrelay.meshtastic_utils.time.monotonic",
+            return_value=1_000.0,
+        ),
     ):
+        mu._startup_packet_drain_applied = True
+        mu._relay_startup_drain_deadline_monotonic_secs = None
         config = {
             "meshtastic": {
                 "connection_type": CONNECTION_TYPE_TCP,
@@ -905,7 +917,13 @@ def test_connect_meshtastic_probe_inherits_parent_when_override_omitted():
         patch(
             "mmrelay.meshtastic_utils._probe_device_connection"
         ) as mock_probe_device_connection,
+        patch(
+            "mmrelay.meshtastic_utils.time.monotonic",
+            return_value=1_000.0,
+        ),
     ):
+        mu._startup_packet_drain_applied = True
+        mu._relay_startup_drain_deadline_monotonic_secs = None
         config = {
             "meshtastic": {
                 "connection_type": CONNECTION_TYPE_TCP,

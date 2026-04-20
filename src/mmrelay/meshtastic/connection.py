@@ -2,6 +2,7 @@ import contextlib
 import functools
 import inspect
 import math
+import threading
 from concurrent.futures import Future
 from typing import Any, NoReturn
 
@@ -191,36 +192,55 @@ def _schedule_connect_time_calibration_probe(
         )
         return
 
-    try:
-        probe_future = facade._submit_metadata_probe(
-            functools.partial(
-                facade._probe_device_connection,
-                client,
-                timeout_secs,
+    def _submit_probe() -> None:
+        try:
+            probe_future = facade._submit_metadata_probe(
+                functools.partial(
+                    facade._probe_device_connection,
+                    client,
+                    timeout_secs,
+                )
             )
-        )
-    except facade.MetadataExecutorDegradedError:
-        facade.logger.debug(
-            "Skipping connect-time metadata probe; metadata executor is degraded"
-        )
-        return
-    except RuntimeError as exc:
-        facade.logger.debug(
-            "Skipping connect-time metadata probe; submission failed",
-            exc_info=exc,
-        )
-        return
+        except facade.MetadataExecutorDegradedError:
+            facade.logger.debug(
+                "Skipping connect-time metadata probe; metadata executor is degraded"
+            )
+            return
+        except RuntimeError as exc:
+            facade.logger.debug(
+                "Skipping connect-time metadata probe; submission failed",
+                exc_info=exc,
+            )
+            return
 
-    if probe_future is None:
-        facade.logger.debug(
-            "Skipping connect-time metadata probe; metadata probe already in progress"
-        )
-        return
+        if probe_future is None:
+            facade.logger.debug(
+                "Skipping connect-time metadata probe; metadata probe already in progress"
+            )
+            return
 
-    facade.logger.debug(
-        "Scheduled one-shot connect-time metadata probe (timeout=%.1fs)",
-        timeout_secs,
-    )
+        facade.logger.debug(
+            "Scheduled one-shot connect-time metadata probe (timeout=%.1fs)",
+            timeout_secs,
+        )
+
+    with facade._relay_rx_time_clock_skew_lock:
+        drain_deadline = facade._relay_startup_drain_deadline_monotonic_secs
+
+    if drain_deadline is not None:
+        remaining = drain_deadline - facade.time.monotonic()
+        if remaining > 0:
+            delay = remaining + 2.0
+            facade.logger.debug(
+                "Delaying connect-time metadata probe by %.1fs until after startup drain window",
+                delay,
+            )
+            timer = threading.Timer(delay, _submit_probe)
+            timer.daemon = True
+            timer.start()
+            return
+
+    _submit_probe()
 
 
 def _rollback_connect_attempt_state(
