@@ -5,11 +5,23 @@ and legacy config handling during Matrix connection establishment.
 """
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
 from mmrelay.matrix_utils import MissingMatrixRoomsError, connect_matrix
+
+
+class _ImmediateAwaitable:
+    """Awaitable that resolves immediately without creating coroutine objects."""
+
+    def __init__(self, value=None):
+        self._value = value
+
+    def __await__(self):
+        if False:  # pragma: no cover
+            yield
+        return self._value
 
 
 @pytest.mark.asyncio
@@ -71,28 +83,24 @@ async def test_connect_matrix_missing_matrix_rooms_raises():
 
 
 @pytest.mark.asyncio
-@patch("mmrelay.matrix_utils.async_load_credentials", new_callable=AsyncMock)
 @patch("mmrelay.matrix_utils._create_ssl_context")
 @patch("mmrelay.matrix_utils.AsyncClient")
-async def test_connect_matrix_legacy_config(
-    mock_async_client, mock_ssl_context, mock_load_credentials
-):
+async def test_connect_matrix_legacy_config(mock_async_client, mock_ssl_context):
     """Test Matrix connection with legacy config (no E2EE)."""
-    # No credentials.json available
-    mock_load_credentials.return_value = None
-
     # Mock SSL context
     mock_ssl_context.return_value = MagicMock()
 
     # Mock AsyncClient instance
     mock_client_instance = MagicMock()
-    mock_client_instance.sync = AsyncMock()
+    mock_client_instance.sync = Mock(
+        return_value=_ImmediateAwaitable(SimpleNamespace())
+    )
     mock_client_instance.rooms = {}
-    mock_client_instance.whoami = AsyncMock()
-    mock_client_instance.whoami.return_value = MagicMock(device_id="LEGACY_DEVICE")
-    mock_client_instance.get_displayname = AsyncMock()
-    mock_client_instance.get_displayname.return_value = MagicMock(
-        displayname="Test Bot"
+    mock_client_instance.whoami = Mock(
+        return_value=_ImmediateAwaitable(MagicMock(device_id="LEGACY_DEVICE"))
+    )
+    mock_client_instance.get_displayname = Mock(
+        return_value=_ImmediateAwaitable(MagicMock(displayname="Test Bot"))
     )
     mock_async_client.return_value = mock_client_instance
 
@@ -107,7 +115,13 @@ async def test_connect_matrix_legacy_config(
     }
 
     # Mock the global matrix_client to None to ensure fresh creation
-    with patch("mmrelay.matrix_utils.matrix_client", None):
+    with (
+        patch("mmrelay.matrix_utils.matrix_client", None),
+        patch(
+            "mmrelay.matrix_utils.async_load_credentials",
+            Mock(return_value=_ImmediateAwaitable(None)),
+        ),
+    ):
         client = await connect_matrix(test_config)
 
         assert client is not None

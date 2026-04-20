@@ -3144,15 +3144,17 @@ class TestStartupRollback(unittest.TestCase):
 
         config = {"matrix_rooms": [{"id": "!room:matrix.org"}]}
 
-        async def mock_check_conn():
-            return None
+        check_conn_sentinel = object()
+
+        def mock_check_conn():
+            # Return a non-coroutine sentinel; create_task is patched below.
+            return check_conn_sentinel
 
         def mock_create_task(coro, *args, **kwargs):
+            if coro is check_conn_sentinel:
+                return mock_check_task
             if inspect.iscoroutine(coro):
                 coro_name = getattr(getattr(coro, "cr_code", None), "co_name", "")
-                if coro_name == "mock_check_conn":
-                    coro.close()
-                    return mock_check_task
                 if coro_name == "_node_name_refresh_supervisor":
                     coro.close()
                     return mock_supervisor_task

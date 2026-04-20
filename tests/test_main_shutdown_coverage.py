@@ -9,7 +9,7 @@ Covers:
 
 import asyncio
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
 from mmrelay.main import main
@@ -33,6 +33,25 @@ def _make_async_return(value):
         return value
 
     return _async_return
+
+
+class _ImmediateAwaitable:
+    """Lightweight awaitable that resolves immediately without creating coroutines."""
+
+    def __init__(self, value=None):
+        self._value = value
+
+    def __await__(self):
+        if False:  # pragma: no cover
+            yield
+        return self._value
+
+
+def _make_matrix_client_with_awaitable_close():
+    """Build a matrix client mock whose close() is awaitable and warning-safe."""
+    client = MagicMock()
+    client.close = MagicMock(return_value=_ImmediateAwaitable(None))
+    return client
 
 
 async def _async_noop(*_args, **_kwargs) -> None:
@@ -141,7 +160,9 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
                 patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
                 patch(
                     "mmrelay.main.connect_matrix",
-                    side_effect=_make_async_return(MagicMock(close=AsyncMock())),
+                    side_effect=_make_async_return(
+                        _make_matrix_client_with_awaitable_close()
+                    ),
                 ),
                 patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
                 patch("mmrelay.main.shutdown_plugins"),
@@ -216,7 +237,9 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
                 patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
                 patch(
                     "mmrelay.main.connect_matrix",
-                    side_effect=_make_async_return(MagicMock(close=AsyncMock())),
+                    side_effect=_make_async_return(
+                        _make_matrix_client_with_awaitable_close()
+                    ),
                 ),
                 patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
                 patch("mmrelay.main.shutdown_plugins"),
@@ -324,7 +347,9 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
                 patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
                 patch(
                     "mmrelay.main.connect_matrix",
-                    side_effect=_make_async_return(MagicMock(close=AsyncMock())),
+                    side_effect=_make_async_return(
+                        _make_matrix_client_with_awaitable_close()
+                    ),
                 ),
                 patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
                 patch("mmrelay.main.shutdown_plugins"),
