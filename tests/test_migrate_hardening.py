@@ -1,5 +1,6 @@
 """Tests for migration hardening: staging, already-migrated guards, and backups."""
 
+import contextlib
 import sqlite3
 from pathlib import Path
 from unittest.mock import patch
@@ -146,10 +147,11 @@ def test_database_migration_success(tmp_path: Path) -> None:
     assert migrated_db_path.exists()
     assert not db_path.exists()
 
-    with sqlite3.connect(migrated_db_path) as conn:
-        row = conn.execute(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='test'"
-        ).fetchone()
+    with contextlib.closing(sqlite3.connect(migrated_db_path)) as conn:
+        with conn as managed_conn:
+            row = managed_conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='test'"
+            ).fetchone()
     assert row is not None
     assert row[0] == 1
 
@@ -161,9 +163,9 @@ def test_database_migration_move_failure_preserves_legacy_source(
     legacy_root = tmp_path / "legacy"
     legacy_root.mkdir()
     db_path = legacy_root / DATABASE_FILENAME
-    with sqlite3.connect(db_path) as conn:
-        conn.execute("CREATE TABLE test (id INTEGER)")
-        conn.commit()
+    with contextlib.closing(sqlite3.connect(db_path)) as conn:
+        with conn:
+            conn.execute("CREATE TABLE test (id INTEGER)")
 
     new_home = tmp_path / "home"
 

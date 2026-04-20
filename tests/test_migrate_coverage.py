@@ -8,6 +8,7 @@ follow pytest conventions and document the purpose of each test case.
 Inline comments explain test assertions and expected behavior for clarity.
 """
 
+import contextlib
 import os
 import shutil
 import sqlite3
@@ -229,7 +230,7 @@ class TestMigrateAdditionalCoverage:
         new_db_dir = new_home / "database"
         new_db_dir.mkdir(parents=True)
         target_db = new_db_dir / DATABASE_FILENAME
-        with sqlite3.connect(target_db):
+        with contextlib.closing(sqlite3.connect(target_db)):
             pass
 
         symlink_root = tmp_path / "symlink_root"
@@ -259,13 +260,13 @@ class TestMigrateAdditionalCoverage:
         legacy_root_old = tmp_path / "legacy_old"
         legacy_root_old.mkdir()
         old_db = legacy_root_old / DATABASE_FILENAME
-        with sqlite3.connect(old_db):
+        with contextlib.closing(sqlite3.connect(old_db)):
             pass
 
         legacy_root_new = tmp_path / "legacy_new"
         legacy_root_new.mkdir()
         most_recent = legacy_root_new / DATABASE_FILENAME
-        with sqlite3.connect(most_recent):
+        with contextlib.closing(sqlite3.connect(most_recent)):
             pass
         extra_sidecar = legacy_root_new / "meshtastic.sqlite-wal"
         extra_sidecar.write_text("", encoding="utf-8")
@@ -1244,7 +1245,7 @@ class TestMigrateDatabaseEdgeCases:
         with mock.patch("sqlite3.connect") as mock_connect:
             mock_conn = mock.MagicMock()
             mock_conn.execute.return_value.fetchone.return_value = ["corrupted"]
-            mock_connect.return_value = mock_conn
+            mock_connect.return_value.__enter__.return_value = mock_conn
 
             with pytest.raises(MigrationError) as exc_info:
                 migrate_database([legacy_root_dir], new_home, dry_run=False, force=True)

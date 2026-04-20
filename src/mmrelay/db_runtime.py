@@ -535,11 +535,24 @@ class DatabaseManager:
                         "Error closing connection during shutdown", exc_info=True
                     )
 
-        if hasattr(self._thread_local, "connection"):
+        old_thread_local = self._thread_local
+        self._thread_local = threading.local()
+
+        if hasattr(old_thread_local, "connection"):
             try:
-                del self._thread_local.connection
+                del old_thread_local.connection
             except AttributeError:
                 pass
+
+    def __del__(self) -> None:
+        """
+        Best-effort fallback to avoid leaving connections open if close() is skipped.
+        """
+        try:
+            self.close()
+        except Exception:
+            # Avoid surfacing destructor-time errors during interpreter shutdown.
+            pass
 
 
 # Convenience alias for type hints

@@ -3,6 +3,7 @@ Command-line interface handling for Meshtastic Matrix Relay.
 """
 
 import argparse
+import contextlib
 import importlib
 import importlib.resources
 import ipaddress
@@ -2143,8 +2144,9 @@ def _print_system_health(paths_info: dict[str, Any]) -> None:
 
             # Check WAL mode if possible
             try:
-                with sqlite3.connect(str(db_path)) as conn:
-                    cursor = conn.execute("PRAGMA journal_mode;")
+                with contextlib.closing(sqlite3.connect(str(db_path))) as conn:
+                    with conn as managed_conn:
+                        cursor = managed_conn.execute("PRAGMA journal_mode;")
                     mode = cursor.fetchone()[0]
                     if mode.lower() == "wal":
                         print("      Journal: WAL mode ✅")

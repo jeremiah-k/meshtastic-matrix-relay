@@ -20,7 +20,8 @@ import sqlite3
 import sys
 import tempfile
 import unittest
-from typing import Any
+from contextlib import contextmanager
+from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 
 # Add src to path for imports
@@ -98,6 +99,22 @@ def _make_failing_cursor_proxy_side_effect(write_failed_flag: list[bool]):
         return original_run_sync(self, func, write=write)
 
     return fail_on_first_write, original_run_sync
+
+
+@contextmanager
+def _managed_sqlite_connection(path: str) -> Generator[sqlite3.Connection, None, None]:
+    """
+    Yield a SQLite connection with transaction semantics and guaranteed closure.
+
+    The built-in sqlite3 connection context manager commits/rolls back but does not
+    close the connection. Wrapping it ensures tests do not leak file handles.
+    """
+    conn = sqlite3.connect(path)
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 class TestDbUtils(unittest.TestCase):
@@ -269,7 +286,7 @@ class TestDbUtils(unittest.TestCase):
         self.assertTrue(os.path.exists(self.test_db_path))
 
         # Verify tables were created
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             cursor = conn.cursor()
 
             # Check longnames table
@@ -303,7 +320,7 @@ class TestDbUtils(unittest.TestCase):
 
     def test_initialize_database_migrates_legacy_message_map_with_mesh_column(self):
         """Legacy table with meshnet should be merged then dropped."""
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "CREATE TABLE message_map (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
@@ -319,7 +336,7 @@ class TestDbUtils(unittest.TestCase):
 
         initialize_database()
 
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT meshtastic_id, matrix_event_id, meshtastic_meshnet FROM message_map"
@@ -334,7 +351,7 @@ class TestDbUtils(unittest.TestCase):
 
     def test_initialize_database_rebuilds_non_text_message_map_schema(self):
         """INTEGER meshtastic_id schema should be rebuilt to TEXT with meshnet column."""
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "CREATE TABLE message_map (meshtastic_id INTEGER, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT)"
@@ -351,7 +368,7 @@ class TestDbUtils(unittest.TestCase):
 
         initialize_database()
 
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(message_map)")
             table_info = {row[1]: row[2].upper() for row in cursor.fetchall()}
@@ -366,7 +383,7 @@ class TestDbUtils(unittest.TestCase):
 
     def test_initialize_database_merges_stale_temp_before_non_text_rebuild(self):
         """A stale message_map_old_temp is merged into rebuilt message_map."""
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "CREATE TABLE message_map (meshtastic_id INTEGER, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT)"
@@ -386,7 +403,7 @@ class TestDbUtils(unittest.TestCase):
 
         initialize_database()
 
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(message_map)")
             table_info = {row[1]: row[2].upper() for row in cursor.fetchall()}
@@ -407,7 +424,7 @@ class TestDbUtils(unittest.TestCase):
 
     def test_initialize_database_merges_preexisting_stale_temp_into_temp(self):
         """Pre-existing message_map_stale_temp rows are merged before rebuild."""
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "CREATE TABLE message_map (meshtastic_id INTEGER, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT)"
@@ -434,7 +451,7 @@ class TestDbUtils(unittest.TestCase):
 
         initialize_database()
 
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT meshtastic_id, matrix_event_id, meshtastic_meshnet FROM message_map ORDER BY matrix_event_id"
@@ -460,7 +477,7 @@ class TestDbUtils(unittest.TestCase):
         self,
     ):
         """Stale-temp meshnet values should not be dropped when temp schema is older."""
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "CREATE TABLE message_map (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT)"
@@ -489,7 +506,7 @@ class TestDbUtils(unittest.TestCase):
 
         initialize_database()
 
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT meshtastic_id, matrix_event_id, meshtastic_meshnet FROM message_map ORDER BY matrix_event_id"
@@ -513,7 +530,7 @@ class TestDbUtils(unittest.TestCase):
 
     def test_initialize_database_keeps_stale_temp_when_merge_fails(self):
         """Failed stale-temp merge should keep preserved rows for future recovery."""
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "CREATE TABLE message_map (meshtastic_id INTEGER, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT)"
@@ -532,7 +549,7 @@ class TestDbUtils(unittest.TestCase):
 
         initialize_database()
 
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_stale_temp'"
@@ -877,7 +894,7 @@ class TestDbUtils(unittest.TestCase):
         }
         first_state = sync_name_tables_if_changed(nodes, previous_state=None)
 
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             conn.execute("DELETE FROM longnames WHERE meshtastic_id = ?", ("!1",))
 
         self.assertIsNone(get_longname("!1"))
@@ -984,7 +1001,7 @@ class TestDbUtils(unittest.TestCase):
         state = sync_name_tables_if_changed(None, previous_state=None)
 
         self.assertIsNone(state)
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             longname_rows = conn.execute("SELECT COUNT(*) FROM longnames").fetchone()
             shortname_rows = conn.execute("SELECT COUNT(*) FROM shortnames").fetchone()
         self.assertIsNotNone(longname_rows)
@@ -1000,7 +1017,7 @@ class TestDbUtils(unittest.TestCase):
         state = sync_name_tables_if_changed(bad_nodes, previous_state=None)
 
         self.assertIsNone(state)
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             longname_rows = conn.execute("SELECT COUNT(*) FROM longnames").fetchone()
             shortname_rows = conn.execute("SELECT COUNT(*) FROM shortnames").fetchone()
         self.assertIsNotNone(longname_rows)
@@ -1378,7 +1395,7 @@ class TestDbUtils(unittest.TestCase):
         prune_message_map(5)
 
         # Verify only recent entries remain
-        with sqlite3.connect(self.test_db_path) as conn:
+        with _managed_sqlite_connection(self.test_db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM message_map")
             count = cursor.fetchone()[0]
@@ -1764,7 +1781,7 @@ class TestDbUtils(unittest.TestCase):
             # Create legacy database at root level
             os.makedirs(legacy_dir, exist_ok=True)
             legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
-            with sqlite3.connect(legacy_db_path) as conn:
+            with _managed_sqlite_connection(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
             # Mock paths and deprecation window
@@ -1801,7 +1818,7 @@ class TestDbUtils(unittest.TestCase):
             data_subdir = os.path.join(legacy_dir, "data")
             os.makedirs(data_subdir, exist_ok=True)
             legacy_db_path = os.path.join(data_subdir, DATABASE_FILENAME)
-            with sqlite3.connect(legacy_db_path) as conn:
+            with _managed_sqlite_connection(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
             # Mock paths and deprecation window
@@ -1838,7 +1855,7 @@ class TestDbUtils(unittest.TestCase):
             database_subdir = os.path.join(legacy_dir, "database")
             os.makedirs(database_subdir, exist_ok=True)
             legacy_db_path = os.path.join(database_subdir, DATABASE_FILENAME)
-            with sqlite3.connect(legacy_db_path) as conn:
+            with _managed_sqlite_connection(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
             # Mock paths and deprecation window
@@ -1908,13 +1925,13 @@ class TestDbUtils(unittest.TestCase):
             # Create default database
             os.makedirs(database_dir, exist_ok=True)
             default_db_path = os.path.join(database_dir, DATABASE_FILENAME)
-            with sqlite3.connect(default_db_path) as conn:
+            with _managed_sqlite_connection(default_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
             # Create legacy database (should NOT be returned)
             os.makedirs(legacy_dir, exist_ok=True)
             legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
-            with sqlite3.connect(legacy_db_path) as conn:
+            with _managed_sqlite_connection(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
             # Mock paths and deprecation window
@@ -1951,7 +1968,7 @@ class TestDbUtils(unittest.TestCase):
             # Create legacy database (should NOT be returned when deprecation inactive)
             os.makedirs(legacy_dir, exist_ok=True)
             legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
-            with sqlite3.connect(legacy_db_path) as conn:
+            with _managed_sqlite_connection(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
             # Mock paths and deprecation window (inactive)
@@ -1989,7 +2006,7 @@ class TestDbUtils(unittest.TestCase):
             # Create legacy database
             os.makedirs(legacy_dir, exist_ok=True)
             legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
-            with sqlite3.connect(legacy_db_path) as conn:
+            with _managed_sqlite_connection(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
             # Mock paths and deprecation window
@@ -2034,12 +2051,12 @@ class TestDbUtils(unittest.TestCase):
             # Create databases in both legacy directories
             os.makedirs(legacy_dir1, exist_ok=True)
             legacy_db_path1 = os.path.join(legacy_dir1, DATABASE_FILENAME)
-            with sqlite3.connect(legacy_db_path1) as conn:
+            with _managed_sqlite_connection(legacy_db_path1) as conn:
                 conn.execute("CREATE TABLE test_table1 (id INTEGER)")
 
             os.makedirs(legacy_dir2, exist_ok=True)
             legacy_db_path2 = os.path.join(legacy_dir2, DATABASE_FILENAME)
-            with sqlite3.connect(legacy_db_path2) as conn:
+            with _managed_sqlite_connection(legacy_db_path2) as conn:
                 conn.execute("CREATE TABLE test_table2 (id INTEGER)")
 
             # Mock paths and deprecation window
@@ -2077,7 +2094,7 @@ class TestDbUtils(unittest.TestCase):
             # Create legacy database
             os.makedirs(legacy_dir, exist_ok=True)
             legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
-            with sqlite3.connect(legacy_db_path) as conn:
+            with _managed_sqlite_connection(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
             # Mock paths and deprecation window
@@ -2121,7 +2138,7 @@ class TestDbUtils(unittest.TestCase):
             # Create legacy database
             os.makedirs(legacy_dir, exist_ok=True)
             legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
-            with sqlite3.connect(legacy_db_path) as conn:
+            with _managed_sqlite_connection(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
             with patch(
