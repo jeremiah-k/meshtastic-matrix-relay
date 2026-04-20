@@ -4467,17 +4467,13 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
         with patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect:
             # Run the async function - it should exit immediately due to shutting_down=True
             loop = asyncio.new_event_loop()
-            policy = asyncio.get_event_loop_policy()
-            previous_loop = None
-            try:
-                previous_loop = policy.get_event_loop()
-            except RuntimeError:
-                pass
-            policy.set_event_loop(loop)
             try:
                 result = loop.run_until_complete(reconnect())
             finally:
-                policy.set_event_loop(previous_loop)
+                with contextlib.suppress(RuntimeError):
+                    loop.run_until_complete(loop.shutdown_asyncgens())
+                with contextlib.suppress(RuntimeError, AttributeError):
+                    loop.run_until_complete(loop.shutdown_default_executor())
                 loop.close()
 
             # Should not have attempted connection since shutting_down is True
@@ -4495,17 +4491,13 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
 
         # Run the async function with no config
         loop = asyncio.new_event_loop()
-        policy = asyncio.get_event_loop_policy()
-        previous_loop = None
-        try:
-            previous_loop = policy.get_event_loop()
-        except RuntimeError:
-            pass
-        policy.set_event_loop(loop)
         try:
             result = loop.run_until_complete(check_connection())
         finally:
-            policy.set_event_loop(previous_loop)
+            with contextlib.suppress(RuntimeError):
+                loop.run_until_complete(loop.shutdown_asyncgens())
+            with contextlib.suppress(RuntimeError, AttributeError):
+                loop.run_until_complete(loop.shutdown_default_executor())
             loop.close()
 
         # Should return None when no config available
