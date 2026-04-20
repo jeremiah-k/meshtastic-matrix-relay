@@ -586,7 +586,7 @@ def _close_manager_safely(manager: DatabaseManager | None) -> None:
     """
     Close the given DatabaseManager if provided.
 
-    If a manager is supplied, calls its close() method; re-raises KeyboardInterrupt, SystemExit, and RuntimeError, and logs then suppresses any other exceptions.
+    If a manager is supplied, calls its close() method; re-raises KeyboardInterrupt, SystemExit, and RuntimeError, and logs then suppresses sqlite3.Error and OSError.
     """
     if manager:
         try:

@@ -668,9 +668,9 @@ class TestDatabaseManagerReset(unittest.TestCase):
             # Create manager
             manager = _get_db_manager()
 
-            # Mock close to raise an exception
-            with patch.object(manager, "close", side_effect=Exception("Close error")):
-                # Should not raise exception
+            with patch.object(
+                manager, "close", side_effect=sqlite3.Error("Close error")
+            ):
                 _reset_db_manager()
 
             # Verify manager was still reset
