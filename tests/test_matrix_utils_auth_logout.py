@@ -1,6 +1,7 @@
 """Tests for Matrix logout functionality."""
 
 import asyncio
+from typing import NoReturn
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -232,7 +233,28 @@ async def test_logout_matrix_bot_timeout():
         mock_temp_client = AsyncMock()
         mock_temp_client.close = AsyncMock()
         mock_async_client.return_value = mock_temp_client
-        mock_wait_for.side_effect = asyncio.TimeoutError()
+
+        def _timeout_wait_for(
+            awaitable: object,
+            timeout: float | None = None,
+            **kwargs: object,
+        ) -> NoReturn:
+            """
+            Simulate asyncio.wait_for timeout by closing a coroutine awaitable.
+
+            Parameters:
+                awaitable: Coroutine to close; if it is a coroutine, will be closed.
+                timeout: Ignored. Present to match the wait_for signature.
+
+            Raises:
+                asyncio.TimeoutError: Always raised to simulate a timeout.
+            """
+            del timeout, kwargs
+            if asyncio.iscoroutine(awaitable):
+                awaitable.close()
+            raise asyncio.TimeoutError()
+
+        mock_wait_for.side_effect = _timeout_wait_for
 
         result = await logout_matrix_bot(password="test_password")
 

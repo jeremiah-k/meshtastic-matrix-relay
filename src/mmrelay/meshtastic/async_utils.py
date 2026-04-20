@@ -1,3 +1,4 @@
+import contextlib
 import inspect
 import logging
 import math
@@ -184,22 +185,32 @@ def _submit_coro(
     except RuntimeError:
         # No running loop: check if we can safely create a new loop
         try:
-            # Try to get the current event loop policy and create a new loop
-            # This is safer than asyncio.run() which can cause deadlocks
-            policy = facade.asyncio.get_event_loop_policy()
             facade.logger.debug(
                 "No running event loop detected; creating a temporary loop to execute coroutine"
             )
-            new_loop = policy.new_event_loop()
-            facade.asyncio.set_event_loop(new_loop)
-            try:
-                result = new_loop.run_until_complete(coro)
-                result_future: Future[Any] = Future()
-                result_future.set_result(result)
-                return result_future
-            finally:
-                new_loop.close()
-                facade.asyncio.set_event_loop(None)
+            runner_cls = getattr(facade.asyncio, "Runner", None)
+            if runner_cls is not None:
+                with runner_cls() as runner:
+                    result = runner.run(coro)
+            else:
+                new_loop = facade.asyncio.new_event_loop()
+                try:
+                    facade.asyncio.set_event_loop(new_loop)
+                    result = new_loop.run_until_complete(coro)
+                finally:
+                    with contextlib.suppress(Exception):
+                        new_loop.run_until_complete(new_loop.shutdown_asyncgens())
+                    with contextlib.suppress(Exception):
+                        new_loop.run_until_complete(
+                            new_loop.shutdown_default_executor()
+                        )
+                    new_loop.close()
+                    with contextlib.suppress(Exception):
+                        facade.asyncio.set_event_loop(None)
+
+            result_future: Future[Any] = Future()
+            result_future.set_result(result)
+            return result_future
         except Exception as e:
             # Final fallback: always return a Future so _fire_and_forget can log
             # exceptions instead of crashing a background thread when no loop is

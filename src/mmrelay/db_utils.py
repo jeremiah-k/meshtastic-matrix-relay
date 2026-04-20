@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import json
 import logging
 import os
@@ -585,13 +584,20 @@ def get_db_path() -> str:
 
 def _close_manager_safely(manager: DatabaseManager | None) -> None:
     """
-    Close the given DatabaseManager if provided, suppressing any exceptions raised during close.
+    Close the given DatabaseManager if provided.
 
-    Closes the manager when non-None; any exception raised by the manager's close() is ignored.
+    If a manager is supplied, calls its close() method; re-raises KeyboardInterrupt, SystemExit, and RuntimeError, and logs then suppresses sqlite3.Error and OSError.
     """
     if manager:
-        with contextlib.suppress(Exception):
+        try:
             manager.close()
+        except (KeyboardInterrupt, SystemExit, RuntimeError):
+            raise
+        except (sqlite3.Error, OSError):
+            logger.warning(
+                "Failed to close DatabaseManager cleanly; resources may be released by GC",
+                exc_info=True,
+            )
 
 
 def _reset_db_manager() -> None:
@@ -729,7 +735,8 @@ def _get_db_manager() -> DatabaseManager:
         tuple(sorted(extra_pragmas.items())),
     )
 
-    manager_to_close = None
+    manager_to_close: DatabaseManager | None = None
+    manager_to_return: DatabaseManager | None = None
     with _db_manager_lock:
         if _db_manager is None or _db_manager_signature != signature:
             try:
@@ -743,7 +750,6 @@ def _get_db_manager() -> DatabaseManager:
                 manager_to_close = _db_manager
                 _db_manager = new_manager
                 _db_manager_signature = signature
-                _close_manager_safely(manager_to_close)
             except (KeyboardInterrupt, SystemExit):
                 raise
             except Exception:
@@ -764,7 +770,12 @@ def _get_db_manager() -> DatabaseManager:
         # the lock but before we return, causing an unexpected RuntimeError.
         if _db_manager is None:
             raise RuntimeError("Database manager initialization failed")
-        return _db_manager
+        manager_to_return = _db_manager
+
+    if manager_to_close is not None:
+        _close_manager_safely(manager_to_close)
+
+    return manager_to_return
 
 
 # Initialize SQLite database

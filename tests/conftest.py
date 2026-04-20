@@ -19,11 +19,11 @@ import contextlib
 import gc
 import inspect
 import logging
-
-# Preserve references to built-in modules that should NOT be mocked
 import queue
+import sqlite3
 import threading
 import time
+import traceback
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any, Generator
@@ -117,10 +117,152 @@ sys.modules["schedule"] = MagicMock()
 sys.modules["platformdirs"] = MagicMock()
 sys.modules["py_staticmaps"] = MagicMock()
 
+# AsyncMock cleanup tuning:
+# Full generation-2 gc.collect() is relatively expensive on newer CPython runtimes
+# and can dominate teardown time when run after every qualifying test. We still do
+# cheap generation-0 collection every time, and periodically run a full collection
+# to reclaim cyclic coroutine objects before they leak into unrelated tests.
+_ASYNCMOCK_FULL_GC_INTERVAL = 25
+_asyncmock_cleanup_invocations = 0
+
+
+class _ConnectionProvenance:
+    """Track every sqlite3.connect() call with creation metadata."""
+
+    def __init__(self) -> None:
+        """
+        Initialize the connection provenance tracker state.
+
+        Sets up internal registry and bookkeeping used to record metadata for sqlite3 connections:
+        - _registry: mapping from connection id to metadata dict (db path, creation stack, thread info, etc.).
+        - _current_nodeid: test node identifier used when reporting leaked connections.
+        - _real_connect: reference to the original sqlite3.connect function before patching.
+        - _patched: boolean flag indicating whether sqlite3.connect has been replaced.
+        """
+        self._registry: dict[int, dict[str, Any]] = {}
+        self._current_nodeid: str = ""
+        self._real_connect = sqlite3.connect
+        self._patched: bool = False
+
+    def install(self) -> None:
+        """
+        Install a connection tracker that intercepts sqlite3.connect and records provenance for each new connection.
+
+        Replaces the module-level sqlite3.connect with a tracked wrapper (no-op if already installed). Each call to the tracked connect stores a metadata dictionary in self._registry keyed by id(connection) containing: "conn_id", "db_path", "test_nodeid", "thread_name", "thread_id", and "creation_stack".
+        """
+        if self._patched:
+            return
+        real_connect = self._real_connect
+        registry = self._registry
+        tracker = self
+
+        def _make_tracked_class(
+            base: type[sqlite3.Connection],
+        ) -> type[sqlite3.Connection]:
+            """
+            Create a tracked connection subclass that deregisters from the provenance registry on close.
+            """
+
+            class _TrackedConnection(base):
+                def close(self) -> None:
+                    try:
+                        super().close()
+                    finally:
+                        registry.pop(id(self), None)
+
+            return _TrackedConnection
+
+        def _tracked_connect(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+            """
+            Proxy for sqlite3.connect that records provenance metadata for each created connection.
+
+            Records metadata (connection id, database path, current test nodeid, thread name/id, and creation stack) in the tracker registry keyed by the connection object's id.
+
+            Parameters:
+                *args: Positional arguments forwarded to sqlite3.connect (first positional arg is the database path).
+                **kwargs: Keyword arguments forwarded to sqlite3.connect (may include "database").
+
+            Returns:
+                sqlite3.Connection: The connection object returned by the underlying sqlite3.connect call.
+            """
+            caller_factory = kwargs.get("factory", None)
+            if caller_factory is not None and (
+                isinstance(caller_factory, type)
+                and issubclass(caller_factory, sqlite3.Connection)
+            ):
+                tracked_cls = _make_tracked_class(caller_factory)
+            else:
+                tracked_cls = _make_tracked_class(sqlite3.Connection)
+            kwargs["factory"] = tracked_cls
+
+            conn = real_connect(*args, **kwargs)
+            db_path = args[0] if args else kwargs.get("database", "?")
+            conn_id = id(conn)
+            registry[conn_id] = {
+                "conn_id": conn_id,
+                "db_path": str(db_path),
+                "test_nodeid": tracker._current_nodeid,
+                "thread_name": threading.current_thread().name,
+                "thread_id": threading.current_thread().ident,
+                "creation_stack": "".join(traceback.format_stack()),
+            }
+            return conn
+
+        sqlite3.connect = _tracked_connect
+        self._patched = True
+
+    def remove(self, conn: sqlite3.Connection) -> None:
+        """
+        Stop tracking the given SQLite connection by removing its provenance entry from the internal registry.
+
+        Parameters:
+            conn (sqlite3.Connection): The connection object to remove from tracking.
+        """
+        self._registry.pop(id(conn), None)
+
+    def report_open(self) -> list[dict[str, Any]]:
+        """
+        Retrieve metadata for all currently tracked SQLite connections.
+
+        Returns:
+            list[dict[str, Any]]: A list of metadata dictionaries for each connection currently recorded in the provenance registry. Each dictionary contains the provenance information captured when the connection was created.
+        """
+        return list(self._registry.values())
+
+    def clear(self) -> None:
+        """
+        Remove all recorded sqlite3 connection provenance entries.
+
+        This clears the internal registry of tracked connection metadata so subsequent
+        calls will behave as if no connections have been recorded.
+        """
+        self._registry.clear()
+
+    def uninstall(self) -> None:
+        """
+        Restore the original sqlite3.connect function and clear the registry of tracked connections.
+
+        If the provenance patch is not currently installed, this is a no-op. After calling this, the object is marked as unpatched and any stored connection metadata is removed.
+        """
+        if not self._patched:
+            return
+        sqlite3.connect = self._real_connect
+        self._patched = False
+        self._registry.clear()
+
+
+_conn_provenance = _ConnectionProvenance()
+
 
 def _safe_is_done(future: Any) -> bool:
     """
-    Check future/task completion state while suppressing known state errors.
+    Determine whether a future-like object reports it is completed.
+
+    Parameters:
+        future (Any): Object expected to provide a callable `done()` method.
+
+    Returns:
+        bool: `True` if `future.done()` exists and returns a truthy value; `False` otherwise (including when `done()` is absent or raises known invalid-state errors).
     """
     done_fn = getattr(future, "done", None)
     if not callable(done_fn):
@@ -812,15 +954,18 @@ def cleanup_asyncmock_objects(request):
     ]
 
     if any(pattern in test_file for pattern in asyncmock_patterns):
-        import gc
+        global _asyncmock_cleanup_invocations
         import warnings
 
+        _asyncmock_cleanup_invocations += 1
         # Suppress RuntimeWarning about unawaited coroutines during cleanup
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore", category=RuntimeWarning, message=".*never awaited.*"
             )
-            gc.collect()
+            gc.collect(0)
+            if _asyncmock_cleanup_invocations % _ASYNCMOCK_FULL_GC_INTERVAL == 0:
+                gc.collect()
 
 
 @pytest.fixture(autouse=True)
@@ -1416,11 +1561,12 @@ def clean_migration_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Generator[Path, None, None]:
     """
-    Create and yield a clean temporary home directory for migration tests.
+    Provide a temporary clean MMRELAY_HOME directory for migration tests.
 
-    Creates tmp_path / "clean_migration_home", sets MMRELAY_HOME to it,
-    removes migration_completed.flag if present so tests start without prior migration state,
-    and yields the directory path.
+    Creates a directory at tmp_path / "clean_migration_home", sets the `MMRELAY_HOME`
+    environment variable to that path, forces mmrelay.paths to re-resolve the home
+    location, and removes any existing `migration_completed.flag` so tests run with
+    no prior migration state.
 
     Yields:
         Path: Path to the created clean home directory.
@@ -1441,3 +1587,70 @@ def clean_migration_home(
     state_file.unlink(missing_ok=True)
 
     yield home
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _install_sqlite_provenance() -> Generator[None, None, None]:
+    """
+    Install sqlite3 connection provenance tracking for the test session.
+
+    Patches `sqlite3.connect` to record metadata for each created connection so leaked connections can be reported during test failures, and restores the original `sqlite3.connect` on teardown.
+    """
+    _conn_provenance.install()
+    yield
+    _conn_provenance.uninstall()
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item):
+    """
+    Set the current test nodeid for sqlite connection provenance tracking before any test phase runs.
+
+    This ensures connections created during setup/fixtures are attributed to the correct test,
+    rather than inheriting a stale nodeid from a previous test.
+    """
+    _conn_provenance._current_nodeid = item.nodeid
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """
+    Pytest hook wrapper that appends a report section listing any tracked open sqlite connections when a test fails, and clears the provenance registry at teardown.
+
+    Parameters:
+        item: pytest.Item
+            The test item being executed.
+        call: pytest.CallInfo
+            The call phase information passed by pytest; this function yields to allow the default report generation to proceed.
+
+    Notes:
+        - This is a pytest hook wrapper (generator-style) and yields once to obtain the test report.
+        - When the report indicates a failure in the "call" phase, any open sqlite connections tracked by the global provenance recorder are added to the report as a section named "sqlite-connection-provenance".
+        - On the "teardown" phase, the provenance registry is cleared to reset state between tests.
+    """
+    outcome = yield
+    report = outcome.get_result()
+    if report.when == "call" and report.failed:
+        open_conns = _conn_provenance.report_open()
+        if open_conns:
+            stacks = []
+            for entry in open_conns:
+                stacks.append(
+                    f"  LEAKED conn={entry['conn_id']} db={entry['db_path']} "
+                    f"created_in={entry['test_nodeid']} thread={entry['thread_name']}\n"
+                    f"{entry['creation_stack']}"
+                )
+            report.sections.append(
+                (
+                    "sqlite-connection-provenance",
+                    f"\n{len(open_conns)} OPEN sqlite connections at failure:\n"
+                    + "\n---\n".join(stacks),
+                )
+            )
+    if report.when == "teardown":
+        nodeid = item.nodeid
+        _conn_provenance._registry = {
+            cid: meta
+            for cid, meta in _conn_provenance._registry.items()
+            if meta.get("test_nodeid") != nodeid
+        }

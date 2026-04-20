@@ -892,7 +892,7 @@ class TestMigrateDatabase:
         with patch("sqlite3.connect") as mock_connect:
             mock_conn = MagicMock()
             mock_conn.execute.return_value.fetchone.return_value = ["corrupted"]
-            mock_connect.return_value = mock_conn
+            mock_connect.return_value.__enter__.return_value = mock_conn
 
             with pytest.raises(MigrationError, match="integrity check failed"):
                 migrate_database([legacy_root], new_home)

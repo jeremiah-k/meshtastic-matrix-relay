@@ -6,6 +6,9 @@ Focuses on specific functions and edge cases that are currently missing test cov
 import os
 import sys
 import unittest
+from collections.abc import Callable
+from concurrent.futures import Future
+from typing import Any
 from unittest.mock import Mock, patch
 
 # Add src to path for imports
@@ -28,6 +31,25 @@ class TestMeshtasticUtilsCoverage(unittest.TestCase):
             "matrix_rooms": [{"id": "!room1:example.com", "meshtastic_channel": 0}],
         }
 
+    @staticmethod
+    def _immediate_metadata_submit(callback: Callable[[], Any]) -> Future[None]:
+        """
+        Run a metadata probe callback immediately and return a completed Future.
+
+        Parameters:
+            callback (Callable[[], Any]): Function to execute synchronously; its return value is ignored.
+
+        Returns:
+            Future[None]: A Future already completed with result `None` after `callback` returns.
+
+        Raises:
+            Exception: Any exception raised by `callback` is propagated to the caller.
+        """
+        future: Future[None] = Future()
+        callback()
+        future.set_result(None)
+        return future
+
     def test_get_device_metadata_console_output_truncation(self):
         """Test that console output is truncated when too long"""
         mock_interface = Mock()
@@ -36,14 +58,19 @@ class TestMeshtasticUtilsCoverage(unittest.TestCase):
         # Create a very long output string (> 4096 chars)
         long_output = "firmware_version: 1.2.3\n" + "x" * 5000
 
-        # Mock the stdout capture
-        with patch("sys.stdout", new_callable=lambda: Mock()):
-            with patch("io.StringIO") as mock_stringio:
-                mock_output = Mock()
-                mock_output.getvalue.return_value = long_output
-                mock_stringio.return_value = mock_output
-
-                result = meshtastic_utils._get_device_metadata(mock_interface)
+        mock_interface.localNode.getMetadata.side_effect = lambda: print(
+            long_output, end=""
+        )
+        # Patching at the _submit_metadata_probe boundary rather than the
+        # underlying ThreadPoolExecutor because the helper encapsulates
+        # lock management, stale-future detection, degraded-state checks,
+        # done-callback wiring, and cleanup scheduling — all of which would
+        # need to be replicated if we patched the executor directly.
+        with patch(
+            "mmrelay.meshtastic_utils._submit_metadata_probe",
+            side_effect=self._immediate_metadata_submit,
+        ):
+            result = meshtastic_utils._get_device_metadata(mock_interface)
 
         # Should truncate and add ellipsis
         self.assertIn("raw_output", result)
@@ -68,27 +95,39 @@ class TestMeshtasticUtilsCoverage(unittest.TestCase):
 
         for output, expected in test_cases:
             with self.subTest(output=output):
-                # Mock the stdout capture
-                with patch("io.StringIO") as mock_stringio:
-                    mock_output = Mock()
-                    mock_output.getvalue.return_value = output
-                    mock_stringio.return_value = mock_output
-
+                mock_interface.localNode.getMetadata.side_effect = (
+                    lambda out=output: print(out, end="")
+                )
+                # Patching at the _submit_metadata_probe boundary rather than the
+                # underlying ThreadPoolExecutor because the helper encapsulates
+                # lock management, stale-future detection, degraded-state checks,
+                # done-callback wiring, and cleanup scheduling — all of which would
+                # need to be replicated if we patched the executor directly.
+                with patch(
+                    "mmrelay.meshtastic_utils._submit_metadata_probe",
+                    side_effect=self._immediate_metadata_submit,
+                ):
                     result = meshtastic_utils._get_device_metadata(mock_interface)
-                    self.assertEqual(result["firmware_version"], expected)
-                    self.assertTrue(result["success"])
+                self.assertEqual(result["firmware_version"], expected)
+                self.assertTrue(result["success"])
 
     def test_get_device_metadata_no_firmware_version_found(self):
         """Test when no firmware version is found in output"""
         mock_interface = Mock()
         mock_interface.localNode = Mock()
+        mock_interface.localNode.getMetadata.side_effect = lambda: print(
+            "some other output", end=""
+        )
 
-        # Mock the stdout capture with output that has no firmware version
-        with patch("io.StringIO") as mock_stringio:
-            mock_output = Mock()
-            mock_output.getvalue.return_value = "some other output"
-            mock_stringio.return_value = mock_output
-
+        # Patching at the _submit_metadata_probe boundary rather than the
+        # underlying ThreadPoolExecutor because the helper encapsulates
+        # lock management, stale-future detection, degraded-state checks,
+        # done-callback wiring, and cleanup scheduling — all of which would
+        # need to be replicated if we patched the executor directly.
+        with patch(
+            "mmrelay.meshtastic_utils._submit_metadata_probe",
+            side_effect=self._immediate_metadata_submit,
+        ):
             result = meshtastic_utils._get_device_metadata(mock_interface)
 
         self.assertEqual(result["firmware_version"], "unknown")

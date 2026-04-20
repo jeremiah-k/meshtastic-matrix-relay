@@ -9,7 +9,8 @@ Covers:
 
 import asyncio
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from collections.abc import Awaitable, Callable, Generator
+from unittest.mock import MagicMock, patch
 
 from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
 from mmrelay.main import main
@@ -28,14 +29,69 @@ from tests.helpers import (
 _make_patched_get_running_loop = make_patched_get_running_loop
 
 
-def _make_async_return(value):
-    async def _async_return(*_args, **_kwargs):
+def _make_async_return(value: object) -> Callable[..., Awaitable[object]]:
+    """
+    Create an async function that ignores its arguments and always returns the given value.
+
+    Parameters:
+        value: The value the created async function will return when awaited.
+
+    Returns:
+        Callable[..., Awaitable[object]]: An async function that accepts any arguments and returns `value` when awaited.
+    """
+
+    async def _async_return(*_args: object, **_kwargs: object) -> object:
         return value
 
     return _async_return
 
 
-async def _async_noop(*_args, **_kwargs) -> None:
+class _ImmediateAwaitable:
+    """Lightweight awaitable that resolves immediately without creating coroutines."""
+
+    def __init__(self, value: object = None) -> None:
+        """
+        Initialize the awaitable that immediately returns a stored value when awaited.
+
+        Parameters:
+            value (Any): The value to be returned by awaiting this object. Defaults to None.
+        """
+        self._value = value
+
+    def __await__(self) -> Generator[None, None, object]:
+        """
+        Provide the generator required by the await protocol and immediately yield the wrapped value.
+
+        This implements the generator-based __await__ protocol so that awaiting the object
+        returns the stored value without any suspension.
+
+        Returns:
+            The wrapped value stored in the instance.
+        """
+        if False:  # pragma: no cover
+            yield
+        return self._value
+
+
+def _make_matrix_client_with_awaitable_close() -> MagicMock:
+    """
+    Create a MagicMock matrix client whose close() returns an awaitable that completes immediately to avoid coroutine warnings.
+
+    Returns:
+        MagicMock: A mocked matrix client with `close()` returning an awaitable that yields `None`.
+    """
+    client = MagicMock()
+    client.close = MagicMock(return_value=_ImmediateAwaitable(None))
+    return client
+
+
+async def _async_noop(*_args: object, **_kwargs: object) -> None:
+    """
+    Immediately completes without performing any action.
+
+    Returns:
+        None: Always returns None.
+    """
     return None
 
 
@@ -116,6 +172,11 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
         _reset_all_mmrelay_globals()
 
     def test_await_background_task_shutdown_logs_error_on_runtime_error(self):
+        """
+        Verifies that mmrelay.main logs an error when a background connection-health task raises a RuntimeError during shutdown waiting.
+
+        Patches runtime dependencies to run main() with a meshtastic connection-health coroutine that raises a RuntimeError after a short delay, runs the shutdown sequence, and asserts that the main logger received an error containing "Error while waiting for" and "connection health task". Restores modified mmrelay.meshtastic_utils module-level globals after the test.
+        """
         import mmrelay.meshtastic_utils as mu
 
         original_client = mu.meshtastic_client
@@ -130,7 +191,9 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
 
             runtime_error = RuntimeError("background task exploded")
 
-            async def _check_connection_that_raises_after_delay(*_args, **_kwargs):
+            async def _check_connection_that_raises_after_delay(
+                *_args: object, **_kwargs: object
+            ) -> None:
                 await asyncio.sleep(0.5)
                 raise runtime_error
 
@@ -141,7 +204,9 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
                 patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
                 patch(
                     "mmrelay.main.connect_matrix",
-                    side_effect=_make_async_return(MagicMock(close=AsyncMock())),
+                    side_effect=_make_async_return(
+                        _make_matrix_client_with_awaitable_close()
+                    ),
                 ),
                 patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
                 patch("mmrelay.main.shutdown_plugins"),
@@ -180,6 +245,16 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
             mu.reconnect_task_future = original_reconnect_task_future
 
     def test_await_background_task_shutdown_timeout_on_cancel_gather(self):
+        """
+        Verify that main's shutdown logs a timeout warning when cancelling background tasks fails to complete.
+
+        Patches the runtime to:
+        - make the meshtastic connection health coroutine ignore cancellation,
+        - cause `asyncio.wait_for` to raise `asyncio.TimeoutError` on the second invocation,
+        - and provide an awaitable matrix client close.
+
+        Asserts that a warning containing "Timed out cancelling" is emitted during shutdown.
+        """
         import mmrelay.meshtastic_utils as mu
 
         original_client = mu.meshtastic_client
@@ -195,14 +270,18 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
             original_wait_for = asyncio.wait_for
             wait_for_call_count = 0
 
-            async def _wait_for_that_times_out_on_gather(coro, timeout):
+            async def _wait_for_that_times_out_on_gather(
+                coro: object, timeout: object = None
+            ) -> None:
                 nonlocal wait_for_call_count
                 wait_for_call_count += 1
                 if wait_for_call_count >= 2:
                     raise asyncio.TimeoutError()
                 return await original_wait_for(coro, timeout)
 
-            async def _check_connection_that_ignores_cancel(*_args, **_kwargs):
+            async def _check_connection_that_ignores_cancel(
+                *_args: object, **_kwargs: object
+            ) -> None:
                 try:
                     while True:
                         await asyncio.sleep(10)
@@ -216,7 +295,9 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
                 patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
                 patch(
                     "mmrelay.main.connect_matrix",
-                    side_effect=_make_async_return(MagicMock(close=AsyncMock())),
+                    side_effect=_make_async_return(
+                        _make_matrix_client_with_awaitable_close()
+                    ),
                 ),
                 patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
                 patch("mmrelay.main.shutdown_plugins"),
@@ -282,6 +363,11 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
         _reset_all_mmrelay_globals()
 
     def test_shutdown_cancels_and_awaits_reconnect_task_future(self):
+        """
+        Verifies that shutdown cancels and awaits any active meshtastic reconnect task future.
+
+        Sets up a long-running reconnect task future, runs the main shutdown sequence, and asserts that the reconnect future was either cancelled or observed cancellation, is completed, and that the global `reconnect_task_future` has been cleared.
+        """
         import mmrelay.meshtastic_utils as mu
 
         original_client = mu.meshtastic_client
@@ -296,11 +382,19 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
             captured_future = None
             cancel_observed = False
 
-            def _capture_reconnect_future(*_args, **_kwargs):
+            def _capture_reconnect_future(*_args: object, **_kwargs: object) -> None:
+                """
+                Create and store a long-running reconnect task and record it in module state.
+
+                Starts an asyncio Task that sleeps for an extended period; if the task is cancelled,
+                the outer-scope flag `cancel_observed` is set to True. The created Task is stored
+                in the outer-scope `captured_future` and assigned to `mu.reconnect_task_future` and
+                `mu.reconnect_task` for later inspection and shutdown handling.
+                """
                 nonlocal captured_future
                 nonlocal cancel_observed
 
-                async def _fake_reconnect():
+                async def _fake_reconnect() -> None:
                     nonlocal cancel_observed
                     try:
                         await asyncio.sleep(300)
@@ -313,6 +407,16 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
                 mu.reconnect_task = captured_future
                 return None
 
+            async def _capture_reconnect_future_async(
+                *_args: object, **_kwargs: object
+            ) -> None:
+                """
+                Trigger creation and capture of the reconnect task/future during tests.
+
+                Acting as an async shim, this function invokes the test helper that creates a long-running reconnect task and stores its Task/future for later inspection and shutdown verification. Intended for use as an async replacement for the connection-health callback in tests.
+                """
+                _capture_reconnect_future(*_args, **_kwargs)
+
             with (
                 patch("mmrelay.main.initialize_database"),
                 patch("mmrelay.main.load_plugins"),
@@ -320,7 +424,9 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
                 patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
                 patch(
                     "mmrelay.main.connect_matrix",
-                    side_effect=_make_async_return(MagicMock(close=AsyncMock())),
+                    side_effect=_make_async_return(
+                        _make_matrix_client_with_awaitable_close()
+                    ),
                 ),
                 patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
                 patch("mmrelay.main.shutdown_plugins"),
@@ -334,7 +440,7 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
                 patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
                 patch(
                     "mmrelay.main.meshtastic_utils.check_connection",
-                    side_effect=_capture_reconnect_future,
+                    new=_capture_reconnect_future_async,
                 ),
                 patch("mmrelay.main.logger"),
                 patch("mmrelay.main.meshtastic_logger"),

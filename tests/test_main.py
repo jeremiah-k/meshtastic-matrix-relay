@@ -3144,15 +3144,38 @@ class TestStartupRollback(unittest.TestCase):
 
         config = {"matrix_rooms": [{"id": "!room:matrix.org"}]}
 
-        async def mock_check_conn():
-            return None
+        check_conn_sentinel = object()
 
-        def mock_create_task(coro, *args, **kwargs):
+        def mock_check_conn() -> object:
+            # Return a non-coroutine sentinel; create_task is patched below.
+            """
+            Provide the sentinel value representing a mocked connection check.
+
+            Returns:
+                object: The sentinel `check_conn_sentinel` used by the patched `asyncio.create_task` to identify the mocked check-connection invocation.
+            """
+            return check_conn_sentinel
+
+        def mock_create_task(coro: object, *_args: object, **_kwargs: object) -> object:
+            """
+            Provide a test stub for asyncio.create_task that returns prebuilt mock tasks for recognized inputs and fails for anything unexpected.
+
+            Parameters:
+                coro: Either the special sentinel `check_conn_sentinel`, a coroutine object whose code name may match `_node_name_refresh_supervisor`, or another value passed where an asyncio task would normally be scheduled. Recognized inputs return corresponding mock task objects; coroutine objects that are not recognized are closed before failing.
+                *_args, **_kwargs: Ignored.
+
+            Returns:
+                The corresponding mock task object for the recognized sentinel or coroutine.
+
+            Raises:
+                AssertionError: If a coroutine is scheduled but its name is not expected, or if a non-coroutine, non-sentinel value is scheduled.
+            """
+            if coro is check_conn_sentinel:
+                return mock_check_task
             if inspect.iscoroutine(coro):
                 coro_name = getattr(getattr(coro, "cr_code", None), "co_name", "")
-                if coro_name == "mock_check_conn":
-                    return mock_check_task
                 if coro_name == "_node_name_refresh_supervisor":
+                    coro.close()
                     return mock_supervisor_task
                 coro.close()
                 raise AssertionError(f"Unexpected task scheduled: {coro_name}")

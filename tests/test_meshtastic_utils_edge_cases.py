@@ -16,8 +16,10 @@ import asyncio
 import os
 import sys
 import unittest
+from concurrent.futures import Future as FuturesFuture
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from typing import NoReturn
+from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 from meshtastic.mesh_interface import BROADCAST_NUM
 
@@ -43,49 +45,53 @@ from mmrelay.meshtastic_utils import (
 )
 
 
+class _DummyFuture:
+    """Helper class to simulate a future that records timeout values and raises an exception."""
+
+    def __init__(self, exc: BaseException) -> None:
+        """
+        Initialize the object with an exception and an empty call history.
+
+        Parameters:
+            exc (BaseException): The exception instance to store for later inspection or re-raising.
+        """
+        self.exc = exc
+        self.calls: list[float | None] = []
+
+    def result(self, timeout: float | None = None) -> None:
+        """
+        Record the provided timeout value and raise the stored exception.
+
+        Parameters:
+            timeout (float | None): Timeout passed in; appended to self.calls for later inspection.
+
+        Raises:
+            Any: Re-raising the exception stored in self.exc.
+        """
+        self.calls.append(timeout)
+        raise self.exc
+
+
 class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
     """Test cases for Meshtastic utilities edge cases and error handling."""
 
-    class _DummyFuture:
-        """Helper class to simulate a future that records timeout values and raises an exception."""
-
-        def __init__(self, exc: BaseException) -> None:
-            """
-            Initialize the object with an exception and an empty call history.
-
-            Parameters:
-                exc (BaseException): The exception instance to store for later inspection or re-raising.
-            """
-            self.exc = exc
-            self.calls: list[float | None] = []
-
-        def result(self, timeout: float | None = None) -> None:
-            """
-            Record the provided timeout value and raise the stored exception.
-
-            Parameters:
-                timeout (float | None): Timeout passed in; appended to self.calls for later inspection.
-
-            Raises:
-                Any: Re-raises the exception stored in self.exc.
-            """
-            self.calls.append(timeout)
-            raise self.exc
-
     def setUp(self):
         """
-        Reset mmrelay.meshtastic_utils global state so each test runs in isolation.
+        Reset mmrelay.meshtastic_utils module-level state to known defaults for tests.
 
-        Resets the following module-level variables to their default test values:
-        - meshtastic_client -> None
-        - reconnecting -> False
-        - config -> None
-        - matrix_rooms -> []
-        - shutting_down -> False
-        - event_loop -> None
-        - reconnect_task -> None
-        - subscribed_to_messages -> False
-        - subscribed_to_connection_lost -> False
+        Sets the following globals to default test values so each test runs in isolation:
+        - meshtastic_client: None
+        - _relay_active_client_id: None
+        - _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs: None
+        - reconnecting: False
+        - config: None
+        - matrix_rooms: []
+        - shutting_down: False
+        - event_loop: None
+        - reconnect_task: None
+        - subscribed_to_messages: False
+        - subscribed_to_connection_lost: False
+        - _callbacks_tearing_down: False
         """
         # Reset global state
         import mmrelay.meshtastic_utils
@@ -103,6 +109,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         mmrelay.meshtastic_utils.reconnect_task = None
         mmrelay.meshtastic_utils.subscribed_to_messages = False
         mmrelay.meshtastic_utils.subscribed_to_connection_lost = False
+        mmrelay.meshtastic_utils._callbacks_tearing_down = False
 
     def test_serial_port_exists_permission_error(self):
         """
@@ -290,7 +297,8 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         mock_interface = MagicMock()
 
-        from concurrent.futures import Future
+        class _PluginFailure(RuntimeError):
+            """Test-specific plugin failure."""
 
         def _submit_coro_mock(coro, loop=None):
             """
@@ -305,13 +313,16 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             Returns:
                 concurrent.futures.Future: A Future already completed with the coroutine's result or exception.
             """
-            f = Future()
+            f = FuturesFuture()
             try:
                 # Execute the coroutine to trigger the exception
                 result = asyncio.run(coro)
                 f.set_result(result)
-            except Exception as e:
+            except _PluginFailure as e:
                 f.set_exception(e)
+            finally:
+                if asyncio.iscoroutine(coro):
+                    coro.close()
             return f
 
         with (
@@ -322,7 +333,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             mock_plugin = MagicMock()
             mock_plugin.plugin_name = "test_plugin"
             mock_plugin.handle_meshtastic_message = AsyncMock(
-                side_effect=Exception("Plugin failed")
+                side_effect=_PluginFailure("Plugin failed")
             )
             mock_load_plugins.return_value = [mock_plugin]
             mock_submit_coro.side_effect = _submit_coro_mock
@@ -360,7 +371,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         interface.nodes = {}
 
         timeout_exc = ConcurrentTimeoutError("Plugin timeout")
-        future = self._DummyFuture(timeout_exc)
+        future = _DummyFuture(timeout_exc)
 
         plugin = MagicMock()
         plugin.plugin_name = "timeout_plugin"
@@ -375,18 +386,34 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         }
         rooms = [{"meshtastic_channel": 0, "id": "!room:matrix"}]
 
+        def _submit_with_timeout_future(
+            coro: object, **_kwargs: object
+        ) -> "_DummyFuture":
+            """
+            Close the provided coroutine if one is given and return a shared dummy future.
+
+            Parameters:
+                coro: A coroutine object or any callable; if `coro` is an actual coroutine it will be closed before returning.
+
+            Returns:
+                _DummyFuture: The preconstructed shared future object `future`.
+            """
+            if asyncio.iscoroutine(coro):
+                coro.close()
+            return future
+
         with (
             patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]),
             patch(
                 "mmrelay.meshtastic_utils._submit_coro",
-                side_effect=[future, MagicMock()],
+                side_effect=_submit_with_timeout_future,
             ) as mock_submit_coro,
             patch("mmrelay.meshtastic_utils.config", config),
             patch("mmrelay.meshtastic_utils.matrix_rooms", rooms),
             patch("mmrelay.meshtastic_utils.get_longname", return_value="Long"),
             patch("mmrelay.meshtastic_utils.get_shortname", return_value="Short"),
             patch("mmrelay.matrix_utils.get_matrix_prefix", return_value=""),
-            patch("mmrelay.matrix_utils.matrix_relay", AsyncMock(return_value=None)),
+            patch("mmrelay.matrix_utils.matrix_relay", Mock(return_value=None)),
             patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
         ):
@@ -413,7 +440,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         interface.nodes = {}
 
         timeout_exc = ConcurrentTimeoutError("Plugin timeout")
-        future = self._DummyFuture(timeout_exc)
+        future = _DummyFuture(timeout_exc)
 
         plugin = MagicMock()
         plugin.plugin_name = "timeout_plugin"
@@ -428,18 +455,34 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         }
         rooms = [{"meshtastic_channel": 0, "id": "!room:matrix"}]
 
+        def _submit_with_timeout_future(
+            coro: object, **_kwargs: object
+        ) -> "_DummyFuture":
+            """
+            Close the provided coroutine if one is given and return a shared dummy future.
+
+            Parameters:
+                coro: A coroutine object or any callable; if `coro` is an actual coroutine it will be closed before returning.
+
+            Returns:
+                _DummyFuture: The preconstructed shared future object `future`.
+            """
+            if asyncio.iscoroutine(coro):
+                coro.close()
+            return future
+
         with (
             patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]),
             patch(
                 "mmrelay.meshtastic_utils._submit_coro",
-                side_effect=[future, MagicMock()],
+                side_effect=_submit_with_timeout_future,
             ) as mock_submit_coro,
             patch("mmrelay.meshtastic_utils.config", config),
             patch("mmrelay.meshtastic_utils.matrix_rooms", rooms),
             patch("mmrelay.meshtastic_utils.get_longname", return_value="Long"),
             patch("mmrelay.meshtastic_utils.get_shortname", return_value="Short"),
             patch("mmrelay.matrix_utils.get_matrix_prefix", return_value=""),
-            patch("mmrelay.matrix_utils.matrix_relay", AsyncMock(return_value=None)),
+            patch("mmrelay.matrix_utils.matrix_relay", Mock(return_value=None)),
             patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
         ):
@@ -481,7 +524,10 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         with (
             patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
             patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
-            patch("mmrelay.matrix_utils.matrix_relay"),
+            patch(
+                "mmrelay.matrix_utils.matrix_relay",
+                AsyncMock(return_value=None),
+            ),
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
         ):
             # Set up required globals for the function to run
@@ -496,7 +542,24 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             }
             mmrelay.meshtastic_utils.event_loop = MagicMock()
 
-            mock_submit_coro.side_effect = Exception("Matrix relay failed")
+            class _MatrixRelayFailure(RuntimeError):
+                """Test-specific Matrix relay failure."""
+
+            def _submit_raises(coro: object, **_kwargs: object) -> NoReturn:
+                """
+                Close the given coroutine (if one) and raise Matrix relay failure.
+
+                Parameters:
+                    coro: A coroutine or any object; if coroutine it will be closed before raising.
+
+                Raises:
+                    _MatrixRelayFailure: Always raised.
+                """
+                if asyncio.iscoroutine(coro):
+                    coro.close()
+                raise _MatrixRelayFailure
+
+            mock_submit_coro.side_effect = _submit_raises
             on_meshtastic_message(packet, mock_interface)
             mock_logger.exception.assert_called()
 
@@ -684,27 +747,29 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             }
         mock_interface.nodes = large_nodes
 
-        from concurrent.futures import Future
-
-        def _done_future(*args, **kwargs):
+        def _done_future(coro: object, **_kwargs: object) -> FuturesFuture[None]:
             """
-            Create and return a Future already completed with result None.
+            Return a Future already completed with result None.
 
-            Useful in tests to simulate an already-finished asynchronous operation.
+            Parameters:
+                coro (object): The coroutine or object that was intended to run; if it is a coroutine, it will be closed.
 
             Returns:
-                concurrent.futures.Future: A Future whose result is set to `None`.
+                concurrent.futures.Future: A Future completed with a result of `None`.
             """
-            f = Future()
+            if asyncio.iscoroutine(coro):
+                coro.close()
+            f = FuturesFuture()
             f.set_result(None)
             return f
 
         with (
+            patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
             patch("mmrelay.meshtastic_utils.logger"),
             patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
             patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
             patch("mmrelay.matrix_utils.matrix_client", None),
-            patch("mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock),
+            patch("mmrelay.matrix_utils.matrix_relay", Mock(return_value=None)),
         ):
             mock_submit_coro.side_effect = _done_future
             # Should handle large node lists without crashing
@@ -751,7 +816,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "!12345678": {"user": {"id": "!12345678", "longName": "TestNode"}}
         }
 
-        future = self._DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
+        future = _DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
 
         plugin = MagicMock()
         plugin.plugin_name = "test_plugin"
@@ -762,17 +827,34 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
         }
 
+        def _submit_with_timeout_future(
+            coro: object, **_kwargs: object
+        ) -> "_DummyFuture":
+            """
+            Close the provided coroutine if one is given and return a shared dummy future.
+
+            Parameters:
+                coro: A coroutine object or any callable; if `coro` is an actual coroutine it will be closed before returning.
+
+            Returns:
+                _DummyFuture: The preconstructed shared future object `future`.
+            """
+            if asyncio.iscoroutine(coro):
+                coro.close()
+            return future
+
         with (
             patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]),
-            patch("mmrelay.meshtastic_utils._submit_coro", return_value=future),
+            patch(
+                "mmrelay.meshtastic_utils._submit_coro",
+                side_effect=_submit_with_timeout_future,
+            ),
             patch("mmrelay.meshtastic_utils.config", config),
             patch("mmrelay.meshtastic_utils.matrix_rooms", config["matrix_rooms"]),
             patch("mmrelay.meshtastic_utils.get_longname", return_value="TestNode"),
             patch("mmrelay.meshtastic_utils.get_shortname", return_value="TN"),
             patch("mmrelay.matrix_utils.get_matrix_prefix", return_value=""),
-            patch(
-                "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
-            ) as mock_matrix_relay,
+            patch("mmrelay.matrix_utils.matrix_relay", Mock()) as mock_matrix_relay,
             patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
         ):
@@ -808,7 +890,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         interface.myInfo = MagicMock()
         interface.myInfo.my_node_num = 12345
 
-        future = self._DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
+        future = _DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
 
         plugin = MagicMock()
         plugin.plugin_name = "test_plugin"
@@ -819,17 +901,34 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
         }
 
+        def _submit_with_timeout_future(
+            coro: object, **_kwargs: object
+        ) -> "_DummyFuture":
+            """
+            Close the provided coroutine if one is given and return a shared dummy future.
+
+            Parameters:
+                coro: A coroutine object or any callable; if `coro` is an actual coroutine it will be closed before returning.
+
+            Returns:
+                _DummyFuture: The preconstructed shared future object `future`.
+            """
+            if asyncio.iscoroutine(coro):
+                coro.close()
+            return future
+
         with (
             patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]),
-            patch("mmrelay.meshtastic_utils._submit_coro", return_value=future),
+            patch(
+                "mmrelay.meshtastic_utils._submit_coro",
+                side_effect=_submit_with_timeout_future,
+            ),
             patch("mmrelay.meshtastic_utils.config", config),
             patch("mmrelay.meshtastic_utils.matrix_rooms", config["matrix_rooms"]),
             patch("mmrelay.meshtastic_utils.get_longname", return_value="TestNode"),
             patch("mmrelay.meshtastic_utils.get_shortname", return_value="TN"),
             patch("mmrelay.matrix_utils.get_matrix_prefix", return_value=""),
-            patch(
-                "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
-            ) as mock_matrix_relay,
+            patch("mmrelay.matrix_utils.matrix_relay", Mock()) as mock_matrix_relay,
             patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
         ):
@@ -870,7 +969,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "!12345678": {"user": {"id": "!12345678", "longName": "TestNode"}}
         }
 
-        future = self._DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
+        future = _DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
         plugin = MagicMock()
         plugin.plugin_name = "telemetry_plugin"
         plugin.handle_meshtastic_message = AsyncMock(return_value=True)
@@ -880,9 +979,28 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
         }
 
+        def _submit_with_timeout_future(
+            coro: object, **_kwargs: object
+        ) -> "_DummyFuture":
+            """
+            Close the provided coroutine if one is given and return a shared dummy future.
+
+            Parameters:
+                coro: A coroutine object or any callable; if `coro` is an actual coroutine it will be closed before returning.
+
+            Returns:
+                _DummyFuture: The preconstructed shared future object `future`.
+            """
+            if asyncio.iscoroutine(coro):
+                coro.close()
+            return future
+
         with (
             patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]),
-            patch("mmrelay.meshtastic_utils._submit_coro", return_value=future),
+            patch(
+                "mmrelay.meshtastic_utils._submit_coro",
+                side_effect=_submit_with_timeout_future,
+            ),
             patch("mmrelay.meshtastic_utils.config", config),
             patch("mmrelay.meshtastic_utils.matrix_rooms", config["matrix_rooms"]),
             patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
@@ -927,11 +1045,11 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         plugin1 = MagicMock()
         plugin1.plugin_name = "first_plugin"
-        plugin1.handle_meshtastic_message = AsyncMock(return_value=False)
+        plugin1.handle_meshtastic_message = Mock(return_value=False)
 
         plugin2 = MagicMock()
         plugin2.plugin_name = "second_plugin"
-        plugin2.handle_meshtastic_message = AsyncMock(return_value=True)
+        plugin2.handle_meshtastic_message = Mock(return_value=True)
 
         config = {
             "meshtastic": {"meshnet_name": "test"},
@@ -945,9 +1063,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             patch("mmrelay.meshtastic_utils.config", config),
             patch("mmrelay.meshtastic_utils.matrix_rooms", config["matrix_rooms"]),
             patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
-            patch(
-                "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
-            ) as mock_matrix_relay,
+            patch("mmrelay.matrix_utils.matrix_relay", Mock()) as mock_matrix_relay,
         ):
             on_meshtastic_message(packet, interface)
 
@@ -984,11 +1100,11 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         plugin1 = MagicMock()
         plugin1.plugin_name = "position_plugin"
-        plugin1.handle_meshtastic_message = AsyncMock(return_value=True)
+        plugin1.handle_meshtastic_message = Mock(return_value=True)
 
         plugin2 = MagicMock()
         plugin2.plugin_name = "other_plugin"
-        plugin2.handle_meshtastic_message = AsyncMock(return_value=False)
+        plugin2.handle_meshtastic_message = Mock(return_value=False)
 
         config = {
             "meshtastic": {"meshnet_name": "test"},
@@ -1002,9 +1118,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             patch("mmrelay.meshtastic_utils.config", config),
             patch("mmrelay.meshtastic_utils.matrix_rooms", config["matrix_rooms"]),
             patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
-            patch(
-                "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
-            ) as mock_matrix_relay,
+            patch("mmrelay.matrix_utils.matrix_relay", Mock()) as mock_matrix_relay,
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
         ):
             on_meshtastic_message(packet, interface)
