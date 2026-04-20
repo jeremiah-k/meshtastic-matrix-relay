@@ -313,6 +313,10 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
                 mu.reconnect_task = captured_future
                 return None
 
+            async def _capture_reconnect_future_async(*_args, **_kwargs):
+                _capture_reconnect_future(*_args, **_kwargs)
+                return None
+
             with (
                 patch("mmrelay.main.initialize_database"),
                 patch("mmrelay.main.load_plugins"),
@@ -334,7 +338,7 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
                 patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
                 patch(
                     "mmrelay.main.meshtastic_utils.check_connection",
-                    side_effect=_capture_reconnect_future,
+                    new=_capture_reconnect_future_async,
                 ),
                 patch("mmrelay.main.logger"),
                 patch("mmrelay.main.meshtastic_logger"),

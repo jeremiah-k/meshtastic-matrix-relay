@@ -3151,8 +3151,10 @@ class TestStartupRollback(unittest.TestCase):
             if inspect.iscoroutine(coro):
                 coro_name = getattr(getattr(coro, "cr_code", None), "co_name", "")
                 if coro_name == "mock_check_conn":
+                    coro.close()
                     return mock_check_task
                 if coro_name == "_node_name_refresh_supervisor":
+                    coro.close()
                     return mock_supervisor_task
                 coro.close()
                 raise AssertionError(f"Unexpected task scheduled: {coro_name}")

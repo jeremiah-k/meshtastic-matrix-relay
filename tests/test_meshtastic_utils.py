@@ -4636,13 +4636,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         """Test _disconnect_ble_by_address when is_connected is a bool (True)."""
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
-        async def _noop(*_args, **_kwargs):
-            """
-            Asynchronous no-op that ignores all positional and keyword arguments.
-
-            Returns:
-                None: Always returns None.
-            """
+        def _noop(*_args, **_kwargs):
+            """Synchronous no-op used for sync disconnect mocks."""
             return None
 
         mock_client = Mock()
@@ -4667,13 +4662,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         """
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
-        async def _noop(*_args, **_kwargs):
-            """
-            Asynchronous no-op that ignores all positional and keyword arguments.
-
-            Returns:
-                None: Always returns None.
-            """
+        def _noop(*_args, **_kwargs):
+            """Synchronous no-op used for sync disconnect mocks."""
             return None
 
         mock_client = Mock()
@@ -4775,7 +4765,13 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         mock_get_running_loop.side_effect = RuntimeError("no loop")
         mock_sleep.side_effect = _noop
-        mock_wait_for.side_effect = asyncio.TimeoutError()
+
+        def _timeout_wait_for(awaitable, timeout=None):
+            if inspect.iscoroutine(awaitable):
+                awaitable.close()
+            raise asyncio.TimeoutError()
+
+        mock_wait_for.side_effect = _timeout_wait_for
 
         mock_client = Mock()
         mock_client.is_connected = True
@@ -4804,25 +4800,24 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         """Test _disconnect_ble_by_address handles unexpected disconnect errors."""
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
-        async def _noop(*_args, **_kwargs):
-            """
-            Asynchronous no-op that ignores all positional and keyword arguments.
+        async def _sleep_noop(*_args, **_kwargs):
+            """Async no-op used for mocked asyncio.sleep."""
+            return None
 
-            Returns:
-                None: Always returns None.
-            """
+        def _disconnect_noop(*_args, **_kwargs):
+            """Sync no-op used for mocked disconnect calls."""
             return None
 
         mock_get_running_loop.side_effect = RuntimeError("no loop")
-        mock_sleep.side_effect = _noop
-        mock_wait_for.side_effect = lambda awaitable, _timeout=None: awaitable
+        mock_sleep.side_effect = _sleep_noop
+        mock_wait_for.side_effect = lambda awaitable, timeout=None: awaitable
         # Force an exception outside the inner retry loop to cover the
         # best-effort cleanup exception path.
         mock_logger.warning.side_effect = ValueError("forced warning failure")
 
         mock_client = Mock()
         mock_client.is_connected = True
-        mock_client.disconnect = Mock(side_effect=_noop)
+        mock_client.disconnect = Mock(side_effect=_disconnect_noop)
         mock_bleak.return_value = mock_client
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
@@ -4859,7 +4854,13 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             return None
 
         mock_get_running_loop.side_effect = RuntimeError("no loop")
-        mock_wait_for.side_effect = asyncio.TimeoutError()
+
+        def _timeout_wait_for(awaitable, timeout=None):
+            if inspect.iscoroutine(awaitable):
+                awaitable.close()
+            raise asyncio.TimeoutError()
+
+        mock_wait_for.side_effect = _timeout_wait_for
 
         mock_client = Mock()
         mock_client.is_connected = False
