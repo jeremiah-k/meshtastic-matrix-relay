@@ -1515,8 +1515,8 @@ def test_connect_time_probe_new_schedule_cancels_old_timer():
     second_timer = mu._pending_connect_time_probe_timer
     assert second_timer is not None
     assert second_timer is not first_timer
-    # The first timer's internal canceled flag should be set
-    assert first_timer.cancelled()
+    # The first timer's internal finished flag should be set (cancel() sets it)
+    assert first_timer.finished.is_set()
     second_timer.cancel()
     mu._pending_connect_time_probe_timer = None
 

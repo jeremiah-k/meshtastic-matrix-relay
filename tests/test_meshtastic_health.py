@@ -244,6 +244,7 @@ class TestHandleProbeAckCallback:
 
         local_node = MagicMock()
         ack = local_node.iface._acknowledgment
+        ack.receivedNak = False
         local_node.iface.localNode.nodeNum = 1234
         packet = {"decoded": {"routing": {}}, "from": 1234}
         _handle_probe_ack_callback(local_node, packet)
@@ -255,6 +256,7 @@ class TestHandleProbeAckCallback:
 
         local_node = MagicMock()
         ack = local_node.iface._acknowledgment
+        ack.receivedNak = False
         local_node.iface.localNode.nodeNum = 1234
         packet = {"decoded": {"routing": {"errorReason": "NONE"}}, "from": 1234}
         _handle_probe_ack_callback(local_node, packet)
