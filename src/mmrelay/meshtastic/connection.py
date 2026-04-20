@@ -235,8 +235,28 @@ def _schedule_connect_time_calibration_probe(
                 "Delaying connect-time metadata probe by %.1fs until after startup drain window",
                 delay,
             )
-            timer = threading.Timer(delay, _submit_probe)
+
+            old_timer = facade._pending_connect_time_probe_timer
+            if old_timer is not None:
+                with contextlib.suppress(Exception):
+                    old_timer.cancel()
+
+            def _delayed_submit_with_stale_guard() -> None:
+                active_client = facade.meshtastic_client
+                active_client_id = facade._relay_active_client_id
+                if active_client is not client and (
+                    active_client_id is None or active_client_id != id(client)
+                ):
+                    facade.logger.debug(
+                        "Skipping delayed connect-time metadata probe; active client changed since scheduling"
+                    )
+                    return
+                facade._pending_connect_time_probe_timer = None
+                _submit_probe()
+
+            timer = threading.Timer(delay, _delayed_submit_with_stale_guard)
             timer.daemon = True
+            facade._pending_connect_time_probe_timer = timer
             timer.start()
             return
 
@@ -306,6 +326,12 @@ def _rollback_connect_attempt_state(
     if startup_drain_timer_to_cancel is not None:
         with contextlib.suppress(AttributeError, RuntimeError, TypeError):
             startup_drain_timer_to_cancel.cancel()
+
+    pending_probe_timer = facade._pending_connect_time_probe_timer
+    facade._pending_connect_time_probe_timer = None
+    if pending_probe_timer is not None:
+        with contextlib.suppress(Exception):
+            pending_probe_timer.cancel()
 
     return False
 
