@@ -195,6 +195,8 @@ _relay_rx_time_clock_skew_lock = threading.Lock()
 _relay_startup_drain_deadline_monotonic_secs: float | None = None
 # Timer used to decouple startup-drain expiry from packet arrival.
 _relay_startup_drain_expiry_timer: threading.Timer | None = None
+# Tracks the pending delayed connect-time metadata probe timer for cancellation on disconnect/rollback.
+_pending_connect_time_probe_timer: threading.Timer | None = None
 # Signals whether startup drain has completed for readiness publication.
 _relay_startup_drain_complete_event = threading.Event()
 _relay_startup_drain_complete_event.set()

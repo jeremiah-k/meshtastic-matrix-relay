@@ -1,7 +1,9 @@
+import asyncio
 import threading
 import time
 from collections.abc import Callable
-from typing import Any
+from concurrent.futures import Future
+from typing import Any, Coroutine
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -21,6 +23,17 @@ from mmrelay.constants.network import (
     STARTUP_PACKET_DRAIN_SECS,
 )
 from mmrelay.meshtastic_utils import connect_meshtastic, on_lost_meshtastic_connection
+
+
+def _schedule_reconnect_closing_coro(
+    coro: Coroutine[Any, Any, Any],
+    loop: asyncio.AbstractEventLoop | None = None,  # noqa: ARG001
+) -> Future[None]:
+    """Close the reconnect coroutine to prevent unawaited-coroutine leaks."""
+    coro.close()
+    fut: Future[None] = Future()
+    fut.set_result(None)
+    return fut
 
 
 def test_connect_meshtastic_returns_existing_client(reset_meshtastic_globals):
@@ -791,7 +804,13 @@ def test_connect_meshtastic_schedules_one_shot_probe_when_periodic_health_disabl
         patch(
             "mmrelay.meshtastic_utils._probe_device_connection"
         ) as mock_probe_device_connection,
+        patch(
+            "mmrelay.meshtastic_utils.time.monotonic",
+            return_value=1_000.0,
+        ),
     ):
+        mu._startup_packet_drain_applied = True
+        mu._relay_startup_drain_deadline_monotonic_secs = None
         config = {
             "meshtastic": {
                 "connection_type": CONNECTION_TYPE_TCP,
@@ -831,7 +850,13 @@ def test_connect_meshtastic_probe_invalid_override_inherits_parent_enabled():
             return_value={"firmware_version": "unknown", "success": False},
         ),
         patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit_probe,
+        patch(
+            "mmrelay.meshtastic_utils.time.monotonic",
+            return_value=1_000.0,
+        ),
     ):
+        mu._startup_packet_drain_applied = True
+        mu._relay_startup_drain_deadline_monotonic_secs = None
         config = {
             "meshtastic": {
                 "connection_type": CONNECTION_TYPE_TCP,
@@ -905,7 +930,13 @@ def test_connect_meshtastic_probe_inherits_parent_when_override_omitted():
         patch(
             "mmrelay.meshtastic_utils._probe_device_connection"
         ) as mock_probe_device_connection,
+        patch(
+            "mmrelay.meshtastic_utils.time.monotonic",
+            return_value=1_000.0,
+        ),
     ):
+        mu._startup_packet_drain_applied = True
+        mu._relay_startup_drain_deadline_monotonic_secs = None
         config = {
             "meshtastic": {
                 "connection_type": CONNECTION_TYPE_TCP,
@@ -1083,6 +1114,10 @@ def test_on_lost_meshtastic_connection_ignores_bad_fd(reset_meshtastic_globals):
     with (
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,
         patch("mmrelay.meshtastic_utils.event_loop") as mock_loop,
+        patch(
+            "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
+            side_effect=_schedule_reconnect_closing_coro,
+        ),
     ):
         mock_loop.is_closed.return_value = False
         on_lost_meshtastic_connection(detection_source="test")
@@ -1352,3 +1387,289 @@ class TestBleDegradedStateSubmissionBlocking:
             if call.args and "BLE connection established" in str(call.args[0])
         ]
         assert info_calls, "Expected 'BLE connection established' log message"
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_time_probe_delayed_when_drain_window_active():
+    """Connect-time probe should be delayed via Timer when startup drain window is active."""
+    mock_client = MagicMock()
+    mock_client.localNode = MagicMock()
+    mock_client.sendData = MagicMock()
+
+    now = 1_000.0
+    drain_deadline = now + 10.0
+
+    mu._relay_startup_drain_deadline_monotonic_secs = drain_deadline
+
+    with (
+        patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit_probe,
+        patch("mmrelay.meshtastic_utils.time.monotonic", return_value=now),
+    ):
+        mu._schedule_connect_time_calibration_probe(
+            mock_client,
+            connection_type=CONNECTION_TYPE_TCP,
+            active_config={
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "127.0.0.1",
+                    "health_check": {"enabled": True, "connect_probe_enabled": True},
+                }
+            },
+        )
+
+    mock_submit_probe.assert_not_called()
+    assert mu._pending_connect_time_probe_timer is not None
+    assert isinstance(mu._pending_connect_time_probe_timer, threading.Timer)
+    mu._pending_connect_time_probe_timer.cancel()
+    mu._pending_connect_time_probe_timer = None
+
+
+class _FakeTimer:
+    def __init__(self, delay, function, *args, **kwargs):
+        self.function = function
+        self.delay = delay
+        self.finished = threading.Event()
+
+    def start(self):
+        pass
+
+    def cancel(self):
+        self.finished.set()
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_time_probe_stale_delayed_callback_skipped():
+    """Delayed probe callback should skip submission when active client has changed."""
+    mock_client = MagicMock()
+    mock_client.localNode = MagicMock()
+    mock_client.sendData = MagicMock()
+
+    now = 1_000.0
+    drain_deadline = now + 0.01
+
+    mu._relay_startup_drain_deadline_monotonic_secs = drain_deadline
+    mu.meshtastic_client = mock_client
+    mu._relay_active_client_id = id(mock_client)
+
+    with (
+        patch("mmrelay.meshtastic.connection.threading.Timer", _FakeTimer),
+        patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit_probe,
+        patch("mmrelay.meshtastic_utils.time.monotonic", return_value=now),
+    ):
+        mu._schedule_connect_time_calibration_probe(
+            mock_client,
+            connection_type=CONNECTION_TYPE_TCP,
+            active_config={
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "127.0.0.1",
+                    "health_check": {"enabled": True, "connect_probe_enabled": True},
+                }
+            },
+        )
+
+    timer = mu._pending_connect_time_probe_timer
+    assert timer is not None
+    assert isinstance(timer, _FakeTimer)
+
+    mu.meshtastic_client = None
+    mu._relay_active_client_id = None
+
+    timer.function()
+
+    mock_submit_probe.assert_not_called()
+    mu._pending_connect_time_probe_timer = None
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_time_probe_delayed_callback_skips_on_shutdown():
+    """Delayed probe callback should skip submission when shutting_down is True."""
+    mock_client = MagicMock()
+    mock_client.localNode = MagicMock()
+    mock_client.sendData = MagicMock()
+
+    now = 1_000.0
+    drain_deadline = now + 0.01
+
+    mu._relay_startup_drain_deadline_monotonic_secs = drain_deadline
+    mu.meshtastic_client = mock_client
+    mu._relay_active_client_id = id(mock_client)
+
+    with (
+        patch("mmrelay.meshtastic.connection.threading.Timer", _FakeTimer),
+        patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit_probe,
+        patch("mmrelay.meshtastic_utils.time.monotonic", return_value=now),
+    ):
+        mu._schedule_connect_time_calibration_probe(
+            mock_client,
+            connection_type=CONNECTION_TYPE_TCP,
+            active_config={
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "127.0.0.1",
+                    "health_check": {"enabled": True, "connect_probe_enabled": True},
+                }
+            },
+        )
+
+    timer = mu._pending_connect_time_probe_timer
+    assert timer is not None
+    assert isinstance(timer, _FakeTimer)
+
+    mu.shutting_down = True
+    timer.function()
+
+    mock_submit_probe.assert_not_called()
+    mu._pending_connect_time_probe_timer = None
+    mu.shutting_down = False
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_time_probe_delayed_callback_fires_successfully():
+    """Delayed probe callback should submit probe and clear timer when client still matches."""
+    mock_client = MagicMock()
+    mock_client.localNode = MagicMock()
+    mock_client.sendData = MagicMock()
+
+    now = 1_000.0
+    drain_deadline = now + 0.01
+
+    mu._relay_startup_drain_deadline_monotonic_secs = drain_deadline
+    mu.meshtastic_client = mock_client
+    mu._relay_active_client_id = id(mock_client)
+
+    with (
+        patch("mmrelay.meshtastic.connection.threading.Timer", _FakeTimer),
+        patch(
+            "mmrelay.meshtastic_utils._submit_metadata_probe", return_value=MagicMock()
+        ) as mock_submit_probe,
+        patch("mmrelay.meshtastic_utils.time.monotonic", return_value=now),
+    ):
+        mu._schedule_connect_time_calibration_probe(
+            mock_client,
+            connection_type=CONNECTION_TYPE_TCP,
+            active_config={
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "127.0.0.1",
+                    "health_check": {"enabled": True, "connect_probe_enabled": True},
+                }
+            },
+        )
+
+        timer = mu._pending_connect_time_probe_timer
+        assert timer is not None
+        assert isinstance(timer, _FakeTimer)
+
+        timer.function()
+
+        mock_submit_probe.assert_called_once()
+
+    assert mu._pending_connect_time_probe_timer is None
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_time_probe_new_schedule_cancels_old_timer():
+    """Scheduling a new delayed probe should cancel the previously pending timer."""
+    mock_client = MagicMock()
+    mock_client.localNode = MagicMock()
+    mock_client.sendData = MagicMock()
+
+    now = 1_000.0
+    drain_deadline = now + 10.0
+
+    mu._relay_startup_drain_deadline_monotonic_secs = drain_deadline
+
+    with (
+        patch("mmrelay.meshtastic_utils._submit_metadata_probe"),
+        patch("mmrelay.meshtastic_utils.time.monotonic", return_value=now),
+    ):
+        mu._schedule_connect_time_calibration_probe(
+            mock_client,
+            connection_type=CONNECTION_TYPE_TCP,
+            active_config={
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "127.0.0.1",
+                    "health_check": {"enabled": True, "connect_probe_enabled": True},
+                }
+            },
+        )
+
+    first_timer = mu._pending_connect_time_probe_timer
+    assert first_timer is not None
+
+    # Schedule again - should cancel the first timer
+    with (
+        patch("mmrelay.meshtastic_utils._submit_metadata_probe"),
+        patch("mmrelay.meshtastic_utils.time.monotonic", return_value=now + 1.0),
+    ):
+        mu._schedule_connect_time_calibration_probe(
+            mock_client,
+            connection_type=CONNECTION_TYPE_TCP,
+            active_config={
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "127.0.0.1",
+                    "health_check": {"enabled": True, "connect_probe_enabled": True},
+                }
+            },
+        )
+
+    second_timer = mu._pending_connect_time_probe_timer
+    assert second_timer is not None
+    assert second_timer is not first_timer
+    # The first timer's internal finished flag should be set (cancel() sets it)
+    assert first_timer.finished.is_set()
+    second_timer.cancel()
+    mu._pending_connect_time_probe_timer = None
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_rollback_cancels_pending_connect_time_probe_timer():
+    """Rollback should cancel and clear the pending delayed connect-time probe timer."""
+    mock_timer = MagicMock()
+    mu._pending_connect_time_probe_timer = mock_timer
+
+    mu._rollback_connect_attempt_state(
+        client=None,
+        client_assigned_for_this_connect=False,
+        startup_drain_armed_for_this_connect=False,
+        startup_drain_applied_for_this_connect=False,
+        reconnect_bootstrap_armed_for_this_connect=False,
+    )
+
+    mock_timer.cancel.assert_called_once()
+    assert mu._pending_connect_time_probe_timer is None
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_time_probe_submits_immediately_when_drain_expired():
+    """When drain deadline is set but has already passed, probe should submit immediately."""
+    mock_client = MagicMock()
+    mock_client.localNode = MagicMock()
+    mock_client.sendData = MagicMock()
+
+    now = 1_100.0
+    drain_deadline = 1_000.0
+
+    mu._relay_startup_drain_deadline_monotonic_secs = drain_deadline
+
+    with (
+        patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit_probe,
+        patch("mmrelay.meshtastic_utils.time.monotonic", return_value=now),
+    ):
+        mu._schedule_connect_time_calibration_probe(
+            mock_client,
+            connection_type=CONNECTION_TYPE_TCP,
+            active_config={
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "127.0.0.1",
+                    "health_check": {"enabled": True, "connect_probe_enabled": True},
+                }
+            },
+        )
+
+    mock_submit_probe.assert_called_once()
+    assert mu._pending_connect_time_probe_timer is None

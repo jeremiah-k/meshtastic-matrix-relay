@@ -2,6 +2,7 @@ import contextlib
 import functools
 import inspect
 import math
+import threading
 from concurrent.futures import Future
 from typing import Any, NoReturn
 
@@ -43,6 +44,8 @@ __all__ = [
     "connect_meshtastic",
     "serial_port_exists",
 ]
+
+CONNECT_PROBE_POST_DRAIN_DELAY_SECS: float = 2.0
 
 
 class BLEDiscoveryTransientError(Exception):
@@ -191,36 +194,89 @@ def _schedule_connect_time_calibration_probe(
         )
         return
 
-    try:
-        probe_future = facade._submit_metadata_probe(
-            functools.partial(
-                facade._probe_device_connection,
-                client,
-                timeout_secs,
+    def _submit_probe() -> None:
+        try:
+            probe_future = facade._submit_metadata_probe(
+                functools.partial(
+                    facade._probe_device_connection,
+                    client,
+                    timeout_secs,
+                )
             )
-        )
-    except facade.MetadataExecutorDegradedError:
-        facade.logger.debug(
-            "Skipping connect-time metadata probe; metadata executor is degraded"
-        )
-        return
-    except RuntimeError as exc:
-        facade.logger.debug(
-            "Skipping connect-time metadata probe; submission failed",
-            exc_info=exc,
-        )
-        return
+        except facade.MetadataExecutorDegradedError:
+            facade.logger.debug(
+                "Skipping connect-time metadata probe; metadata executor is degraded"
+            )
+            return
+        except RuntimeError as exc:
+            facade.logger.debug(
+                "Skipping connect-time metadata probe; submission failed",
+                exc_info=exc,
+            )
+            return
 
-    if probe_future is None:
-        facade.logger.debug(
-            "Skipping connect-time metadata probe; metadata probe already in progress"
-        )
-        return
+        if probe_future is None:
+            facade.logger.debug(
+                "Skipping connect-time metadata probe; metadata probe already in progress"
+            )
+            return
 
-    facade.logger.debug(
-        "Scheduled one-shot connect-time metadata probe (timeout=%.1fs)",
-        timeout_secs,
-    )
+        facade.logger.debug(
+            "Scheduled one-shot connect-time metadata probe (timeout=%.1fs)",
+            timeout_secs,
+        )
+
+    with facade._relay_rx_time_clock_skew_lock:
+        drain_deadline = facade._relay_startup_drain_deadline_monotonic_secs
+
+    if drain_deadline is not None:
+        remaining = drain_deadline - facade.time.monotonic()
+        if remaining > 0:
+            delay = remaining + CONNECT_PROBE_POST_DRAIN_DELAY_SECS
+            facade.logger.debug(
+                "Delaying connect-time metadata probe by %.1fs until after startup drain window",
+                delay,
+            )
+
+            def _delayed_submit_with_stale_guard() -> None:
+                if facade.shutting_down:
+                    facade.logger.debug(
+                        "Skipping delayed connect-time metadata probe; shutdown in progress"
+                    )
+                    with facade._relay_rx_time_clock_skew_lock:
+                        if facade._pending_connect_time_probe_timer is timer:
+                            facade._pending_connect_time_probe_timer = None
+                    return
+                active_client = facade.meshtastic_client
+                active_client_id = facade._relay_active_client_id
+                if active_client is not client and (
+                    active_client_id is None or active_client_id != id(client)
+                ):
+                    facade.logger.debug(
+                        "Skipping delayed connect-time metadata probe; active client changed since scheduling"
+                    )
+                    with facade._relay_rx_time_clock_skew_lock:
+                        if facade._pending_connect_time_probe_timer is timer:
+                            facade._pending_connect_time_probe_timer = None
+                    return
+                with facade._relay_rx_time_clock_skew_lock:
+                    if facade._pending_connect_time_probe_timer is timer:
+                        facade._pending_connect_time_probe_timer = None
+                _submit_probe()
+
+            timer = threading.Timer(delay, _delayed_submit_with_stale_guard)
+            timer.daemon = True
+            old_timer = None
+            with facade._relay_rx_time_clock_skew_lock:
+                old_timer = facade._pending_connect_time_probe_timer
+                facade._pending_connect_time_probe_timer = timer
+            if old_timer is not None:
+                with contextlib.suppress(Exception):
+                    old_timer.cancel()
+            timer.start()
+            return
+
+    _submit_probe()
 
 
 def _rollback_connect_attempt_state(
@@ -286,6 +342,14 @@ def _rollback_connect_attempt_state(
     if startup_drain_timer_to_cancel is not None:
         with contextlib.suppress(AttributeError, RuntimeError, TypeError):
             startup_drain_timer_to_cancel.cancel()
+
+    pending_probe_timer = None
+    with facade._relay_rx_time_clock_skew_lock:
+        pending_probe_timer = facade._pending_connect_time_probe_timer
+        facade._pending_connect_time_probe_timer = None
+    if pending_probe_timer is not None:
+        with contextlib.suppress(Exception):
+            pending_probe_timer.cancel()
 
     return False
 

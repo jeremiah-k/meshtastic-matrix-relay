@@ -239,6 +239,30 @@ class TestHandleProbeAckCallback:
         _handle_probe_ack_callback(local_node, {"decoded": {}, "from": 1234})
         assert ack.receivedImplAck is True
 
+    def test_routing_without_error_reason_falls_through(self):
+        from mmrelay.meshtastic.health import _handle_probe_ack_callback
+
+        local_node = MagicMock()
+        ack = local_node.iface._acknowledgment
+        ack.receivedNak = False
+        local_node.iface.localNode.nodeNum = 1234
+        packet = {"decoded": {"routing": {}}, "from": 1234}
+        _handle_probe_ack_callback(local_node, packet)
+        assert ack.receivedNak is False
+        assert ack.receivedImplAck is True
+
+    def test_routing_error_reason_none_string_falls_through(self):
+        from mmrelay.meshtastic.health import _handle_probe_ack_callback
+
+        local_node = MagicMock()
+        ack = local_node.iface._acknowledgment
+        ack.receivedNak = False
+        local_node.iface.localNode.nodeNum = 1234
+        packet = {"decoded": {"routing": {"errorReason": "NONE"}}, "from": 1234}
+        _handle_probe_ack_callback(local_node, packet)
+        assert ack.receivedNak is False
+        assert ack.receivedImplAck is True
+
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestWaitForProbeAck:
