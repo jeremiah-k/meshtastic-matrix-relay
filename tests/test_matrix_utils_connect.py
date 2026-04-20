@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from mmrelay.matrix_utils import MissingMatrixRoomsError, connect_matrix
+from mmrelay.matrix_utils import MatrixAuthInfo, MissingMatrixRoomsError, connect_matrix
 
 
 class _ImmediateAwaitable:
@@ -118,8 +118,27 @@ async def test_connect_matrix_legacy_config(mock_async_client, mock_ssl_context)
     with (
         patch("mmrelay.matrix_utils.matrix_client", None),
         patch(
-            "mmrelay.matrix_utils.async_load_credentials",
+            "mmrelay.matrix_utils._resolve_and_load_credentials",
+            Mock(
+                return_value=_ImmediateAwaitable(
+                    MatrixAuthInfo(
+                        homeserver="https://matrix.example.org",
+                        access_token="legacy_token",
+                        user_id="@bot:example.org",
+                        device_id=None,
+                        credentials=None,
+                        credentials_path=None,
+                    )
+                )
+            ),
+        ),
+        patch(
+            "mmrelay.matrix_utils._resolve_aliases_in_mapping",
             Mock(return_value=_ImmediateAwaitable(None)),
+        ),
+        patch(
+            "mmrelay.matrix_utils._display_room_channel_mappings",
+            lambda *_a, **_k: None,
         ),
     ):
         client = await connect_matrix(test_config)
