@@ -585,7 +585,7 @@ def get_db_path() -> str:
 def _close_manager_safely(manager: DatabaseManager | None) -> None:
     """
     Close the given DatabaseManager if provided.
-    
+
     If a manager is supplied, calls its close() method; re-raises KeyboardInterrupt and SystemExit, and logs then suppresses any other exceptions.
     """
     if manager:

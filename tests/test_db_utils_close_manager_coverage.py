@@ -20,7 +20,7 @@ from mmrelay.db_utils import (
 def _reset_state():
     """
     Reset shared database-related global state before a test and restore it after the test.
-    
+
     Performs setup by clearing the database path cache, resetting the cached DatabaseManager, and setting mmrelay.db_utils.config to None; after the test, clears the cache and resets the manager again to ensure a clean state for subsequent tests.
     """
     clear_db_path_cache()
@@ -83,7 +83,7 @@ class TestGetDbManagerNullReturn:
     def test_raises_runtime_error_when_manager_cannot_be_created(self):
         """
         Verifies that _get_db_manager raises a RuntimeError when DatabaseManager initialization fails.
-        
+
         Patches get_db_path and _resolve_database_options to fixed values and forces DatabaseManager construction to raise RuntimeError; resets the cached manager state and asserts that calling _get_db_manager() raises a RuntimeError with a message matching "init failed" or "initialization failed".
         """
         from unittest.mock import patch

@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from mmrelay.matrix_utils import MatrixAuthInfo, MissingMatrixRoomsError, connect_matrix
+from mmrelay.matrix_utils import MissingMatrixRoomsError, connect_matrix
 
 
 class _ImmediateAwaitable:
@@ -20,7 +20,7 @@ class _ImmediateAwaitable:
     def __init__(self, value: Any = None) -> None:
         """
         Initialize the instance with an optional initial value stored in the private `_value` attribute.
-        
+
         Parameters:
             value (Any, optional): Initial value to store on the instance. Defaults to None.
         """
@@ -29,7 +29,7 @@ class _ImmediateAwaitable:
     def __await__(self) -> Generator[None, None, Any]:
         """
         Allow the instance to be awaited and immediately yield its preset value.
-        
+
         Returns:
             The value stored on the instance that will be produced to the awaiting caller.
         """

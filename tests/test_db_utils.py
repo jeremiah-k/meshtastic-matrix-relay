@@ -68,12 +68,12 @@ from mmrelay.db_utils import (
 def _make_failing_cursor_proxy_side_effect(write_failed_flag: list[bool]):
     """
     Create a DatabaseManager.run_sync side effect that injects a single sqlite3.Error on the first write.
-    
+
     When the returned side effect is used, the first cursor.execute() invoked during a call with write=True will raise sqlite3.Error("forced longname write failure") exactly once. The function returns a tuple (side_effect_function, original_run_sync) suitable for use with patch.object to replace DatabaseManager.run_sync and later restore it.
-    
+
     Parameters:
         write_failed_flag (list[bool]): A single-element mutable list used to record whether the forced failure has already occurred; the function sets write_failed_flag[0] to True when the failure is triggered.
-    
+
     Returns:
         tuple: (side_effect_function, original_run_sync) where side_effect_function has the signature (self, func, *, write=False) and original_run_sync is the original DatabaseManager.run_sync method.
     """
@@ -111,10 +111,10 @@ def _make_failing_cursor_proxy_side_effect(write_failed_flag: list[bool]):
 def _managed_sqlite_connection(path: str) -> Generator[sqlite3.Connection, None, None]:
     """
     Yield a SQLite connection wrapped in a transactional context and always close it on exit.
-    
+
     Parameters:
         path (str): Filesystem path to the SQLite database file.
-    
+
     Yields:
         sqlite3.Connection: An open connection where the transaction is managed by the context; the connection is closed when the context exits.
     """
@@ -1772,7 +1772,7 @@ class TestDbUtils(unittest.TestCase):
     def test_get_db_path_legacy_database_root_level(self):
         """
         Verify get_db_path() returns a legacy database file when a database exists at the root of a legacy directory and the deprecation window is active.
-        
+
         Creates a legacy database file at legacy_dir/<DATABASE_FILENAME>, clears cached config to force default-path resolution, patches path-resolution helpers to make the legacy directory discoverable, activates the deprecation window, and asserts get_db_path() returns the legacy database path.
         """
         # Clear cache and config to test default behavior with legacy database

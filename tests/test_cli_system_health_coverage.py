@@ -11,7 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -24,10 +24,10 @@ class TestPrintSystemHealthDatabase(unittest.TestCase):
     def _make_paths_info(self, db_path: Path) -> dict[str, str]:
         """
         Create a paths_info dictionary containing the system temporary directory as "home" and the parent directory of the given database path as "database_dir".
-        
+
         Parameters:
             db_path (Path): Path to the database file; its parent directory is used for "database_dir".
-        
+
         Returns:
             dict[str, str]: A mapping with keys "home" (system temporary directory) and "database_dir" (string path of db_path's parent).
         """
@@ -39,7 +39,7 @@ class TestPrintSystemHealthDatabase(unittest.TestCase):
     def test_wal_mode_prints_wal_emoji(self):
         """
         Verify that system health output reports WAL journal mode.
-        
+
         Creates a temporary SQLite database configured with `PRAGMA journal_mode=wal`, patches the database path and E2EE dependency check, captures printed output from _print_system_health, and asserts that at least one printed message contains the substring "WAL mode".
         """
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -33,13 +33,14 @@ _make_patched_get_running_loop = make_patched_get_running_loop
 def _make_async_return(value):
     """
     Create an async function that ignores its arguments and always returns the given value.
-    
+
     Parameters:
         value: The value the created async function will return when awaited.
-    
+
     Returns:
         async_callable (callable): An async function that accepts any arguments and returns `value` when awaited.
     """
+
     async def _async_return(*_args, **_kwargs):
         return value
 
@@ -52,7 +53,7 @@ class _ImmediateAwaitable:
     def __init__(self, value: Any = None) -> None:
         """
         Initialize the awaitable that immediately returns a stored value when awaited.
-        
+
         Parameters:
             value (Any): The value to be returned by awaiting this object. Defaults to None.
         """
@@ -61,10 +62,10 @@ class _ImmediateAwaitable:
     def __await__(self) -> Generator[None, None, Any]:
         """
         Provide the generator required by the await protocol and immediately yield the wrapped value.
-        
+
         This implements the generator-based __await__ protocol so that awaiting the object
         returns the stored value without any suspension.
-        
+
         Returns:
             The wrapped value stored in the instance.
         """
@@ -76,7 +77,7 @@ class _ImmediateAwaitable:
 def _make_matrix_client_with_awaitable_close() -> MagicMock:
     """
     Create a MagicMock matrix client whose close() returns an awaitable that completes immediately to avoid coroutine warnings.
-    
+
     Returns:
         MagicMock: A mocked matrix client with `close()` returning an awaitable that yields `None`.
     """
@@ -88,7 +89,7 @@ def _make_matrix_client_with_awaitable_close() -> MagicMock:
 async def _async_noop(*_args, **_kwargs) -> None:
     """
     Immediately completes without performing any action.
-    
+
     Returns:
         None: Always returns None.
     """
@@ -174,7 +175,7 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
     def test_await_background_task_shutdown_logs_error_on_runtime_error(self):
         """
         Verifies that mmrelay.main logs an error when a background connection-health task raises a RuntimeError during shutdown waiting.
-        
+
         Patches runtime dependencies to run main() with a meshtastic connection-health coroutine that raises a RuntimeError after a short delay, runs the shutdown sequence, and asserts that the main logger received an error containing "Error while waiting for" and "connection health task". Restores modified mmrelay.meshtastic_utils module-level globals after the test.
         """
         import mmrelay.meshtastic_utils as mu
@@ -245,12 +246,12 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
     def test_await_background_task_shutdown_timeout_on_cancel_gather(self):
         """
         Verify that main's shutdown logs a timeout warning when cancelling background tasks fails to complete.
-        
+
         Patches the runtime to:
         - make the meshtastic connection health coroutine ignore cancellation,
         - cause `asyncio.wait_for` to raise `asyncio.TimeoutError` on the second invocation,
         - and provide an awaitable matrix client close.
-        
+
         Asserts that a warning containing "Timed out cancelling" is emitted during shutdown.
         """
         import mmrelay.meshtastic_utils as mu
@@ -359,7 +360,7 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
     def test_shutdown_cancels_and_awaits_reconnect_task_future(self):
         """
         Verifies that shutdown cancels and awaits any active meshtastic reconnect task future.
-        
+
         Sets up a long-running reconnect task future, runs the main shutdown sequence, and asserts that the reconnect future was either cancelled or observed cancellation, is completed, and that the global `reconnect_task_future` has been cleared.
         """
         import mmrelay.meshtastic_utils as mu
@@ -379,7 +380,7 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
             def _capture_reconnect_future(*_args, **_kwargs):
                 """
                 Create and store a long-running reconnect task and record it in module state.
-                
+
                 Starts an asyncio Task that sleeps for an extended period; if the task is cancelled,
                 the outer-scope flag `cancel_observed` is set to True. The created Task is stored
                 in the outer-scope `captured_future` and assigned to `mu.reconnect_task_future` and
@@ -406,7 +407,7 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
             ) -> None:
                 """
                 Trigger creation and capture of the reconnect task/future during tests.
-                
+
                 Acting as an async shim, this function invokes the test helper that creates a long-running reconnect task and stores its Task/future for later inspection and shutdown verification. Intended for use as an async replacement for the connection-health callback in tests.
                 """
                 _capture_reconnect_future(*_args, **_kwargs)

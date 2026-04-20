@@ -35,13 +35,13 @@ from tests.constants import TEST_BLE_MAC
 def _submit_done_reconnect_future(coro: object, _loop: object) -> Future[None]:
     """
     Create and return an already-completed Future after optionally closing a coroutine-like object.
-    
+
     If `coro` has a callable `close()` attribute, it will be invoked before creating the completed Future.
-    
+
     Parameters:
         coro: An object that may represent a coroutine; `close()` will be called if present and callable.
         _loop: Unused placeholder for an event loop (kept for compatibility).
-    
+
     Returns:
         A Future already completed with the value `None`.
     """
@@ -57,7 +57,7 @@ def _submit_done_reconnect_future(coro: object, _loop: object) -> Future[None]:
 def reset_meshtastic_state(reset_meshtastic_globals):
     """
     Reset mmrelay.meshtastic_utils module state to a clean baseline before each test.
-    
+
     Clears module-level globals used by the meshtastic relay (executors, futures, BLE state,
     timeouts, health-probe tracking, clock skew/drain timers, and degraded/executor orphan counters)
     so tests run with a deterministic, isolated environment.

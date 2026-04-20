@@ -4640,7 +4640,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         def _noop(*_args: object, **_kwargs: object) -> None:
             """
             Synchronous no-op callable that accepts any positional and keyword arguments and does nothing.
-            
+
             Used as a replacement/mock for synchronous disconnect functions in tests; ignores all inputs and returns None.
             """
 
@@ -4669,7 +4669,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         def _noop(*_args: object, **_kwargs: object) -> None:
             """
             Synchronous no-op callable that accepts any positional and keyword arguments and does nothing.
-            
+
             Used as a replacement/mock for synchronous disconnect functions in tests; ignores all inputs and returns None.
             """
 
@@ -4696,7 +4696,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         def _noop(*_args: object, **_kwargs: object) -> None:
             """
             No-operation callable that accepts and ignores all positional and keyword arguments.
-            
+
             Used as a generic placeholder callback or side-effect (for example, in mocks, timers, or disconnect helpers).
             """
             pass
@@ -4726,7 +4726,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         def _noop(*_args: object, **_kwargs: object) -> None:
             """
             No-operation callable that accepts and ignores all positional and keyword arguments.
-            
+
             Used as a generic placeholder callback or side-effect (for example, in mocks, timers, or disconnect helpers).
             """
             pass
@@ -4763,7 +4763,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             def __await__(self) -> Generator[Any, None, None]:
                 """
                 Expose this object as awaitable by providing its awaiting generator.
-                
+
                 Returns:
                     Generator: A generator used by the `await` expression; it yields control to the event loop and produces no value.
                 """
@@ -4776,12 +4776,12 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         def _timeout_wait_for(awaitable: object, **_kwargs: object) -> NoReturn:
             """
             Close the given awaitable if it is a coroutine, then raise an asyncio.TimeoutError.
-            
+
             Parameters:
-            	awaitable (object): The awaitable or coroutine to be closed; if it is a coroutine, it will be closed to free resources.
-            
+                awaitable (object): The awaitable or coroutine to be closed; if it is a coroutine, it will be closed to free resources.
+
             Raises:
-            	asyncio.TimeoutError: Always raised by this function.
+                asyncio.TimeoutError: Always raised by this function.
             """
             if inspect.iscoroutine(awaitable):
                 awaitable.close()
@@ -4820,7 +4820,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             def __await__(self) -> Generator[Any, None, None]:
                 """
                 Expose this object as awaitable by providing its awaiting generator.
-                
+
                 Returns:
                     Generator: A generator used by the `await` expression; it yields control to the event loop and produces no value.
                 """
@@ -4830,12 +4830,12 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         def _timeout_wait_for(awaitable: object, **_kwargs: object) -> NoReturn:
             """
             Close the given awaitable if it is a coroutine, then raise an asyncio.TimeoutError.
-            
+
             Parameters:
-            	awaitable (object): The awaitable or coroutine to be closed; if it is a coroutine, it will be closed to free resources.
-            
+                awaitable (object): The awaitable or coroutine to be closed; if it is a coroutine, it will be closed to free resources.
+
             Raises:
-            	asyncio.TimeoutError: Always raised by this function.
+                asyncio.TimeoutError: Always raised by this function.
             """
             if inspect.iscoroutine(awaitable):
                 awaitable.close()
@@ -4881,7 +4881,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             def __await__(self) -> Generator[Any, None, None]:
                 """
                 Expose this object as awaitable by providing its awaiting generator.
-                
+
                 Returns:
                     Generator: A generator used by the `await` expression; it yields control to the event loop and produces no value.
                 """
@@ -4893,12 +4893,12 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         def _timeout_wait_for(awaitable: object, **_kwargs: object) -> NoReturn:
             """
             Close the given awaitable if it is a coroutine, then raise an asyncio.TimeoutError.
-            
+
             Parameters:
-            	awaitable (object): The awaitable or coroutine to be closed; if it is a coroutine, it will be closed to free resources.
-            
+                awaitable (object): The awaitable or coroutine to be closed; if it is a coroutine, it will be closed to free resources.
+
             Raises:
-            	asyncio.TimeoutError: Always raised by this function.
+                asyncio.TimeoutError: Always raised by this function.
             """
             if inspect.iscoroutine(awaitable):
                 awaitable.close()
@@ -5008,7 +5008,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         def _noop(*_args: object, **_kwargs: object) -> None:
             """
             No-operation callable that accepts and ignores all positional and keyword arguments.
-            
+
             Used as a generic placeholder callback or side-effect (for example, in mocks, timers, or disconnect helpers).
             """
             pass

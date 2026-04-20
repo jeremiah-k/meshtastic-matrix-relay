@@ -35,13 +35,13 @@ class TestMeshtasticUtilsCoverage(unittest.TestCase):
     def _immediate_metadata_submit(callback: Callable[[], Any]) -> Future[None]:
         """
         Run a metadata probe callback immediately and return a completed Future.
-        
+
         Parameters:
             callback (Callable[[], Any]): Function to execute synchronously; its return value is ignored.
-        
+
         Returns:
             Future[None]: A Future already completed with result `None` after `callback` returns.
-        
+
         Raises:
             Exception: Any exception raised by `callback` is propagated to the caller.
         """

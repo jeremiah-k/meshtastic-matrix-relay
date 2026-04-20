@@ -197,12 +197,12 @@ class DatabaseManager:
     def _create_connection(self) -> sqlite3.Connection:
         """
         Create and configure a new sqlite3.Connection for the manager and register it for later cleanup.
-        
+
         Configures busy timeout, journal mode (WAL), foreign keys, and any validated extra PRAGMA directives. If configuration fails, the partially configured connection is closed before the error is propagated.
-        
+
         Returns:
             sqlite3.Connection: A configured and tracked SQLite connection.
-        
+
         Raises:
             sqlite3.Error: If an SQLite error occurs during connection creation or PRAGMA setup.
             ValueError: If an extra PRAGMA name or string value fails validation.
