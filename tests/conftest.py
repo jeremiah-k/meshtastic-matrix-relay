@@ -117,6 +117,14 @@ sys.modules["schedule"] = MagicMock()
 sys.modules["platformdirs"] = MagicMock()
 sys.modules["py_staticmaps"] = MagicMock()
 
+# AsyncMock cleanup tuning:
+# Full generation-2 gc.collect() is relatively expensive on newer CPython runtimes
+# and can dominate teardown time when run after every qualifying test. We still do
+# cheap generation-0 collection every time, and periodically run a full collection
+# to reclaim cyclic coroutine objects before they leak into unrelated tests.
+_ASYNCMOCK_FULL_GC_INTERVAL = 25
+_asyncmock_cleanup_invocations = 0
+
 
 class _ConnectionProvenance:
     """Track every sqlite3.connect() call with creation metadata."""
@@ -857,15 +865,18 @@ def cleanup_asyncmock_objects(request):
     ]
 
     if any(pattern in test_file for pattern in asyncmock_patterns):
-        import gc
+        global _asyncmock_cleanup_invocations
         import warnings
 
+        _asyncmock_cleanup_invocations += 1
         # Suppress RuntimeWarning about unawaited coroutines during cleanup
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore", category=RuntimeWarning, message=".*never awaited.*"
             )
-            gc.collect()
+            gc.collect(0)
+            if _asyncmock_cleanup_invocations % _ASYNCMOCK_FULL_GC_INTERVAL == 0:
+                gc.collect()
 
 
 @pytest.fixture(autouse=True)
