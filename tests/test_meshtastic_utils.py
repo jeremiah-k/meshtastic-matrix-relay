@@ -4981,7 +4981,12 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_future.cancel.return_value = True
         mock_future.done.return_value = False
         mock_future.result = Mock(side_effect=FuturesTimeoutError())
-        mock_run_coroutine_threadsafe.return_value = mock_future
+
+        def _submit(coro, _loop):
+            coro.close()
+            return mock_future
+
+        mock_run_coroutine_threadsafe.side_effect = _submit
 
         with patch("mmrelay.meshtastic_utils.event_loop", mock_loop):
             _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
