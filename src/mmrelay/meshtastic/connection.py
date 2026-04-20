@@ -45,6 +45,8 @@ __all__ = [
     "serial_port_exists",
 ]
 
+CONNECT_PROBE_POST_DRAIN_DELAY_SECS: float = 2.0
+
 
 class BLEDiscoveryTransientError(Exception):
     """Retryable BLE discovery/setup failure that should not consume timeout budget."""
@@ -230,7 +232,7 @@ def _schedule_connect_time_calibration_probe(
     if drain_deadline is not None:
         remaining = drain_deadline - facade.time.monotonic()
         if remaining > 0:
-            delay = remaining + 2.0
+            delay = remaining + CONNECT_PROBE_POST_DRAIN_DELAY_SECS
             facade.logger.debug(
                 "Delaying connect-time metadata probe by %.1fs until after startup drain window",
                 delay,
@@ -242,6 +244,13 @@ def _schedule_connect_time_calibration_probe(
                     old_timer.cancel()
 
             def _delayed_submit_with_stale_guard() -> None:
+                if facade.shutting_down:
+                    facade.logger.debug(
+                        "Skipping delayed connect-time metadata probe; shutdown in progress"
+                    )
+                    if facade._pending_connect_time_probe_timer is timer:
+                        facade._pending_connect_time_probe_timer = None
+                    return
                 active_client = facade.meshtastic_client
                 active_client_id = facade._relay_active_client_id
                 if active_client is not client and (

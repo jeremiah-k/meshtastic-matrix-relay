@@ -1,8 +1,9 @@
+import asyncio
 import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import Future
-from typing import Any
+from typing import Any, Coroutine
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -24,10 +25,13 @@ from mmrelay.constants.network import (
 from mmrelay.meshtastic_utils import connect_meshtastic, on_lost_meshtastic_connection
 
 
-def _schedule_reconnect_closing_coro(coro, loop=None):
+def _schedule_reconnect_closing_coro(
+    coro: Coroutine[Any, Any, Any],
+    loop: asyncio.AbstractEventLoop | None = None,
+) -> Future[None]:
     """Close the reconnect coroutine to prevent unawaited-coroutine leaks."""
     coro.close()
-    fut = Future()
+    fut: Future[None] = Future()
     fut.set_result(None)
     return fut
 
@@ -1462,6 +1466,47 @@ def test_connect_time_probe_stale_delayed_callback_skipped():
 
     mock_submit_probe.assert_not_called()
     mu._pending_connect_time_probe_timer = None
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_time_probe_delayed_callback_skips_on_shutdown():
+    """Delayed probe callback should skip submission when shutting_down is True."""
+    mock_client = MagicMock()
+    mock_client.localNode = MagicMock()
+    mock_client.sendData = MagicMock()
+
+    now = 1_000.0
+    drain_deadline = now + 0.01
+
+    mu._relay_startup_drain_deadline_monotonic_secs = drain_deadline
+    mu.meshtastic_client = mock_client
+    mu._relay_active_client_id = id(mock_client)
+
+    with (
+        patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit_probe,
+        patch("mmrelay.meshtastic_utils.time.monotonic", return_value=now),
+    ):
+        mu._schedule_connect_time_calibration_probe(
+            mock_client,
+            connection_type=CONNECTION_TYPE_TCP,
+            active_config={
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "127.0.0.1",
+                    "health_check": {"enabled": True, "connect_probe_enabled": True},
+                }
+            },
+        )
+
+    assert mu._pending_connect_time_probe_timer is not None
+
+    mu.shutting_down = True
+    timer = mu._pending_connect_time_probe_timer
+    timer.function()
+
+    mock_submit_probe.assert_not_called()
+    mu._pending_connect_time_probe_timer = None
+    mu.shutting_down = False
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
