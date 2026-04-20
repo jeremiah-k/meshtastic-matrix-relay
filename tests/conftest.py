@@ -1260,9 +1260,7 @@ def reset_meshtastic_globals():
     _cancel_and_join_timer_like(startup_drain_timer, timeout=0.2)
     mu._relay_startup_drain_expiry_timer = None
     pending_connect_probe_timer = getattr(mu, "_pending_connect_time_probe_timer", None)
-    if pending_connect_probe_timer is not None:
-        with contextlib.suppress(Exception):
-            pending_connect_probe_timer.cancel()
+    _cancel_and_join_timer_like(pending_connect_probe_timer, timeout=0.2)
     mu._pending_connect_time_probe_timer = None
     startup_drain_complete_event = getattr(
         mu, "_relay_startup_drain_complete_event", None
@@ -1320,6 +1318,11 @@ def reset_meshtastic_globals():
         startup_drain_timer = getattr(mu, "_relay_startup_drain_expiry_timer", None)
         _cancel_and_join_timer_like(startup_drain_timer, timeout=0.2)
         mu._relay_startup_drain_expiry_timer = None
+        pending_connect_probe_timer = getattr(
+            mu, "_pending_connect_time_probe_timer", None
+        )
+        _cancel_and_join_timer_like(pending_connect_probe_timer, timeout=0.2)
+        mu._pending_connect_time_probe_timer = None
         mu.reconnect_task = None
         mu.reconnect_task_future = None
         mu._metadata_future = None

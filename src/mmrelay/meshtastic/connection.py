@@ -238,18 +238,14 @@ def _schedule_connect_time_calibration_probe(
                 delay,
             )
 
-            old_timer = facade._pending_connect_time_probe_timer
-            if old_timer is not None:
-                with contextlib.suppress(Exception):
-                    old_timer.cancel()
-
             def _delayed_submit_with_stale_guard() -> None:
                 if facade.shutting_down:
                     facade.logger.debug(
                         "Skipping delayed connect-time metadata probe; shutdown in progress"
                     )
-                    if facade._pending_connect_time_probe_timer is timer:
-                        facade._pending_connect_time_probe_timer = None
+                    with facade._relay_rx_time_clock_skew_lock:
+                        if facade._pending_connect_time_probe_timer is timer:
+                            facade._pending_connect_time_probe_timer = None
                     return
                 active_client = facade.meshtastic_client
                 active_client_id = facade._relay_active_client_id
@@ -259,13 +255,24 @@ def _schedule_connect_time_calibration_probe(
                     facade.logger.debug(
                         "Skipping delayed connect-time metadata probe; active client changed since scheduling"
                     )
+                    with facade._relay_rx_time_clock_skew_lock:
+                        if facade._pending_connect_time_probe_timer is timer:
+                            facade._pending_connect_time_probe_timer = None
                     return
-                facade._pending_connect_time_probe_timer = None
+                with facade._relay_rx_time_clock_skew_lock:
+                    if facade._pending_connect_time_probe_timer is timer:
+                        facade._pending_connect_time_probe_timer = None
                 _submit_probe()
 
             timer = threading.Timer(delay, _delayed_submit_with_stale_guard)
             timer.daemon = True
-            facade._pending_connect_time_probe_timer = timer
+            old_timer = None
+            with facade._relay_rx_time_clock_skew_lock:
+                old_timer = facade._pending_connect_time_probe_timer
+                facade._pending_connect_time_probe_timer = timer
+            if old_timer is not None:
+                with contextlib.suppress(Exception):
+                    old_timer.cancel()
             timer.start()
             return
 
@@ -336,8 +343,10 @@ def _rollback_connect_attempt_state(
         with contextlib.suppress(AttributeError, RuntimeError, TypeError):
             startup_drain_timer_to_cancel.cancel()
 
-    pending_probe_timer = facade._pending_connect_time_probe_timer
-    facade._pending_connect_time_probe_timer = None
+    pending_probe_timer = None
+    with facade._relay_rx_time_clock_skew_lock:
+        pending_probe_timer = facade._pending_connect_time_probe_timer
+        facade._pending_connect_time_probe_timer = None
     if pending_probe_timer is not None:
         with contextlib.suppress(Exception):
             pending_probe_timer.cancel()

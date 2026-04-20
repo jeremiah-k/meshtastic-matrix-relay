@@ -1,3 +1,4 @@
+import contextlib
 import threading
 from typing import Any, Iterable
 
@@ -311,8 +312,10 @@ def on_lost_meshtastic_connection(
         facade.meshtastic_client = None
         facade._relay_active_client_id = None
 
-        pending_probe_timer = facade._pending_connect_time_probe_timer
-        facade._pending_connect_time_probe_timer = None
+        pending_probe_timer = None
+        with facade._relay_rx_time_clock_skew_lock:
+            pending_probe_timer = facade._pending_connect_time_probe_timer
+            facade._pending_connect_time_probe_timer = None
         if pending_probe_timer is not None:
             with contextlib.suppress(Exception):
                 pending_probe_timer.cancel()

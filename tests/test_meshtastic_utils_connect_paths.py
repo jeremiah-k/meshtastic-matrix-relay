@@ -27,7 +27,7 @@ from mmrelay.meshtastic_utils import connect_meshtastic, on_lost_meshtastic_conn
 
 def _schedule_reconnect_closing_coro(
     coro: Coroutine[Any, Any, Any],
-    loop: asyncio.AbstractEventLoop | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,  # noqa: ARG001
 ) -> Future[None]:
     """Close the reconnect coroutine to prevent unawaited-coroutine leaks."""
     coro.close()
@@ -1424,6 +1424,19 @@ def test_connect_time_probe_delayed_when_drain_window_active():
     mu._pending_connect_time_probe_timer = None
 
 
+class _FakeTimer:
+    def __init__(self, delay, function, *args, **kwargs):
+        self.function = function
+        self.delay = delay
+        self.finished = threading.Event()
+
+    def start(self):
+        pass
+
+    def cancel(self):
+        self.finished.set()
+
+
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_connect_time_probe_stale_delayed_callback_skipped():
     """Delayed probe callback should skip submission when active client has changed."""
@@ -1439,6 +1452,7 @@ def test_connect_time_probe_stale_delayed_callback_skipped():
     mu._relay_active_client_id = id(mock_client)
 
     with (
+        patch("mmrelay.meshtastic.connection.threading.Timer", _FakeTimer),
         patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit_probe,
         patch("mmrelay.meshtastic_utils.time.monotonic", return_value=now),
     ):
@@ -1454,14 +1468,13 @@ def test_connect_time_probe_stale_delayed_callback_skipped():
             },
         )
 
-    assert mu._pending_connect_time_probe_timer is not None
+    timer = mu._pending_connect_time_probe_timer
+    assert timer is not None
+    assert isinstance(timer, _FakeTimer)
 
-    # Simulate client change before timer fires
     mu.meshtastic_client = None
     mu._relay_active_client_id = None
 
-    # Fire the timer callback directly
-    timer = mu._pending_connect_time_probe_timer
     timer.function()
 
     mock_submit_probe.assert_not_called()
@@ -1483,6 +1496,7 @@ def test_connect_time_probe_delayed_callback_skips_on_shutdown():
     mu._relay_active_client_id = id(mock_client)
 
     with (
+        patch("mmrelay.meshtastic.connection.threading.Timer", _FakeTimer),
         patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit_probe,
         patch("mmrelay.meshtastic_utils.time.monotonic", return_value=now),
     ):
@@ -1498,10 +1512,11 @@ def test_connect_time_probe_delayed_callback_skips_on_shutdown():
             },
         )
 
-    assert mu._pending_connect_time_probe_timer is not None
+    timer = mu._pending_connect_time_probe_timer
+    assert timer is not None
+    assert isinstance(timer, _FakeTimer)
 
     mu.shutting_down = True
-    timer = mu._pending_connect_time_probe_timer
     timer.function()
 
     mock_submit_probe.assert_not_called()
