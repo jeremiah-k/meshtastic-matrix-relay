@@ -213,6 +213,47 @@ class TestOnLostMeshtasticConnection:
             for call in mock_logger_error.call_args_list
         )
 
+    def test_cancels_pending_connect_time_probe_timer(self):
+        from mmrelay.meshtastic.events import on_lost_meshtastic_connection
+
+        mu.shutting_down = False
+        mu.reconnecting = False
+        mu.meshtastic_client = MagicMock()
+        mu._relay_active_client_id = None
+        mu.meshtastic_iface = None
+        mu._ble_future = None
+        mu._ble_future_address = None
+        mu._ble_executor_degraded_addresses = set()
+
+        mock_timer = MagicMock()
+        mu._pending_connect_time_probe_timer = mock_timer
+
+        mock_loop = MagicMock()
+        mock_loop.is_closed.return_value = False
+        mock_loop.is_running.return_value = True
+        mu.event_loop = mock_loop
+
+        scheduled_reconnect_task = MagicMock()
+
+        def _schedule_coroutine(coro, _loop):
+            coro.close()
+            return scheduled_reconnect_task
+
+        with (
+            patch.object(mu, "_disconnect_ble_interface"),
+            patch.object(mu, "reset_executor_degraded_state"),
+            patch.object(
+                mu.asyncio,
+                "run_coroutine_threadsafe",
+                side_effect=_schedule_coroutine,
+            ),
+        ):
+            on_lost_meshtastic_connection()
+
+        mock_timer.cancel.assert_called_once()
+        assert mu._pending_connect_time_probe_timer is None
+        mu.reconnecting = False
+
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestOnMeshtasticMessage:
