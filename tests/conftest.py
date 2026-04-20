@@ -167,6 +167,13 @@ class _ConnectionProvenance:
     def clear(self) -> None:
         self._registry.clear()
 
+    def uninstall(self) -> None:
+        if not self._patched:
+            return
+        sqlite3.connect = self._real_connect
+        self._patched = False
+        self._registry.clear()
+
 
 _conn_provenance = _ConnectionProvenance()
 
@@ -1500,16 +1507,17 @@ def clean_migration_home(
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _install_sqlite_provenance():
+def _install_sqlite_provenance() -> Generator[None, None, None]:
     _conn_provenance.install()
     yield
+    _conn_provenance.uninstall()
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
+    _conn_provenance._current_nodeid = item.nodeid
     outcome = yield
     report = outcome.get_result()
-    _conn_provenance._current_nodeid = item.nodeid
     if report.when == "call" and report.failed:
         open_conns = _conn_provenance.report_open()
         if open_conns:

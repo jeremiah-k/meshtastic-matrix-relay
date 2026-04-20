@@ -114,11 +114,11 @@ def test_staging_pattern_credentials(tmp_path: Path):
     new_home = tmp_path / "home"
 
     # Mock _finalize_move to fail after staging
-    with patch(
-        "mmrelay.migrate._finalize_move", side_effect=OSError("Finalize failed")
+    with (
+        patch("mmrelay.migrate._finalize_move", side_effect=OSError("Finalize failed")),
+        pytest.raises(Exception, match="Finalize failed"),
     ):
-        with pytest.raises(Exception, match="Finalize failed"):
-            migrate_credentials([legacy_root], new_home)
+        migrate_credentials([legacy_root], new_home)
 
     # Final destination should NOT exist
     assert not (new_home / "matrix" / CREDENTIALS_FILENAME).exists()
@@ -147,11 +147,13 @@ def test_database_migration_success(tmp_path: Path) -> None:
     assert migrated_db_path.exists()
     assert not db_path.exists()
 
-    with contextlib.closing(sqlite3.connect(migrated_db_path)) as conn:
-        with conn as managed_conn:
-            row = managed_conn.execute(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='test'"
-            ).fetchone()
+    with (
+        contextlib.closing(sqlite3.connect(migrated_db_path)) as conn,
+        conn as managed_conn,
+    ):
+        row = managed_conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='test'"
+        ).fetchone()
     assert row is not None
     assert row[0] == 1
 
@@ -163,15 +165,16 @@ def test_database_migration_move_failure_preserves_legacy_source(
     legacy_root = tmp_path / "legacy"
     legacy_root.mkdir()
     db_path = legacy_root / DATABASE_FILENAME
-    with contextlib.closing(sqlite3.connect(db_path)) as conn:
-        with conn:
-            conn.execute("CREATE TABLE test (id INTEGER)")
+    with contextlib.closing(sqlite3.connect(db_path)) as conn, conn:
+        conn.execute("CREATE TABLE test (id INTEGER)")
 
     new_home = tmp_path / "home"
 
-    with patch("mmrelay.migrate.shutil.move", side_effect=OSError("move failed")):
-        with pytest.raises(MigrationError, match="move failed"):
-            migrate_database([legacy_root], new_home)
+    with (
+        patch("mmrelay.migrate.shutil.move", side_effect=OSError("move failed")),
+        pytest.raises(MigrationError, match="move failed"),
+    ):
+        migrate_database([legacy_root], new_home)
 
     assert db_path.exists()
     assert not (new_home / "database" / DATABASE_FILENAME).exists()
@@ -189,7 +192,14 @@ def test_migration_failure_reports_paths(
     new_home = tmp_path / "home"
     new_home.mkdir()
 
-    with patch("mmrelay.migrate.resolve_all_paths") as mock_resolve:
+    with (
+        patch("mmrelay.migrate.resolve_all_paths") as mock_resolve,
+        patch("mmrelay.migrate._is_mmrelay_running", return_value=False),
+        patch(
+            "mmrelay.migrate._finalize_move",
+            side_effect=OSError("Staging remains"),
+        ),
+    ):
         mock_resolve.return_value = {
             "home": str(new_home),
             "legacy_sources": [str(legacy_root)],
@@ -200,20 +210,11 @@ def test_migration_failure_reports_paths(
             "store_dir": str(new_home / "matrix" / "store"),
         }
 
-        # Mock running instance check to return False (no running instance)
-        with patch("mmrelay.migrate._is_mmrelay_running", return_value=False):
-            # Mock finalize to fail
-            with patch(
-                "mmrelay.migrate._finalize_move", side_effect=OSError("Staging remains")
-            ):
-                result = perform_migration(dry_run=False)
-                assert result["success"] is False
+        result = perform_migration(dry_run=False)
+        assert result["success"] is False
 
-                # Check that error info is present in the result
-                assert "error" in result or "migrations" in result
+        assert "error" in result or "migrations" in result
 
-                # Check that migrations list contains the failed step
-                if "migrations" in result:
-                    step_names = [m.get("type") for m in result["migrations"]]
-                    # At least one step should have been attempted (credentials or config)
-                    assert len(step_names) > 0
+        if "migrations" in result:
+            step_names = [m.get("type") for m in result["migrations"]]
+            assert len(step_names) > 0

@@ -3146,11 +3146,11 @@ class TestStartupRollback(unittest.TestCase):
 
         check_conn_sentinel = object()
 
-        def mock_check_conn():
+        def mock_check_conn() -> object:
             # Return a non-coroutine sentinel; create_task is patched below.
             return check_conn_sentinel
 
-        def mock_create_task(coro, *args, **kwargs):
+        def mock_create_task(coro: Any, *_args: Any, **_kwargs: Any) -> Any:
             if coro is check_conn_sentinel:
                 return mock_check_task
             if inspect.iscoroutine(coro):

@@ -4,7 +4,9 @@ This module tests general connection setup, config validation,
 and legacy config handling during Matrix connection establishment.
 """
 
+from collections.abc import Generator
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -15,10 +17,10 @@ from mmrelay.matrix_utils import MatrixAuthInfo, MissingMatrixRoomsError, connec
 class _ImmediateAwaitable:
     """Awaitable that resolves immediately without creating coroutine objects."""
 
-    def __init__(self, value=None):
+    def __init__(self, value: Any = None) -> None:
         self._value = value
 
-    def __await__(self):
+    def __await__(self) -> Generator[None, None, Any]:
         if False:  # pragma: no cover
             yield
         return self._value
@@ -117,21 +119,8 @@ async def test_connect_matrix_legacy_config(mock_async_client, mock_ssl_context)
     # Mock the global matrix_client to None to ensure fresh creation
     with (
         patch("mmrelay.matrix_utils.matrix_client", None),
-        patch(
-            "mmrelay.matrix_utils._resolve_and_load_credentials",
-            Mock(
-                return_value=_ImmediateAwaitable(
-                    MatrixAuthInfo(
-                        homeserver="https://matrix.example.org",
-                        access_token="legacy_token",
-                        user_id="@bot:example.org",
-                        device_id=None,
-                        credentials=None,
-                        credentials_path=None,
-                    )
-                )
-            ),
-        ),
+        patch("mmrelay.config.os.path.exists", return_value=False),
+        patch("mmrelay.matrix.credentials.os.path.isfile", return_value=False),
         patch(
             "mmrelay.matrix_utils._resolve_aliases_in_mapping",
             Mock(return_value=_ImmediateAwaitable(None)),

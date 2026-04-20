@@ -197,13 +197,13 @@ def _submit_coro(
                 try:
                     facade.asyncio.set_event_loop(new_loop)
                     result = new_loop.run_until_complete(coro)
+                finally:
                     with contextlib.suppress(Exception):
                         new_loop.run_until_complete(new_loop.shutdown_asyncgens())
                     with contextlib.suppress(Exception):
                         new_loop.run_until_complete(
                             new_loop.shutdown_default_executor()
                         )
-                finally:
                     new_loop.close()
                     with contextlib.suppress(Exception):
                         facade.asyncio.set_event_loop(None)

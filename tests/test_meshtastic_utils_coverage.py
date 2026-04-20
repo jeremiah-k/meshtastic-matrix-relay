@@ -32,6 +32,15 @@ from mmrelay.constants.network import (
 from tests.constants import TEST_BLE_MAC
 
 
+def _submit_done_reconnect_future(coro: object, _loop: object) -> Future[None]:
+    close = getattr(coro, "close", None)
+    if callable(close):
+        close()
+    done_future: Future[None] = Future()
+    done_future.set_result(None)
+    return done_future
+
+
 @pytest.fixture(autouse=True)
 def reset_meshtastic_state(reset_meshtastic_globals):
     """Ensure clean state for each test."""
@@ -1683,28 +1692,21 @@ class TestConnectionLostHandlerClearingStaleBleFuture:
         mu.event_loop.is_closed.return_value = False
         mu.reconnecting = False
 
-        def _submit_reconnect_coro(coro, _loop):
-            close = getattr(coro, "close", None)
-            if callable(close):
-                close()
-            done_future = Mock(spec=Future)
-            done_future.cancel.return_value = True
-            done_future.done.return_value = True
-            return done_future
-
-        with patch("mmrelay.meshtastic_utils.reconnect"):
-            with patch(
+        with (
+            patch("mmrelay.meshtastic_utils.reconnect"),
+            patch(
                 "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
-                side_effect=_submit_reconnect_coro,
-            ):
-                with patch("mmrelay.meshtastic_utils.logger"):
-                    mu.on_lost_meshtastic_connection(detection_source="test source")
+                side_effect=_submit_done_reconnect_future,
+            ),
+            patch("mmrelay.meshtastic_utils.logger"),
+        ):
+            mu.on_lost_meshtastic_connection(detection_source="test source")
 
-                    assert mu._ble_future is None
-                    assert mu._ble_future_address is None
-                    assert mu._ble_future_started_at is None
-                    assert mu._ble_future_timeout_secs is None
-                    assert TEST_BLE_MAC not in mu._ble_timeout_counts
+            assert mu._ble_future is None
+            assert mu._ble_future_address is None
+            assert mu._ble_future_started_at is None
+            assert mu._ble_future_timeout_secs is None
+            assert TEST_BLE_MAC not in mu._ble_timeout_counts
 
     def test_on_lost_meshtastic_connection_clears_ble_timeout_counts(self):
         """Test _ble_timeout_counts is popped for the address."""
@@ -1721,25 +1723,18 @@ class TestConnectionLostHandlerClearingStaleBleFuture:
         mu.event_loop.is_closed.return_value = False
         mu.reconnecting = False
 
-        def _submit_reconnect_coro(coro, _loop):
-            close = getattr(coro, "close", None)
-            if callable(close):
-                close()
-            done_future = Mock(spec=Future)
-            done_future.cancel.return_value = True
-            done_future.done.return_value = True
-            return done_future
-
-        with patch("mmrelay.meshtastic_utils.reconnect"):
-            with patch(
+        with (
+            patch("mmrelay.meshtastic_utils.reconnect"),
+            patch(
                 "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
-                side_effect=_submit_reconnect_coro,
-            ):
-                with patch("mmrelay.meshtastic_utils.logger"):
-                    mu.on_lost_meshtastic_connection(detection_source="test source")
+                side_effect=_submit_done_reconnect_future,
+            ),
+            patch("mmrelay.meshtastic_utils.logger"),
+        ):
+            mu.on_lost_meshtastic_connection(detection_source="test source")
 
-                    assert "11:22:33:44:55:66" not in mu._ble_timeout_counts
-                    assert mu._ble_timeout_counts["OTHER:ADDRESS"] == 3
+            assert "11:22:33:44:55:66" not in mu._ble_timeout_counts
+            assert mu._ble_timeout_counts["OTHER:ADDRESS"] == 3
 
 
 class TestMetadataExecutorDegradedState:
@@ -1930,27 +1925,20 @@ class TestReconnectResetsDegradedStateWithoutDeadlock:
         mu.reconnecting = False
         mu.shutting_down = False
 
-        def _submit_reconnect_coro(coro, _loop):
-            close = getattr(coro, "close", None)
-            if callable(close):
-                close()
-            done_future = Mock(spec=Future)
-            done_future.cancel.return_value = True
-            done_future.done.return_value = True
-            return done_future
-
-        with patch("mmrelay.meshtastic_utils.reconnect"):
-            with patch(
+        with (
+            patch("mmrelay.meshtastic_utils.reconnect"),
+            patch(
                 "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
-                side_effect=_submit_reconnect_coro,
-            ):
-                with patch("mmrelay.meshtastic_utils.logger"):
-                    mu.on_lost_meshtastic_connection(detection_source="test source")
+                side_effect=_submit_done_reconnect_future,
+            ),
+            patch("mmrelay.meshtastic_utils.logger"),
+        ):
+            mu.on_lost_meshtastic_connection(detection_source="test source")
 
-                    assert len(mu._ble_executor_degraded_addresses) == 0
-                    assert len(mu._ble_executor_orphaned_workers_by_address) == 0
-                    assert mu._metadata_executor_degraded is False
-                assert mu._metadata_executor_orphaned_workers == 0
+            assert len(mu._ble_executor_degraded_addresses) == 0
+            assert len(mu._ble_executor_orphaned_workers_by_address) == 0
+            assert mu._metadata_executor_degraded is False
+        assert mu._metadata_executor_orphaned_workers == 0
 
 
 class TestShutdownClearsDegradedState:

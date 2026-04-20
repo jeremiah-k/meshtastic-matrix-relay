@@ -20,8 +20,9 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 # Add src to path for imports

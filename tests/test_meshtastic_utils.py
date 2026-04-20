@@ -17,9 +17,10 @@ import os
 import sys
 import threading
 import unittest
+from collections.abc import Generator
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from types import SimpleNamespace
-from typing import Any, Callable
+from typing import Any, Callable, NoReturn
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock, mock_open, patch
 
 import pytest
@@ -4636,9 +4637,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         """Test _disconnect_ble_by_address when is_connected is a bool (True)."""
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
-        def _noop(*_args, **_kwargs):
+        def _noop(*_args: object, **_kwargs: object) -> None:
             """Synchronous no-op used for sync disconnect mocks."""
-            return None
 
         mock_client = Mock()
         mock_client.is_connected = True  # bool, not callable
@@ -4662,9 +4662,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         """
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
-        def _noop(*_args, **_kwargs):
+        def _noop(*_args: object, **_kwargs: object) -> None:
             """Synchronous no-op used for sync disconnect mocks."""
-            return None
 
         mock_client = Mock()
         mock_client.is_connected = False  # bool, not callable
@@ -4686,8 +4685,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         """Test _disconnect_ble_by_address treats unknown is_connected as False."""
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
-        def _noop(*_args, **_kwargs):
-            return None
+        def _noop(*_args: object, **_kwargs: object) -> None:
+            pass
 
         mock_get_running_loop.side_effect = RuntimeError("no loop")
         mock_sleep.side_effect = _noop
@@ -4711,8 +4710,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         """Test _disconnect_ble_by_address sleeps after a successful disconnect."""
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
-        def _noop(*_args, **_kwargs):
-            return None
+        def _noop(*_args: object, **_kwargs: object) -> None:
+            pass
 
         mock_get_running_loop.side_effect = RuntimeError("no loop")
         mock_sleep.side_effect = _noop
@@ -4743,15 +4742,14 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
         class _ImmediateAwaitable:
-            def __await__(self):
+            def __await__(self) -> Generator[Any, None, None]:
                 if False:  # pragma: no cover
                     yield
-                return None
 
         mock_get_running_loop.side_effect = RuntimeError("no loop")
         mock_sleep.return_value = None
 
-        def _timeout_wait_for(awaitable, timeout=None):
+        def _timeout_wait_for(awaitable: object, **_kwargs: object) -> NoReturn:
             if inspect.iscoroutine(awaitable):
                 awaitable.close()
             raise asyncio.TimeoutError()
@@ -4786,12 +4784,11 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
         class _ImmediateAwaitable:
-            def __await__(self):
+            def __await__(self) -> Generator[Any, None, None]:
                 if False:  # pragma: no cover
                     yield
-                return None
 
-        def _timeout_wait_for(awaitable, timeout=None):
+        def _timeout_wait_for(awaitable: object, **_kwargs: object) -> NoReturn:
             if inspect.iscoroutine(awaitable):
                 awaitable.close()
             raise asyncio.TimeoutError()
@@ -4833,14 +4830,13 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
         class _ImmediateAwaitable:
-            def __await__(self):
+            def __await__(self) -> Generator[Any, None, None]:
                 if False:  # pragma: no cover
                     yield
-                return None
 
         mock_get_running_loop.side_effect = RuntimeError("no loop")
 
-        def _timeout_wait_for(awaitable, timeout=None):
+        def _timeout_wait_for(awaitable: object, **_kwargs: object) -> NoReturn:
             if inspect.iscoroutine(awaitable):
                 awaitable.close()
             raise asyncio.TimeoutError()
@@ -4946,8 +4942,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         """Repeated BLE disconnect errors should log the final failure warning."""
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
-        def _noop(*_args, **_kwargs):
-            return None
+        def _noop(*_args: object, **_kwargs: object) -> None:
+            pass
 
         mock_get_running_loop.side_effect = RuntimeError("no loop")
         mock_sleep.side_effect = _noop

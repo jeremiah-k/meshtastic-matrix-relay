@@ -1582,11 +1582,11 @@ def migrate_database(
         ):
             try:
                 db_uri = f"{main_db_staged.resolve().as_uri()}?mode=ro"
-                with contextlib.closing(sqlite3.connect(db_uri, uri=True)) as conn:
-                    with conn as managed_conn:
-                        result = managed_conn.execute(
-                            "PRAGMA integrity_check"
-                        ).fetchone()
+                with (
+                    contextlib.closing(sqlite3.connect(db_uri, uri=True)) as conn,
+                    conn as managed_conn,
+                ):
+                    result = managed_conn.execute("PRAGMA integrity_check").fetchone()
                 if result and result[0] != "ok":
                     raise MigrationError.integrity_check_failed(result[0])
                 logger.info("Database integrity check passed in staging")

@@ -6,7 +6,9 @@ Focuses on specific functions and edge cases that are currently missing test cov
 import os
 import sys
 import unittest
+from collections.abc import Callable
 from concurrent.futures import Future
+from typing import Any
 from unittest.mock import Mock, patch
 
 # Add src to path for imports
@@ -30,16 +32,13 @@ class TestMeshtasticUtilsCoverage(unittest.TestCase):
         }
 
     @staticmethod
-    def _immediate_metadata_submit(callback):
+    def _immediate_metadata_submit(callback: Callable[[], Any]) -> Future[None]:
         """
         Execute metadata probe callback synchronously and return a completed Future.
         """
-        future = Future()
-        try:
-            callback()
-            future.set_result(None)
-        except Exception as exc:  # pragma: no cover - defensive for parity with runtime
-            future.set_exception(exc)
+        future: Future[None] = Future()
+        callback()
+        future.set_result(None)
         return future
 
     def test_get_device_metadata_console_output_truncation(self):

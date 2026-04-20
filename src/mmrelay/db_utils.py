@@ -775,8 +775,6 @@ def _get_db_manager() -> DatabaseManager:
     if manager_to_close is not None:
         _close_manager_safely(manager_to_close)
 
-    if manager_to_return is None:
-        raise RuntimeError("Database manager initialization failed")
     return manager_to_return
 
 

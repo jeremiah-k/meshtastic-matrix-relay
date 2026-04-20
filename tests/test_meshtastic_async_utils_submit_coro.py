@@ -54,13 +54,10 @@ class TestSubmitCoroNoLoopFallback:
         mock_asyncio.AbstractEventLoop = asyncio.AbstractEventLoop
 
         coro = self._make_coro()
-        try:
-            with patch.object(mu, "asyncio", mock_asyncio):
-                result = _submit_coro(coro)
-            assert result is not None
-            assert result.result(timeout=2) == 42
-        finally:
-            pass
+        with patch.object(mu, "asyncio", mock_asyncio):
+            result = _submit_coro(coro)
+        assert result is not None
+        assert result.result(timeout=2) == 42
 
     def test_fallback_to_new_event_loop_without_runner(self):
         from mmrelay.meshtastic.async_utils import _submit_coro
@@ -76,13 +73,10 @@ class TestSubmitCoroNoLoopFallback:
         mock_asyncio.AbstractEventLoop = real_asyncio.AbstractEventLoop
 
         coro = self._make_coro()
-        try:
-            with patch.object(mu, "asyncio", mock_asyncio):
-                result = _submit_coro(coro)
-            assert result is not None
-            assert result.result(timeout=2) == 42
-        finally:
-            pass
+        with patch.object(mu, "asyncio", mock_asyncio):
+            result = _submit_coro(coro)
+        assert result is not None
+        assert result.result(timeout=2) == 42
 
     def test_fallback_sets_event_loop_none_on_cleanup(self):
         from mmrelay.meshtastic.async_utils import _submit_coro
@@ -107,12 +101,9 @@ class TestSubmitCoroNoLoopFallback:
         mock_asyncio.set_event_loop = tracking_set
 
         coro = self._make_coro()
-        try:
-            with patch.object(mu, "asyncio", mock_asyncio):
-                result = _submit_coro(coro)
-            assert result is not None
-            assert result.result(timeout=2) == 42
-            set_calls = [c for c in call_log if c[0] == "set_event_loop"]
-            assert any(c[1] is None for c in set_calls)
-        finally:
-            pass
+        with patch.object(mu, "asyncio", mock_asyncio):
+            result = _submit_coro(coro)
+        assert result is not None
+        assert result.result(timeout=2) == 42
+        set_calls = [c for c in call_log if c[0] == "set_event_loop"]
+        assert any(c[1] is None for c in set_calls)

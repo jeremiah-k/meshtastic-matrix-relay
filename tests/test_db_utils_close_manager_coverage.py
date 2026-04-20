@@ -47,13 +47,26 @@ class TestCloseManagerSafelyKeyboardInterrupt:
         with pytest.raises(SystemExit):
             _close_manager_safely(mock_mgr)
 
-    def test_generic_exception_is_logged(self):
+    def test_generic_exception_is_logged(self, caplog):
+        import logging
         from unittest.mock import MagicMock
+
+        import mmrelay.db_utils
 
         mock_mgr = MagicMock()
         mock_mgr.close.side_effect = RuntimeError("close failed")
-        _close_manager_safely(mock_mgr)
+        original_propagate = mmrelay.db_utils.logger.propagate
+        mmrelay.db_utils.logger.propagate = True
+        try:
+            with caplog.at_level(logging.WARNING, logger="db_utils"):
+                _close_manager_safely(mock_mgr)
+        finally:
+            mmrelay.db_utils.logger.propagate = original_propagate
         mock_mgr.close.assert_called_once()
+        assert any(
+            "Failed to close DatabaseManager" in rec.getMessage()
+            for rec in caplog.records
+        )
 
     def test_none_manager_is_noop(self):
         _close_manager_safely(None)

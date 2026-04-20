@@ -255,6 +255,7 @@ class DatabaseManager:
 
         with self._connections_lock:
             self._connections.add(conn)
+            pool_size = len(self._connections)
         logger.debug(
             "DB conn created: id=%d path=%s manager=%d thread=%s(%d) pool_size=%d",
             id(conn),
@@ -262,7 +263,7 @@ class DatabaseManager:
             id(self),
             threading.current_thread().name,
             threading.current_thread().ident,
-            len(self._connections),
+            pool_size,
         )
         return conn
 

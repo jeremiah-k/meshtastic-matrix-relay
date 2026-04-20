@@ -2147,7 +2147,7 @@ def _print_system_health(paths_info: dict[str, Any]) -> None:
                 with contextlib.closing(sqlite3.connect(str(db_path))) as conn:
                     with conn as managed_conn:
                         cursor = managed_conn.execute("PRAGMA journal_mode;")
-                    mode = cursor.fetchone()[0]
+                        mode = cursor.fetchone()[0]
                     if mode.lower() == "wal":
                         print("      Journal: WAL mode ✅")
                     else:

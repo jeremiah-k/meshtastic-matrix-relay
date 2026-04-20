@@ -16,7 +16,9 @@ import asyncio
 import os
 import sys
 import unittest
+from concurrent.futures import Future
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
+from typing import NoReturn
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 from meshtastic.mesh_interface import BROADCAST_NUM
@@ -379,7 +381,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         }
         rooms = [{"meshtastic_channel": 0, "id": "!room:matrix"}]
 
-        def _submit_with_timeout_future(coro, loop=None):
+        def _submit_with_timeout_future(
+            coro: object, **_kwargs: object
+        ) -> "_DummyFuture":
             if asyncio.iscoroutine(coro):
                 coro.close()
             return future
@@ -437,7 +441,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         }
         rooms = [{"meshtastic_channel": 0, "id": "!room:matrix"}]
 
-        def _submit_with_timeout_future(coro, loop=None):
+        def _submit_with_timeout_future(
+            coro: object, **_kwargs: object
+        ) -> "_DummyFuture":
             if asyncio.iscoroutine(coro):
                 coro.close()
             return future
@@ -513,7 +519,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             }
             mmrelay.meshtastic_utils.event_loop = MagicMock()
 
-            def _submit_raises(coro, loop=None):
+            def _submit_raises(coro: object, **_kwargs: object) -> NoReturn:
                 if asyncio.iscoroutine(coro):
                     coro.close()
                 raise Exception("Matrix relay failed")
@@ -708,7 +714,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         from concurrent.futures import Future
 
-        def _done_future(coro, loop=None):
+        def _done_future(coro: object, **_kwargs: object) -> Future[None]:
             """
             Create and return a Future already completed with result None.
 
@@ -787,7 +793,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
         }
 
-        def _submit_with_timeout_future(coro, loop=None):
+        def _submit_with_timeout_future(
+            coro: object, **_kwargs: object
+        ) -> "_DummyFuture":
             if asyncio.iscoroutine(coro):
                 coro.close()
             return future
@@ -850,7 +858,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
         }
 
-        def _submit_with_timeout_future(coro, loop=None):
+        def _submit_with_timeout_future(
+            coro: object, **_kwargs: object
+        ) -> "_DummyFuture":
             if asyncio.iscoroutine(coro):
                 coro.close()
             return future
@@ -917,7 +927,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
         }
 
-        def _submit_with_timeout_future(coro, loop=None):
+        def _submit_with_timeout_future(
+            coro: object, **_kwargs: object
+        ) -> "_DummyFuture":
             if asyncio.iscoroutine(coro):
                 coro.close()
             return future

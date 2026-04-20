@@ -21,7 +21,7 @@ from mmrelay.cli import _print_system_health
 class TestPrintSystemHealthDatabase(unittest.TestCase):
     """Tests for _print_system_health database journal mode check."""
 
-    def _make_paths_info(self, db_path):
+    def _make_paths_info(self, db_path: Path) -> dict[str, str]:
         return {
             "home": tempfile.gettempdir(),
             "database_dir": str(db_path.parent),

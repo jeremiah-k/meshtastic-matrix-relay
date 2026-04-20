@@ -9,6 +9,8 @@ Covers:
 
 import asyncio
 import unittest
+from collections.abc import Generator
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
@@ -38,16 +40,16 @@ def _make_async_return(value):
 class _ImmediateAwaitable:
     """Lightweight awaitable that resolves immediately without creating coroutines."""
 
-    def __init__(self, value=None):
+    def __init__(self, value: Any = None) -> None:
         self._value = value
 
-    def __await__(self):
+    def __await__(self) -> Generator[None, None, Any]:
         if False:  # pragma: no cover
             yield
         return self._value
 
 
-def _make_matrix_client_with_awaitable_close():
+def _make_matrix_client_with_awaitable_close() -> MagicMock:
     """Build a matrix client mock whose close() is awaitable and warning-safe."""
     client = MagicMock()
     client.close = MagicMock(return_value=_ImmediateAwaitable(None))
@@ -336,9 +338,10 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
                 mu.reconnect_task = captured_future
                 return None
 
-            async def _capture_reconnect_future_async(*_args, **_kwargs):
+            async def _capture_reconnect_future_async(
+                *_args: Any, **_kwargs: Any
+            ) -> None:
                 _capture_reconnect_future(*_args, **_kwargs)
-                return None
 
             with (
                 patch("mmrelay.main.initialize_database"),
