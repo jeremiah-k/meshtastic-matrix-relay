@@ -232,7 +232,13 @@ async def test_logout_matrix_bot_timeout():
         mock_temp_client = AsyncMock()
         mock_temp_client.close = AsyncMock()
         mock_async_client.return_value = mock_temp_client
-        mock_wait_for.side_effect = asyncio.TimeoutError()
+
+        def _timeout_wait_for(awaitable, timeout=None, **kwargs):
+            if asyncio.iscoroutine(awaitable):
+                awaitable.close()
+            raise asyncio.TimeoutError()
+
+        mock_wait_for.side_effect = _timeout_wait_for
 
         result = await logout_matrix_bot(password="test_password")
 
