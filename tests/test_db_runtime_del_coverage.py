@@ -5,6 +5,7 @@ Covers the best-effort fallback destructor that catches exceptions
 to avoid surfacing errors during interpreter shutdown.
 """
 
+import contextlib
 import sqlite3
 from unittest.mock import patch
 
@@ -31,10 +32,8 @@ class TestDatabaseManagerDel:
             with patch.object(mgr, "close", side_effect=RuntimeError("boom")):
                 mgr.__del__()
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 mgr.close()
-            except Exception:
-                pass
 
     def test_del_suppresses_sqlite_error(self, tmp_path):
         db_path = str(tmp_path / "test.db")
@@ -45,10 +44,8 @@ class TestDatabaseManagerDel:
             ):
                 mgr.__del__()
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 mgr.close()
-            except Exception:
-                pass
 
     def test_del_suppresses_generic_exception(self, tmp_path):
         """
@@ -65,7 +62,5 @@ class TestDatabaseManagerDel:
             with patch.object(mgr, "close", side_effect=Exception("any error")):
                 mgr.__del__()
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 mgr.close()
-            except Exception:
-                pass

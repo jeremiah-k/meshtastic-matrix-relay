@@ -557,7 +557,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 """
                 if asyncio.iscoroutine(coro):
                     coro.close()
-                raise _MatrixRelayFailure("Matrix relay failed")
+                raise _MatrixRelayFailure
 
             mock_submit_coro.side_effect = _submit_raises
             on_meshtastic_message(packet, mock_interface)

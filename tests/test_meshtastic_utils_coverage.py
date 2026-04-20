@@ -1957,7 +1957,7 @@ class TestReconnectResetsDegradedStateWithoutDeadlock:
             assert len(mu._ble_executor_degraded_addresses) == 0
             assert len(mu._ble_executor_orphaned_workers_by_address) == 0
             assert mu._metadata_executor_degraded is False
-        assert mu._metadata_executor_orphaned_workers == 0
+            assert mu._metadata_executor_orphaned_workers == 0
 
 
 class TestShutdownClearsDegradedState:

@@ -9,7 +9,7 @@ Covers:
 
 import asyncio
 import unittest
-from collections.abc import Generator
+from collections.abc import Awaitable, Callable, Generator
 from unittest.mock import MagicMock, patch
 
 from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
@@ -29,7 +29,7 @@ from tests.helpers import (
 _make_patched_get_running_loop = make_patched_get_running_loop
 
 
-def _make_async_return(value: object) -> MagicMock:
+def _make_async_return(value: object) -> Callable[..., Awaitable[object]]:
     """
     Create an async function that ignores its arguments and always returns the given value.
 
@@ -37,7 +37,7 @@ def _make_async_return(value: object) -> MagicMock:
         value: The value the created async function will return when awaited.
 
     Returns:
-        async_callable (callable): An async function that accepts any arguments and returns `value` when awaited.
+        Callable[..., Awaitable[object]]: An async function that accepts any arguments and returns `value` when awaited.
     """
 
     async def _async_return(*_args: object, **_kwargs: object) -> object:
@@ -382,9 +382,7 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
             captured_future = None
             cancel_observed = False
 
-            def _capture_reconnect_future(
-                *_args: object, **_kwargs: object
-            ) -> MagicMock:
+            def _capture_reconnect_future(*_args: object, **_kwargs: object) -> None:
                 """
                 Create and store a long-running reconnect task and record it in module state.
 

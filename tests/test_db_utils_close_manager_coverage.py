@@ -6,6 +6,7 @@ Covers:
 - _get_db_manager lines 778-779: RuntimeError when manager_to_return is None
 """
 
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,7 +20,7 @@ from mmrelay.db_utils import (
 
 
 @pytest.fixture(autouse=True)
-def _reset_state():
+def _reset_state() -> Generator[None, None, None]:
     """
     Reset shared database-related global state before a test and restore it after the test.
 
@@ -59,7 +60,6 @@ class TestCloseManagerSafelyKeyboardInterrupt:
         mock_mgr = MagicMock()
         mock_mgr.close.side_effect = sqlite3.Error("close failed")
         with caplog.at_level(logging.WARNING, logger=mmrelay.db_utils.logger.name):
-            mmrelay.db_utils.logger.addHandler(caplog.handler)
             _close_manager_safely(mock_mgr)
         mock_mgr.close.assert_called_once()
         assert any(
@@ -101,5 +101,7 @@ class TestGetDbManagerNullReturn:
             ),
         ):
             _reset_db_manager()
-            with pytest.raises(RuntimeError, match="init failed|initialization failed"):
+            with pytest.raises(
+                RuntimeError, match=r"init failed|initialization failed"
+            ):
                 _get_db_manager()

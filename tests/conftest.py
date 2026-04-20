@@ -24,7 +24,6 @@ import sqlite3
 import threading
 import time
 import traceback
-import weakref
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any, Generator
@@ -157,6 +156,22 @@ class _ConnectionProvenance:
         registry = self._registry
         tracker = self
 
+        def _make_tracked_class(
+            base: type[sqlite3.Connection],
+        ) -> type[sqlite3.Connection]:
+            """
+            Create a tracked connection subclass that deregisters from the provenance registry on close.
+            """
+
+            class _TrackedConnection(base):
+                def close(self) -> None:
+                    try:
+                        super().close()
+                    finally:
+                        registry.pop(id(self), None)
+
+            return _TrackedConnection
+
         def _tracked_connect(*args: Any, **kwargs: Any) -> sqlite3.Connection:
             """
             Proxy for sqlite3.connect that records provenance metadata for each created connection.
@@ -170,6 +185,16 @@ class _ConnectionProvenance:
             Returns:
                 sqlite3.Connection: The connection object returned by the underlying sqlite3.connect call.
             """
+            caller_factory = kwargs.get("factory", None)
+            if caller_factory is not None and (
+                isinstance(caller_factory, type)
+                and issubclass(caller_factory, sqlite3.Connection)
+            ):
+                tracked_cls = _make_tracked_class(caller_factory)
+            else:
+                tracked_cls = _make_tracked_class(sqlite3.Connection)
+            kwargs["factory"] = tracked_cls
+
             conn = real_connect(*args, **kwargs)
             db_path = args[0] if args else kwargs.get("database", "?")
             conn_id = id(conn)
@@ -181,21 +206,6 @@ class _ConnectionProvenance:
                 "thread_id": threading.current_thread().ident,
                 "creation_stack": "".join(traceback.format_stack()),
             }
-            original_close = conn.close
-
-            def _tracked_close(*c_args: Any, **c_kwargs: Any) -> Any:
-                try:
-                    return original_close(*c_args, **c_kwargs)
-                finally:
-                    registry.pop(conn_id, None)
-
-            try:
-                conn.close = _tracked_close  # type: ignore[method-assign]
-            except (AttributeError, TypeError):
-                try:
-                    weakref.finalize(conn, registry.pop, conn_id, None)
-                except TypeError:
-                    pass
             return conn
 
         sqlite3.connect = _tracked_connect
@@ -1591,14 +1601,25 @@ def _install_sqlite_provenance() -> Generator[None, None, None]:
     _conn_provenance.uninstall()
 
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item):
+    """
+    Set the current test nodeid for sqlite connection provenance tracking before any test phase runs.
+
+    This ensures connections created during setup/fixtures are attributed to the correct test,
+    rather than inheriting a stale nodeid from a previous test.
+    """
+    _conn_provenance._current_nodeid = item.nodeid
+
+
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     """
-    Pytest hook wrapper that records the current test nodeid for sqlite connection provenance, appends a report section listing any tracked open sqlite connections when a test fails, and clears the provenance registry at teardown.
+    Pytest hook wrapper that appends a report section listing any tracked open sqlite connections when a test fails, and clears the provenance registry at teardown.
 
     Parameters:
         item: pytest.Item
-            The test item being executed; used to set the current nodeid for provenance tracking.
+            The test item being executed.
         call: pytest.CallInfo
             The call phase information passed by pytest; this function yields to allow the default report generation to proceed.
 
@@ -1607,7 +1628,6 @@ def pytest_runtest_makereport(item, call):
         - When the report indicates a failure in the "call" phase, any open sqlite connections tracked by the global provenance recorder are added to the report as a section named "sqlite-connection-provenance".
         - On the "teardown" phase, the provenance registry is cleared to reset state between tests.
     """
-    _conn_provenance._current_nodeid = item.nodeid
     outcome = yield
     report = outcome.get_result()
     if report.when == "call" and report.failed:

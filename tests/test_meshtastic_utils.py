@@ -3338,7 +3338,7 @@ class TestAsyncHelperUtilities(unittest.TestCase):
 
         fake_task = self._ExceptionTask(raise_exc=asyncio.CancelledError())
 
-        def _submit(coro, loop=None):
+        def _submit(coro, loop=None) -> Any:
             coro.close()
             return fake_task
 
@@ -3361,7 +3361,7 @@ class TestAsyncHelperUtilities(unittest.TestCase):
 
         fake_task = self._ExceptionTask(raise_exc=RuntimeError("boom"))
 
-        def _submit(coro, loop=None):
+        def _submit(coro, loop=None) -> Any:
             coro.close()
             return fake_task
 
@@ -3384,7 +3384,7 @@ class TestAsyncHelperUtilities(unittest.TestCase):
 
         fake_task = self._ExceptionTask(return_exc=ValueError("Task failed"))
 
-        def _submit(coro, loop=None):
+        def _submit(coro, loop=None) -> Any:
             coro.close()
             return fake_task
 
@@ -3411,7 +3411,7 @@ class TestAsyncHelperUtilities(unittest.TestCase):
 
         fake_task = self._ExceptionTask(return_exc=asyncio.CancelledError())
 
-        def _submit(coro, loop=None):
+        def _submit(coro, loop=None) -> Any:
             coro.close()
             return fake_task
 
@@ -4982,7 +4982,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_future.done.return_value = False
         mock_future.result = Mock(side_effect=FuturesTimeoutError())
 
-        def _submit(coro, _loop):
+        def _submit(coro, _loop) -> Any:
             coro.close()
             return mock_future
 
@@ -5052,7 +5052,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_future = Mock()
         mock_future.result.return_value = None
 
-        def _submit(coro, _loop):
+        def _submit(coro, _loop) -> Any:
             coro.close()
             return mock_future
 
