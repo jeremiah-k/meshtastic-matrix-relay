@@ -129,6 +129,11 @@ class _ImmediateAwaitable:
         return self._value
 ```
 
+6. **Be explicit when patching async functions**
+   - `patch("module.async_fn")` defaults to `AsyncMock`, which creates coroutine objects when called.
+   - If code under test only passes that coroutine to a mocked scheduler/submission helper, and the helper raises early, the coroutine can leak.
+   - Use an explicit sync `Mock(...)` when no await is needed, or make the scheduler fake close the passed coroutine before raising.
+
 ## Standardized Async Patterns
 
 Use standardized async testing patterns and avoid test-environment detection branches (for example, `MMRELAY_TESTING`).

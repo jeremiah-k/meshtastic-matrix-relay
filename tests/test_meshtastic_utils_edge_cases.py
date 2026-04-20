@@ -495,7 +495,10 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         with (
             patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
             patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
-            patch("mmrelay.matrix_utils.matrix_relay"),
+            patch(
+                "mmrelay.matrix_utils.matrix_relay",
+                AsyncMock(return_value=None),
+            ),
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
         ):
             # Set up required globals for the function to run
@@ -510,7 +513,12 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             }
             mmrelay.meshtastic_utils.event_loop = MagicMock()
 
-            mock_submit_coro.side_effect = Exception("Matrix relay failed")
+            def _submit_raises(coro, loop=None):
+                if asyncio.iscoroutine(coro):
+                    coro.close()
+                raise Exception("Matrix relay failed")
+
+            mock_submit_coro.side_effect = _submit_raises
             on_meshtastic_message(packet, mock_interface)
             mock_logger.exception.assert_called()
 
