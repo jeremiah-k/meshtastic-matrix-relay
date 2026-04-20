@@ -61,6 +61,11 @@ class TestMeshtasticUtilsCoverage(unittest.TestCase):
         mock_interface.localNode.getMetadata.side_effect = lambda: print(
             long_output, end=""
         )
+        # Patching at the _submit_metadata_probe boundary rather than the
+        # underlying ThreadPoolExecutor because the helper encapsulates
+        # lock management, stale-future detection, degraded-state checks,
+        # done-callback wiring, and cleanup scheduling — all of which would
+        # need to be replicated if we patched the executor directly.
         with patch(
             "mmrelay.meshtastic_utils._submit_metadata_probe",
             side_effect=self._immediate_metadata_submit,
@@ -93,6 +98,11 @@ class TestMeshtasticUtilsCoverage(unittest.TestCase):
                 mock_interface.localNode.getMetadata.side_effect = (
                     lambda out=output: print(out, end="")
                 )
+                # Patching at the _submit_metadata_probe boundary rather than the
+                # underlying ThreadPoolExecutor because the helper encapsulates
+                # lock management, stale-future detection, degraded-state checks,
+                # done-callback wiring, and cleanup scheduling — all of which would
+                # need to be replicated if we patched the executor directly.
                 with patch(
                     "mmrelay.meshtastic_utils._submit_metadata_probe",
                     side_effect=self._immediate_metadata_submit,
@@ -109,6 +119,11 @@ class TestMeshtasticUtilsCoverage(unittest.TestCase):
             "some other output", end=""
         )
 
+        # Patching at the _submit_metadata_probe boundary rather than the
+        # underlying ThreadPoolExecutor because the helper encapsulates
+        # lock management, stale-future detection, degraded-state checks,
+        # done-callback wiring, and cleanup scheduling — all of which would
+        # need to be replicated if we patched the executor directly.
         with patch(
             "mmrelay.meshtastic_utils._submit_metadata_probe",
             side_effect=self._immediate_metadata_submit,

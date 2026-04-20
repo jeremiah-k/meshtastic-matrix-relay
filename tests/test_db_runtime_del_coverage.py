@@ -17,21 +17,38 @@ class TestDatabaseManagerDel:
     def test_del_calls_close(self, tmp_path):
         db_path = str(tmp_path / "test.db")
         mgr = DatabaseManager(db_path)
-        with patch.object(mgr, "close") as mock_close:
-            mgr.__del__()
-            mock_close.assert_called_once()
+        try:
+            with patch.object(mgr, "close") as mock_close:
+                mgr.__del__()
+                mock_close.assert_called_once()
+        finally:
+            mgr.close()
 
     def test_del_suppresses_close_exception(self, tmp_path):
         db_path = str(tmp_path / "test.db")
         mgr = DatabaseManager(db_path)
-        with patch.object(mgr, "close", side_effect=RuntimeError("boom")):
-            mgr.__del__()
+        try:
+            with patch.object(mgr, "close", side_effect=RuntimeError("boom")):
+                mgr.__del__()
+        finally:
+            try:
+                mgr.close()
+            except Exception:
+                pass
 
     def test_del_suppresses_sqlite_error(self, tmp_path):
         db_path = str(tmp_path / "test.db")
         mgr = DatabaseManager(db_path)
-        with patch.object(mgr, "close", side_effect=sqlite3.Error("shutdown error")):
-            mgr.__del__()
+        try:
+            with patch.object(
+                mgr, "close", side_effect=sqlite3.Error("shutdown error")
+            ):
+                mgr.__del__()
+        finally:
+            try:
+                mgr.close()
+            except Exception:
+                pass
 
     def test_del_suppresses_generic_exception(self, tmp_path):
         """
@@ -44,5 +61,11 @@ class TestDatabaseManagerDel:
         """
         db_path = str(tmp_path / "test.db")
         mgr = DatabaseManager(db_path)
-        with patch.object(mgr, "close", side_effect=Exception("any error")):
-            mgr.__del__()
+        try:
+            with patch.object(mgr, "close", side_effect=Exception("any error")):
+                mgr.__del__()
+        finally:
+            try:
+                mgr.close()
+            except Exception:
+                pass

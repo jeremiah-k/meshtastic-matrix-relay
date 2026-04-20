@@ -1628,4 +1628,9 @@ def pytest_runtest_makereport(item, call):
                 )
             )
     if report.when == "teardown":
-        _conn_provenance.clear()
+        nodeid = item.nodeid
+        _conn_provenance._registry = {
+            cid: meta
+            for cid, meta in _conn_provenance._registry.items()
+            if meta.get("test_nodeid") != nodeid
+        }

@@ -92,9 +92,10 @@ class TestPrintSystemHealthDatabase(unittest.TestCase):
             with (
                 patch("mmrelay.paths.get_database_path", return_value=db_path),
                 patch("mmrelay.cli._e2ee_dependencies_available", return_value=True),
-                patch("builtins.print"),
+                patch("builtins.print") as mock_print,
             ):
                 _print_system_health(paths_info)
+                assert mock_print.called
 
 
 if __name__ == "__main__":

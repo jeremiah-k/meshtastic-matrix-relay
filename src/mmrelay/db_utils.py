@@ -598,11 +598,6 @@ def _close_manager_safely(manager: DatabaseManager | None) -> None:
                 "Failed to close DatabaseManager cleanly; resources may be released by GC",
                 exc_info=True,
             )
-        except Exception:
-            logger.warning(
-                "Unexpected error closing DatabaseManager; resources may be released by GC",
-                exc_info=True,
-            )
 
 
 def _reset_db_manager() -> None:

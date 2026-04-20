@@ -35,4 +35,4 @@ MagicMock/
 /k8s/
 
 # Git worktrees
-.worktrees/
+/.worktrees/

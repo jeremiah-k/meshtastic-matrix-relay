@@ -86,7 +86,7 @@ Use these patterns to avoid creating throwaway coroutines in tests:
    - If production does `fn(...)` (sync call): use `Mock`/sync `def`, not `AsyncMock`/`async def`.
    - If production does `await fn(...)`: use `AsyncMock` or an async stub.
 
-2. **When mocking scheduler/submission helpers, close passed coroutines**
+1. **When mocking scheduler/submission helpers, close passed coroutines**
    - Applies to fakes for `_submit_coro`, `run_coroutine_threadsafe`, etc.
    - Example:
 
@@ -102,7 +102,7 @@ def _submit_done(coro, loop=None):
     return fut
 ```
 
-3. **When mocking `asyncio.wait_for` to raise timeout, close awaitables first**
+1. **When mocking `asyncio.wait_for` to raise timeout, close awaitables first**
    - Prevents leaked coroutine objects from timeout branches.
 
 ```python
@@ -112,11 +112,11 @@ def _timeout_wait_for(awaitable, timeout=None):
     raise asyncio.TimeoutError()
 ```
 
-4. **Avoid async `_noop` helpers for sync-only paths**
+1. **Avoid async `_noop` helpers for sync-only paths**
    - For sync cleanup hooks (for example mocked `disconnect()` in sync branches), use:
    - `def _noop(*a, **k): return None`
 
-5. **If you need an awaitable return without AsyncMock bookkeeping, use a lightweight awaitable**
+1. **If you need an awaitable return without AsyncMock bookkeeping, use a lightweight awaitable**
    - Useful for methods like `close()` where you only need awaitability and not `assert_awaited_*`.
 
 ```python
@@ -129,7 +129,7 @@ class _ImmediateAwaitable:
         return self._value
 ```
 
-6. **Be explicit when patching async functions**
+1. **Be explicit when patching async functions**
    - `patch("module.async_fn")` defaults to `AsyncMock`, which creates coroutine objects when called.
    - If code under test only passes that coroutine to a mocked scheduler/submission helper, and the helper raises early, the coroutine can leak.
    - Use an explicit sync `Mock(...)` when no await is needed, or make the scheduler fake close the passed coroutine before raising.
