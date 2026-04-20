@@ -62,6 +62,7 @@ def reset_meshtastic_state(reset_meshtastic_globals):
     timeouts, health-probe tracking, clock skew/drain timers, and degraded/executor orphan counters)
     so tests run with a deterministic, isolated environment.
     """
+    _ = reset_meshtastic_globals
     # Additional resets specific to these tests
     mu.meshtastic_iface = None
     mu._metadata_future = None

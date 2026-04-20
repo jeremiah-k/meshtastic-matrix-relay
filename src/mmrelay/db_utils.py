@@ -586,16 +586,21 @@ def _close_manager_safely(manager: DatabaseManager | None) -> None:
     """
     Close the given DatabaseManager if provided.
 
-    If a manager is supplied, calls its close() method; re-raises KeyboardInterrupt and SystemExit, and logs then suppresses any other exceptions.
+    If a manager is supplied, calls its close() method; re-raises KeyboardInterrupt, SystemExit, and RuntimeError, and logs then suppresses any other exceptions.
     """
     if manager:
         try:
             manager.close()
-        except (KeyboardInterrupt, SystemExit):
+        except (KeyboardInterrupt, SystemExit, RuntimeError):
             raise
-        except Exception:
+        except (sqlite3.Error, OSError):
             logger.warning(
                 "Failed to close DatabaseManager cleanly; resources may be released by GC",
+                exc_info=True,
+            )
+        except Exception:
+            logger.warning(
+                "Unexpected error closing DatabaseManager; resources may be released by GC",
                 exc_info=True,
             )
 

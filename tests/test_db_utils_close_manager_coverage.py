@@ -54,16 +54,17 @@ class TestCloseManagerSafelyKeyboardInterrupt:
 
     def test_generic_exception_is_logged(self, caplog):
         import logging
+        import sqlite3
         from unittest.mock import MagicMock
 
         import mmrelay.db_utils
 
         mock_mgr = MagicMock()
-        mock_mgr.close.side_effect = RuntimeError("close failed")
+        mock_mgr.close.side_effect = sqlite3.Error("close failed")
         original_propagate = mmrelay.db_utils.logger.propagate
         mmrelay.db_utils.logger.propagate = True
         try:
-            with caplog.at_level(logging.WARNING, logger="db_utils"):
+            with caplog.at_level(logging.WARNING, logger=mmrelay.db_utils.logger.name):
                 _close_manager_safely(mock_mgr)
         finally:
             mmrelay.db_utils.logger.propagate = original_propagate
@@ -72,6 +73,14 @@ class TestCloseManagerSafelyKeyboardInterrupt:
             "Failed to close DatabaseManager" in rec.getMessage()
             for rec in caplog.records
         )
+
+    def test_runtime_error_is_reraised(self):
+        from unittest.mock import MagicMock
+
+        mock_mgr = MagicMock()
+        mock_mgr.close.side_effect = RuntimeError("close failed")
+        with pytest.raises(RuntimeError, match="close failed"):
+            _close_manager_safely(mock_mgr)
 
     def test_none_manager_is_noop(self):
         _close_manager_safely(None)

@@ -14,7 +14,7 @@ import threading
 from collections.abc import Callable
 from concurrent.futures import CancelledError as ConcurrentCancelledError
 from concurrent.futures import Future, ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from functools import lru_cache
 from typing import Any, Generator, Optional
 

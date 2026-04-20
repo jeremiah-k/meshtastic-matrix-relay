@@ -6,27 +6,29 @@ and legacy config handling during Matrix connection establishment.
 
 from collections.abc import Generator
 from types import SimpleNamespace
-from typing import Any
+from typing import Generic, TypeVar
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
 from mmrelay.matrix_utils import MissingMatrixRoomsError, connect_matrix
 
+_T = TypeVar("_T")
 
-class _ImmediateAwaitable:
+
+class _ImmediateAwaitable(Generic[_T]):
     """Awaitable that resolves immediately without creating coroutine objects."""
 
-    def __init__(self, value: Any = None) -> None:
+    def __init__(self, value: _T) -> None:
         """
-        Initialize the instance with an optional initial value stored in the private `_value` attribute.
+        Initialize the instance with a value stored in the private `_value` attribute.
 
         Parameters:
-            value (Any, optional): Initial value to store on the instance. Defaults to None.
+            value: Initial value to store on the instance.
         """
         self._value = value
 
-    def __await__(self) -> Generator[None, None, Any]:
+    def __await__(self) -> Generator[None, None, _T]:
         """
         Allow the instance to be awaited and immediately yield its preset value.
 

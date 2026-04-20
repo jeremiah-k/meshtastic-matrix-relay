@@ -24,6 +24,7 @@ import sqlite3
 import threading
 import time
 import traceback
+import weakref
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any, Generator
@@ -171,14 +172,30 @@ class _ConnectionProvenance:
             """
             conn = real_connect(*args, **kwargs)
             db_path = args[0] if args else kwargs.get("database", "?")
-            registry[id(conn)] = {
-                "conn_id": id(conn),
+            conn_id = id(conn)
+            registry[conn_id] = {
+                "conn_id": conn_id,
                 "db_path": str(db_path),
                 "test_nodeid": tracker._current_nodeid,
                 "thread_name": threading.current_thread().name,
                 "thread_id": threading.current_thread().ident,
                 "creation_stack": "".join(traceback.format_stack()),
             }
+            original_close = conn.close
+
+            def _tracked_close(*c_args: Any, **c_kwargs: Any) -> Any:
+                try:
+                    return original_close(*c_args, **c_kwargs)
+                finally:
+                    registry.pop(conn_id, None)
+
+            try:
+                conn.close = _tracked_close  # type: ignore[method-assign]
+            except (AttributeError, TypeError):
+                try:
+                    weakref.finalize(conn, registry.pop, conn_id, None)
+                except TypeError:
+                    pass
             return conn
 
         sqlite3.connect = _tracked_connect

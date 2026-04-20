@@ -6,6 +6,9 @@ event loop (with Runner or manual new_event_loop) to execute a coroutine.
 """
 
 import asyncio
+from collections.abc import Coroutine
+from types import TracebackType
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,7 +20,7 @@ import mmrelay.meshtastic_utils as mu
 class TestSubmitCoroNoLoopFallback:
     """Test _submit_coro when there is no running event loop."""
 
-    def _make_coro(self):
+    def _make_coro(self) -> Coroutine[Any, Any, int]:
         """
         Create and return a coroutine that resolves to 42.
 
@@ -25,7 +28,7 @@ class TestSubmitCoroNoLoopFallback:
             coroutine: A coroutine object which returns the integer 42 when awaited.
         """
 
-        async def coro():
+        async def coro() -> int:
             return 42
 
         return coro()
@@ -130,12 +133,12 @@ class TestSubmitCoroNoLoopFallback:
 
         original_set = real_asyncio.set_event_loop
 
-        def tracking_set(loop):
+        def tracking_set(loop: asyncio.AbstractEventLoop | None) -> None:
             """
             Record a call to set_event_loop and forward it to the original setter.
 
             Parameters:
-                loop (asyncio.AbstractEventLoop | None): The event loop being installed, or `None` to clear the current loop.
+                loop: The event loop being installed, or `None` to clear the current loop.
             """
             call_log.append(("set_event_loop", loop))
             original_set(loop)
