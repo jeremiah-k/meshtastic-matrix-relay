@@ -60,6 +60,7 @@ class TestCloseManagerSafelyKeyboardInterrupt:
         mock_mgr = MagicMock()
         mock_mgr.close.side_effect = sqlite3.Error("close failed")
         with caplog.at_level(logging.WARNING, logger=mmrelay.db_utils.logger.name):
+            mmrelay.db_utils.logger.addHandler(caplog.handler)
             _close_manager_safely(mock_mgr)
         mock_mgr.close.assert_called_once()
         assert any(
