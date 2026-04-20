@@ -36,6 +36,14 @@ class TestDatabaseManagerDel:
             mgr.__del__()
 
     def test_del_suppresses_generic_exception(self, tmp_path):
+        """
+        Verifies that DatabaseManager.__del__ swallows any generic Exception raised by its close() method.
+        
+        Patches the instance's close method to raise Exception("any error") and invokes __del__; the test succeeds if no exception is propagated.
+        
+        Parameters:
+            tmp_path (pathlib.Path): pytest-provided temporary directory for creating a test database file.
+        """
         db_path = str(tmp_path / "test.db")
         mgr = DatabaseManager(db_path)
         with patch.object(mgr, "close", side_effect=Exception("any error")):

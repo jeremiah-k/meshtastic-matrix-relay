@@ -18,9 +18,21 @@ class _ImmediateAwaitable:
     """Awaitable that resolves immediately without creating coroutine objects."""
 
     def __init__(self, value: Any = None) -> None:
+        """
+        Initialize the instance with an optional initial value stored in the private `_value` attribute.
+        
+        Parameters:
+            value (Any, optional): Initial value to store on the instance. Defaults to None.
+        """
         self._value = value
 
     def __await__(self) -> Generator[None, None, Any]:
+        """
+        Allow the instance to be awaited and immediately yield its preset value.
+        
+        Returns:
+            The value stored on the instance that will be produced to the awaiting caller.
+        """
         if False:  # pragma: no cover
             yield
         return self._value

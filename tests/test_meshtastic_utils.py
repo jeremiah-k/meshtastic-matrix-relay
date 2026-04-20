@@ -4638,7 +4638,11 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
         def _noop(*_args: object, **_kwargs: object) -> None:
-            """Synchronous no-op used for sync disconnect mocks."""
+            """
+            Synchronous no-op callable that accepts any positional and keyword arguments and does nothing.
+            
+            Used as a replacement/mock for synchronous disconnect functions in tests; ignores all inputs and returns None.
+            """
 
         mock_client = Mock()
         mock_client.is_connected = True  # bool, not callable
@@ -4663,7 +4667,11 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
         def _noop(*_args: object, **_kwargs: object) -> None:
-            """Synchronous no-op used for sync disconnect mocks."""
+            """
+            Synchronous no-op callable that accepts any positional and keyword arguments and does nothing.
+            
+            Used as a replacement/mock for synchronous disconnect functions in tests; ignores all inputs and returns None.
+            """
 
         mock_client = Mock()
         mock_client.is_connected = False  # bool, not callable
@@ -4686,6 +4694,11 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
         def _noop(*_args: object, **_kwargs: object) -> None:
+            """
+            No-operation callable that accepts and ignores all positional and keyword arguments.
+            
+            Used as a generic placeholder callback or side-effect (for example, in mocks, timers, or disconnect helpers).
+            """
             pass
 
         mock_get_running_loop.side_effect = RuntimeError("no loop")
@@ -4711,6 +4724,11 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
         def _noop(*_args: object, **_kwargs: object) -> None:
+            """
+            No-operation callable that accepts and ignores all positional and keyword arguments.
+            
+            Used as a generic placeholder callback or side-effect (for example, in mocks, timers, or disconnect helpers).
+            """
             pass
 
         mock_get_running_loop.side_effect = RuntimeError("no loop")
@@ -4743,6 +4761,12 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         class _ImmediateAwaitable:
             def __await__(self) -> Generator[Any, None, None]:
+                """
+                Expose this object as awaitable by providing its awaiting generator.
+                
+                Returns:
+                    Generator: A generator used by the `await` expression; it yields control to the event loop and produces no value.
+                """
                 if False:  # pragma: no cover
                     yield
 
@@ -4750,6 +4774,15 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_sleep.return_value = None
 
         def _timeout_wait_for(awaitable: object, **_kwargs: object) -> NoReturn:
+            """
+            Close the given awaitable if it is a coroutine, then raise an asyncio.TimeoutError.
+            
+            Parameters:
+            	awaitable (object): The awaitable or coroutine to be closed; if it is a coroutine, it will be closed to free resources.
+            
+            Raises:
+            	asyncio.TimeoutError: Always raised by this function.
+            """
             if inspect.iscoroutine(awaitable):
                 awaitable.close()
             raise asyncio.TimeoutError()
@@ -4785,10 +4818,25 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         class _ImmediateAwaitable:
             def __await__(self) -> Generator[Any, None, None]:
+                """
+                Expose this object as awaitable by providing its awaiting generator.
+                
+                Returns:
+                    Generator: A generator used by the `await` expression; it yields control to the event loop and produces no value.
+                """
                 if False:  # pragma: no cover
                     yield
 
         def _timeout_wait_for(awaitable: object, **_kwargs: object) -> NoReturn:
+            """
+            Close the given awaitable if it is a coroutine, then raise an asyncio.TimeoutError.
+            
+            Parameters:
+            	awaitable (object): The awaitable or coroutine to be closed; if it is a coroutine, it will be closed to free resources.
+            
+            Raises:
+            	asyncio.TimeoutError: Always raised by this function.
+            """
             if inspect.iscoroutine(awaitable):
                 awaitable.close()
             raise asyncio.TimeoutError()
@@ -4831,12 +4879,27 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         class _ImmediateAwaitable:
             def __await__(self) -> Generator[Any, None, None]:
+                """
+                Expose this object as awaitable by providing its awaiting generator.
+                
+                Returns:
+                    Generator: A generator used by the `await` expression; it yields control to the event loop and produces no value.
+                """
                 if False:  # pragma: no cover
                     yield
 
         mock_get_running_loop.side_effect = RuntimeError("no loop")
 
         def _timeout_wait_for(awaitable: object, **_kwargs: object) -> NoReturn:
+            """
+            Close the given awaitable if it is a coroutine, then raise an asyncio.TimeoutError.
+            
+            Parameters:
+            	awaitable (object): The awaitable or coroutine to be closed; if it is a coroutine, it will be closed to free resources.
+            
+            Raises:
+            	asyncio.TimeoutError: Always raised by this function.
+            """
             if inspect.iscoroutine(awaitable):
                 awaitable.close()
             raise asyncio.TimeoutError()
@@ -4943,6 +5006,11 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
         def _noop(*_args: object, **_kwargs: object) -> None:
+            """
+            No-operation callable that accepts and ignores all positional and keyword arguments.
+            
+            Used as a generic placeholder callback or side-effect (for example, in mocks, timers, or disconnect helpers).
+            """
             pass
 
         mock_get_running_loop.side_effect = RuntimeError("no loop")

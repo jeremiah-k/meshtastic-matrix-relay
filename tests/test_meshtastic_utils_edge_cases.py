@@ -76,18 +76,21 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
     def setUp(self):
         """
-        Reset mmrelay.meshtastic_utils global state so each test runs in isolation.
-
-        Resets the following module-level variables to their default test values:
-        - meshtastic_client -> None
-        - reconnecting -> False
-        - config -> None
-        - matrix_rooms -> []
-        - shutting_down -> False
-        - event_loop -> None
-        - reconnect_task -> None
-        - subscribed_to_messages -> False
-        - subscribed_to_connection_lost -> False
+        Reset mmrelay.meshtastic_utils module-level state to known defaults for tests.
+        
+        Sets the following globals to default test values so each test runs in isolation:
+        - meshtastic_client: None
+        - _relay_active_client_id: None
+        - _relay_reconnect_prestart_bootstrap_deadline_monotonic_secs: None
+        - reconnecting: False
+        - config: None
+        - matrix_rooms: []
+        - shutting_down: False
+        - event_loop: None
+        - reconnect_task: None
+        - subscribed_to_messages: False
+        - subscribed_to_connection_lost: False
+        - _callbacks_tearing_down: False
         """
         # Reset global state
         import mmrelay.meshtastic_utils
@@ -384,6 +387,15 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         def _submit_with_timeout_future(
             coro: object, **_kwargs: object
         ) -> "_DummyFuture":
+            """
+            Close the provided coroutine if one is given and return a shared dummy future.
+            
+            Parameters:
+                coro: A coroutine object or any callable; if `coro` is an actual coroutine it will be closed before returning.
+            
+            Returns:
+                _DummyFuture: The preconstructed shared future object `future`.
+            """
             if asyncio.iscoroutine(coro):
                 coro.close()
             return future
@@ -444,6 +456,15 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         def _submit_with_timeout_future(
             coro: object, **_kwargs: object
         ) -> "_DummyFuture":
+            """
+            Close the provided coroutine if one is given and return a shared dummy future.
+            
+            Parameters:
+                coro: A coroutine object or any callable; if `coro` is an actual coroutine it will be closed before returning.
+            
+            Returns:
+                _DummyFuture: The preconstructed shared future object `future`.
+            """
             if asyncio.iscoroutine(coro):
                 coro.close()
             return future
@@ -520,6 +541,15 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             mmrelay.meshtastic_utils.event_loop = MagicMock()
 
             def _submit_raises(coro: object, **_kwargs: object) -> NoReturn:
+                """
+                Close the given coroutine (if one) and unconditionally raise an exception indicating matrix relay failure.
+                
+                Parameters:
+                    coro: A coroutine or any object; if `coro` is a coroutine it will be closed before raising.
+                
+                Raises:
+                    Exception: Always raised with the message "Matrix relay failed".
+                """
                 if asyncio.iscoroutine(coro):
                     coro.close()
                 raise Exception("Matrix relay failed")
@@ -716,12 +746,13 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         def _done_future(coro: object, **_kwargs: object) -> Future[None]:
             """
-            Create and return a Future already completed with result None.
-
-            Useful in tests to simulate an already-finished asynchronous operation.
-
+            Return a Future already completed with result None.
+            
+            Parameters:
+                coro (object): The coroutine or object that was intended to run; if it is a coroutine, it will be closed.
+            
             Returns:
-                concurrent.futures.Future: A Future whose result is set to `None`.
+                concurrent.futures.Future: A Future completed with a result of `None`.
             """
             if asyncio.iscoroutine(coro):
                 coro.close()
@@ -796,6 +827,15 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         def _submit_with_timeout_future(
             coro: object, **_kwargs: object
         ) -> "_DummyFuture":
+            """
+            Close the provided coroutine if one is given and return a shared dummy future.
+            
+            Parameters:
+                coro: A coroutine object or any callable; if `coro` is an actual coroutine it will be closed before returning.
+            
+            Returns:
+                _DummyFuture: The preconstructed shared future object `future`.
+            """
             if asyncio.iscoroutine(coro):
                 coro.close()
             return future
@@ -861,6 +901,15 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         def _submit_with_timeout_future(
             coro: object, **_kwargs: object
         ) -> "_DummyFuture":
+            """
+            Close the provided coroutine if one is given and return a shared dummy future.
+            
+            Parameters:
+                coro: A coroutine object or any callable; if `coro` is an actual coroutine it will be closed before returning.
+            
+            Returns:
+                _DummyFuture: The preconstructed shared future object `future`.
+            """
             if asyncio.iscoroutine(coro):
                 coro.close()
             return future
@@ -930,6 +979,15 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         def _submit_with_timeout_future(
             coro: object, **_kwargs: object
         ) -> "_DummyFuture":
+            """
+            Close the provided coroutine if one is given and return a shared dummy future.
+            
+            Parameters:
+                coro: A coroutine object or any callable; if `coro` is an actual coroutine it will be closed before returning.
+            
+            Returns:
+                _DummyFuture: The preconstructed shared future object `future`.
+            """
             if asyncio.iscoroutine(coro):
                 coro.close()
             return future

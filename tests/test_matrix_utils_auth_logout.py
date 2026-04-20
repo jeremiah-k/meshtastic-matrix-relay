@@ -234,6 +234,16 @@ async def test_logout_matrix_bot_timeout():
         mock_async_client.return_value = mock_temp_client
 
         def _timeout_wait_for(awaitable, timeout=None, **kwargs):
+            """
+            Simulate an asyncio.wait_for timeout by closing a coroutine awaitable (if provided) and raising asyncio.TimeoutError.
+            
+            Parameters:
+                awaitable: The awaitable or coroutine that would have been awaited; if it is a coroutine it will be closed.
+                timeout: Ignored. Present to match the wait_for signature.
+            
+            Raises:
+                asyncio.TimeoutError: Always raised to simulate a timeout.
+            """
             if asyncio.iscoroutine(awaitable):
                 awaitable.close()
             raise asyncio.TimeoutError()

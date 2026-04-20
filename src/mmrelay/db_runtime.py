@@ -196,13 +196,15 @@ class DatabaseManager:
 
     def _create_connection(self) -> sqlite3.Connection:
         """
-        Create and configure a new sqlite3.Connection for this manager, apply configured PRAGMA directives, and register the connection for later cleanup.
-
+        Create and configure a new sqlite3.Connection for the manager and register it for later cleanup.
+        
+        Configures busy timeout, journal mode (WAL), foreign keys, and any validated extra PRAGMA directives. If configuration fails, the partially configured connection is closed before the error is propagated.
+        
         Returns:
-            sqlite3.Connection: A connection configured with the manager's pragmas and tracked by the manager.
-
+            sqlite3.Connection: A configured and tracked SQLite connection.
+        
         Raises:
-            sqlite3.Error: If an SQLite error occurs during connection creation or PRAGMA setup (the partially configured connection is closed before the error is propagated).
+            sqlite3.Error: If an SQLite error occurs during connection creation or PRAGMA setup.
             ValueError: If an extra PRAGMA name or string value fails validation.
             TypeError: If an extra PRAGMA value has an unsupported type.
         """
@@ -547,7 +549,7 @@ class DatabaseManager:
 
     def __del__(self) -> None:
         """
-        Best-effort fallback to avoid leaving connections open if close() is skipped.
+        Attempt to close managed database connections and other resources, suppressing all exceptions to avoid errors during interpreter shutdown.
         """
         try:
             self.close()
