@@ -553,8 +553,7 @@ class DatabaseManager:
         """
         try:
             self.close()
-        except Exception:
-            # Avoid surfacing destructor-time errors during interpreter shutdown.
+        except Exception:  # nosec B110
             pass
 
 

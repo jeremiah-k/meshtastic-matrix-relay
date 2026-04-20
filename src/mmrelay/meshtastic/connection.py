@@ -1126,6 +1126,8 @@ def _connect_meshtastic_impl(
                 )
                 _raise_no_client(connection_type)
 
+            if client is None:
+                raise RuntimeError("Unreachable: client validated above")
             successful = True
 
             # Acquire lock only for the final setup and subscription

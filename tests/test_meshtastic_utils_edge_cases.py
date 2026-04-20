@@ -16,6 +16,7 @@ import asyncio
 import os
 import sys
 import unittest
+from concurrent.futures import Future as FuturesFuture
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from typing import NoReturn
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
@@ -44,34 +45,35 @@ from mmrelay.meshtastic_utils import (
 )
 
 
+class _DummyFuture:
+    """Helper class to simulate a future that records timeout values and raises an exception."""
+
+    def __init__(self, exc: BaseException) -> None:
+        """
+        Initialize the object with an exception and an empty call history.
+
+        Parameters:
+            exc (BaseException): The exception instance to store for later inspection or re-raising.
+        """
+        self.exc = exc
+        self.calls: list[float | None] = []
+
+    def result(self, timeout: float | None = None) -> None:
+        """
+        Record the provided timeout value and raise the stored exception.
+
+        Parameters:
+            timeout (float | None): Timeout passed in; appended to self.calls for later inspection.
+
+        Raises:
+            Any: Re-raising the exception stored in self.exc.
+        """
+        self.calls.append(timeout)
+        raise self.exc
+
+
 class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
     """Test cases for Meshtastic utilities edge cases and error handling."""
-
-    class _DummyFuture:
-        """Helper class to simulate a future that records timeout values and raises an exception."""
-
-        def __init__(self, exc: BaseException) -> None:
-            """
-            Initialize the object with an exception and an empty call history.
-
-            Parameters:
-                exc (BaseException): The exception instance to store for later inspection or re-raising.
-            """
-            self.exc = exc
-            self.calls: list[float | None] = []
-
-        def result(self, timeout: float | None = None) -> None:
-            """
-            Record the provided timeout value and raise the stored exception.
-
-            Parameters:
-                timeout (float | None): Timeout passed in; appended to self.calls for later inspection.
-
-            Raises:
-                Any: Re-raises the exception stored in self.exc.
-            """
-            self.calls.append(timeout)
-            raise self.exc
 
     def setUp(self):
         """
@@ -308,7 +310,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             Returns:
                 concurrent.futures.Future: A Future already completed with the coroutine's result or exception.
             """
-            f = Future()
+            f = FuturesFuture()
             try:
                 # Execute the coroutine to trigger the exception
                 result = asyncio.run(coro)
@@ -366,7 +368,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         interface.nodes = {}
 
         timeout_exc = ConcurrentTimeoutError("Plugin timeout")
-        future = self._DummyFuture(timeout_exc)
+        future = _DummyFuture(timeout_exc)
 
         plugin = MagicMock()
         plugin.plugin_name = "timeout_plugin"
@@ -435,7 +437,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         interface.nodes = {}
 
         timeout_exc = ConcurrentTimeoutError("Plugin timeout")
-        future = self._DummyFuture(timeout_exc)
+        future = _DummyFuture(timeout_exc)
 
         plugin = MagicMock()
         plugin.plugin_name = "timeout_plugin"
@@ -739,7 +741,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             }
         mock_interface.nodes = large_nodes
 
-        def _done_future(coro: object, **_kwargs: object) -> Future[None]:
+        def _done_future(coro: object, **_kwargs: object) -> FuturesFuture[None]:
             """
             Return a Future already completed with result None.
 
@@ -751,7 +753,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             """
             if asyncio.iscoroutine(coro):
                 coro.close()
-            f = Future()
+            f = FuturesFuture()
             f.set_result(None)
             return f
 
@@ -808,7 +810,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "!12345678": {"user": {"id": "!12345678", "longName": "TestNode"}}
         }
 
-        future = self._DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
+        future = _DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
 
         plugin = MagicMock()
         plugin.plugin_name = "test_plugin"
@@ -882,7 +884,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         interface.myInfo = MagicMock()
         interface.myInfo.my_node_num = 12345
 
-        future = self._DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
+        future = _DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
 
         plugin = MagicMock()
         plugin.plugin_name = "test_plugin"
@@ -961,7 +963,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "!12345678": {"user": {"id": "!12345678", "longName": "TestNode"}}
         }
 
-        future = self._DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
+        future = _DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
         plugin = MagicMock()
         plugin.plugin_name = "telemetry_plugin"
         plugin.handle_meshtastic_message = AsyncMock(return_value=True)
