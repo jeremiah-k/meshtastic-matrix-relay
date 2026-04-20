@@ -3,7 +3,7 @@ import functools
 import inspect
 import math
 from concurrent.futures import Future
-from typing import Any
+from typing import Any, NoReturn
 
 import mmrelay.meshtastic_utils as facade
 from mmrelay.constants.config import (
@@ -53,7 +53,7 @@ class ConnectionCompletedWithoutClientError(ConnectionError):
     """Connection path returned without producing a usable client."""
 
 
-def _raise_no_client(connection_type: str) -> None:
+def _raise_no_client(connection_type: str) -> NoReturn:
     """Raise ConnectionCompletedWithoutClientError for the given connection type."""
     raise ConnectionCompletedWithoutClientError(
         f"Meshtastic {connection_type} connection completed without a client."

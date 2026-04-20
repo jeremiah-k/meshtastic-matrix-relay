@@ -8,7 +8,7 @@ event loop (with Runner or manual new_event_loop) to execute a coroutine.
 import asyncio
 from collections.abc import Coroutine
 from types import TracebackType
-from typing import Any
+from typing import Any, Self
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -39,7 +39,7 @@ class TestSubmitCoroNoLoopFallback:
         mu.event_loop = None
 
         class FakeRunner:
-            def __init__(self):
+            def __init__(self) -> None:
                 """
                 Initialize the instance with a MagicMock runner used to emulate asyncio Runner behavior in tests.
 
@@ -47,7 +47,7 @@ class TestSubmitCoroNoLoopFallback:
                 """
                 self._runner = MagicMock()
 
-            def __enter__(self):
+            def __enter__(self) -> Self:
                 """
                 Enter the context manager and provide the context object.
 
@@ -56,16 +56,22 @@ class TestSubmitCoroNoLoopFallback:
                 """
                 return self
 
-            def __exit__(self, *args):
+            def __exit__(
+                self,
+                exc_type: type[BaseException] | None,
+                exc_val: BaseException | None,
+                exc_tb: TracebackType | None,
+            ) -> None:
                 """
                 Do nothing when exiting the context manager.
 
                 Parameters:
-                    *args: Values provided by the context-management protocol (exception type, value, traceback); intentionally ignored.
+                    exc_type: Exception type provided by the context-management protocol.
+                    exc_val: Exception value provided by the context-management protocol.
+                    exc_tb: Traceback provided by the context-management protocol.
                 """
-                pass
 
-            def run(self, coro):
+            def run(self, coro: Coroutine[Any, Any, int]) -> int:
                 """
                 Run the given coroutine in a fresh temporary event loop and return its result.
 

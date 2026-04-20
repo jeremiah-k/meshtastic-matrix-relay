@@ -542,19 +542,15 @@ class DatabaseManager:
         self._thread_local = threading.local()
 
         if hasattr(old_thread_local, "connection"):
-            try:
+            with suppress(AttributeError):
                 del old_thread_local.connection
-            except AttributeError:
-                pass
 
     def __del__(self) -> None:
         """
         Attempt to close managed database connections and other resources, suppressing all exceptions to avoid errors during interpreter shutdown.
         """
-        try:
+        with suppress(Exception):
             self.close()
-        except Exception:  # nosec B110
-            pass
 
 
 # Convenience alias for type hints

@@ -4699,7 +4699,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
             Used as a generic placeholder callback or side-effect (for example, in mocks, timers, or disconnect helpers).
             """
-            pass
 
         mock_get_running_loop.side_effect = RuntimeError("no loop")
         mock_sleep.side_effect = _noop
@@ -4729,7 +4728,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
             Used as a generic placeholder callback or side-effect (for example, in mocks, timers, or disconnect helpers).
             """
-            pass
 
         mock_get_running_loop.side_effect = RuntimeError("no loop")
         mock_sleep.side_effect = _noop
