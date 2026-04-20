@@ -60,8 +60,29 @@ class Plugin(BasePlugin):
     is_core_plugin = True
     mesh_commands = WEATHER_COMMANDS
 
-    # No __init__ method needed with the simplified plugin system
-    # The BasePlugin will automatically use the class-level plugin_name
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._command_aliases: dict[str, str] = {}
+        self._load_command_aliases()
+
+    def _load_command_aliases(self) -> None:
+        """Load and validate command aliases from plugin config."""
+        raw_aliases: object = self.config.get("command_aliases", {})
+        if not isinstance(raw_aliases, dict):
+            self._command_aliases = {}
+            return
+        self._command_aliases = {}
+        for alias, target in raw_aliases.items():
+            alias_lc = str(alias).lower()
+            target_lc = str(target).lower()
+            if target_lc not in WEATHER_COMMANDS:
+                self.logger.warning(
+                    "weather: alias '%s' → '%s' ignored (unknown target command).",
+                    alias_lc,
+                    target_lc,
+                )
+            else:
+                self._command_aliases[alias_lc] = target_lc
 
     @property
     def description(self) -> str:
@@ -75,12 +96,13 @@ class Plugin(BasePlugin):
 
     def _normalize_mode(self, mode: str) -> str:
         """
-        Normalize a command string to a supported forecast mode.
+        Normalize a command string (including configured aliases) to a supported forecast mode.
 
         Returns:
             str: A valid mode from WEATHER_COMMANDS. Unrecognized or empty inputs yield the default.
         """
         cmd = (mode or CANONICAL_WEATHER_MODE).lower()
+        cmd = self._command_aliases.get(cmd, cmd)
         if cmd in WEATHER_COMMANDS:
             return cmd
         return CANONICAL_WEATHER_MODE
@@ -872,21 +894,25 @@ class Plugin(BasePlugin):
 
     def get_matrix_commands(self) -> list[str]:
         """
-        List mesh commands exposed to Matrix integrations.
+        List mesh commands exposed to Matrix integrations, including any configured aliases.
 
         Returns:
-            list[str]: A copy of the plugin's mesh command strings.
+            list[str]: Canonical command strings plus alias keys.
         """
-        return list(self.mesh_commands)
+        return list(self.mesh_commands) + [
+            a for a in self._command_aliases if a not in self.mesh_commands
+        ]
 
     def get_mesh_commands(self) -> list[str]:
         """
-        List available mesh commands exposed by this plugin.
+        List available mesh commands exposed by this plugin, including any configured aliases.
 
         Returns:
-            A copy of the plugin's mesh command names.
+            Canonical command names plus alias keys.
         """
-        return list(self.mesh_commands)
+        return list(self.mesh_commands) + [
+            a for a in self._command_aliases if a not in self.mesh_commands
+        ]
 
     async def handle_room_message(
         self,
@@ -913,6 +939,7 @@ class Plugin(BasePlugin):
         parsed_command = self.get_matching_matrix_command(event)
         if not parsed_command:
             return False
+        mode = self._normalize_mode(parsed_command)
         args_text = self.extract_command_args(parsed_command, full_message) or ""
 
         try:
@@ -943,7 +970,7 @@ class Plugin(BasePlugin):
                 self.generate_forecast,
                 latitude=coords[0],
                 longitude=coords[1],
-                mode=parsed_command,
+                mode=mode,
             )
             raw_units = self.config.get("units", WEATHER_UNITS_METRIC)
             units = (
@@ -957,7 +984,7 @@ class Plugin(BasePlugin):
                 self.generate_marine_forecast,
                 coords[0],
                 coords[1],
-                parsed_command,
+                mode,
                 units,
             )
             if marine:
@@ -1033,21 +1060,22 @@ class Plugin(BasePlugin):
 
     def _parse_mesh_command(self, message: str) -> tuple[str | None, str | None]:
         """
-        Parse a message for a supported mesh command prefixed with '!'.
+        Parse a message for a supported mesh command prefixed with '!', resolving any alias.
 
-        This matches messages that optionally begin with whitespace, followed by '!' and one of the plugin's supported commands (case-insensitive), optionally followed by arguments. Leading/trailing whitespace around the returned args is removed.
+        This matches messages that optionally begin with whitespace, followed by '!' and one of the plugin's supported commands or configured aliases (case-insensitive), optionally followed by arguments. Aliases are resolved to their canonical command before returning.
 
         Parameters:
             message (str): The incoming message text to parse.
 
         Returns:
-            tuple[str | None, str | None]: `(command, args)` where `command` is the matched command in lowercase and `args` is the trimmed argument string. Returns `(None, None)` if `message` is not a string or does not contain a supported command.
+            tuple[str | None, str | None]: `(canonical_command, args)` where `command` is always a value from WEATHER_COMMANDS and `args` is the trimmed argument string. Returns `(None, None)` if `message` is not a string or does not contain a supported command.
         """
-        parsed = self.parse_mesh_bang_command(message, self.mesh_commands)
+        parsed = self.parse_mesh_bang_command(message, self.get_mesh_commands())
         if parsed is None:
             return None, None
         cmd, args = parsed
-        return cmd.lower(), args
+        cmd = self._normalize_mode(cmd)
+        return cmd, args
 
     def _parse_location_override(self, arg_text: str) -> tuple[float, float] | None:
         """

@@ -328,6 +328,43 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.plugin._normalize_mode("unsupported-mode"), "weather")
         self.assertEqual(self.plugin._normalize_mode(""), "weather")
 
+    def test_command_aliases_valid(self):
+        """Valid alias pointing to a known command should be stored and resolved."""
+        self.plugin.config = {"units": WEATHER_UNITS_METRIC, "command_aliases": {"meteo": "daily"}}
+        self.plugin._load_command_aliases()
+        self.assertIn("meteo", self.plugin._command_aliases)
+        self.assertEqual(self.plugin._command_aliases["meteo"], "daily")
+        self.assertIn("meteo", self.plugin.get_matrix_commands())
+        self.assertIn("meteo", self.plugin.get_mesh_commands())
+
+    def test_command_aliases_invalid_target_warns(self):
+        """Alias pointing to an unknown command should be ignored with a warning."""
+        self.plugin.config = {"units": WEATHER_UNITS_METRIC, "command_aliases": {"foo": "nonexistent"}}
+        self.plugin._load_command_aliases()
+        self.assertNotIn("foo", self.plugin._command_aliases)
+        self.plugin.logger.warning.assert_called()
+
+    def test_command_aliases_case_insensitive(self):
+        """Alias keys and targets should be normalized to lowercase."""
+        self.plugin.config = {"units": WEATHER_UNITS_METRIC, "command_aliases": {"METEO": "DAILY"}}
+        self.plugin._load_command_aliases()
+        self.assertIn("meteo", self.plugin._command_aliases)
+        self.assertEqual(self.plugin._command_aliases["meteo"], "daily")
+
+    def test_normalize_mode_resolves_alias(self):
+        """_normalize_mode should resolve a configured alias to its canonical target."""
+        self.plugin.config = {"units": WEATHER_UNITS_METRIC, "command_aliases": {"meteo": "daily"}}
+        self.plugin._load_command_aliases()
+        self.assertEqual(self.plugin._normalize_mode("meteo"), "daily")
+
+    def test_parse_mesh_command_resolves_alias(self):
+        """_parse_mesh_command should resolve a mesh alias to the canonical command."""
+        self.plugin.config = {"units": WEATHER_UNITS_METRIC, "command_aliases": {"meteo": "daily"}}
+        self.plugin._load_command_aliases()
+        cmd, args = self.plugin._parse_mesh_command("!meteo 10.0 20.0")
+        self.assertEqual(cmd, "daily")
+        self.assertEqual(args, "10.0 20.0")
+
     async def test_handle_room_message_with_override(self):
         """
         Matrix-side weather command should parse coordinates and send a forecast.
