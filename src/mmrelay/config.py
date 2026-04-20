@@ -71,6 +71,60 @@ class CredentialsPathError(OSError):
         super().__init__("No candidate credentials paths available")
 
 
+# Track whether we've already emitted legacy path override warnings
+_legacy_path_override_warning_shown = False
+
+
+def _warn_on_legacy_path_overrides(config: dict[str, Any] | None) -> None:
+    """Emit deprecation warnings for legacy credentials_path / store_path overrides.
+
+    Warns once per process when any of the following are present:
+    - top-level ``credentials_path`` in config
+    - ``matrix.credentials_path`` in config
+    - ``matrix.e2ee.store_path`` or ``matrix.encryption.store_path`` in config
+    - ``MMRELAY_CREDENTIALS_PATH`` environment variable
+
+    These overrides are scheduled for removal; ``MMRELAY_HOME`` is the
+    supported way to control data paths.
+    """
+    global _legacy_path_override_warning_shown
+    if _legacy_path_override_warning_shown:
+        return
+
+    warnings_to_emit: list[str] = []
+
+    if os.getenv("MMRELAY_CREDENTIALS_PATH"):
+        warnings_to_emit.append("MMRELAY_CREDENTIALS_PATH environment variable is set")
+
+    if isinstance(config, dict):
+        if config.get("credentials_path"):
+            warnings_to_emit.append(
+                "top-level 'credentials_path' config key is present"
+            )
+        matrix_section = config.get(CONFIG_SECTION_MATRIX)
+        if isinstance(matrix_section, dict):
+            if matrix_section.get("credentials_path"):
+                warnings_to_emit.append(
+                    "'matrix.credentials_path' config key is present"
+                )
+            for section in ("e2ee", "encryption"):
+                sub = matrix_section.get(section)
+                if isinstance(sub, dict) and sub.get("store_path"):
+                    warnings_to_emit.append(
+                        f"'matrix.{section}.store_path' config key is present"
+                    )
+
+    if warnings_to_emit:
+        _legacy_path_override_warning_shown = True
+        logger.warning(
+            "Legacy path override(s) detected and will be ignored in a future version: %s. "
+            "Use MMRELAY_HOME to control all data paths. "
+            "Support for these overrides will be removed in v%s.",
+            "; ".join(warnings_to_emit),
+            DEPRECATION_VERSIONS[1],
+        )
+
+
 def _expand_path(path: str) -> str:
     """
     Expand a filesystem path, resolving a leading '~' and returning the absolute path.
@@ -306,6 +360,16 @@ def get_explicit_credentials_path(config: Mapping[str, Any] | None) -> str | Non
     """
     env_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
     if env_path:
+        global _legacy_path_override_warning_shown
+        if not _legacy_path_override_warning_shown:
+            _legacy_path_override_warning_shown = True
+            logger.warning(
+                "MMRELAY_CREDENTIALS_PATH environment variable is set. "
+                "This override is deprecated and will be ignored in a future version. "
+                "Use MMRELAY_HOME to control all data paths. "
+                "Support will be removed in v%s.",
+                DEPRECATION_VERSIONS[1],
+            )
         return env_path
     if not isinstance(config, MappingABC):
         return None
@@ -1295,6 +1359,7 @@ def load_config(
                 relay_config = {}
             # Apply environment variable overrides
             relay_config = apply_env_config_overrides(relay_config)
+            _warn_on_legacy_path_overrides(relay_config)
             return relay_config
         except (yaml.YAMLError, PermissionError, OSError):
             logger.exception(f"Error loading config file {config_file}")
@@ -1328,6 +1393,7 @@ def load_config(
                     relay_config = {}
                 # Apply environment variable overrides
                 relay_config = apply_env_config_overrides(relay_config)
+                _warn_on_legacy_path_overrides(relay_config)
                 return relay_config
             except (yaml.YAMLError, PermissionError, OSError):
                 logger.exception(f"Error loading config file {path}")

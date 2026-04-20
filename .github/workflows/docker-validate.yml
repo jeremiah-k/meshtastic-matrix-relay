@@ -1,0 +1,82 @@
+name: Docker Build Validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main, develop, "**-review"]
+    paths:
+      - .github/workflows/docker-validate.yml
+      - .github/workflows/docker-publish.yml
+      - Dockerfile
+      - docker-compose*
+      - src/**
+      - pyproject.toml
+
+concurrency:
+  group: docker-validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  docker-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Extract version and build info
+        id: get_version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="$(
+            python3 -c "import tomllib; from pathlib import Path; print(tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))['project']['version'])"
+          )"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Extracted version: $VERSION"
+
+          BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          echo "BUILD_DATE=$BUILD_DATE" >> "$GITHUB_ENV"
+
+          GIT_SHA=$(git rev-parse --short HEAD)
+          echo "GIT_SHA=$GIT_SHA" >> "$GITHUB_ENV"
+
+          echo "FILE_VERSION=$VERSION-dev-$GIT_SHA" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
+        with:
+          driver-opts: |
+            network=host
+
+      - name: Build Docker image
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          tags: mmrelay:validate
+          build-args: |
+            BUILD_DATE=${{ env.BUILD_DATE }}
+            VCS_REF=${{ env.GIT_SHA }}
+            VERSION=${{ env.VERSION }}
+          cache-from: type=gha
+          outputs: type=docker,dest=/tmp/mmrelay-docker.tar
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: MMRelay_docker_${{ env.FILE_VERSION }}
+          path: /tmp/mmrelay-docker.tar
+
+      - name: Smoke test — load and run image
+        run: |
+          echo "Loading built image..."
+          docker load -i /tmp/mmrelay-docker.tar
+          echo "Running mmrelay --version..."
+          docker run --rm mmrelay:validate mmrelay --version
