@@ -1537,3 +1537,35 @@ def test_rollback_cancels_pending_connect_time_probe_timer():
 
     mock_timer.cancel.assert_called_once()
     assert mu._pending_connect_time_probe_timer is None
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_time_probe_submits_immediately_when_drain_expired():
+    """When drain deadline is set but has already passed, probe should submit immediately."""
+    mock_client = MagicMock()
+    mock_client.localNode = MagicMock()
+    mock_client.sendData = MagicMock()
+
+    now = 1_100.0
+    drain_deadline = 1_000.0
+
+    mu._relay_startup_drain_deadline_monotonic_secs = drain_deadline
+
+    with (
+        patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit_probe,
+        patch("mmrelay.meshtastic_utils.time.monotonic", return_value=now),
+    ):
+        mu._schedule_connect_time_calibration_probe(
+            mock_client,
+            connection_type=CONNECTION_TYPE_TCP,
+            active_config={
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "127.0.0.1",
+                    "health_check": {"enabled": True, "connect_probe_enabled": True},
+                }
+            },
+        )
+
+    mock_submit_probe.assert_called_once()
+    assert mu._pending_connect_time_probe_timer is None
