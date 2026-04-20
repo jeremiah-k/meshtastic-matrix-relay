@@ -1,6 +1,7 @@
 import threading
 import time
 from collections.abc import Callable
+from concurrent.futures import Future
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -21,6 +22,14 @@ from mmrelay.constants.network import (
     STARTUP_PACKET_DRAIN_SECS,
 )
 from mmrelay.meshtastic_utils import connect_meshtastic, on_lost_meshtastic_connection
+
+
+def _schedule_reconnect_closing_coro(coro, loop=None):
+    """Close the reconnect coroutine to prevent unawaited-coroutine leaks."""
+    coro.close()
+    fut = Future()
+    fut.set_result(None)
+    return fut
 
 
 def test_connect_meshtastic_returns_existing_client(reset_meshtastic_globals):
@@ -1101,6 +1110,10 @@ def test_on_lost_meshtastic_connection_ignores_bad_fd(reset_meshtastic_globals):
     with (
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,
         patch("mmrelay.meshtastic_utils.event_loop") as mock_loop,
+        patch(
+            "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
+            side_effect=_schedule_reconnect_closing_coro,
+        ),
     ):
         mock_loop.is_closed.return_value = False
         on_lost_meshtastic_connection(detection_source="test")
