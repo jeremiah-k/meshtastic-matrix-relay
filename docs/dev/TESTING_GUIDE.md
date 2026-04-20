@@ -72,6 +72,63 @@ def test_handle_auth_logout_keyboard_interrupt(self, mock_print, mock_logout):
 | Direct async function testing                 | `AsyncMock`    | `mock_func = AsyncMock(return_value=result)` |
 | Exception in async context                    | Regular `Mock` | `mock_func.side_effect = Exception()`        |
 
+### Coroutine Leak Prevention Patterns
+
+Some failures only show up on certain Python versions (commonly 3.10/3.11/3.13+) as:
+
+```text
+PytestUnraisableExceptionWarning: coroutine ... was never awaited
+```
+
+Use these patterns to avoid creating throwaway coroutines in tests:
+
+1. **Match the production call shape exactly**
+   - If production does `fn(...)` (sync call): use `Mock`/sync `def`, not `AsyncMock`/`async def`.
+   - If production does `await fn(...)`: use `AsyncMock` or an async stub.
+
+2. **When mocking scheduler/submission helpers, close passed coroutines**
+   - Applies to fakes for `_submit_coro`, `run_coroutine_threadsafe`, etc.
+   - Example:
+
+```python
+from concurrent.futures import Future
+import asyncio
+
+def _submit_done(coro, loop=None):
+    if asyncio.iscoroutine(coro):
+        coro.close()
+    fut = Future()
+    fut.set_result(None)
+    return fut
+```
+
+3. **When mocking `asyncio.wait_for` to raise timeout, close awaitables first**
+   - Prevents leaked coroutine objects from timeout branches.
+
+```python
+def _timeout_wait_for(awaitable, timeout=None):
+    if asyncio.iscoroutine(awaitable):
+        awaitable.close()
+    raise asyncio.TimeoutError()
+```
+
+4. **Avoid async `_noop` helpers for sync-only paths**
+   - For sync cleanup hooks (for example mocked `disconnect()` in sync branches), use:
+   - `def _noop(*a, **k): return None`
+
+5. **If you need an awaitable return without AsyncMock bookkeeping, use a lightweight awaitable**
+   - Useful for methods like `close()` where you only need awaitability and not `assert_awaited_*`.
+
+```python
+class _ImmediateAwaitable:
+    def __init__(self, value=None):
+        self._value = value
+    def __await__(self):
+        if False:
+            yield
+        return self._value
+```
+
 ## Standardized Async Patterns
 
 Use standardized async testing patterns and avoid test-environment detection branches (for example, `MMRELAY_TESTING`).
