@@ -628,7 +628,7 @@ class BasePlugin(ABC):
         description = f"Plugin {self.plugin_name}: {text[:DEFAULT_TEXT_TRUNCATION_LENGTH]}{'...' if len(text) > DEFAULT_TEXT_TRUNCATION_LENGTH else ''}"
 
         if reply_id is not None:
-            from meshtastic.mesh_interface import BROADCAST_NUM
+            from meshtastic import BROADCAST_NUM
 
             from mmrelay.meshtastic.messaging import send_text_reply
 

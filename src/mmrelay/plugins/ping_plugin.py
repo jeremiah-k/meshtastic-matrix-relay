@@ -2,7 +2,7 @@ import asyncio
 from typing import Any
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
-from meshtastic.mesh_interface import BROADCAST_NUM
+from meshtastic import BROADCAST_NUM
 from nio import (
     MatrixRoom,
     ReactionEvent,

@@ -6,6 +6,10 @@ import threading
 from concurrent.futures import Future
 from typing import Any, NoReturn
 
+from meshtastic.ble_interface import (
+    BLEInterface,  # pyright: ignore[reportPrivateImportUsage]
+)
+
 import mmrelay.meshtastic_utils as facade
 from mmrelay.constants.config import (
     CONFIG_KEY_CONNECT_PROBE_ENABLED,
@@ -667,9 +671,7 @@ def _connect_meshtastic_impl(
                             # Detect whether this BLEInterface implementation supports
                             # explicit auto_reconnect control.
                             try:
-                                ble_init_sig = inspect.signature(
-                                    facade.meshtastic.ble_interface.BLEInterface.__init__
-                                )
+                                ble_init_sig = inspect.signature(BLEInterface.__init__)
                             except (TypeError, ValueError):
                                 ble_init_sig = None
                                 fallback_to_compat_mode = True
@@ -751,9 +753,7 @@ def _connect_meshtastic_impl(
                                 Returns:
                                     BLEInterface: A newly constructed Meshtastic BLEInterface instance.
                                 """
-                                return facade.meshtastic.ble_interface.BLEInterface(
-                                    **kwargs
-                                )
+                                return BLEInterface(**kwargs)
 
                             # Guard against overlapping BLE tasks: if a previous BLE operation is
                             # still running (often due to a hung BlueZ/DBus call), we skip queuing

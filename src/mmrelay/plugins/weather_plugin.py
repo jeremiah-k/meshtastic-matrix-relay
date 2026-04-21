@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 import requests
-from meshtastic.mesh_interface import BROADCAST_NUM
+from meshtastic import BROADCAST_NUM
 from nio import (
     MatrixRoom,
     ReactionEvent,
