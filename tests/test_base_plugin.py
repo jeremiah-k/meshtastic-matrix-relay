@@ -26,6 +26,7 @@ import schedule
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.config import CONFIG_KEY_REQUIRE_BOT_MENTION
 from mmrelay.constants.database import DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE
 from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
 from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
@@ -642,23 +643,27 @@ class TestBasePlugin(unittest.TestCase):
             result = plugin.is_channel_enabled(0, is_direct_message=True)
             self.assertTrue(result)
 
-    @patch("mmrelay.matrix_utils.bot_command")
-    def test_matches_method(self, mock_bot_command):
-        """
-        Test that the plugin's matches method correctly identifies Matrix events as matching or not based on the bot_command utility.
-
-        Verifies that the matches method returns True when the event matches a command and False otherwise.
-        """
-        plugin = MockPlugin()
+    def test_matches_method_accepts_supported_mxid_mention(self):
+        """matches() should accept MXID mention + command when mentions are required."""
+        plugin = CoreMockPlugin()
         event = MagicMock()
+        event.body = "@testbot:example.org: !test_plugin"
+        event.source = {"content": {"formatted_body": ""}}
 
-        mock_bot_command.return_value = True
-        result = plugin.matches(event)
-        self.assertTrue(result)
+        with patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"):
+            result = plugin.matches(event)
+            self.assertTrue(result)
 
-        mock_bot_command.return_value = False
-        result = plugin.matches(event)
-        self.assertFalse(result)
+    def test_matches_method_rejects_display_name_prefix_when_mentions_required(self):
+        """matches() should not treat display-name prefixes as bot mentions."""
+        plugin = CoreMockPlugin()
+        event = MagicMock()
+        event.body = "ForxRelay: !test_plugin"
+        event.source = {"content": {"formatted_body": ""}}
+
+        with patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"):
+            result = plugin.matches(event)
+            self.assertFalse(result)
 
     @patch("mmrelay.matrix_utils.connect_matrix")
     def test_send_matrix_message(self, mock_connect_matrix):
@@ -1554,8 +1559,9 @@ class TestBasePlugin(unittest.TestCase):
             plugin = MultiCmdPlugin()
 
         mock_event = MagicMock()
-        with patch("mmrelay.matrix_utils.bot_command") as mock_bc:
-            mock_bc.side_effect = lambda cmd, *_, **__: cmd == "cmd2"
+        mock_event.body = "@testbot:example.org: !cmd2 value"
+        mock_event.source = {"content": {"formatted_body": ""}}
+        with patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"):
             result = plugin.get_matching_matrix_command(mock_event)
             self.assertEqual(result, "cmd2")
 
@@ -1581,30 +1587,37 @@ class TestBasePlugin(unittest.TestCase):
             plugin = MultiCmdPlugin2()
 
         mock_event = MagicMock()
-        with patch("mmrelay.matrix_utils.bot_command", return_value=False):
+        mock_event.body = "!cmd1"
+        mock_event.source = {"content": {"formatted_body": ""}}
+        with patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"):
             result = plugin.get_matching_matrix_command(mock_event)
             self.assertIsNone(result)
 
     def test_extract_command_args_with_match(self):
-        """extract_command_args should extract args from full message."""
-        plugin = MockPlugin()
-        with patch(
-            "mmrelay.matrix_utils.bot_command",
-            side_effect=lambda cmd, msg, *_, **__: cmd == "test_plugin",
-        ):
-            MagicMock()
+        """extract_command_args should use shared parser semantics for args extraction."""
+        plugin = CoreMockPlugin()
+        with patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"):
             result = plugin.extract_command_args(
-                "test_plugin", "!test_plugin arg1 arg2"
+                "test_plugin",
+                "@testbot:example.org: !test_plugin arg1 arg2",
             )
             self.assertEqual(result, "arg1 arg2")
 
     def test_extract_command_args_no_match(self):
         """extract_command_args should return None when command doesn't match."""
-        plugin = MockPlugin()
-        with patch("mmrelay.matrix_utils.bot_command", return_value=False):
-            MagicMock()
-            result = plugin.extract_command_args("test_plugin", "!other_cmd")
+        plugin = CoreMockPlugin()
+        with patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"):
+            result = plugin.extract_command_args(
+                "test_plugin", "ForxRelay: !test_plugin"
+            )
             self.assertIsNone(result)
+
+    def test_extract_command_args_allows_bare_command_when_mentions_disabled(self):
+        """Non-core plugins should keep bare-command parsing when mentions are disabled."""
+        plugin = MockPlugin()
+        plugin.config[CONFIG_KEY_REQUIRE_BOT_MENTION] = False
+        result = plugin.extract_command_args("test_plugin", "!test_plugin alpha beta")
+        self.assertEqual(result, "alpha beta")
 
     def test_parse_mesh_bang_command_with_args(self):
         """parse_mesh_bang_command should parse command and trailing args."""

@@ -1,5 +1,8 @@
 import asyncio
+import html
 import re
+from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Any, cast
 
 from nio import (
@@ -21,6 +24,207 @@ __all__ = [
     "_get_meshtastic_interface_and_channel",
     "_handle_detection_sensor_packet",
 ]
+
+
+@dataclass(frozen=True)
+class ParsedMatrixCommand:
+    """Normalized result for a parsed Matrix command invocation."""
+
+    command: str
+    args: str
+
+
+def _normalize_formatted_body_for_command_detection(formatted_body: Any) -> str:
+    """
+    Convert Matrix ``formatted_body`` HTML into conservative plain text for matching.
+
+    The normalization removes reply blocks and tags, unescapes HTML entities, and
+    collapses whitespace. It is intentionally minimal and only used for command
+    detection, not for rendering.
+    """
+    if not isinstance(formatted_body, str) or not formatted_body:
+        return ""
+
+    normalized = re.sub(
+        r"(?is)<mx-reply>.*?</mx-reply>",
+        " ",
+        formatted_body,
+    )
+    normalized = re.sub(r"(?i)<br\s*/?>", " ", normalized)
+    normalized = re.sub(r"<[^>]+>", " ", normalized)
+    normalized = html.unescape(normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return re.sub(r"\s+([:;,])", r"\1", normalized)
+
+
+def _build_command_lookup(commands: Iterable[str]) -> dict[str, str]:
+    """Build case-insensitive command lookup preserving canonical spellings."""
+    command_lookup: dict[str, str] = {}
+    for command in commands:
+        if not isinstance(command, str):
+            continue
+        normalized = command.strip()
+        if not normalized:
+            continue
+        if normalized.startswith("!"):
+            normalized = normalized[1:]
+        if not normalized:
+            continue
+        key = normalized.casefold()
+        if key not in command_lookup:
+            command_lookup[key] = normalized
+    return command_lookup
+
+
+def _extract_candidate_bodies(
+    message: (
+        str | RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote
+    ),
+) -> list[str]:
+    """Return plain/normalized message variants used for command matching."""
+    if isinstance(message, str):
+        stripped = message.strip()
+        return [stripped] if stripped else []
+
+    bodies: list[str] = []
+    plain_body = (getattr(message, "body", "") or "").strip()
+    if plain_body:
+        bodies.append(plain_body)
+
+    source = getattr(message, "source", {})
+    content = source.get("content", {}) if isinstance(source, dict) else {}
+    formatted_body = (
+        content.get("formatted_body", "") if isinstance(content, dict) else ""
+    )
+    normalized_formatted = _normalize_formatted_body_for_command_detection(
+        formatted_body
+    )
+    if normalized_formatted and normalized_formatted not in bodies:
+        bodies.append(normalized_formatted)
+    return bodies
+
+
+def _resolve_bot_mxid() -> str | None:
+    """Return the configured bot MXID as a safe string, if available."""
+    identifier = facade.bot_user_id
+    if not identifier:
+        return None
+    try:
+        mxid = str(identifier).strip()
+    except Exception as exc:  # noqa: BLE001 - broken __str__ should not crash parsing
+        facade.logger.debug(
+            "Failed to stringify bot MXID %r for command parsing: %s",
+            identifier,
+            type(exc).__name__,
+        )
+        return None
+    return mxid or None
+
+
+def _consume_mxid_mention_prefix(message: str, bot_mxid: str) -> str | None:
+    """
+    Consume an exact bot MXID mention prefix and return the remaining text.
+
+    Supported mention separators between MXID and command:
+    - one or more whitespace characters
+    - one of `:`, `;`, `,` immediately followed by whitespace
+    """
+    if not message.startswith(bot_mxid):
+        return None
+
+    remainder = message[len(bot_mxid) :]
+    if not remainder:
+        return None
+
+    if remainder[0].isspace():
+        return remainder.lstrip()
+
+    if remainder[0] in ":;,":
+        if len(remainder) < 2 or not remainder[1].isspace():
+            return None
+        return remainder[1:].lstrip()
+
+    return None
+
+
+def _match_bang_command(
+    message: str, command_lookup: dict[str, str]
+) -> ParsedMatrixCommand | None:
+    """Parse a leading ``!command`` plus optional args from a message body."""
+    if not message:
+        return None
+
+    command_alternatives = sorted(command_lookup.values(), key=len, reverse=True)
+    command_pattern = "|".join(re.escape(command) for command in command_alternatives)
+    match = re.match(
+        rf"^!(?P<command>{command_pattern})(?=$|\s)(?:\s+(?P<args>.*))?$",
+        message,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+
+    matched_command = match.group("command")
+    canonical = command_lookup.get(matched_command.casefold(), matched_command)
+    args = (match.group("args") or "").strip()
+    return ParsedMatrixCommand(command=canonical, args=args)
+
+
+def _parse_matrix_message_command(
+    message: (
+        str | RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote
+    ),
+    commands: Iterable[str],
+    *,
+    require_mention: bool = False,
+) -> ParsedMatrixCommand | None:
+    """
+    Parse a Matrix message and return the matched command plus arguments.
+
+    Mention policy:
+    - Mention target must match the configured bot MXID exactly.
+    - Supported forms are ``@bot:server !cmd`` and ``@bot:server: !cmd`` (also
+      ``,``/``;`` separators with required following whitespace).
+    - Compact ``@bot:server!cmd`` and display-name prefixes do not match.
+
+    Command matching is case-insensitive; command canonicalization follows
+    ``commands`` input.
+    """
+    command_lookup = _build_command_lookup(commands)
+    if not command_lookup:
+        return None
+
+    candidate_bodies = _extract_candidate_bodies(message)
+    if not candidate_bodies:
+        return None
+
+    bot_mxid = _resolve_bot_mxid()
+
+    for body in candidate_bodies:
+        if require_mention:
+            if not bot_mxid:
+                return None
+            suffix = _consume_mxid_mention_prefix(body, bot_mxid)
+            if suffix is None:
+                continue
+            parsed = _match_bang_command(suffix, command_lookup)
+            if parsed is not None:
+                return parsed
+            continue
+
+        parsed = _match_bang_command(body, command_lookup)
+        if parsed is not None:
+            return parsed
+
+        if bot_mxid:
+            suffix = _consume_mxid_mention_prefix(body, bot_mxid)
+            if suffix is None:
+                continue
+            parsed = _match_bang_command(suffix, command_lookup)
+            if parsed is not None:
+                return parsed
+
+    return None
 
 
 def _estimate_clock_rollback_ms(
@@ -88,7 +292,8 @@ def bot_command(
     """
     Determine whether a Matrix event addresses the bot with the given command.
 
-    Checks the event's plain and HTML-formatted bodies. Matches when the message either starts with `!<command>` (only allowed when `require_mention` is False) or begins with an explicit mention of the bot (bot MXID or display name) optionally followed by punctuation/whitespace and then `!<command>`.
+    Uses the shared Matrix command parser against both plain ``body`` and
+    normalized ``formatted_body`` content. Mentions are MXID-only.
 
     Parameters:
         command (str): Command name to detect (without the leading `!`).
@@ -98,44 +303,17 @@ def bot_command(
     Returns:
         bool: `True` if the message addresses the bot with the given command, `False` otherwise.
     """
-    full_message = (getattr(event, "body", "") or "").strip()
     if not command:
         return False
-    content = event.source.get("content", {})
-    formatted_body = content.get("formatted_body", "")
 
-    text_content = re.sub(r"<[^>]+>", "", formatted_body).strip()
-
-    bodies = [full_message, text_content]
-
-    bare_pattern = rf"^!{re.escape(command)}(?:\s|$)"
-
-    if not require_mention and any(
-        re.match(bare_pattern, body, re.IGNORECASE) for body in bodies if body
-    ):
-        return True
-
-    mention_parts: list[str] = []
-    for ident in (facade.bot_user_id, facade.bot_user_name):
-        if ident:
-            try:
-                mention_parts.append(re.escape(str(ident)))
-            except Exception as exc:  # noqa: BLE001 - str() may invoke broken __str__
-                facade.logger.debug(
-                    "Failed to escape identifier %r for bot_command pattern: %s",
-                    ident,
-                    type(exc).__name__,
-                )
-                continue
-
-    if not mention_parts:
-        return False
-
-    pattern = (
-        rf"^(?:{'|'.join(mention_parts)})[,:;]?\s*!" rf"{re.escape(command)}(?:\s|$)"
+    return (
+        _parse_matrix_message_command(
+            event,
+            (command,),
+            require_mention=require_mention,
+        )
+        is not None
     )
-
-    return any(re.match(pattern, body, re.IGNORECASE) for body in bodies if body)
 
 
 async def _connect_meshtastic() -> Any:

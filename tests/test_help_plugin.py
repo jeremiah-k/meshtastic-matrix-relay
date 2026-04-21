@@ -117,8 +117,8 @@ class TestHelpPlugin(unittest.TestCase):
         event.source = {"content": {"formatted_body": ""}}
 
         with (
-            patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
-            patch("mmrelay.matrix_utils.bot_user_name", "TestBot"),
+            patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "TestRelay"),
         ):
 
             async def run_test() -> None:
@@ -132,6 +132,55 @@ class TestHelpPlugin(unittest.TestCase):
                 result = await self.plugin.handle_room_message(
                     room, event, "full_message"
                 )
+                self.assertFalse(result)
+                self.plugin.send_matrix_message.assert_not_called()
+                self.plugin.send_matrix_reaction.assert_not_called()
+
+            asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.help_plugin.load_plugins")
+    def test_handle_room_message_accepts_supported_mxid_mention_end_to_end(
+        self, mock_load_plugins
+    ):
+        """Supported MXID mention form should be parsed and handled end-to-end."""
+        mock_load_plugins.return_value = [self.mock_plugin3]
+        self.plugin.get_require_bot_mention = MagicMock(return_value=True)
+
+        room = MagicMock()
+        room.room_id = "!test:example.org"
+        event = MagicMock()
+        event.event_id = "$evt1"
+        event.body = "@testbot:example.org: !help"
+        event.source = {"content": {"formatted_body": ""}}
+
+        with patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"):
+
+            async def run_test() -> None:
+                result = await self.plugin.handle_room_message(room, event, event.body)
+                self.assertTrue(result)
+                self.plugin.send_matrix_message.assert_called_once()
+                self.plugin.send_matrix_reaction.assert_called_once_with(
+                    "!test:example.org", "$evt1", "✅"
+                )
+
+            asyncio.run(run_test())
+
+    def test_handle_room_message_rejects_display_name_prefix_when_mentions_required(
+        self,
+    ):
+        """Display-name prefixes should not be claimed when mention policy is strict."""
+        self.plugin.get_require_bot_mention = MagicMock(return_value=True)
+
+        room = MagicMock()
+        room.room_id = "!test:example.org"
+        event = MagicMock()
+        event.body = "ForxRelay: !help"
+        event.source = {"content": {"formatted_body": ""}}
+
+        with patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"):
+
+            async def run_test() -> None:
+                result = await self.plugin.handle_room_message(room, event, event.body)
                 self.assertFalse(result)
                 self.plugin.send_matrix_message.assert_not_called()
                 self.plugin.send_matrix_reaction.assert_not_called()

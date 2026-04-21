@@ -353,6 +353,7 @@ from mmrelay.matrix.command_bridge import (
     _estimate_clock_rollback_ms,
     _get_meshtastic_interface_and_channel,
     _handle_detection_sensor_packet,
+    _parse_matrix_message_command,
     _refresh_bot_start_timestamps,
     bot_command,
     get_displayname,

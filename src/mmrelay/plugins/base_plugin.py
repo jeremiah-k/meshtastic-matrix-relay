@@ -695,18 +695,20 @@ class BasePlugin(ABC):
         """
         Return the first Matrix command name that matches the given event.
 
-        Uses the plugin's require-mention setting when testing commands.
+        Uses the shared Matrix command parser and this plugin's require-mention
+        policy to resolve one canonical command name and arguments.
 
         Returns:
             The matching command string if a command matches the event, `None` otherwise.
         """
-        from mmrelay.matrix_utils import bot_command
+        from mmrelay.matrix_utils import _parse_matrix_message_command
 
-        require_mention = self.get_require_bot_mention()
-        for command in self.get_matrix_commands():
-            if bot_command(command, event, require_mention=require_mention):
-                return command
-        return None
+        parsed = _parse_matrix_message_command(
+            event,
+            self.get_matrix_commands(),
+            require_mention=self.get_require_bot_mention(),
+        )
+        return parsed.command if parsed is not None else None
 
     async def send_matrix_message(
         self,
@@ -927,35 +929,46 @@ class BasePlugin(ABC):
         Returns:
             `True` if the event invokes one of the plugin's Matrix commands, `False` otherwise.
         """
-        from mmrelay.matrix_utils import bot_command
+        from mmrelay.matrix_utils import _parse_matrix_message_command
 
-        # Determine if bot mentions are required
-        require_mention = self.get_require_bot_mention()
-
-        return any(
-            bot_command(command, event, require_mention=require_mention)
-            for command in self.get_matrix_commands()
+        return (
+            _parse_matrix_message_command(
+                event,
+                self.get_matrix_commands(),
+                require_mention=self.get_require_bot_mention(),
+            )
+            is not None
         )
 
     def extract_command_args(self, command: str, text: str) -> str | None:
         """
-        Extract arguments that follow a bot command in a message, tolerating an optional leading mention prefix and matching the command case-insensitively.
+        Extract arguments for ``command`` using the shared Matrix command parser.
 
-        If the message contains the command (e.g. "!cmd arg1 arg2" or "BotName: !cmd arg1" or "BotName !cmd arg1"), returns the trailing argument string stripped of surrounding whitespace; if the command is present with no arguments returns an empty string; if the input does not match the command pattern or is not a string returns None.
+        This method intentionally does not maintain an independent regex. It
+        reuses the same parser and mention policy as ``matches()`` and
+        ``get_matching_matrix_command()`` so command/argument semantics remain
+        consistent.
+
+        The provided ``text`` should be the same message body used for command
+        matching. If the command is present with no arguments, returns an empty
+        string.
 
         Returns:
-            str: Arguments after the command, stripped of surrounding whitespace, or an empty string if no arguments are present; `None` if the command pattern does not match or input is not a string.
+            str: Arguments after the command, stripped of surrounding whitespace,
+                or an empty string if no arguments are present; `None` if input
+                is not a string or the command does not match.
         """
+        from mmrelay.matrix_utils import _parse_matrix_message_command
+
         if not isinstance(text, str):
             return None
-        pattern = rf"^(?:.+?[,:;]?\s+)?!{re.escape(command)}(?:\s+(.*))?$"
-        match = re.match(pattern, text, flags=re.IGNORECASE)
-        if not match:
-            return None
-        args = match.group(1)
-        if args is None:
-            return ""
-        return args.strip()
+
+        parsed = _parse_matrix_message_command(
+            text,
+            (command,),
+            require_mention=self.get_require_bot_mention(),
+        )
+        return parsed.args if parsed is not None else None
 
     def parse_mesh_bang_command(
         self, text: str, commands: Iterable[str], *, allow_anywhere: bool = False
