@@ -695,8 +695,8 @@ class BasePlugin(ABC):
         """
         Return the first Matrix command name that matches the given event.
 
-        Uses the shared Matrix command parser and this plugin's require-mention
-        policy to resolve one canonical command name and arguments.
+        Delegates to :meth:`get_matching_matrix_command_with_args` and returns
+        only the command name portion.
 
         Returns:
             The matching command string if a command matches the event, `None` otherwise.

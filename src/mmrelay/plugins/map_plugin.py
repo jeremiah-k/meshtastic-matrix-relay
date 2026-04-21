@@ -496,7 +496,7 @@ class Plugin(BasePlugin):
         Parameters:
             room: The Matrix room where the message was received; used to send responses and the resulting image.
             event: The full Matrix event object; passed to plugin matching logic.
-            full_message: The raw message text to parse for the "!map" command and optional parameters.
+            full_message: The raw message text retained for API compatibility.
 
         Returns:
             `True` if the command was handled and the map image was generated and sent; `False` otherwise.

@@ -17,6 +17,8 @@ from nio import (
 import mmrelay.matrix_utils as facade
 
 __all__ = [
+    "ParsedMatrixCommand",
+    "_parse_matrix_message_command",
     "_estimate_clock_rollback_ms",
     "_refresh_bot_start_timestamps",
     "get_displayname",
@@ -285,6 +287,7 @@ def _match_bang_command(
     if not message:
         return None
 
+    # Sort longest-first so the alternation group matches the longest candidate.
     command_alternatives = sorted(command_lookup.values(), key=len, reverse=True)
     command_pattern = "|".join(re.escape(command) for command in command_alternatives)
     match = re.match(
@@ -349,9 +352,6 @@ def _parse_matrix_message_command(
         return None
 
     if require_mention:
-        if bot_mxid is None:
-            return None
-
         # Pass 1: require exact MXID mention semantics across all body variants.
         # This tier includes plain-body MXID prefixes and formatted-body mention
         # pills that normalize to MXID prefixes.
