@@ -60,24 +60,13 @@ jobs:
           context: .
           platforms: linux/amd64
           push: false
+          load: true
           tags: mmrelay:validate
           build-args: |
             BUILD_DATE=${{ env.BUILD_DATE }}
             VCS_REF=${{ env.GIT_SHA }}
             VERSION=${{ env.VERSION }}
           cache-from: type=gha
-          outputs: type=docker,dest=/tmp/mmrelay-docker.tar
 
-      - name: Upload Docker image artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: MMRelay_docker_${{ env.FILE_VERSION }}
-          path: /tmp/mmrelay-docker.tar
-          retention-days: 7
-
-      - name: Smoke test — load and run image
-        run: |
-          echo "Loading built image..."
-          docker load -i /tmp/mmrelay-docker.tar
-          echo "Running mmrelay --version..."
-          docker run --rm mmrelay:validate mmrelay --version
+      - name: Smoke test — verify image runs
+        run: docker run --rm mmrelay:validate mmrelay --version
