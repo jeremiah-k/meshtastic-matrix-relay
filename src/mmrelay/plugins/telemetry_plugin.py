@@ -166,28 +166,32 @@ class Plugin(BasePlugin):
         event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
         full_message: str,
     ) -> bool:
-        # Pass the event to matches()
         """
-        Handle a Matrix message that requests a telemetry graph and send the generated image to the originating room.
+        Handle a Matrix telemetry command and send a generated graph to the room.
 
-        Parses a telemetry command (one of `batteryLevel`, `voltage`, `airUtilTx`) optionally followed by a node identifier, computes hourly averages for the last 12 hours for that node or for the whole network, renders a line plot of those averages, and uploads the image to the originating room. If a specified node has no telemetry data, a notice is sent instead of an image.
+        Matching is determined by ``matches(event)``, and command parsing comes from
+        ``get_matching_matrix_command_with_args(event)``. The parsed tuple provides
+        ``parsed_command`` (one of ``batteryLevel``, ``voltage``, ``airUtilTx``) and
+        optional args (node identifier). The handler then computes hourly averages,
+        renders a graph, and uploads it or sends an error notice.
 
         Parameters:
             room: Matrix room object where the event originated and where the response will be sent.
             event: Matrix event used to determine whether it matches a supported telemetry command.
-            full_message: Full plaintext message content used to parse the command and optional node identifier.
+            full_message: Full plaintext message retained for API compatibility.
 
         Returns:
             `True` if the message matched a telemetry command and a graph was generated and sent or a notice was sent for a node with no data, `False` otherwise.
         """
+        _ = full_message
         if not self.matches(event):
             return False
 
-        parsed_command = self.get_matching_matrix_command(event)
-        if not parsed_command:
+        parsed = self.get_matching_matrix_command_with_args(event)
+        if not parsed:
             return False
 
-        args = self.extract_command_args(parsed_command, full_message) or ""
+        parsed_command, args = parsed
         telemetry_option = parsed_command
         node = args or None
 

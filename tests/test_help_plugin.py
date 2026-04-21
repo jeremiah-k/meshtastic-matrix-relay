@@ -117,8 +117,8 @@ class TestHelpPlugin(unittest.TestCase):
         event.source = {"content": {"formatted_body": ""}}
 
         with (
-            patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
-            patch("mmrelay.matrix_utils.bot_user_name", "TestBot"),
+            patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "TestRelay"),
         ):
 
             async def run_test() -> None:
@@ -139,6 +139,137 @@ class TestHelpPlugin(unittest.TestCase):
             asyncio.run(run_test())
 
     @patch("mmrelay.plugins.help_plugin.load_plugins")
+    def test_handle_room_message_accepts_supported_mxid_mention_end_to_end(
+        self, mock_load_plugins
+    ):
+        """Supported MXID mention form should be parsed and handled end-to-end."""
+        mock_load_plugins.return_value = [self.mock_plugin3]
+        self.plugin.get_require_bot_mention = MagicMock(return_value=True)
+
+        room = MagicMock()
+        room.room_id = "!test:example.org"
+        event = MagicMock()
+        event.event_id = "$evt1"
+        event.body = "@testbot:example.org: !help"
+        event.source = {"content": {"formatted_body": ""}}
+
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "TestRelay"),
+        ):
+
+            async def run_test() -> None:
+                result = await self.plugin.handle_room_message(room, event, event.body)
+                self.assertTrue(result)
+                self.plugin.send_matrix_message.assert_called_once()
+                self.plugin.send_matrix_reaction.assert_called_once_with(
+                    "!test:example.org", "$evt1", "✅"
+                )
+
+            asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.help_plugin.load_plugins")
+    def test_handle_room_message_accepts_formatted_mention_pill_with_display_text(
+        self, mock_load_plugins
+    ):
+        """
+        Formatted mention pills should match by MXID href even when visible text is a display name.
+        """
+        mock_load_plugins.return_value = [self.mock_plugin2, self.mock_plugin3]
+        self.plugin.get_require_bot_mention = MagicMock(return_value=True)
+
+        room = MagicMock()
+        room.room_id = "!test:example.org"
+        event = MagicMock()
+        event.event_id = "$evt-pill"
+        event.body = "not a command"
+        event.source = {
+            "content": {
+                "formatted_body": (
+                    '<a href="https://matrix.to/#/%40testbot%3Aexample.org">'
+                    "TestRelay</a>: !help weather"
+                )
+            }
+        }
+
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "TestRelay"),
+        ):
+
+            async def run_test() -> None:
+                result = await self.plugin.handle_room_message(room, event, event.body)
+                self.assertTrue(result)
+                self.plugin.send_matrix_message.assert_called_once()
+                sent = self.plugin.send_matrix_message.call_args.args[1]
+                self.assertEqual(
+                    sent,
+                    MSG_COMMAND_HELP.format(
+                        command="weather", description=self.mock_plugin2.description
+                    ),
+                )
+                self.plugin.send_matrix_reaction.assert_called_once_with(
+                    "!test:example.org", "$evt-pill", "✅"
+                )
+
+            asyncio.run(run_test())
+
+    def test_handle_room_message_rejects_formatted_link_without_bot_mxid_target(self):
+        """Formatted links that do not target the bot MXID should not be claimed."""
+        self.plugin.get_require_bot_mention = MagicMock(return_value=True)
+
+        room = MagicMock()
+        room.room_id = "!test:example.org"
+        event = MagicMock()
+        event.body = "not a command"
+        event.source = {
+            "content": {
+                "formatted_body": (
+                    '<a href="https://matrix.to/#/%40relay%3Aexample.com">'
+                    "TestRelay</a>: !help"
+                )
+            }
+        }
+
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "TestRelay"),
+        ):
+
+            async def run_test() -> None:
+                result = await self.plugin.handle_room_message(room, event, event.body)
+                self.assertFalse(result)
+                self.plugin.send_matrix_message.assert_not_called()
+                self.plugin.send_matrix_reaction.assert_not_called()
+
+            asyncio.run(run_test())
+
+    def test_handle_room_message_rejects_non_matching_display_name_prefix_when_mentions_required(
+        self,
+    ):
+        """Mismatched display-name prefixes should not be claimed when mentions are required."""
+        self.plugin.get_require_bot_mention = MagicMock(return_value=True)
+
+        room = MagicMock()
+        room.room_id = "!test:example.org"
+        event = MagicMock()
+        event.body = "OtherRelay: !help"
+        event.source = {"content": {"formatted_body": ""}}
+
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "TestRelay"),
+        ):
+
+            async def run_test() -> None:
+                result = await self.plugin.handle_room_message(room, event, event.body)
+                self.assertFalse(result)
+                self.plugin.send_matrix_message.assert_not_called()
+                self.plugin.send_matrix_reaction.assert_not_called()
+
+            asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.help_plugin.load_plugins")
     def test_handle_room_message_general_help(self, mock_load_plugins):
         """
         Test that a general help command triggers a message listing all available commands from loaded plugins.
@@ -150,7 +281,6 @@ class TestHelpPlugin(unittest.TestCase):
             self.mock_plugin2,
             self.mock_plugin3,
         ]
-        self.plugin.matches = MagicMock(return_value=True)
 
         room = MagicMock()
         room.room_id = "!test:matrix.org"
@@ -163,12 +293,11 @@ class TestHelpPlugin(unittest.TestCase):
             """
             Run assertions that handling a general "!help" room message results in a command list being sent.
 
-            Verifies that handle_room_message reports success, that matches() is called with the event, that send_matrix_message() is called once for the target room, and that the sent message contains "Available commands:" and the expected commands "nodes", "health", "weather", and "help".
+            Verifies that handle_room_message reports success, that send_matrix_message() is called once for the target room, and that the sent message contains "Available commands:" and the expected commands "nodes", "health", "weather", and "help".
             """
             result = await self.plugin.handle_room_message(room, event, full_message)
 
             self.assertTrue(result)
-            self.plugin.matches.assert_called_once_with(event)
             self.plugin.send_matrix_message.assert_called_once()
             self.plugin.send_matrix_reaction.assert_called_once_with(
                 "!test:matrix.org", event.event_id, "✅"

@@ -91,24 +91,25 @@ class Plugin(BasePlugin):
         full_message: str,
     ) -> bool:
         """
-        Provide help for Matrix room messages by replying with either a list of available commands or details for a specific command.
+        Provide help for Matrix room messages by replying with command list/details.
 
-        If the incoming event matches this plugin's Matrix help command, sends a reply to the room: either a comma-separated list of all available Matrix commands from loaded plugins or a description for a requested command.
+        The handler relies on ``get_matching_matrix_command_with_args(event)`` as
+        the authoritative parse result to obtain the matched command and argument
+        text.
 
         Parameters:
             room (MatrixRoom): Matrix room object; its `room_id` is used to send the reply.
             event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): Incoming Matrix event used to determine whether this plugin should handle the message.
-            full_message (str): Raw message text from the room; used to extract command arguments.
+            full_message (str): Raw message text retained for API compatibility.
 
         Returns:
             True if the incoming event matched this plugin and a reply was sent, False otherwise.
         """
-        # Maintain legacy matches() call for tests/compatibility but do not gate handling on it
-        self.matches(event)
-        matched_command = self.get_matching_matrix_command(event)
-        if not matched_command:
+        _ = full_message
+        parsed = self.get_matching_matrix_command_with_args(event)
+        if not parsed:
             return False
-        command = self.extract_command_args(matched_command, full_message) or ""
+        _matched_command, command = parsed
 
         plugins = load_plugins()
 

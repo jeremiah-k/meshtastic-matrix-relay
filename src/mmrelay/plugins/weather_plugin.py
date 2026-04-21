@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 import requests
-from meshtastic.mesh_interface import BROADCAST_NUM
+from meshtastic import BROADCAST_NUM
 from nio import (
     MatrixRoom,
     ReactionEvent,
@@ -921,26 +921,30 @@ class Plugin(BasePlugin):
         full_message: str,
     ) -> bool:
         """
-        Handle a Matrix room message invoking the weather plugin and post a forecast to the room.
+        Handle a Matrix weather command and post a forecast to the room.
 
-        Parses the room message for a supported weather command, resolves coordinates from command arguments, mesh-derived location, or geocoding, generates a forecast for the resolved coordinates, and sends the forecast back to the Matrix room. If a location cannot be determined, posts "Cannot determine location" to the room.
+        The handler uses ``matches(event)`` for command gating and
+        ``get_matching_matrix_command_with_args(event)`` for authoritative parsing.
+        The parsed tuple yields ``parsed_command`` and ``args_text`` used to choose
+        forecast mode and resolve coordinates.
 
         Parameters:
             room: The Matrix room object where the event originated.
             event: The Matrix event object to evaluate for a plugin match.
-            full_message (str): The raw message text used to extract command arguments.
+            full_message (str): The raw message text retained for API compatibility.
 
         Returns:
             bool: `True` if the event matched the plugin and was handled (a response was sent or attempted), `False` if the event did not match and was not handled.
         """
+        _ = full_message
         if not self.matches(event):
             return False
 
-        parsed_command = self.get_matching_matrix_command(event)
-        if not parsed_command:
+        parsed = self.get_matching_matrix_command_with_args(event)
+        if not parsed:
             return False
+        parsed_command, args_text = parsed
         mode = self._normalize_mode(parsed_command)
-        args_text = self.extract_command_args(parsed_command, full_message) or ""
 
         try:
             coords = await self._resolve_location_from_args(args_text)

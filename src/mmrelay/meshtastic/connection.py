@@ -3,6 +3,7 @@ import functools
 import inspect
 import math
 import threading
+from collections.abc import Callable
 from concurrent.futures import Future
 from typing import Any, NoReturn
 
@@ -664,11 +665,14 @@ def _connect_meshtastic_impl(
                             facade.logger.debug(
                                 f"Creating new BLE interface for {ble_address} (sanitized: {sanitized_address})"
                             )
+                            ble_interface_cls = (
+                                facade.meshtastic.ble_interface.BLEInterface
+                            )  # pyright: ignore[reportPrivateImportUsage]
                             # Detect whether this BLEInterface implementation supports
                             # explicit auto_reconnect control.
                             try:
                                 ble_init_sig = inspect.signature(
-                                    facade.meshtastic.ble_interface.BLEInterface.__init__
+                                    ble_interface_cls.__init__
                                 )
                             except (TypeError, ValueError):
                                 ble_init_sig = None
@@ -741,7 +745,10 @@ def _connect_meshtastic_impl(
                             # can potentially block indefinitely if BlueZ is in a bad state.
                             def create_ble_interface(
                                 kwargs: dict[str, Any],
-                            ) -> Any:
+                                interface_cls: Callable[
+                                    ..., object
+                                ] = ble_interface_cls,
+                            ) -> object:
                                 """
                                 Create a BLEInterface configured for Meshtastic BLE connections.
 
@@ -751,9 +758,7 @@ def _connect_meshtastic_impl(
                                 Returns:
                                     BLEInterface: A newly constructed Meshtastic BLEInterface instance.
                                 """
-                                return facade.meshtastic.ble_interface.BLEInterface(
-                                    **kwargs
-                                )
+                                return interface_cls(**kwargs)
 
                             # Guard against overlapping BLE tasks: if a previous BLE operation is
                             # still running (often due to a hung BlueZ/DBus call), we skip queuing

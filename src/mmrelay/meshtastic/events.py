@@ -2,7 +2,7 @@ import contextlib
 import threading
 from typing import Any, Iterable
 
-from meshtastic.mesh_interface import BROADCAST_NUM
+from meshtastic import BROADCAST_NUM
 
 import mmrelay.meshtastic_utils as facade
 from mmrelay.constants.config import (

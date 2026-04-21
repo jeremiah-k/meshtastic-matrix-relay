@@ -628,7 +628,7 @@ class BasePlugin(ABC):
         description = f"Plugin {self.plugin_name}: {text[:DEFAULT_TEXT_TRUNCATION_LENGTH]}{'...' if len(text) > DEFAULT_TEXT_TRUNCATION_LENGTH else ''}"
 
         if reply_id is not None:
-            from meshtastic.mesh_interface import BROADCAST_NUM
+            from meshtastic import BROADCAST_NUM
 
             from mmrelay.meshtastic.messaging import send_text_reply
 
@@ -695,18 +695,35 @@ class BasePlugin(ABC):
         """
         Return the first Matrix command name that matches the given event.
 
-        Uses the plugin's require-mention setting when testing commands.
+        Delegates to :meth:`get_matching_matrix_command_with_args` and returns
+        only the command name portion.
 
         Returns:
             The matching command string if a command matches the event, `None` otherwise.
         """
-        from mmrelay.matrix_utils import bot_command
+        parsed = self.get_matching_matrix_command_with_args(event)
+        return parsed[0] if parsed is not None else None
 
-        require_mention = self.get_require_bot_mention()
-        for command in self.get_matrix_commands():
-            if bot_command(command, event, require_mention=require_mention):
-                return command
-        return None
+    def get_matching_matrix_command_with_args(
+        self,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+    ) -> tuple[str, str] | None:
+        """
+        Return the matched Matrix command and parsed args for an event.
+
+        This is the preferred parser entrypoint for plugin handlers so command
+        detection and argument extraction share one parse result.
+        """
+        from mmrelay.matrix_utils import _parse_matrix_message_command
+
+        parsed = _parse_matrix_message_command(
+            event,
+            self.get_matrix_commands(),
+            require_mention=self.get_require_bot_mention(),
+        )
+        if parsed is None:
+            return None
+        return parsed.command, parsed.args
 
     async def send_matrix_message(
         self,
@@ -927,35 +944,58 @@ class BasePlugin(ABC):
         Returns:
             `True` if the event invokes one of the plugin's Matrix commands, `False` otherwise.
         """
-        from mmrelay.matrix_utils import bot_command
+        return self.get_matching_matrix_command_with_args(event) is not None
 
-        # Determine if bot mentions are required
-        require_mention = self.get_require_bot_mention()
-
-        return any(
-            bot_command(command, event, require_mention=require_mention)
-            for command in self.get_matrix_commands()
-        )
-
-    def extract_command_args(self, command: str, text: str) -> str | None:
+    def extract_command_args(
+        self,
+        command: str,
+        text: str | None = None,
+        *,
+        event: (
+            RoomMessageText
+            | RoomMessageNotice
+            | ReactionEvent
+            | RoomMessageEmote
+            | None
+        ) = None,
+    ) -> str | None:
         """
-        Extract arguments that follow a bot command in a message, tolerating an optional leading mention prefix and matching the command case-insensitively.
+        Extract arguments for ``command`` using the shared Matrix command parser.
 
-        If the message contains the command (e.g. "!cmd arg1 arg2" or "@bot: !cmd arg1"), returns the trailing argument string stripped of surrounding whitespace; if the command is present with no arguments returns an empty string; if the input does not match the command pattern or is not a string returns None.
+        This method intentionally does not maintain an independent regex. It
+        reuses the same parser and mention policy as ``matches()`` and
+        ``get_matching_matrix_command()`` so command/argument semantics remain
+        consistent.
+
+        Prefer the ``event=...`` path so argument extraction reuses the exact
+        parse result used for command matching. The ``text`` fallback remains
+        for compatibility with older plugin call sites.
 
         Returns:
-            str: Arguments after the command, stripped of surrounding whitespace, or an empty string if no arguments are present; `None` if the command pattern does not match or input is not a string.
+            str: Arguments after the command, stripped of surrounding whitespace,
+                or an empty string if no arguments are present; `None` if input
+                is invalid or the command does not match.
         """
+        from mmrelay.matrix_utils import _parse_matrix_message_command
+
+        if event is not None:
+            parsed = self.get_matching_matrix_command_with_args(event)
+            if parsed is None:
+                return None
+            parsed_command, parsed_args = parsed
+            if parsed_command.casefold() != command.casefold():
+                return None
+            return parsed_args
+
         if not isinstance(text, str):
             return None
-        pattern = rf"^(?:.+?:\s*)?!{re.escape(command)}(?:\s+(.*))?$"
-        match = re.match(pattern, text, flags=re.IGNORECASE)
-        if not match:
-            return None
-        args = match.group(1)
-        if args is None:
-            return ""
-        return args.strip()
+
+        parsed = _parse_matrix_message_command(
+            text,
+            (command,),
+            require_mention=self.get_require_bot_mention(),
+        )
+        return parsed.args if parsed is not None else None
 
     def parse_mesh_bang_command(
         self, text: str, commands: Iterable[str], *, allow_anywhere: bool = False

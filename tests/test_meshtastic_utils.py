@@ -24,7 +24,7 @@ from typing import Any, NoReturn
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock, mock_open, patch
 
 import pytest
-from meshtastic.mesh_interface import BROADCAST_NUM
+from meshtastic import BROADCAST_NUM
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))

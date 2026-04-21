@@ -15,7 +15,6 @@ from nio import (
     RoomMessageText,
 )
 from PIL import Image as PILImage
-from PIL import ImageDraw as _PILImageDraw
 from PIL import ImageFont
 
 from mmrelay.constants.formats import (
@@ -110,26 +109,6 @@ async def _connect_meshtastic_async() -> object | None:
     from mmrelay.meshtastic_utils import connect_meshtastic
 
     return await asyncio.to_thread(connect_meshtastic)
-
-
-def textsize(
-    self: _PILImageDraw.ImageDraw, text: Any, *args: Any, **kwargs: Any
-) -> tuple[float, float]:
-    """
-    Compute the width and height of `text` as rendered by this ImageDraw instance.
-
-    Parameters:
-        text (Any): The text to measure. Additional rendering options (font, anchor, etc.) may be supplied via `*args` and `**kwargs`.
-
-    Returns:
-        (width, height) (tuple[float, float]): Width and height of the rendered text in pixels.
-    """
-    left, top, right, bottom = self.textbbox((0, 0), text, *args, **kwargs)
-    return right - left, bottom - top
-
-
-# Monkeypatch fix for https://github.com/flopp/py-staticmaps/issues/39
-_PILImageDraw.ImageDraw.textsize = textsize  # type: ignore[attr-defined]
 
 
 class TextLabel(staticmaps.Object):  # type: ignore[misc]
@@ -517,7 +496,7 @@ class Plugin(BasePlugin):
         Parameters:
             room: The Matrix room where the message was received; used to send responses and the resulting image.
             event: The full Matrix event object; passed to plugin matching logic.
-            full_message: The raw message text to parse for the "!map" command and optional parameters.
+            full_message: The raw message text retained for API compatibility.
 
         Returns:
             `True` if the command was handled and the map image was generated and sent; `False` otherwise.
@@ -525,9 +504,10 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        args = self.extract_command_args("map", full_message)
-        if args is None:
+        parsed = self.get_matching_matrix_command_with_args(event)
+        if not parsed:
             return False
+        _command, args = parsed
 
         token_pattern = r"(?:\s*(?:zoom=\d+|size=\d+,\s*\d+))*\s*$"
         if args and not re.fullmatch(token_pattern, args, flags=re.IGNORECASE):
