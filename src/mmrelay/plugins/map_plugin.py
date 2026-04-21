@@ -504,9 +504,10 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        args = self.extract_command_args("map", full_message)
-        if args is None:
+        parsed = self.get_matching_matrix_command_with_args(event)
+        if not parsed:
             return False
+        _command, args = parsed
 
         token_pattern = r"(?:\s*(?:zoom=\d+|size=\d+,\s*\d+))*\s*$"
         if args and not re.fullmatch(token_pattern, args, flags=re.IGNORECASE):

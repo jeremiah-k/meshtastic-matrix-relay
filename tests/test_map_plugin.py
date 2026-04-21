@@ -1014,12 +1014,14 @@ class TestMapPluginHandleRoomMessage(unittest.TestCase):
 
         asyncio.run(run_test())
 
-    def test_handle_room_message_extract_args_returns_none(self):
-        """Test that extract_command_args returning None causes early return (lines 529-530)."""
+    def test_handle_room_message_no_parsed_command_returns_false(self):
+        """Should return False when no command/args tuple is parsed."""
 
         async def run_test() -> None:
             self.plugin.matches = MagicMock(return_value=True)
-            self.plugin.extract_command_args = MagicMock(return_value=None)
+            self.plugin.get_matching_matrix_command_with_args = MagicMock(
+                return_value=None
+            )
 
             mock_room = MagicMock()
             mock_room.room_id = "!test:example.com"

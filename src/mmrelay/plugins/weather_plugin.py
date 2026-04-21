@@ -936,11 +936,11 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        parsed_command = self.get_matching_matrix_command(event)
-        if not parsed_command:
+        parsed = self.get_matching_matrix_command_with_args(event)
+        if not parsed:
             return False
+        parsed_command, args_text = parsed
         mode = self._normalize_mode(parsed_command)
-        args_text = self.extract_command_args(parsed_command, full_message) or ""
 
         try:
             coords = await self._resolve_location_from_args(args_text)

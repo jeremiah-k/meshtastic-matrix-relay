@@ -4,6 +4,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, cast
+from urllib.parse import unquote
 
 from nio import (
     AsyncClient,
@@ -34,13 +35,67 @@ class ParsedMatrixCommand:
     args: str
 
 
-def _normalize_formatted_body_for_command_detection(formatted_body: Any) -> str:
+def _extract_anchor_href(anchor_attrs: str) -> str | None:
+    """Return the href value from an anchor tag attributes string."""
+    href_match = re.search(
+        r"""(?is)\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""",
+        anchor_attrs,
+    )
+    if href_match is None:
+        return None
+    for group in href_match.groups():
+        if group is not None:
+            href = group.strip()
+            return href or None
+    return None
+
+
+def _extract_matrix_mxid_from_href(href: str) -> str | None:
+    """
+    Extract a Matrix MXID from common mention-link href formats.
+
+    Supported patterns include matrix.to permalinks and direct/URI-style MXID
+    references. Returns ``None`` when the href does not cleanly resolve to an
+    MXID token.
+    """
+    decoded_href = unquote(html.unescape(href)).strip()
+    if not decoded_href:
+        return None
+
+    matrix_to_match = re.search(
+        r"(?i)matrix\.to/#/(?P<target>[^?#]+)",
+        decoded_href,
+    )
+    if matrix_to_match is not None:
+        target = unquote(matrix_to_match.group("target")).lstrip("/")
+        return target if target.startswith("@") else None
+
+    if decoded_href.startswith("matrix:"):
+        target = unquote(decoded_href[len("matrix:") :]).lstrip("/")
+        if target.startswith("u/"):
+            target = target[2:]
+            if target and not target.startswith("@"):
+                target = f"@{target}"
+        target = target.split("?", maxsplit=1)[0]
+        return target if target.startswith("@") else None
+
+    if decoded_href.startswith("@"):
+        return decoded_href.split("?", maxsplit=1)[0]
+
+    return None
+
+
+def _normalize_formatted_body_for_command_detection(
+    formatted_body: Any, *, bot_mxid: str | None
+) -> str:
     """
     Convert Matrix ``formatted_body`` HTML into conservative plain text for matching.
 
     The normalization removes reply blocks and tags, unescapes HTML entities, and
-    collapses whitespace. It is intentionally minimal and only used for command
-    detection, not for rendering.
+    collapses whitespace. For anchor tags, only links that resolve to the configured
+    bot MXID are preserved (as the MXID token itself); all other anchors are
+    discarded. This keeps mention matching strict while still supporting Matrix
+    mention pills that display a human-friendly name.
     """
     if not isinstance(formatted_body, str) or not formatted_body:
         return ""
@@ -50,11 +105,26 @@ def _normalize_formatted_body_for_command_detection(formatted_body: Any) -> str:
         " ",
         formatted_body,
     )
+
+    def _replace_anchor(match: re.Match[str]) -> str:
+        if not bot_mxid:
+            return " "
+        anchor_attrs = match.group("attrs")
+        href = _extract_anchor_href(anchor_attrs)
+        if href is None:
+            return " "
+        mxid_target = _extract_matrix_mxid_from_href(href)
+        return bot_mxid if mxid_target == bot_mxid else " "
+
+    normalized = re.sub(
+        r"(?is)<a\b(?P<attrs>[^>]*)>.*?</a>",
+        _replace_anchor,
+        normalized,
+    )
     normalized = re.sub(r"(?i)<br\s*/?>", " ", normalized)
     normalized = re.sub(r"<[^>]+>", " ", normalized)
     normalized = html.unescape(normalized)
-    normalized = re.sub(r"\s+", " ", normalized).strip()
-    return re.sub(r"\s+([:;,])", r"\1", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
 
 
 def _build_command_lookup(commands: Iterable[str]) -> dict[str, str]:
@@ -80,6 +150,8 @@ def _extract_candidate_bodies(
     message: (
         str | RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote
     ),
+    *,
+    bot_mxid: str | None,
 ) -> list[str]:
     """Return plain/normalized message variants used for command matching."""
     if isinstance(message, str):
@@ -99,7 +171,8 @@ def _extract_candidate_bodies(
         content.get("formatted_body", "") if isinstance(content, dict) else ""
     )
     normalized_formatted = _normalize_formatted_body_for_command_detection(
-        formatted_body
+        formatted_body,
+        bot_mxid=bot_mxid,
     )
     if normalized_formatted and normalized_formatted not in bodies:
         bodies.append(normalized_formatted)
@@ -129,7 +202,7 @@ def _consume_mxid_mention_prefix(message: str, bot_mxid: str) -> str | None:
 
     Supported mention separators between MXID and command:
     - one or more whitespace characters
-    - one of `:`, `;`, `,` immediately followed by whitespace
+    - a single `:` immediately followed by whitespace
     """
     if not message.startswith(bot_mxid):
         return None
@@ -141,7 +214,7 @@ def _consume_mxid_mention_prefix(message: str, bot_mxid: str) -> str | None:
     if remainder[0].isspace():
         return remainder.lstrip()
 
-    if remainder[0] in ":;,":
+    if remainder[0] == ":":
         if len(remainder) < 2 or not remainder[1].isspace():
             return None
         return remainder[1:].lstrip()
@@ -185,9 +258,10 @@ def _parse_matrix_message_command(
 
     Mention policy:
     - Mention target must match the configured bot MXID exactly.
-    - Supported forms are ``@bot:server !cmd`` and ``@bot:server: !cmd`` (also
-      ``,``/``;`` separators with required following whitespace).
+    - Supported forms are ``@bot:server !cmd`` and ``@bot:server: !cmd``.
     - Compact ``@bot:server!cmd`` and display-name prefixes do not match.
+    - For ``formatted_body``, mention pills are matched by MXID link target rather
+      than visible display text.
 
     Command matching is case-insensitive; command canonicalization follows
     ``commands`` input.
@@ -196,16 +270,17 @@ def _parse_matrix_message_command(
     if not command_lookup:
         return None
 
-    candidate_bodies = _extract_candidate_bodies(message)
+    bot_mxid = _resolve_bot_mxid()
+    if require_mention and not bot_mxid:
+        return None
+
+    candidate_bodies = _extract_candidate_bodies(message, bot_mxid=bot_mxid)
     if not candidate_bodies:
         return None
 
-    bot_mxid = _resolve_bot_mxid()
-
     for body in candidate_bodies:
         if require_mention:
-            if not bot_mxid:
-                return None
+            assert bot_mxid is not None
             suffix = _consume_mxid_mention_prefix(body, bot_mxid)
             if suffix is None:
                 continue

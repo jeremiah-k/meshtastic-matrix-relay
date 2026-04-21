@@ -701,6 +701,19 @@ class BasePlugin(ABC):
         Returns:
             The matching command string if a command matches the event, `None` otherwise.
         """
+        parsed = self.get_matching_matrix_command_with_args(event)
+        return parsed[0] if parsed is not None else None
+
+    def get_matching_matrix_command_with_args(
+        self,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+    ) -> tuple[str, str] | None:
+        """
+        Return the matched Matrix command and parsed args for an event.
+
+        This is the preferred parser entrypoint for plugin handlers so command
+        detection and argument extraction share one parse result.
+        """
         from mmrelay.matrix_utils import _parse_matrix_message_command
 
         parsed = _parse_matrix_message_command(
@@ -708,7 +721,9 @@ class BasePlugin(ABC):
             self.get_matrix_commands(),
             require_mention=self.get_require_bot_mention(),
         )
-        return parsed.command if parsed is not None else None
+        if parsed is None:
+            return None
+        return parsed.command, parsed.args
 
     async def send_matrix_message(
         self,
@@ -929,18 +944,21 @@ class BasePlugin(ABC):
         Returns:
             `True` if the event invokes one of the plugin's Matrix commands, `False` otherwise.
         """
-        from mmrelay.matrix_utils import _parse_matrix_message_command
+        return self.get_matching_matrix_command_with_args(event) is not None
 
-        return (
-            _parse_matrix_message_command(
-                event,
-                self.get_matrix_commands(),
-                require_mention=self.get_require_bot_mention(),
-            )
-            is not None
-        )
-
-    def extract_command_args(self, command: str, text: str) -> str | None:
+    def extract_command_args(
+        self,
+        command: str,
+        text: str | None = None,
+        *,
+        event: (
+            RoomMessageText
+            | RoomMessageNotice
+            | ReactionEvent
+            | RoomMessageEmote
+            | None
+        ) = None,
+    ) -> str | None:
         """
         Extract arguments for ``command`` using the shared Matrix command parser.
 
@@ -949,16 +967,25 @@ class BasePlugin(ABC):
         ``get_matching_matrix_command()`` so command/argument semantics remain
         consistent.
 
-        The provided ``text`` should be the same message body used for command
-        matching. If the command is present with no arguments, returns an empty
-        string.
+        Prefer the ``event=...`` path so argument extraction reuses the exact
+        parse result used for command matching. The ``text`` fallback remains
+        for compatibility with older plugin call sites.
 
         Returns:
             str: Arguments after the command, stripped of surrounding whitespace,
                 or an empty string if no arguments are present; `None` if input
-                is not a string or the command does not match.
+                is invalid or the command does not match.
         """
         from mmrelay.matrix_utils import _parse_matrix_message_command
+
+        if event is not None:
+            parsed = self.get_matching_matrix_command_with_args(event)
+            if parsed is None:
+                return None
+            parsed_command, parsed_args = parsed
+            if parsed_command.casefold() != command.casefold():
+                return None
+            return parsed_args
 
         if not isinstance(text, str):
             return None

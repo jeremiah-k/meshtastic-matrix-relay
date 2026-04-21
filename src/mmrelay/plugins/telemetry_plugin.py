@@ -183,11 +183,11 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        parsed_command = self.get_matching_matrix_command(event)
-        if not parsed_command:
+        parsed = self.get_matching_matrix_command_with_args(event)
+        if not parsed:
             return False
 
-        args = self.extract_command_args(parsed_command, full_message) or ""
+        parsed_command, args = parsed
         telemetry_option = parsed_command
         node = args or None
 

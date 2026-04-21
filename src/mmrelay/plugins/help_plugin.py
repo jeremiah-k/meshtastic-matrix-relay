@@ -105,10 +105,10 @@ class Plugin(BasePlugin):
         """
         # Maintain legacy matches() call for tests/compatibility but do not gate handling on it
         self.matches(event)
-        matched_command = self.get_matching_matrix_command(event)
-        if not matched_command:
+        parsed = self.get_matching_matrix_command_with_args(event)
+        if not parsed:
             return False
-        command = self.extract_command_args(matched_command, full_message) or ""
+        _matched_command, command = parsed
 
         plugins = load_plugins()
 

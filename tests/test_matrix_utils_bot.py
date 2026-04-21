@@ -49,6 +49,11 @@ class TestMatrixCommandParser:
         parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
         assert parsed is None
 
+    def test_parser_rejects_comma_prefix(self):
+        event = _make_event(f"{BOT_MXID}, !map")
+        parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
+        assert parsed is None
+
     def test_parser_rejects_compact_mxid_and_command(self):
         event = _make_event(f"{BOT_MXID}!map")
         parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
@@ -86,15 +91,29 @@ class TestMatrixCommandParser:
         parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
         assert parsed is None
 
-    def test_parser_checks_normalized_formatted_body(self):
+    def test_parser_accepts_formatted_body_mention_pill_targeting_bot_mxid(self):
         event = _make_event(
             "not a command",
-            formatted_body=f"<a>{BOT_MXID}</a>: <strong>!MaP</strong> now",
+            formatted_body=(
+                '<a href="https://matrix.to/#/%40testbot%3Aexample.org">'
+                "ForxRelay</a>: <strong>!MaP</strong> now"
+            ),
         )
         parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
         assert parsed is not None
         assert parsed.command == "map"
         assert parsed.args == "now"
+
+    def test_parser_rejects_formatted_body_link_not_targeting_bot_mxid(self):
+        event = _make_event(
+            "not a command",
+            formatted_body=(
+                '<a href="https://matrix.to/#/%40relay%3Aexample.com">'
+                "ForxRelay</a>: !map"
+            ),
+        )
+        parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
+        assert parsed is None
 
     def test_bot_command_wrapper_matches_supported_mxid(self):
         event = _make_event(f"{BOT_MXID}: !HELP")

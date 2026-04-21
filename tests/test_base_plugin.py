@@ -1565,6 +1565,42 @@ class TestBasePlugin(unittest.TestCase):
             result = plugin.get_matching_matrix_command(mock_event)
             self.assertEqual(result, "cmd2")
 
+    def test_get_matching_matrix_command_with_args_matches_formatted_mention_pill(self):
+        """get_matching_matrix_command_with_args should parse command+args from formatted mention pills."""
+
+        class MultiCmdPlugin(BasePlugin):
+            plugin_name = "multi"
+            is_core_plugin = True
+
+            async def handle_meshtastic_message(
+                self, packet, formatted_message, longname, meshnet_name
+            ) -> bool:
+                return False
+
+            async def handle_room_message(self, _room, _event, _full_message) -> bool:
+                return False
+
+            def get_matrix_commands(self):
+                return ["cmd1", "cmd2"]
+
+        with patch("mmrelay.plugins.base_plugin.config", {"plugins": {}}):
+            plugin = MultiCmdPlugin()
+
+        mock_event = MagicMock()
+        mock_event.body = "not a command"
+        mock_event.source = {
+            "content": {
+                "formatted_body": (
+                    '<a href="https://matrix.to/#/%40testbot%3Aexample.org">'
+                    "ForxRelay</a>: !cmd2 value"
+                )
+            }
+        }
+
+        with patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"):
+            result = plugin.get_matching_matrix_command_with_args(mock_event)
+            self.assertEqual(result, ("cmd2", "value"))
+
     def test_get_matching_matrix_command_no_match(self):
         """get_matching_matrix_command should return None when nothing matches."""
 
@@ -1602,6 +1638,24 @@ class TestBasePlugin(unittest.TestCase):
                 "@testbot:example.org: !test_plugin arg1 arg2",
             )
             self.assertEqual(result, "arg1 arg2")
+
+    def test_extract_command_args_from_event_uses_shared_parse_result(self):
+        """event-based extraction should reuse shared parsing when plain body is not command text."""
+        plugin = CoreMockPlugin()
+        event = MagicMock()
+        event.body = "not a command"
+        event.source = {
+            "content": {
+                "formatted_body": (
+                    '<a href="https://matrix.to/#/%40testbot%3Aexample.org">'
+                    "ForxRelay</a>: !test_plugin alpha beta"
+                )
+            }
+        }
+
+        with patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"):
+            result = plugin.extract_command_args("test_plugin", event=event)
+            self.assertEqual(result, "alpha beta")
 
     def test_extract_command_args_no_match(self):
         """extract_command_args should return None when command doesn't match."""

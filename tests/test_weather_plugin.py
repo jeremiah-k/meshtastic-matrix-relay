@@ -1580,7 +1580,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
     async def test_handle_room_message_no_coords_no_mesh(self):
         """Should send 'Cannot determine location' when no coords available."""
         self.plugin.matches = MagicMock(return_value=True)
-        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.get_matching_matrix_command_with_args = MagicMock(
+            return_value=("weather", "")
+        )
         self.plugin.get_require_bot_mention = MagicMock(return_value=False)
         self.plugin.send_matrix_message = AsyncMock()
         self.plugin.send_matrix_reaction = AsyncMock()
@@ -1602,7 +1604,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
     async def test_handle_room_message_mesh_location_fallback(self):
         """Should use mesh location when no coords in args."""
         self.plugin.matches = MagicMock(return_value=True)
-        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.get_matching_matrix_command_with_args = MagicMock(
+            return_value=("weather", "")
+        )
         self.plugin.get_require_bot_mention = MagicMock(return_value=False)
         self.plugin.send_matrix_message = AsyncMock()
         self.plugin.generate_forecast = MagicMock(return_value="Sunny 25°C")
@@ -1643,7 +1647,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
     async def test_handle_room_message_replies_to_event(self):
         """handle_room_message should send a reaction and not use reply_to_event_id."""
         self.plugin.matches = MagicMock(return_value=True)
-        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.get_matching_matrix_command_with_args = MagicMock(
+            return_value=("weather", "")
+        )
         self.plugin.send_matrix_message = AsyncMock()
         self.plugin.send_matrix_reaction = AsyncMock()
         self.plugin.generate_forecast = MagicMock(return_value="Sunny 25°C")
@@ -1673,9 +1679,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(call_kwargs.get("reply_to_event_id"))
 
     async def test_handle_room_message_no_parsed_command_returns_false(self):
-        """Should return False when get_matching_matrix_command returns None (line 914)."""
+        """Should return False when command/args parsing yields no match."""
         self.plugin.matches = MagicMock(return_value=True)
-        self.plugin.get_matching_matrix_command = MagicMock(return_value=None)
+        self.plugin.get_matching_matrix_command_with_args = MagicMock(return_value=None)
 
         mock_event = MagicMock()
         mock_event.body = "!weather"
@@ -1689,7 +1695,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
     async def test_handle_room_message_invalid_units_fallback_to_metric(self):
         """Invalid units in config should fall back to metric (lines 953-954)."""
         self.plugin.matches = MagicMock(return_value=True)
-        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.get_matching_matrix_command_with_args = MagicMock(
+            return_value=("weather", "")
+        )
         self.plugin.get_require_bot_mention = MagicMock(return_value=False)
         self.plugin.send_matrix_message = AsyncMock()
         self.plugin.send_matrix_reaction = AsyncMock()
@@ -1720,7 +1728,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
     async def test_handle_room_message_exception_handler(self):
         """Exception in handle_room_message should log and send reaction (lines 973-975)."""
         self.plugin.matches = MagicMock(return_value=True)
-        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.get_matching_matrix_command_with_args = MagicMock(
+            return_value=("weather", "")
+        )
         self.plugin.send_matrix_message = AsyncMock()
         self.plugin.send_matrix_reaction = AsyncMock()
         self.plugin._resolve_location_from_args = AsyncMock(
@@ -1746,7 +1756,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
     async def test_handle_room_message_no_location_sends_reaction(self):
         """'Cannot determine location' should still send a reaction."""
         self.plugin.matches = MagicMock(return_value=True)
-        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.get_matching_matrix_command_with_args = MagicMock(
+            return_value=("weather", "")
+        )
         self.plugin.send_matrix_message = AsyncMock()
         self.plugin.send_matrix_reaction = AsyncMock()
 
@@ -2161,7 +2173,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
     async def test_handle_room_message_appends_marine_data(self):
         """Matrix handler combines terrestrial and marine forecasts in one message."""
         self.plugin.matches = MagicMock(return_value=True)
-        self.plugin.get_matching_matrix_command = MagicMock(return_value="weather")
+        self.plugin.get_matching_matrix_command_with_args = MagicMock(
+            return_value=("weather", "40.0 -10.0")
+        )
         self.plugin.get_require_bot_mention = MagicMock(return_value=False)
         self.plugin.send_matrix_message = AsyncMock()
         self.plugin.generate_forecast = MagicMock(return_value="Now: ☀️ Clear - 22°C")
