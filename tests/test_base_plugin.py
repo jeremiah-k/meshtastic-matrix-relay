@@ -654,16 +654,37 @@ class TestBasePlugin(unittest.TestCase):
             result = plugin.matches(event)
             self.assertTrue(result)
 
-    def test_matches_method_rejects_display_name_prefix_when_mentions_required(self):
-        """matches() should not treat display-name prefixes as bot mentions."""
+    def test_matches_method_rejects_non_matching_display_name_prefix_when_mentions_required(
+        self,
+    ):
+        """matches() should reject display-name prefixes that do not match the configured name."""
         plugin = CoreMockPlugin()
         event = MagicMock()
         event.body = "ForxRelay: !test_plugin"
         event.source = {"content": {"formatted_body": ""}}
 
-        with patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"):
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "OtherBot"),
+        ):
             result = plugin.matches(event)
             self.assertFalse(result)
+
+    def test_matches_method_accepts_matching_display_name_prefix_when_mentions_required(
+        self,
+    ):
+        """matches() should accept display-name prefix that matches the configured name."""
+        plugin = CoreMockPlugin()
+        event = MagicMock()
+        event.body = "TestBot: !test_plugin"
+        event.source = {"content": {"formatted_body": ""}}
+
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "TestBot"),
+        ):
+            result = plugin.matches(event)
+            self.assertTrue(result)
 
     @patch("mmrelay.matrix_utils.connect_matrix")
     def test_send_matrix_message(self, mock_connect_matrix):
@@ -1727,6 +1748,55 @@ class TestBasePlugin(unittest.TestCase):
         plugin = MockPlugin()
         self.assertIsNone(plugin.parse_mesh_bang_command(12345, ("weather",)))
         self.assertIsNone(plugin.parse_mesh_bang_command("!weather", ()))
+
+    def test_get_matching_matrix_command_display_name_fallback(self):
+        """get_matching_matrix_command should match display-name prefix as fallback."""
+        plugin = CoreMockPlugin()
+        mock_event = MagicMock()
+        mock_event.body = "TestBot: !test_plugin"
+        mock_event.source = {"content": {"formatted_body": ""}}
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "TestBot"),
+        ):
+            result = plugin.get_matching_matrix_command(mock_event)
+        self.assertEqual(result, "test_plugin")
+
+    def test_get_matching_matrix_command_display_name_whitespace_separator(self):
+        """get_matching_matrix_command should match display-name with whitespace separator."""
+        plugin = CoreMockPlugin()
+        mock_event = MagicMock()
+        mock_event.body = "TestBot !test_plugin"
+        mock_event.source = {"content": {"formatted_body": ""}}
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "TestBot"),
+        ):
+            result = plugin.get_matching_matrix_command_with_args(mock_event)
+        self.assertEqual(result, ("test_plugin", ""))
+
+    def test_get_matching_matrix_command_mxid_takes_precedence_over_display_name(self):
+        """MXID mention should take precedence over display-name fallback."""
+        plugin = CoreMockPlugin()
+        mock_event = MagicMock()
+        mock_event.body = "@testbot:example.org: !test_plugin"
+        mock_event.source = {"content": {"formatted_body": ""}}
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "TestBot"),
+        ):
+            result = plugin.get_matching_matrix_command_with_args(mock_event)
+        self.assertEqual(result, ("test_plugin", ""))
+
+    def test_extract_command_args_display_name_no_match_without_name_configured(self):
+        """extract_command_args should not match display name when bot_user_name is None."""
+        plugin = CoreMockPlugin()
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", None),
+        ):
+            result = plugin.extract_command_args("test_plugin", "TestBot: !test_plugin")
+        self.assertIsNone(result)
 
     @patch("mmrelay.matrix_utils.connect_matrix")
     def test_send_matrix_reaction_success(self, mock_connect):

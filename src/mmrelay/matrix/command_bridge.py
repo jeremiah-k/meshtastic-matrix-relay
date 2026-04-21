@@ -202,6 +202,18 @@ def _resolve_bot_mxid() -> str | None:
     return mxid or None
 
 
+def _resolve_bot_display_name() -> str | None:
+    """Return the configured bot display name as a safe string, if available."""
+    name = facade.bot_user_name
+    if not name:
+        return None
+    try:
+        display_name = str(name).strip()
+    except Exception:  # noqa: BLE001
+        return None
+    return display_name or None
+
+
 def _consume_mxid_mention_prefix(message: str, bot_mxid: str) -> str | None:
     """
     Consume an exact bot MXID mention prefix and return the remaining text.
@@ -214,6 +226,44 @@ def _consume_mxid_mention_prefix(message: str, bot_mxid: str) -> str | None:
         return None
 
     remainder = message[len(bot_mxid) :]
+    if not remainder:
+        return None
+
+    if remainder[0].isspace():
+        return remainder.lstrip()
+
+    if remainder[0] == ":":
+        if len(remainder) < 2 or not remainder[1].isspace():
+            return None
+        return remainder[1:].lstrip()
+
+    return None
+
+
+def _consume_display_name_prefix(message: str, display_name: str) -> str | None:
+    """
+    Consume a display-name mention prefix and return the remaining text.
+
+    This is a controlled fallback for Matrix clients that render mention pills
+    with only the display name in the plain-text body.  Matching is
+    case-insensitive and strictly anchored to the start of the message.
+
+    Accepted forms:
+    - ``DisplayName !cmd``  (whitespace separator)
+    - ``DisplayName: !cmd`` (colon + whitespace separator)
+
+    Rejected forms:
+    - ``DisplayName!cmd``  (no separator)
+    - ``words DisplayName !cmd`` (not at start)
+    - partial prefix matches
+    """
+    if not display_name:
+        return None
+
+    if not message.lower().startswith(display_name.lower()):
+        return None
+
+    remainder = message[len(display_name) :]
     if not remainder:
         return None
 
@@ -262,12 +312,24 @@ def _parse_matrix_message_command(
     """
     Parse a Matrix message and return the matched command plus arguments.
 
-    Mention policy:
-    - Mention target must match the configured bot MXID exactly.
-    - Supported forms are ``@bot:server !cmd`` and ``@bot:server: !cmd``.
-    - Compact ``@bot:server!cmd`` and display-name prefixes do not match.
-    - For ``formatted_body``, mention pills are matched by MXID link target rather
-      than visible display text.
+    Mention matching is tried in priority order:
+
+    A. **MXID mention** (exact match on ``@bot:server``):
+       - ``@bot:server !cmd`` or ``@bot:server: !cmd``
+       - Compact ``@bot:server!cmd`` is rejected.
+
+    B. **Mention pill** (via ``formatted_body`` HTML):
+       - ``<a href="matrix:…/@bot:server">DisplayName</a>: !cmd``
+       - Matched by MXID link target, not visible text.
+
+    C. **Display-name fallback** (only when A and B fail):
+       - ``BotName !cmd`` or ``BotName: !cmd``
+       - Case-insensitive, anchored at start, no arbitrary prefixes.
+       - Intended for clients that strip MXID from the plain-text body.
+
+    Display-name matching never overrides an MXID or pill match.  Matching
+    is anchored to the start of the message; arbitrary prose before the
+    command is not accepted.
 
     Command matching is case-insensitive; command canonicalization follows
     ``commands`` input.
@@ -280,6 +342,8 @@ def _parse_matrix_message_command(
     if require_mention and not bot_mxid:
         return None
 
+    bot_display_name = _resolve_bot_display_name() if require_mention else None
+
     candidate_bodies = _extract_candidate_bodies(message, bot_mxid=bot_mxid)
     if not candidate_bodies:
         return None
@@ -288,11 +352,17 @@ def _parse_matrix_message_command(
         if require_mention:
             assert bot_mxid is not None
             suffix = _consume_mxid_mention_prefix(body, bot_mxid)
-            if suffix is None:
+            if suffix is not None:
+                parsed = _match_bang_command(suffix, command_lookup)
+                if parsed is not None:
+                    return parsed
                 continue
-            parsed = _match_bang_command(suffix, command_lookup)
-            if parsed is not None:
-                return parsed
+            if bot_display_name:
+                suffix = _consume_display_name_prefix(body, bot_display_name)
+                if suffix is not None:
+                    parsed = _match_bang_command(suffix, command_lookup)
+                    if parsed is not None:
+                        return parsed
             continue
 
         parsed = _match_bang_command(body, command_lookup)

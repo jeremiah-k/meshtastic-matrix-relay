@@ -59,20 +59,79 @@ class TestMatrixCommandParser:
         parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
         assert parsed is None
 
-    def test_parser_rejects_display_name_prefix(self):
+    def test_parser_accepts_display_name_prefix(self):
         event = _make_event("ForxRelay !map")
         parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
-        assert parsed is None
+        assert parsed is not None
+        assert parsed.command == "map"
+        assert parsed.args == ""
 
-    def test_parser_rejects_display_name_colon_prefix(self):
+    def test_parser_accepts_display_name_colon_prefix(self):
         event = _make_event("ForxRelay: !map")
         parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
-        assert parsed is None
+        assert parsed is not None
+        assert parsed.command == "map"
+        assert parsed.args == ""
 
     def test_parser_rejects_arbitrary_prose_before_command(self):
         event = _make_event("I like !map")
         parsed = _parse_matrix_message_command(event, ("map",), require_mention=False)
         assert parsed is None
+
+    def test_parser_rejects_display_name_without_separator(self):
+        event = _make_event("ForxRelay!map")
+        parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
+        assert parsed is None
+
+    def test_parser_rejects_display_name_not_at_start(self):
+        event = _make_event("Hello ForxRelay !map")
+        parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
+        assert parsed is None
+
+    def test_parser_rejects_partial_display_name_match(self):
+        event = _make_event("Forx !map")
+        parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
+        assert parsed is None
+
+    def test_display_name_case_insensitive(self):
+        event = _make_event("forxrelay !map")
+        parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
+        assert parsed is not None
+        assert parsed.command == "map"
+
+    def test_mxid_mention_takes_precedence_over_display_name(self):
+        event = _make_event(f"{BOT_MXID}: !map")
+        parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
+        assert parsed is not None
+        assert parsed.command == "map"
+
+    def test_formatted_body_mxid_wins_over_display_name_in_body(self):
+        event = _make_event(
+            "ForxRelay !map",
+            formatted_body=(
+                '<a href="https://matrix.to/#/%40testbot%3Aexample.org">'
+                "ForxRelay</a>: !map"
+            ),
+        )
+        parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
+        assert parsed is not None
+        assert parsed.command == "map"
+        assert parsed.args == ""
+
+    def test_display_name_fallback_skipped_when_name_not_configured(self):
+        event = _make_event("ForxRelay !map")
+        with patch("mmrelay.matrix_utils.bot_user_name", None):
+            parsed = _parse_matrix_message_command(
+                event, ("map",), require_mention=True
+            )
+        assert parsed is None
+
+    def test_display_name_fallback_with_args(self):
+        event = _make_event("ForxRelay: !map 42")
+        parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
+        assert parsed is not None
+        assert parsed.command == "map"
+        assert parsed.args == "42"
 
     def test_parser_requires_mxid_mention_when_enabled(self):
         event = _make_event("!map")
@@ -143,9 +202,9 @@ class TestMatrixCommandParser:
         event = _make_event(f"{BOT_MXID}: !HELP")
         assert bot_command("help", event, require_mention=True)
 
-    def test_bot_command_wrapper_rejects_display_name(self):
+    def test_bot_command_wrapper_accepts_display_name(self):
         event = _make_event("ForxRelay: !help")
-        assert not bot_command("help", event, require_mention=True)
+        assert bot_command("help", event, require_mention=True)
 
     def test_bot_command_empty_command_returns_false(self):
         event = _make_event("!help")
