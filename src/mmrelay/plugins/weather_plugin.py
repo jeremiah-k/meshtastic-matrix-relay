@@ -921,14 +921,17 @@ class Plugin(BasePlugin):
         full_message: str,
     ) -> bool:
         """
-        Handle a Matrix room message invoking the weather plugin and post a forecast to the room.
+        Handle a Matrix weather command and post a forecast to the room.
 
-        Parses the room message for a supported weather command, resolves coordinates from command arguments, mesh-derived location, or geocoding, generates a forecast for the resolved coordinates, and sends the forecast back to the Matrix room. If a location cannot be determined, posts "Cannot determine location" to the room.
+        The handler uses ``matches(event)`` for command gating and
+        ``get_matching_matrix_command_with_args(event)`` for authoritative parsing.
+        The parsed tuple yields ``parsed_command`` and ``args_text`` used to choose
+        forecast mode and resolve coordinates.
 
         Parameters:
             room: The Matrix room object where the event originated.
             event: The Matrix event object to evaluate for a plugin match.
-            full_message (str): The raw message text used to extract command arguments.
+            full_message (str): The raw message text retained for compatibility/logging.
 
         Returns:
             bool: `True` if the event matched the plugin and was handled (a response was sent or attempted), `False` if the event did not match and was not handled.

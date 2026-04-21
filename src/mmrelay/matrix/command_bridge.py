@@ -36,17 +36,23 @@ class ParsedMatrixCommand:
 
 
 def _extract_anchor_href(anchor_attrs: str) -> str | None:
-    """Return the href value from an anchor tag attributes string."""
-    href_match = re.search(
-        r"""(?is)\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""",
+    """
+    Return the value of an exact ``href`` attribute from an anchor tag.
+
+    The attribute name must be exactly ``href`` (case-insensitive). Attributes
+    such as ``data-href`` or ``aria-href`` are ignored.
+    """
+    for attr_match in re.finditer(
+        r"""(?is)(?:^|\s)(?P<name>[^\s=/>]+)\s*=\s*(?:"(?P<dq>[^"]*)"|'(?P<sq>[^']*)'|(?P<uq>[^\s>]+))""",
         anchor_attrs,
-    )
-    if href_match is None:
-        return None
-    for group in href_match.groups():
-        if group is not None:
-            href = group.strip()
-            return href or None
+    ):
+        if attr_match.group("name").casefold() != "href":
+            continue
+        for group_name in ("dq", "sq", "uq"):
+            value = attr_match.group(group_name)
+            if value is not None:
+                href = value.strip()
+                return href or None
     return None
 
 
@@ -86,7 +92,7 @@ def _extract_matrix_mxid_from_href(href: str) -> str | None:
 
 
 def _normalize_formatted_body_for_command_detection(
-    formatted_body: Any, *, bot_mxid: str | None
+    formatted_body: object, *, bot_mxid: str | None
 ) -> str:
     """
     Convert Matrix ``formatted_body`` HTML into conservative plain text for matching.

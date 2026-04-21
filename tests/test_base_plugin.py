@@ -1545,14 +1545,20 @@ class TestBasePlugin(unittest.TestCase):
             is_core_plugin = True
 
             async def handle_meshtastic_message(
-                self, packet, formatted_message, longname, meshnet_name
+                self,
+                _packet: object,
+                _formatted_message: object,
+                _longname: object,
+                _meshnet_name: object,
             ) -> bool:
                 return False
 
-            async def handle_room_message(self, _room, _event, _full_message) -> bool:
+            async def handle_room_message(
+                self, _room: object, _event: object, _full_message: object
+            ) -> bool:
                 return False
 
-            def get_matrix_commands(self):
+            def get_matrix_commands(self) -> list[str]:
                 return ["cmd1", "cmd2"]
 
         with patch("mmrelay.plugins.base_plugin.config", {"plugins": {}}):
@@ -1573,14 +1579,20 @@ class TestBasePlugin(unittest.TestCase):
             is_core_plugin = True
 
             async def handle_meshtastic_message(
-                self, packet, formatted_message, longname, meshnet_name
+                self,
+                _packet: object,
+                _formatted_message: object,
+                _longname: object,
+                _meshnet_name: object,
             ) -> bool:
                 return False
 
-            async def handle_room_message(self, _room, _event, _full_message) -> bool:
+            async def handle_room_message(
+                self, _room: object, _event: object, _full_message: object
+            ) -> bool:
                 return False
 
-            def get_matrix_commands(self):
+            def get_matrix_commands(self) -> list[str]:
                 return ["cmd1", "cmd2"]
 
         with patch("mmrelay.plugins.base_plugin.config", {"plugins": {}}):
@@ -1609,14 +1621,20 @@ class TestBasePlugin(unittest.TestCase):
             is_core_plugin = True
 
             async def handle_meshtastic_message(
-                self, packet, formatted_message, longname, meshnet_name
+                self,
+                _packet: object,
+                _formatted_message: object,
+                _longname: object,
+                _meshnet_name: object,
             ) -> bool:
                 return False
 
-            async def handle_room_message(self, _room, _event, _full_message) -> bool:
+            async def handle_room_message(
+                self, _room: object, _event: object, _full_message: object
+            ) -> bool:
                 return False
 
-            def get_matrix_commands(self):
+            def get_matrix_commands(self) -> list[str]:
                 return ["cmd1"]
 
         with patch("mmrelay.plugins.base_plugin.config", {"plugins": {}}):

@@ -104,6 +104,30 @@ class TestMatrixCommandParser:
         assert parsed.command == "map"
         assert parsed.args == "now"
 
+    def test_parser_prefers_real_href_over_data_href(self):
+        event = _make_event(
+            "not a command",
+            formatted_body=(
+                '<a class="mention" data-href="https://matrix.to/#/%40relay%3Aexample.com" '
+                'href="https://matrix.to/#/%40testbot%3Aexample.org">ForxRelay</a>: !map'
+            ),
+        )
+        parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
+        assert parsed is not None
+        assert parsed.command == "map"
+        assert parsed.args == ""
+
+    def test_parser_rejects_formatted_body_with_only_data_href(self):
+        event = _make_event(
+            "not a command",
+            formatted_body=(
+                '<a class="mention" data-href="https://matrix.to/#/%40testbot%3Aexample.org">'
+                "ForxRelay</a>: !map"
+            ),
+        )
+        parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
+        assert parsed is None
+
     def test_parser_rejects_formatted_body_link_not_targeting_bot_mxid(self):
         event = _make_event(
             "not a command",
@@ -131,7 +155,7 @@ class TestMatrixCommandParser:
         """Broken bot MXID stringification should fail closed."""
 
         class BadIdent:
-            def __str__(self):
+            def __str__(self) -> str:
                 raise ValueError("boom")
 
         event = _make_event("!help")
