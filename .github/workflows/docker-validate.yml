@@ -8,7 +8,7 @@ on:
       - .github/workflows/docker-validate.yml
       - .github/workflows/docker-publish.yml
       - Dockerfile
-      - docker-compose*
+      - "**/docker-compose*"
       - src/**
       - pyproject.toml
 

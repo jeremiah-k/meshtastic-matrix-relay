@@ -6,6 +6,7 @@ import ntpath
 import os
 import re
 import sys
+import threading
 import warnings
 from collections.abc import Mapping as MappingABC
 from typing import TYPE_CHECKING, Any, Iterable, Mapping, cast
@@ -73,9 +74,12 @@ class CredentialsPathError(OSError):
 
 # Track whether we've already emitted legacy path override warnings
 _legacy_path_override_warning_shown = False
+_legacy_path_override_warning_lock = threading.Lock()
 
 
-def _warn_on_legacy_path_overrides(config: dict[str, Any] | None) -> None:
+def _warn_on_legacy_path_overrides(
+    config: Mapping[str, Any] | dict[str, Any] | None,
+) -> None:
     """Emit deprecation warnings for legacy credentials_path / store_path overrides.
 
     Warns once per process when any of the following are present:
@@ -91,43 +95,51 @@ def _warn_on_legacy_path_overrides(config: dict[str, Any] | None) -> None:
     matrix.credentials_path > default MMRELAY_HOME-derived path.  MMRELAY_HOME
     is the preferred unified path model; the others are deprecated compatibility
     shims.
+
+    This is the sole owner of the ``_legacy_path_override_warning_shown`` flag;
+    all callers (including ``get_explicit_credentials_path``) must delegate
+    warning emission here so that every active legacy override is enumerated
+    regardless of call order.
     """
     global _legacy_path_override_warning_shown
-    if _legacy_path_override_warning_shown:
-        return
+    with _legacy_path_override_warning_lock:
+        if _legacy_path_override_warning_shown:
+            return
 
-    warnings_to_emit: list[str] = []
+        warnings_to_emit: list[str] = []
 
-    if os.getenv("MMRELAY_CREDENTIALS_PATH"):
-        warnings_to_emit.append("MMRELAY_CREDENTIALS_PATH environment variable is set")
-
-    if isinstance(config, dict):
-        if config.get("credentials_path"):
+        if os.getenv("MMRELAY_CREDENTIALS_PATH"):
             warnings_to_emit.append(
-                "top-level 'credentials_path' config key is present"
+                "MMRELAY_CREDENTIALS_PATH environment variable is set"
             )
-        matrix_section = config.get(CONFIG_SECTION_MATRIX)
-        if isinstance(matrix_section, dict):
-            if matrix_section.get("credentials_path"):
-                warnings_to_emit.append(
-                    "'matrix.credentials_path' config key is present"
-                )
-            for section in ("e2ee", "encryption"):
-                sub = matrix_section.get(section)
-                if isinstance(sub, dict) and sub.get("store_path"):
-                    warnings_to_emit.append(
-                        f"'matrix.{section}.store_path' config key is present"
-                    )
 
-    if warnings_to_emit:
-        _legacy_path_override_warning_shown = True
-        logger.warning(
-            "Legacy path override(s) detected and will be ignored in a future version: %s. "
-            "Use MMRELAY_HOME to control all data paths. "
-            "Support for these overrides will be removed in v%s.",
-            "; ".join(warnings_to_emit),
-            DEPRECATION_VERSIONS[1],
-        )
+        if isinstance(config, MappingABC):
+            if config.get("credentials_path"):
+                warnings_to_emit.append(
+                    "top-level 'credentials_path' config key is present"
+                )
+            matrix_section = config.get(CONFIG_SECTION_MATRIX)
+            if isinstance(matrix_section, MappingABC):
+                if matrix_section.get("credentials_path"):
+                    warnings_to_emit.append(
+                        "'matrix.credentials_path' config key is present"
+                    )
+                for section in ("e2ee", "encryption"):
+                    sub = matrix_section.get(section)
+                    if isinstance(sub, MappingABC) and sub.get("store_path"):
+                        warnings_to_emit.append(
+                            f"'matrix.{section}.store_path' config key is present"
+                        )
+
+        if warnings_to_emit:
+            _legacy_path_override_warning_shown = True
+            logger.warning(
+                "Legacy path override(s) detected and will be ignored in a future version: %s. "
+                "Use MMRELAY_HOME to control all data paths. "
+                "Support for these overrides will be removed in v%s.",
+                "; ".join(warnings_to_emit),
+                DEPRECATION_VERSIONS[1],
+            )
 
 
 def _expand_path(path: str) -> str:
@@ -368,16 +380,7 @@ def get_explicit_credentials_path(config: Mapping[str, Any] | None) -> str | Non
     """
     env_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
     if env_path:
-        global _legacy_path_override_warning_shown
-        if not _legacy_path_override_warning_shown:
-            _legacy_path_override_warning_shown = True
-            logger.warning(
-                "MMRELAY_CREDENTIALS_PATH environment variable is set. "
-                "This override is deprecated and will be ignored in a future version. "
-                "Use MMRELAY_HOME to control all data paths. "
-                "Support will be removed in v%s.",
-                DEPRECATION_VERSIONS[1],
-            )
+        _warn_on_legacy_path_overrides(config)
         return env_path
     if not isinstance(config, MappingABC):
         return None

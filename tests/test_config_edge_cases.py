@@ -1073,6 +1073,11 @@ class TestLegacyPathOverrideWarnings(unittest.TestCase):
 
         mmrelay.config._legacy_path_override_warning_shown = False
 
+    def tearDown(self):
+        import mmrelay.config
+
+        mmrelay.config._legacy_path_override_warning_shown = False
+
     def test_warn_on_mmrelay_credentials_path_env_var(self):
         from mmrelay.config import _warn_on_legacy_path_overrides
 
@@ -1148,7 +1153,7 @@ class TestLegacyPathOverrideWarnings(unittest.TestCase):
     def test_no_warning_when_no_legacy_overrides(self):
         from mmrelay.config import _warn_on_legacy_path_overrides
 
-        with patch.dict(os.environ, {}, clear=False):
+        with patch.dict(os.environ, {}, clear=True):
             with patch("mmrelay.config.logger") as mock_logger:
                 _warn_on_legacy_path_overrides({})
                 mock_logger.warning.assert_not_called()
@@ -1156,21 +1161,22 @@ class TestLegacyPathOverrideWarnings(unittest.TestCase):
     def test_no_warning_with_mmrelay_home_only(self):
         from mmrelay.config import _warn_on_legacy_path_overrides
 
-        with patch.dict(os.environ, {"MMRELAY_HOME": "/home/mmrelay"}):
+        with patch.dict(os.environ, {"MMRELAY_HOME": "/home/mmrelay"}, clear=True):
             with patch("mmrelay.config.logger") as mock_logger:
                 _warn_on_legacy_path_overrides({})
                 mock_logger.warning.assert_not_called()
 
     def test_warning_includes_removal_version(self):
         from mmrelay.config import _warn_on_legacy_path_overrides
+        from mmrelay.constants.config import DEPRECATION_VERSIONS
 
         config = {"credentials_path": "/some/path"}
         with patch("mmrelay.config.logger") as mock_logger:
             _warn_on_legacy_path_overrides(config)
             warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
             assert any(
-                "1.4" in msg for msg in warning_calls
-            ), f"No warning mentioning 1.4 in {warning_calls}"
+                DEPRECATION_VERSIONS[1] in msg for msg in warning_calls
+            ), f"No warning mentioning {DEPRECATION_VERSIONS[1]} in {warning_calls}"
 
     def test_get_explicit_credentials_path_warns_on_env_var(self):
         from mmrelay.config import get_explicit_credentials_path
@@ -1240,6 +1246,49 @@ class TestLegacyPathOverrideWarnings(unittest.TestCase):
                 assert default_creds in search_paths
 
                 mock_logger.warning.assert_not_called()
+
+    def test_call_order_env_var_first_does_not_suppress_config_warnings(self):
+        from mmrelay.config import (
+            _warn_on_legacy_path_overrides,
+            get_explicit_credentials_path,
+        )
+
+        config = {
+            "credentials_path": "/config/path",
+            "matrix": {"e2ee": {"store_path": "/store/path"}},
+        }
+        with patch("mmrelay.config.logger") as mock_logger:
+            with patch.dict(
+                os.environ, {"MMRELAY_CREDENTIALS_PATH": "/env/creds.json"}
+            ):
+                result = get_explicit_credentials_path(config)
+                assert result == "/env/creds.json"
+
+            _warn_on_legacy_path_overrides(config)
+
+            assert mock_logger.warning.call_count == 1
+            warning_msg = str(mock_logger.warning.call_args)
+            assert "MMRELAY_CREDENTIALS_PATH" in warning_msg
+            assert "credentials_path" in warning_msg
+            assert "e2ee" in warning_msg
+
+    def test_call_order_warn_helper_first_does_not_suppress_env_var_path(self):
+        from mmrelay.config import (
+            _warn_on_legacy_path_overrides,
+            get_explicit_credentials_path,
+        )
+
+        config = {"credentials_path": "/config/path"}
+        with patch("mmrelay.config.logger") as mock_logger:
+            _warn_on_legacy_path_overrides(config)
+
+            with patch.dict(
+                os.environ, {"MMRELAY_CREDENTIALS_PATH": "/env/creds.json"}
+            ):
+                result = get_explicit_credentials_path(config)
+                assert result == "/env/creds.json"
+
+            assert mock_logger.warning.call_count == 1
 
 
 if __name__ == "__main__":
