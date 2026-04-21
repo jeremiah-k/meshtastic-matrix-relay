@@ -1,3 +1,5 @@
+"""Configuration loading, path resolution, and credential management for MMRelay."""
+
 import asyncio
 import functools
 import json
@@ -68,7 +70,10 @@ if TYPE_CHECKING:
 
 
 class CredentialsPathError(OSError):
+    """Raised when no candidate credentials paths are available."""
+
     def __init__(self) -> None:
+        """Create a CredentialsPathError with a fixed diagnostic message."""
         super().__init__("No candidate credentials paths available")
 
 
@@ -156,6 +161,7 @@ def _expand_path(path: str) -> str:
 
 
 def _emit_legacy_credentials_warning(credentials_path: str) -> None:
+    """Log a deprecation warning for credentials found at a legacy filesystem location."""
     logger.warning(
         "Credentials found in legacy location: %s. "
         "Please run 'mmrelay migrate' to move to new unified structure. "
