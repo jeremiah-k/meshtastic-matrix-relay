@@ -660,7 +660,7 @@ class TestBasePlugin(unittest.TestCase):
         """matches() should reject display-name prefixes that do not match the configured name."""
         plugin = CoreMockPlugin()
         event = MagicMock()
-        event.body = "ForxRelay: !test_plugin"
+        event.body = "TestRelay: !test_plugin"
         event.source = {"content": {"formatted_body": ""}}
 
         with (
@@ -1625,7 +1625,7 @@ class TestBasePlugin(unittest.TestCase):
             "content": {
                 "formatted_body": (
                     '<a href="https://matrix.to/#/%40testbot%3Aexample.org">'
-                    "ForxRelay</a>: !cmd2 value"
+                    "TestRelay</a>: !cmd2 value"
                 )
             }
         }
@@ -1687,7 +1687,7 @@ class TestBasePlugin(unittest.TestCase):
             "content": {
                 "formatted_body": (
                     '<a href="https://matrix.to/#/%40testbot%3Aexample.org">'
-                    "ForxRelay</a>: !test_plugin alpha beta"
+                    "TestRelay</a>: !test_plugin alpha beta"
                 )
             }
         }
@@ -1701,7 +1701,7 @@ class TestBasePlugin(unittest.TestCase):
         plugin = CoreMockPlugin()
         with patch("mmrelay.matrix_utils.bot_user_id", "@testbot:example.org"):
             result = plugin.extract_command_args(
-                "test_plugin", "ForxRelay: !test_plugin"
+                "test_plugin", "TestRelay: !test_plugin"
             )
             self.assertIsNone(result)
 

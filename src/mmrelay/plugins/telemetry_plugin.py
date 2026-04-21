@@ -166,7 +166,6 @@ class Plugin(BasePlugin):
         event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
         full_message: str,
     ) -> bool:
-        # Pass the event to matches()
         """
         Handle a Matrix telemetry command and send a generated graph to the room.
 
@@ -179,11 +178,12 @@ class Plugin(BasePlugin):
         Parameters:
             room: Matrix room object where the event originated and where the response will be sent.
             event: Matrix event used to determine whether it matches a supported telemetry command.
-            full_message: Full plaintext message retained for compatibility/logging.
+            full_message: Full plaintext message retained for API compatibility.
 
         Returns:
             `True` if the message matched a telemetry command and a graph was generated and sent or a notice was sent for a node with no data, `False` otherwise.
         """
+        _ = full_message
         if not self.matches(event):
             return False
 

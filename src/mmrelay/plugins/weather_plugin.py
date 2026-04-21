@@ -931,11 +931,12 @@ class Plugin(BasePlugin):
         Parameters:
             room: The Matrix room object where the event originated.
             event: The Matrix event object to evaluate for a plugin match.
-            full_message (str): The raw message text retained for compatibility/logging.
+            full_message (str): The raw message text retained for API compatibility.
 
         Returns:
             bool: `True` if the event matched the plugin and was handled (a response was sent or attempted), `False` if the event did not match and was not handled.
         """
+        _ = full_message
         if not self.matches(event):
             return False
 
