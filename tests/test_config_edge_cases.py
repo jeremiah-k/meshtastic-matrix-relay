@@ -39,6 +39,7 @@ from mmrelay.config import (
     save_credentials,
     set_config,
 )
+from mmrelay.paths import get_credentials_path
 
 
 class TestConfigEdgeCases(unittest.TestCase):
@@ -1225,6 +1226,20 @@ class TestLegacyPathOverrideWarnings(unittest.TestCase):
                     }
                 )
                 assert result == "/top/path"
+
+    def test_precedence_default_path_when_no_deprecated_overrides(self):
+        from mmrelay.config import get_explicit_credentials_path
+
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("mmrelay.config.logger") as mock_logger:
+                result = get_explicit_credentials_path({})
+                assert result is None
+
+                search_paths = get_credentials_search_paths(include_base_data=True)
+                default_creds = str(get_credentials_path())
+                assert default_creds in search_paths
+
+                mock_logger.warning.assert_not_called()
 
 
 if __name__ == "__main__":

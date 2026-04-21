@@ -86,6 +86,11 @@ def _warn_on_legacy_path_overrides(config: dict[str, Any] | None) -> None:
 
     These overrides are scheduled for removal; ``MMRELAY_HOME`` is the
     supported way to control data paths.
+
+    Precedence: MMRELAY_CREDENTIALS_PATH env var > top-level credentials_path >
+    matrix.credentials_path > default MMRELAY_HOME-derived path.  MMRELAY_HOME
+    is the preferred unified path model; the others are deprecated compatibility
+    shims.
     """
     global _legacy_path_override_warning_shown
     if _legacy_path_override_warning_shown:
