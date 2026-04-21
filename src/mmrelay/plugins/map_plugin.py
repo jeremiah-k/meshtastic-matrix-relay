@@ -15,7 +15,6 @@ from nio import (
     RoomMessageText,
 )
 from PIL import Image as PILImage
-from PIL import ImageDraw as _PILImageDraw
 from PIL import ImageFont
 
 from mmrelay.constants.formats import (
@@ -110,26 +109,6 @@ async def _connect_meshtastic_async() -> object | None:
     from mmrelay.meshtastic_utils import connect_meshtastic
 
     return await asyncio.to_thread(connect_meshtastic)
-
-
-def textsize(
-    self: _PILImageDraw.ImageDraw, text: Any, *args: Any, **kwargs: Any
-) -> tuple[float, float]:
-    """
-    Compute the width and height of `text` as rendered by this ImageDraw instance.
-
-    Parameters:
-        text (Any): The text to measure. Additional rendering options (font, anchor, etc.) may be supplied via `*args` and `**kwargs`.
-
-    Returns:
-        (width, height) (tuple[float, float]): Width and height of the rendered text in pixels.
-    """
-    left, top, right, bottom = self.textbbox((0, 0), text, *args, **kwargs)
-    return right - left, bottom - top
-
-
-# Monkeypatch fix for https://github.com/flopp/py-staticmaps/issues/39
-_PILImageDraw.ImageDraw.textsize = textsize  # type: ignore[attr-defined]
 
 
 class TextLabel(staticmaps.Object):  # type: ignore[misc]

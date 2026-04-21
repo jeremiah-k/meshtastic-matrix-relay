@@ -34,7 +34,6 @@ from mmrelay.plugins.map_plugin import (
     TextLabel,
     get_map,
     precision_bits_to_meters,
-    textsize,
 )
 from tests.constants import TEST_LAT_SF, TEST_LON_SF
 
@@ -148,23 +147,6 @@ class TestTextLabel(unittest.TestCase):
         mock_drawing.path.assert_called_once()
         mock_drawing.text.assert_called_once()
         self.assertEqual(mock_group.add.call_count, 2)
-
-
-class TestTextSizeFunction(unittest.TestCase):
-    """Test cases for textsize function."""
-
-    def test_textsize(self):
-        """
-        Tests that the textsize function returns the correct width and height based on the drawing context's text bounding box.
-        """
-        mock_draw = MagicMock()
-        mock_draw.textbbox.return_value = (0, 0, 100, 20)
-
-        width, height = textsize(mock_draw, "Test text")
-
-        self.assertEqual(width, 100)
-        self.assertEqual(height, 20)
-        mock_draw.textbbox.assert_called_once_with((0, 0), "Test text")
 
 
 class TestGetMap(unittest.TestCase):
