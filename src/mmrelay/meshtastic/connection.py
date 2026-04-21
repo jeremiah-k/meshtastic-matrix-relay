@@ -3,6 +3,7 @@ import functools
 import inspect
 import math
 import threading
+from collections.abc import Callable
 from concurrent.futures import Future
 from typing import Any, NoReturn
 
@@ -744,8 +745,10 @@ def _connect_meshtastic_impl(
                             # can potentially block indefinitely if BlueZ is in a bad state.
                             def create_ble_interface(
                                 kwargs: dict[str, Any],
-                                interface_cls: Any = ble_interface_cls,
-                            ) -> Any:
+                                interface_cls: Callable[
+                                    ..., object
+                                ] = ble_interface_cls,
+                            ) -> object:
                                 """
                                 Create a BLEInterface configured for Meshtastic BLE connections.
 

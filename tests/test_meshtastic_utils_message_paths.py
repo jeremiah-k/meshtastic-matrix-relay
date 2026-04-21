@@ -4,7 +4,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from meshtastic.mesh_interface import BROADCAST_NUM
+from meshtastic import BROADCAST_NUM
 
 import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.config import CONFIG_KEY_MESHNET_NAME
