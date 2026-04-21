@@ -105,18 +105,28 @@ class TestMatrixCommandParser:
         assert parsed is not None
         assert parsed.command == "map"
 
-    def test_formatted_body_mxid_wins_over_display_name_in_body(self):
+    def test_formatted_body_mxid_wins_over_plain_body_display_name_fallback(self):
         event = _make_event(
-            "ForxRelay !map",
+            "ForxRelay !map 123",
             formatted_body=(
                 '<a href="https://matrix.to/#/%40testbot%3Aexample.org">'
-                "ForxRelay</a>: !map"
+                "ForxRelay</a>: !map 456"
             ),
         )
         parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
         assert parsed is not None
         assert parsed.command == "map"
-        assert parsed.args == ""
+        assert parsed.args == "456"
+
+    def test_plain_body_mxid_wins_over_formatted_body_display_name_fallback(self):
+        event = _make_event(
+            f"{BOT_MXID}: !map 999",
+            formatted_body="<span>ForxRelay !map 321</span>",
+        )
+        parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
+        assert parsed is not None
+        assert parsed.command == "map"
+        assert parsed.args == "999"
 
     def test_display_name_fallback_skipped_when_name_not_configured(self):
         event = _make_event("ForxRelay !map")
@@ -132,6 +142,19 @@ class TestMatrixCommandParser:
         assert parsed is not None
         assert parsed.command == "map"
         assert parsed.args == "42"
+
+    def test_unrelated_formatted_body_link_keeps_display_name_fallback(self):
+        event = _make_event(
+            "ForxRelay !map 55",
+            formatted_body=(
+                '<a href="https://matrix.to/#/%40relay%3Aexample.com">'
+                "ForxRelay</a>: !map 777"
+            ),
+        )
+        parsed = _parse_matrix_message_command(event, ("map",), require_mention=True)
+        assert parsed is not None
+        assert parsed.command == "map"
+        assert parsed.args == "55"
 
     def test_parser_requires_mxid_mention_when_enabled(self):
         event = _make_event("!map")

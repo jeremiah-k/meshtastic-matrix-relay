@@ -348,23 +348,34 @@ def _parse_matrix_message_command(
     if not candidate_bodies:
         return None
 
-    for body in candidate_bodies:
-        if require_mention:
-            assert bot_mxid is not None
+    if require_mention:
+        assert bot_mxid is not None
+
+        # Pass 1: require exact MXID mention semantics across all body variants.
+        # This tier includes plain-body MXID prefixes and formatted-body mention
+        # pills that normalize to MXID prefixes.
+        for body in candidate_bodies:
             suffix = _consume_mxid_mention_prefix(body, bot_mxid)
-            if suffix is not None:
+            if suffix is None:
+                continue
+            parsed = _match_bang_command(suffix, command_lookup)
+            if parsed is not None:
+                return parsed
+
+        # Pass 2: fall back to anchored display-name prefixes only if MXID tier
+        # produced no result from any candidate body.
+        if bot_display_name:
+            for body in candidate_bodies:
+                suffix = _consume_display_name_prefix(body, bot_display_name)
+                if suffix is None:
+                    continue
                 parsed = _match_bang_command(suffix, command_lookup)
                 if parsed is not None:
                     return parsed
-                continue
-            if bot_display_name:
-                suffix = _consume_display_name_prefix(body, bot_display_name)
-                if suffix is not None:
-                    parsed = _match_bang_command(suffix, command_lookup)
-                    if parsed is not None:
-                        return parsed
-            continue
 
+        return None
+
+    for body in candidate_bodies:
         parsed = _match_bang_command(body, command_lookup)
         if parsed is not None:
             return parsed
