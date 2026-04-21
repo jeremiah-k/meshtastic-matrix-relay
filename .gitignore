@@ -1,28 +1,28 @@
-# Virtual environments - different agents use different locations
+# Local environment and editor settings
 venv/
 .venv/
 .pyenv
 .vscode
+.env
 config.yaml
+
+# Python caches and packaging metadata
 __pycache__/
-.aider*
 *.pyc
 *.pyo
 *.pyd
 *$py.class
-src/mmrelay.egg-info
+src/mmrelay.egg-info/
+
+# Tool state and local automation files
+.aider*
 .opencode/
 .codex
-/build/
-/.ci-artifacts/
 coderabbit_actionable_items.md
 
-# Docker files (use samples from src/mmrelay/tools/)
-docker-compose.yaml
-docker-compose.override.yaml
-.env
-
-# Coverage files
+# Build and test outputs
+/build/
+/.ci-artifacts/
 .coverage
 .coverage.*
 htmlcov/
@@ -31,7 +31,11 @@ junit.xml
 .pytest_cache/
 MagicMock/
 
-# Generated Kubernetes manifests (user-specific, not to be committed)
+# Docker overrides and local compose files
+docker-compose.yaml
+docker-compose.override.yaml
+
+# Generated Kubernetes manifests
 /k8s/
 
 # Git worktrees

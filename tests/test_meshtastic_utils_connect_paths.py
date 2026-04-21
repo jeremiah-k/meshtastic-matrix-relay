@@ -1673,3 +1673,110 @@ def test_connect_time_probe_submits_immediately_when_drain_expired():
 
     mock_submit_probe.assert_called_once()
     assert mu._pending_connect_time_probe_timer is None
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_connect_time_probe_reconnect_shutdown_lifecycle():
+    """Full scenario: delayed probe survives reconnect and shutdown without stale submissions.
+
+    This is a higher-level sequence test that validates the interaction between
+    connect-time metadata probes, delayed timers, client changes (reconnect),
+    and shutdown. It protects against regressions where a stale timer callback
+    submits a probe for a disconnected client or submits after shutdown begins.
+
+    Sequence:
+      1. Startup drain is active -> probe is delayed via Timer.
+      2. A connect-time metadata probe is scheduled for later.
+      3. Connection/client changes before the delayed callback runs.
+      4. The old delayed callback runs and is ignored as stale.
+      5. A new client/timer is installed.
+      6. Shutdown begins before the new delayed callback runs.
+      7. The new delayed callback is also suppressed.
+      8. No stale _submit_metadata_probe call occurs.
+      9. Pending timer state is cleaned up correctly.
+    """
+    first_client = MagicMock()
+    first_client.localNode = MagicMock()
+    first_client.sendData = MagicMock()
+
+    second_client = MagicMock()
+    second_client.localNode = MagicMock()
+    second_client.sendData = MagicMock()
+
+    now = 1_000.0
+    drain_deadline = now + 5.0
+
+    mu._relay_startup_drain_deadline_monotonic_secs = drain_deadline
+    mu.meshtastic_client = first_client
+    mu._relay_active_client_id = id(first_client)
+    mu.shutting_down = False
+
+    with (
+        patch("mmrelay.meshtastic.connection.threading.Timer", _FakeTimer),
+        patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit_probe,
+        patch("mmrelay.meshtastic_utils.time.monotonic", return_value=now),
+    ):
+        # 1. Startup drain is active -> probe is delayed via Timer.
+        mu._schedule_connect_time_calibration_probe(
+            first_client,
+            connection_type=CONNECTION_TYPE_TCP,
+            active_config={
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "127.0.0.1",
+                    "health_check": {"enabled": True, "connect_probe_enabled": True},
+                }
+            },
+        )
+
+        # 2. A connect-time metadata probe is scheduled for later.
+        first_timer = mu._pending_connect_time_probe_timer
+        assert first_timer is not None
+        assert isinstance(first_timer, _FakeTimer)
+        mock_submit_probe.assert_not_called()
+
+        # 3. Connection/client changes before the delayed callback runs.
+        mu.meshtastic_client = second_client
+        mu._relay_active_client_id = id(second_client)
+
+        # 4. The old delayed callback runs and is ignored as stale.
+        first_timer.function()
+        mock_submit_probe.assert_not_called()
+        # Timer should clear itself when it detects stale client
+        assert mu._pending_connect_time_probe_timer is None
+
+        # 5. A new client/timer is installed.
+        mu._schedule_connect_time_calibration_probe(
+            second_client,
+            connection_type=CONNECTION_TYPE_TCP,
+            active_config={
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "127.0.0.1",
+                    "health_check": {"enabled": True, "connect_probe_enabled": True},
+                }
+            },
+        )
+
+        second_timer = mu._pending_connect_time_probe_timer
+        assert second_timer is not None
+        assert isinstance(second_timer, _FakeTimer)
+        assert second_timer is not first_timer
+        # The first timer fired as stale and cleared itself; it was not explicitly
+        # cancelled because its reference was already removed from the guard.
+        mock_submit_probe.assert_not_called()
+
+        # 6. Shutdown begins before the new delayed callback runs.
+        mu.shutting_down = True
+
+        # 7. The new delayed callback is also suppressed.
+        second_timer.function()
+        mock_submit_probe.assert_not_called()
+
+        # 8. No stale _submit_metadata_probe call occurred at any point.
+        assert mock_submit_probe.call_count == 0
+
+        # 9. Pending timer state is cleaned up correctly.
+        assert mu._pending_connect_time_probe_timer is None
+
+    mu.shutting_down = False
