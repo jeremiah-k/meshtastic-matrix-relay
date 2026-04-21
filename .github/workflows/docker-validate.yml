@@ -67,6 +67,7 @@ jobs:
             VCS_REF=${{ env.GIT_SHA }}
             VERSION=${{ env.VERSION }}
           cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Smoke test — verify image runs
         run: docker run --rm mmrelay:validate mmrelay --version
