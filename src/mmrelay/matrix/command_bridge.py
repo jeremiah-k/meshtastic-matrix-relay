@@ -87,9 +87,11 @@ def _extract_candidate_bodies(
         return [stripped] if stripped else []
 
     bodies: list[str] = []
-    plain_body = (getattr(message, "body", "") or "").strip()
-    if plain_body:
-        bodies.append(plain_body)
+    plain_raw = getattr(message, "body", "")
+    if isinstance(plain_raw, str):
+        plain_body = plain_raw.strip()
+        if plain_body:
+            bodies.append(plain_body)
 
     source = getattr(message, "source", {})
     content = source.get("content", {}) if isinstance(source, dict) else {}

@@ -326,6 +326,7 @@ class TestMapPlugin(unittest.TestCase):
         """
         self.plugin = Plugin()
         self.plugin.send_matrix_reaction = AsyncMock()
+        self.plugin.get_require_bot_mention = MagicMock(return_value=False)
         self.plugin.config = {
             "zoom": 10,
             "image_width": 800,
@@ -440,7 +441,7 @@ class TestMapPlugin(unittest.TestCase):
             # Mock the matches method to return True
             with patch.object(self.plugin, "matches", return_value=True):
                 result = await self.plugin.handle_room_message(
-                    mock_room, mock_event, "user: !map"
+                    mock_room, mock_event, "!map"
                 )
 
             self.assertTrue(result)
@@ -509,7 +510,7 @@ class TestMapPlugin(unittest.TestCase):
 
             with patch.object(self.plugin, "matches", return_value=True):
                 result = await self.plugin.handle_room_message(
-                    mock_room, mock_event, "user: !map zoom=15"
+                    mock_room, mock_event, "!map zoom=15"
                 )
 
             self.assertTrue(result)
@@ -572,7 +573,7 @@ class TestMapPlugin(unittest.TestCase):
 
             with patch.object(self.plugin, "matches", return_value=True):
                 result = await self.plugin.handle_room_message(
-                    mock_room, mock_event, "user: !map size=500,400"
+                    mock_room, mock_event, "!map size=500,400"
                 )
 
             self.assertTrue(result)
@@ -660,7 +661,7 @@ class TestMapPlugin(unittest.TestCase):
 
             with patch.object(self.plugin, "matches", return_value=True):
                 result = await self.plugin.handle_room_message(
-                    mock_room, mock_event, "user: !map zoom=50"
+                    mock_room, mock_event, "!map zoom=50"
                 )
 
             self.assertTrue(result)
@@ -711,7 +712,7 @@ class TestMapPlugin(unittest.TestCase):
 
             with patch.object(self.plugin, "matches", return_value=True):
                 result = await self.plugin.handle_room_message(
-                    mock_room, mock_event, "user: !map"
+                    mock_room, mock_event, "!map"
                 )
 
             self.assertTrue(result)
@@ -771,7 +772,7 @@ class TestMapPlugin(unittest.TestCase):
 
             with patch.object(self.plugin, "matches", return_value=True):
                 result = await self.plugin.handle_room_message(
-                    mock_room, mock_event, "user: !map size=2000,1500"
+                    mock_room, mock_event, "!map size=2000,1500"
                 )
 
             self.assertTrue(result)
@@ -873,7 +874,7 @@ class TestMapPlugin(unittest.TestCase):
 
             with patch.object(self.plugin, "matches", return_value=True):
                 result = await self.plugin.handle_room_message(
-                    mock_room, mock_event, "user: !map"
+                    mock_room, mock_event, "!map"
                 )
 
             self.assertTrue(result)
@@ -987,6 +988,7 @@ class TestMapPluginHandleRoomMessage(unittest.TestCase):
     def setUp(self):
         self.plugin = Plugin()
         self.plugin.send_matrix_reaction = AsyncMock()
+        self.plugin.get_require_bot_mention = MagicMock(return_value=False)
         self.plugin.config = {
             "zoom": 10,
             "image_width": 800,
@@ -1006,7 +1008,7 @@ class TestMapPluginHandleRoomMessage(unittest.TestCase):
 
             with patch.object(self.plugin, "matches", return_value=True):
                 result = await self.plugin.handle_room_message(
-                    mock_room, mock_event, "user: !map bogus=xyz"
+                    mock_room, mock_event, "!map bogus=xyz"
                 )
             self.assertFalse(result)
 

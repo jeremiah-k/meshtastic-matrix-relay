@@ -432,37 +432,31 @@ class TestTelemetryPlugin(unittest.TestCase):
 
         asyncio.run(run_test())
 
-    @patch("mmrelay.matrix_utils.bot_command")
-    def test_matches_with_valid_command(self, mock_bot_command):
+    def test_matches_with_valid_command(self):
         """
         Test that the matches method returns True when a valid telemetry command is present in the event.
 
-        Verifies that the method checks all available commands and returns True upon finding a match.
+        Verifies that a valid leading telemetry command matches.
         """
-        mock_bot_command.side_effect = lambda cmd, *_, **__: cmd == "batteryLevel"
-
         event = MagicMock()
+        event.body = "!batteryLevel"
+        event.source = {"content": {"formatted_body": ""}}
         result = self.plugin.matches(event)
 
         self.assertTrue(result)
-        # Should check all commands until it finds a match
-        self.assertTrue(mock_bot_command.called)
 
-    @patch("mmrelay.matrix_utils.bot_command")
-    def test_matches_with_no_command(self, mock_bot_command):
+    def test_matches_with_no_command(self):
         """
         Test that the matches method returns False when no commands match the event.
 
-        Verifies that all available commands are checked when there is no match.
+        Verifies that non-command text does not match.
         """
-        mock_bot_command.return_value = False
-
         event = MagicMock()
+        event.body = "hello there"
+        event.source = {"content": {"formatted_body": ""}}
         result = self.plugin.matches(event)
 
         self.assertFalse(result)
-        # Should check all commands
-        self.assertEqual(mock_bot_command.call_count, 3)
 
     def test_handle_room_message_no_match(self):
         """
