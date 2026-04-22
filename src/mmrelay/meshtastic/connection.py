@@ -937,7 +937,13 @@ def _connect_meshtastic_impl(
                                             ble_address,
                                             reason="interface creation timeout",
                                         )
-                                        late_creation_disposer_future = future
+                                        facade._attach_late_ble_interface_disposer(
+                                            future,
+                                            ble_address,
+                                            reason="interface creation timeout",
+                                            generation=connect_generation,
+                                        )
+                                        late_creation_disposer_future = None
                                         timeout_count = facade._record_ble_timeout(
                                             ble_address
                                         )

@@ -3,7 +3,7 @@ Tests for specific uncovered lines across ble.py, async_utils.py, events.py,
 and command_bridge.py.
 """
 
-import asyncio
+import errno
 import threading
 import time
 from unittest.mock import MagicMock, patch
@@ -849,7 +849,7 @@ class TestTearDownMeshtasticClientBleGeneration:
         assert mu.meshtastic_iface is None
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
+@pytest.mark.usefixtures("reset_meshtastic_globals", "reset_matrix_utils_globals")
 class TestParseMatrixMessageCommandRequireMention:
     """Cover command_bridge.py lines 352-356: require_mention with no bot_mxid."""
 
@@ -993,13 +993,13 @@ class TestDisconnectBleCloseSyncAwaitableResult:
     def test_close_returns_awaitable_inside_blocking(self):
         from mmrelay.meshtastic.ble import _disconnect_ble_interface
 
-        awaitable_future = asyncio.Future()
+        mock_awaitable = MagicMock()
 
         iface = MagicMock()
         iface._exit_handler = None
         del iface.disconnect
         iface.client = None
-        iface.close.return_value = awaitable_future
+        iface.close.return_value = mock_awaitable
 
         with (
             patch.object(mu, "_get_ble_iface_generation", return_value=(None, None)),
@@ -1011,7 +1011,6 @@ class TestDisconnectBleCloseSyncAwaitableResult:
             close_fn = mock_blocking.call_args[0][0]
             with patch.object(mu, "_wait_for_result"):
                 close_fn()
-            awaitable_future.cancel()
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
@@ -1254,8 +1253,7 @@ class TestTearDownNonBleOSError:
         )
 
         client = MagicMock()
-        client.close.side_effect = OSError("broken pipe")
-        client.close.side_effect.errno = 32
+        client.close.side_effect = OSError(errno.EPIPE, "broken pipe")
 
         mu.meshtastic_client = client
         mu.meshtastic_iface = None

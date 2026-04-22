@@ -116,10 +116,11 @@ def _attach_late_ble_interface_disposer(
 
         late_address, late_generation = facade._get_ble_iface_generation(
             late_iface,
-            fallback_address=ble_address,
         )
         if late_generation is None:
             late_generation = generation
+        if late_address is None:
+            late_address = facade._extract_ble_address_from_interface(late_iface)
         log_address = late_address or ble_address
         late_client_obj = getattr(late_iface, "client", None)
 

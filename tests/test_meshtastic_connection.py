@@ -1,4 +1,7 @@
-from typing import Any
+from __future__ import annotations
+
+from concurrent.futures import Future
+from typing import Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -413,12 +416,10 @@ class TestBleTeardownBarrier:
         assert mock_ble_ctor.call_count >= 1
 
     def test_late_barrier_after_iface_creation_rolls_back_published_iface(self):
-        from concurrent.futures import Future
-
         from mmrelay.meshtastic.connection import _connect_meshtastic_impl
 
         class BleInterfaceWithConnect:
-            def __init__(
+            def __init__(  # noqa: PLR0913
                 self,
                 *,
                 address: str,
@@ -428,6 +429,7 @@ class TestBleTeardownBarrier:
                 timeout: int,
                 auto_reconnect: bool = True,
             ) -> None:
+                _ = (noProto, debugOut, noNodes, timeout)
                 self.address = address
                 self.client = object()
                 self.auto_reconnect = auto_reconnect
@@ -459,8 +461,10 @@ class TestBleTeardownBarrier:
             # Block at the post-creation barrier before connect().
             return [(1, 1)]
 
-        def _sync_submit(fn: Any, *args: Any, **kwargs: Any) -> Future[Any]:
-            future: Future[Any] = Future()
+        def _sync_submit(
+            fn: Callable[..., object], *args: object, **kwargs: object
+        ) -> Future[object]:
+            future: Future[object] = Future()
             try:
                 future.set_result(fn(*args, **kwargs))
             except Exception as exc:  # noqa: BLE001 - test harness helper
