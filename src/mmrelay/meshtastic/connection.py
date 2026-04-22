@@ -965,6 +965,7 @@ def _connect_meshtastic_impl(
                                             future,
                                             ble_address,
                                             reason="interface creation shutdown cancellation",
+                                            generation=connect_generation,
                                         )
                                     facade.meshtastic_iface = None
                                 raise
@@ -1033,6 +1034,7 @@ def _connect_meshtastic_impl(
                             late_creation_disposer_future,
                             ble_address,
                             reason="interface creation timeout",
+                            generation=connect_generation,
                         )
 
                     # Connect outside singleton-creation lock to avoid blocking other threads.
@@ -1187,6 +1189,7 @@ def _connect_meshtastic_impl(
                                         ble_address,
                                         reason="connect shutdown cancellation",
                                         fallback_iface=shutdown_iface,
+                                        generation=connect_generation,
                                     )
                                 iface = None
                                 facade.meshtastic_iface = None
@@ -1229,6 +1232,7 @@ def _connect_meshtastic_impl(
                                         ble_address,
                                         reason="connect timeout",
                                         fallback_iface=timed_out_iface,
+                                        generation=connect_generation,
                                     )
                                     timeout_count = facade._record_ble_timeout(
                                         ble_address

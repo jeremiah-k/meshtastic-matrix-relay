@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -419,9 +420,10 @@ class TestBleTeardownBarrier:
         class BleInterfaceWithConnect:
             def __init__(
                 self,
+                *,
                 address: str,
                 noProto: bool,  # noqa: N803
-                debugOut,
+                debugOut: object,  # noqa: N803
                 noNodes: bool,  # noqa: N803
                 timeout: int,
                 auto_reconnect: bool = True,
@@ -446,7 +448,9 @@ class TestBleTeardownBarrier:
 
         unresolved_calls = 0
 
-        def _unresolved_teardown_for_late_barrier(_address: str):
+        def _unresolved_teardown_for_late_barrier(
+            _address: str,
+        ) -> list[tuple[int, int]]:
             nonlocal unresolved_calls
             unresolved_calls += 1
             if unresolved_calls == 1:
@@ -455,8 +459,8 @@ class TestBleTeardownBarrier:
             # Block at the post-creation barrier before connect().
             return [(1, 1)]
 
-        def _sync_submit(fn, *args, **kwargs):
-            future = Future()
+        def _sync_submit(fn: Any, *args: Any, **kwargs: Any) -> Future[Any]:
+            future: Future[Any] = Future()
             try:
                 future.set_result(fn(*args, **kwargs))
             except Exception as exc:  # noqa: BLE001 - test harness helper

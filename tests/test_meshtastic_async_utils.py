@@ -265,17 +265,17 @@ class TestRunBlockingWithTimeout:
                 "_resolve_ble_teardown_timeout",
                 wraps=real_resolve_timeout,
             ) as mock_resolve,
+            pytest.raises(TimeoutError),
         ):
-            with pytest.raises(TimeoutError):
-                _run_blocking_with_timeout(
-                    _blocking_action,
-                    timeout=0.05,
-                    label="ble-interface-disconnect-race",
-                    ble_address=ble_address,
-                    ble_generation=generation,
-                    iface_id=5150,
-                    client_id=6160,
-                )
+            _run_blocking_with_timeout(
+                _blocking_action,
+                timeout=0.05,
+                label="ble-interface-disconnect-race",
+                ble_address=ble_address,
+                ble_generation=generation,
+                iface_id=5150,
+                client_id=6160,
+            )
 
         assert mock_record.call_count == 1
         assert mock_resolve.call_count >= 1

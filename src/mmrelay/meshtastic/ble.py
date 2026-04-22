@@ -81,6 +81,7 @@ def _attach_late_ble_interface_disposer(
     reason: str,
     *,
     fallback_iface: Any | None = None,
+    generation: int | None = None,
 ) -> None:
     """
     Dispose interfaces created by abandoned BLE futures that complete late.
@@ -117,6 +118,8 @@ def _attach_late_ble_interface_disposer(
             late_iface,
             fallback_address=ble_address,
         )
+        if late_generation is None:
+            late_generation = generation
         log_address = late_address or ble_address
         late_client_obj = getattr(late_iface, "client", None)
 
