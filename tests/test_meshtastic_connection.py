@@ -307,3 +307,111 @@ class TestConnectMeshtastic:
                 "tcp",
             )
             assert mu.meshtastic_client is None
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+class TestBleTeardownBarrier:
+    def test_blocks_fresh_creation_when_teardown_unresolved(self):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        address_key = mu._sanitize_ble_address(ble_address)
+        mu._ble_generation_by_address[address_key] = 7
+        mu._ble_teardown_unresolved_by_generation[(address_key, 7)] = 1
+        mu.config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": ble_address,
+                "retries": 1,
+            }
+        }
+        mu.shutting_down = False
+        mu.reconnecting = False
+        mu.meshtastic_client = None
+        mu.meshtastic_iface = None
+
+        def _stop_retry(_seconds: float) -> None:
+            mu.shutting_down = True
+
+        with (
+            patch.object(mu, "_disconnect_ble_by_address"),
+            patch.object(mu.time, "sleep", side_effect=_stop_retry),
+            patch.object(mu.meshtastic.ble_interface, "BLEInterface") as mock_ble_ctor,
+        ):
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        mock_ble_ctor.assert_not_called()
+
+    def test_allows_fresh_creation_after_teardown_resolves(self):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        ble_address = "11:22:33:44:55:66"
+        mu.config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": ble_address,
+                "retries": 1,
+            }
+        }
+        mu.shutting_down = False
+        mu.reconnecting = False
+        mu.meshtastic_client = None
+        mu.meshtastic_iface = None
+
+        def _stop_retry(_seconds: float) -> None:
+            mu.shutting_down = True
+
+        with (
+            patch.object(mu, "_disconnect_ble_by_address"),
+            patch.object(mu.time, "sleep", side_effect=_stop_retry),
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=RuntimeError("creation failed"),
+            ) as mock_ble_ctor,
+        ):
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        assert mock_ble_ctor.call_count >= 1
+
+    def test_reconnect_proceeds_after_late_worker_resolution(self):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        ble_address = "22:33:44:55:66:77"
+        address_key = mu._sanitize_ble_address(ble_address)
+        mu._ble_generation_by_address[address_key] = 3
+        mu._ble_teardown_unresolved_by_generation[(address_key, 3)] = 1
+        remaining, stale = mu._resolve_ble_teardown_timeout(ble_address, 3)
+        assert remaining == 0
+        assert stale is False
+
+        mu.config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": ble_address,
+                "retries": 1,
+            }
+        }
+        mu.shutting_down = False
+        mu.reconnecting = False
+        mu.meshtastic_client = None
+        mu.meshtastic_iface = None
+
+        def _stop_retry(_seconds: float) -> None:
+            mu.shutting_down = True
+
+        with (
+            patch.object(mu, "_disconnect_ble_by_address"),
+            patch.object(mu.time, "sleep", side_effect=_stop_retry),
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=RuntimeError("creation failed"),
+            ) as mock_ble_ctor,
+        ):
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        assert mock_ble_ctor.call_count >= 1

@@ -50,6 +50,10 @@ def _shutdown_shared_executors() -> None:
             facade._ble_timeout_counts.clear()
             facade._ble_executor_orphaned_workers_by_address.clear()
         facade._ble_executor_degraded_addresses.clear()
+        with facade._ble_lifecycle_lock:
+            facade._ble_generation_by_address.clear()
+            facade._ble_iface_generation_by_id.clear()
+            facade._ble_teardown_unresolved_by_generation.clear()
 
         executor = facade._ble_executor
         facade._ble_executor = None

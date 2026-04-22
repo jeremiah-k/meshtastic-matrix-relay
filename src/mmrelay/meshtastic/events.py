@@ -83,10 +83,21 @@ def _tear_down_meshtastic_client_for_disconnect(detection_source: str) -> None:
         return
 
     if facade.meshtastic_client is facade.meshtastic_iface:
+        ble_address = facade._extract_ble_address_from_interface(
+            facade.meshtastic_iface
+        )
+        ble_generation: int | None = None
+        if ble_address is not None:
+            ble_generation = facade._advance_ble_generation(
+                ble_address,
+                transition=f"disconnect:{detection_source}",
+            )
         facade.logger.debug("Disconnecting BLE interface due to connection loss")
         facade._disconnect_ble_interface(
             facade.meshtastic_iface,
             reason=f"connection loss: {detection_source}",
+            ble_address=ble_address,
+            generation=ble_generation,
         )
         facade.meshtastic_iface = None
     else:

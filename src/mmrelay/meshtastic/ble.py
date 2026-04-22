@@ -8,11 +8,21 @@ from typing import Any, Awaitable, Callable, Coroutine, cast
 import mmrelay.meshtastic_utils as facade
 
 __all__ = [
+    "_advance_ble_generation",
     "_attach_late_ble_interface_disposer",
+    "_discard_ble_iface_generation",
     "_disconnect_ble_by_address",
     "_disconnect_ble_interface",
+    "_extract_ble_address_from_interface",
+    "_get_ble_generation",
+    "_get_ble_iface_generation",
+    "_get_ble_unresolved_teardown_generations",
     "_is_ble_discovery_error",
     "_is_ble_duplicate_connect_suppressed_error",
+    "_is_ble_generation_stale",
+    "_record_ble_teardown_timeout",
+    "_register_ble_iface_generation",
+    "_resolve_ble_teardown_timeout",
     "_reset_ble_connection_gate_state",
     "_sanitize_ble_address",
     "_scan_for_ble_address",
@@ -103,20 +113,36 @@ def _attach_late_ble_interface_disposer(
         if active_iface is late_iface:
             return
 
+        late_address, late_generation = facade._get_ble_iface_generation(
+            late_iface,
+            fallback_address=ble_address,
+        )
+        log_address = late_address or ble_address
+
         facade.logger.warning(
-            "Cleaning up late BLE interface completion for %s (%s)",
-            ble_address,
+            "Cleaning up late BLE interface completion for %s (%s) "
+            "(generation=%s iface_id=%s client_id=%s)",
+            log_address,
             reason,
+            late_generation,
+            id(late_iface),
+            (
+                id(getattr(late_iface, "client", None))
+                if getattr(late_iface, "client", None) is not None
+                else None
+            ),
         )
         try:
             facade._disconnect_ble_interface(
                 late_iface,
                 reason=f"late completion after {reason}",
+                ble_address=late_address,
+                generation=late_generation,
             )
         except Exception:  # noqa: BLE001 - cleanup must not propagate
             facade.logger.debug(
                 "Late BLE interface cleanup failed for %s (%s)",
-                ble_address,
+                log_address,
                 reason,
                 exc_info=True,
             )
@@ -278,6 +304,190 @@ def _sanitize_ble_address(address: str) -> str:
     if not address:
         return address
     return address.replace("-", "").replace("_", "").replace(":", "").lower()
+
+
+def _extract_ble_address_from_interface(iface: Any) -> str | None:
+    """Best-effort extraction of a BLE address from an interface/client shape."""
+    if iface is None:
+        return None
+
+    candidates: list[str | None] = []
+    iface_address = getattr(iface, "address", None)
+    if isinstance(iface_address, str):
+        candidates.append(iface_address)
+
+    client_obj = getattr(iface, "client", None)
+    if client_obj is not None:
+        client_address = getattr(client_obj, "address", None)
+        if isinstance(client_address, str):
+            candidates.append(client_address)
+        bleak_client = getattr(client_obj, "bleak_client", None)
+        if bleak_client is not None:
+            bleak_address = getattr(bleak_client, "address", None)
+            if isinstance(bleak_address, str):
+                candidates.append(bleak_address)
+
+    for candidate in candidates:
+        sanitized = _sanitize_ble_address(candidate or "")
+        if sanitized:
+            return sanitized
+    return None
+
+
+def _advance_ble_generation(ble_address: str, *, transition: str) -> int:
+    """Increment and return the lifecycle generation for a BLE address."""
+    address_key = _sanitize_ble_address(ble_address)
+    if not address_key:
+        return 0
+
+    with facade._ble_lifecycle_lock:
+        generation = facade._ble_generation_by_address.get(address_key, 0) + 1
+        facade._ble_generation_by_address[address_key] = generation
+
+    facade.logger.debug(
+        "Advanced BLE lifecycle generation for %s to %s (%s)",
+        ble_address,
+        generation,
+        transition,
+    )
+    return generation
+
+
+def _get_ble_generation(ble_address: str) -> int:
+    """Return the current lifecycle generation for a BLE address."""
+    address_key = _sanitize_ble_address(ble_address)
+    if not address_key:
+        return 0
+    with facade._ble_lifecycle_lock:
+        return facade._ble_generation_by_address.get(address_key, 0)
+
+
+def _is_ble_generation_stale(ble_address: str, generation: int) -> bool:
+    """Return whether a generation token is stale for a BLE address."""
+    address_key = _sanitize_ble_address(ble_address)
+    if not address_key:
+        return False
+    with facade._ble_lifecycle_lock:
+        current_generation = facade._ble_generation_by_address.get(address_key, 0)
+    return current_generation != generation
+
+
+def _register_ble_iface_generation(
+    iface: Any,
+    ble_address: str,
+    generation: int,
+) -> None:
+    """Associate an interface object identity with BLE address/generation ownership."""
+    if iface is None:
+        return
+    address_key = _sanitize_ble_address(ble_address)
+    if not address_key or generation <= 0:
+        return
+    with facade._ble_lifecycle_lock:
+        facade._ble_iface_generation_by_id[id(iface)] = (address_key, generation)
+
+
+def _get_ble_iface_generation(
+    iface: Any,
+    *,
+    fallback_address: str | None = None,
+) -> tuple[str | None, int | None]:
+    """
+    Return the best-known (address, generation) ownership metadata for an interface.
+    """
+    iface_id = id(iface) if iface is not None else None
+    fallback_key = _sanitize_ble_address(fallback_address or "")
+
+    with facade._ble_lifecycle_lock:
+        if iface_id is not None:
+            mapped = facade._ble_iface_generation_by_id.get(iface_id)
+            if mapped is not None:
+                return mapped
+        if fallback_key:
+            return fallback_key, facade._ble_generation_by_address.get(fallback_key)
+
+    extracted = _extract_ble_address_from_interface(iface)
+    if not extracted:
+        return (fallback_key or None), None
+
+    with facade._ble_lifecycle_lock:
+        return extracted, facade._ble_generation_by_address.get(extracted)
+
+
+def _discard_ble_iface_generation(iface: Any) -> tuple[str | None, int | None]:
+    """Drop interface ownership metadata once that interface is no longer active."""
+    if iface is None:
+        return None, None
+    with facade._ble_lifecycle_lock:
+        res = facade._ble_iface_generation_by_id.pop(id(iface), None)
+    if res is None:
+        return None, None
+    return res
+
+
+def _record_ble_teardown_timeout(ble_address: str, generation: int) -> int:
+    """Record a timed-out teardown worker for address/generation ownership."""
+    address_key = _sanitize_ble_address(ble_address)
+    if not address_key or generation <= 0:
+        return 0
+    with facade._ble_lifecycle_lock:
+        key = (address_key, generation)
+        count = facade._ble_teardown_unresolved_by_generation.get(key, 0) + 1
+        facade._ble_teardown_unresolved_by_generation[key] = count
+    return count
+
+
+def _resolve_ble_teardown_timeout(
+    ble_address: str,
+    generation: int,
+) -> tuple[int, bool]:
+    """
+    Resolve one timed-out teardown worker and report remaining unresolved workers.
+    """
+    address_key = _sanitize_ble_address(ble_address)
+    if not address_key or generation <= 0:
+        return 0, False
+
+    remaining_for_address = 0
+    with facade._ble_lifecycle_lock:
+        key = (address_key, generation)
+        previous = facade._ble_teardown_unresolved_by_generation.get(key, 0)
+        if previous <= 1:
+            facade._ble_teardown_unresolved_by_generation.pop(key, None)
+        else:
+            facade._ble_teardown_unresolved_by_generation[key] = previous - 1
+
+        current_generation = facade._ble_generation_by_address.get(address_key, 0)
+        stale_generation = current_generation != generation
+
+        for (
+            entry_address,
+            _,
+        ), count in facade._ble_teardown_unresolved_by_generation.items():
+            if entry_address == address_key:
+                remaining_for_address += count
+
+    return remaining_for_address, stale_generation
+
+
+def _get_ble_unresolved_teardown_generations(
+    ble_address: str,
+) -> list[tuple[int, int]]:
+    """Return unresolved teardown worker counts as (generation, count)."""
+    address_key = _sanitize_ble_address(ble_address)
+    if not address_key:
+        return []
+    with facade._ble_lifecycle_lock:
+        pending = [
+            (generation, count)
+            for (
+                entry_address,
+                generation,
+            ), count in facade._ble_teardown_unresolved_by_generation.items()
+            if entry_address == address_key and count > 0
+        ]
+    pending.sort(key=lambda item: item[0])
+    return pending
 
 
 def _validate_ble_connection_address(interface: Any, expected_address: str) -> bool:
@@ -593,7 +803,13 @@ def _disconnect_ble_by_address(address: str) -> None:
         )
 
 
-def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
+def _disconnect_ble_interface(
+    iface: Any,
+    reason: str = "disconnect",
+    *,
+    ble_address: str | None = None,
+    generation: int | None = None,
+) -> None:
     """
     Tear down a BLE interface and release its underlying Bluetooth resources.
 
@@ -606,6 +822,27 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
     """
     if iface is None:
         return
+
+    iface_id = id(iface)
+    resolved_address, mapped_generation = facade._get_ble_iface_generation(
+        iface,
+        fallback_address=ble_address,
+    )
+    if generation is None:
+        generation = mapped_generation
+    if generation is None and resolved_address is not None:
+        generation = facade._get_ble_generation(resolved_address)
+
+    client_obj = getattr(iface, "client", None)
+    client_id = id(client_obj) if client_obj is not None else None
+    facade.logger.debug(
+        "Starting BLE teardown reason=%s address=%s generation=%s iface_id=%s client_id=%s",
+        reason,
+        resolved_address,
+        generation,
+        iface_id,
+        client_id,
+    )
 
     # Pre-disconnect delay to allow pending notifications to complete
     # This helps prevent "Unexpected EOF on notification file handle" errors
@@ -656,6 +893,10 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                             timeout=3.0,
                             label=f"ble-interface-disconnect-{reason}",
                             timeout_log_level=timeout_log_level,
+                            ble_address=resolved_address,
+                            ble_generation=generation,
+                            iface_id=iface_id,
+                            client_id=client_id,
                         )
                     # Give the adapter time to complete the disconnect
                     facade.time.sleep(1.0)
@@ -732,6 +973,12 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                             timeout=2.0,
                             label=f"ble-client-disconnect-{reason}",
                             timeout_log_level=timeout_log_level,
+                            ble_address=resolved_address,
+                            ble_generation=generation,
+                            iface_id=iface_id,
+                            client_id=(
+                                id(client_obj) if client_obj is not None else client_id
+                            ),
                         )
                     facade.time.sleep(1.0)
                     facade.logger.debug(
@@ -774,11 +1021,20 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                 timeout=5.0,
                 label=f"ble-interface-close-{reason}",
                 timeout_log_level=timeout_log_level,
+                ble_address=resolved_address,
+                ble_generation=generation,
+                iface_id=iface_id,
+                client_id=(
+                    id(getattr(iface, "client", None))
+                    if getattr(iface, "client", None) is not None
+                    else client_id
+                ),
             )
     except TimeoutError as exc:
         facade.logger.debug("BLE interface %s timed out: %s", reason, exc)
     except Exception as e:  # noqa: BLE001 - cleanup must not block shutdown
         facade.logger.debug(f"Error during BLE interface {reason}", exc_info=e)
     finally:
+        facade._discard_ble_iface_generation(iface)
         # Small delay to ensure the adapter has fully released the connection
         facade.time.sleep(0.5)

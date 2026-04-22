@@ -591,6 +591,7 @@ def _connect_meshtastic_impl(
     ):
         # Initialize before try block to avoid unbound variable errors
         ble_address: str | None = None
+        connect_generation: int | None = None
         supports_auto_reconnect = False
         fallback_to_compat_mode = False
         ble_connect_timeout_logged_for_attempt = False
@@ -628,7 +629,16 @@ def _connect_meshtastic_impl(
                 # BLE connection
                 ble_address = facade.config["meshtastic"].get(CONFIG_KEY_BLE_ADDRESS)
                 if ble_address:
+                    connect_generation = facade._advance_ble_generation(
+                        ble_address,
+                        transition="connect-attempt",
+                    )
                     facade.logger.info(f"Connecting to BLE address {ble_address}")
+                    facade.logger.debug(
+                        "BLE connect attempt generation=%s address=%s",
+                        connect_generation,
+                        ble_address,
+                    )
 
                     iface = None
                     supports_auto_reconnect = False
@@ -655,6 +665,24 @@ def _connect_meshtastic_impl(
                             facade.meshtastic_iface = None
 
                         if facade.meshtastic_iface is None:
+                            unresolved_teardown = (
+                                facade._get_ble_unresolved_teardown_generations(
+                                    ble_address
+                                )
+                            )
+                            if unresolved_teardown:
+                                facade.logger.warning(
+                                    "Blocking BLE interface creation for %s generation=%s "
+                                    "due to unresolved teardown workers=%s",
+                                    ble_address,
+                                    connect_generation,
+                                    unresolved_teardown,
+                                )
+                                raise TimeoutError(
+                                    "BLE teardown still unresolved for "
+                                    f"{ble_address}; waiting before new interface creation."
+                                )
+
                             # Disconnect any stale BlueZ connection before creating new interface
                             facade._disconnect_ble_by_address(ble_address)
 
@@ -839,8 +867,34 @@ def _connect_meshtastic_impl(
                                         raise RuntimeError(
                                             "BLE interface creation returned no interface"
                                         )
+                                    if connect_generation is not None:
+                                        facade._register_ble_iface_generation(
+                                            facade.meshtastic_iface,
+                                            ble_address,
+                                            connect_generation,
+                                        )
                                     facade.logger.debug(
-                                        f"BLE interface created successfully for {ble_address}"
+                                        "BLE interface created successfully for %s "
+                                        "(generation=%s iface_id=%s client_id=%s)",
+                                        ble_address,
+                                        connect_generation,
+                                        id(facade.meshtastic_iface),
+                                        (
+                                            id(
+                                                getattr(
+                                                    facade.meshtastic_iface,
+                                                    "client",
+                                                    None,
+                                                )
+                                            )
+                                            if getattr(
+                                                facade.meshtastic_iface,
+                                                "client",
+                                                None,
+                                            )
+                                            is not None
+                                            else None
+                                        ),
                                     )
                                     if not fallback_to_compat_mode and hasattr(
                                         facade.meshtastic_iface, "auto_reconnect"
@@ -963,6 +1017,16 @@ def _connect_meshtastic_impl(
                                 )
 
                         iface = facade.meshtastic_iface
+                        if (
+                            iface is not None
+                            and connect_generation is not None
+                            and ble_address is not None
+                        ):
+                            facade._register_ble_iface_generation(
+                                iface,
+                                ble_address,
+                                connect_generation,
+                            )
 
                     if late_creation_disposer_future is not None:
                         facade._attach_late_ble_interface_disposer(
@@ -979,8 +1043,32 @@ def _connect_meshtastic_impl(
                         and supports_auto_reconnect
                         and hasattr(iface, "connect")
                     ):
+                        unresolved_teardown = (
+                            facade._get_ble_unresolved_teardown_generations(ble_address)
+                            if ble_address is not None
+                            else []
+                        )
+                        if unresolved_teardown:
+                            facade.logger.warning(
+                                "Blocking BLE connect() for %s generation=%s due to "
+                                "unresolved teardown workers=%s",
+                                ble_address,
+                                connect_generation,
+                                unresolved_teardown,
+                            )
+                            raise TimeoutError(
+                                f"BLE teardown still unresolved for {ble_address}; waiting before connect()."
+                            )
                         facade.logger.info(
-                            f"Initiating BLE connection to {ble_address} (sequential mode)"
+                            "Initiating BLE connection to %s (sequential mode, generation=%s, iface_id=%s, client_id=%s)",
+                            ble_address,
+                            connect_generation,
+                            id(iface),
+                            (
+                                id(getattr(iface, "client", None))
+                                if getattr(iface, "client", None) is not None
+                                else None
+                            ),
                         )
 
                         # Add timeout protection for connect() call to prevent indefinite hangs
@@ -1053,7 +1141,15 @@ def _connect_meshtastic_impl(
                                 timeout_seconds=facade.BLE_CONNECT_TIMEOUT_SECS,
                             )
                             facade.logger.info(
-                                f"BLE connection established to {ble_address}"
+                                "BLE connection established to %s (generation=%s iface_id=%s client_id=%s)",
+                                ble_address,
+                                connect_generation,
+                                id(iface),
+                                (
+                                    id(getattr(iface, "client", None))
+                                    if getattr(iface, "client", None) is not None
+                                    else None
+                                ),
                             )
                             facade.reset_executor_degraded_state(
                                 ble_address=ble_address
