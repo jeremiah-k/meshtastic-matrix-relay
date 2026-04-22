@@ -5,6 +5,10 @@ import pytest
 import mmrelay.meshtastic_utils as mu
 
 
+def _stop_retry_and_mark_shutdown(_seconds: float) -> None:
+    mu.shutting_down = True
+
+
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestGetConnectionRetryWaitTime:
     def test_zero_attempts(self):
@@ -330,12 +334,9 @@ class TestBleTeardownBarrier:
         mu.meshtastic_client = None
         mu.meshtastic_iface = None
 
-        def _stop_retry(_seconds: float) -> None:
-            mu.shutting_down = True
-
         with (
             patch.object(mu, "_disconnect_ble_by_address"),
-            patch.object(mu.time, "sleep", side_effect=_stop_retry),
+            patch.object(mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown),
             patch.object(mu.meshtastic.ble_interface, "BLEInterface") as mock_ble_ctor,
         ):
             result = _connect_meshtastic_impl()
@@ -359,12 +360,9 @@ class TestBleTeardownBarrier:
         mu.meshtastic_client = None
         mu.meshtastic_iface = None
 
-        def _stop_retry(_seconds: float) -> None:
-            mu.shutting_down = True
-
         with (
             patch.object(mu, "_disconnect_ble_by_address"),
-            patch.object(mu.time, "sleep", side_effect=_stop_retry),
+            patch.object(mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown),
             patch.object(
                 mu.meshtastic.ble_interface,
                 "BLEInterface",
@@ -399,12 +397,9 @@ class TestBleTeardownBarrier:
         mu.meshtastic_client = None
         mu.meshtastic_iface = None
 
-        def _stop_retry(_seconds: float) -> None:
-            mu.shutting_down = True
-
         with (
             patch.object(mu, "_disconnect_ble_by_address"),
-            patch.object(mu.time, "sleep", side_effect=_stop_retry),
+            patch.object(mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown),
             patch.object(
                 mu.meshtastic.ble_interface,
                 "BLEInterface",
@@ -468,9 +463,6 @@ class TestBleTeardownBarrier:
                 future.set_exception(exc)
             return future
 
-        def _stop_retry(_seconds: float) -> None:
-            mu.shutting_down = True
-
         mock_executor = MagicMock()
         mock_executor.submit.side_effect = _sync_submit
 
@@ -481,7 +473,7 @@ class TestBleTeardownBarrier:
             patch.object(mu, "_disconnect_ble_by_address"),
             patch.object(mu, "_get_ble_executor", return_value=mock_executor),
             patch.object(mu, "_disconnect_ble_interface") as mock_disconnect_iface,
-            patch.object(mu.time, "sleep", side_effect=_stop_retry),
+            patch.object(mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown),
             patch.object(
                 mu.meshtastic.ble_interface,
                 "BLEInterface",

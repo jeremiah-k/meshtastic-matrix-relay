@@ -118,6 +118,7 @@ def _attach_late_ble_interface_disposer(
             fallback_address=ble_address,
         )
         log_address = late_address or ble_address
+        late_client_obj = getattr(late_iface, "client", None)
 
         facade.logger.warning(
             "Cleaning up late BLE interface completion for %s (%s) "
@@ -126,11 +127,7 @@ def _attach_late_ble_interface_disposer(
             reason,
             late_generation,
             id(late_iface),
-            (
-                id(getattr(late_iface, "client", None))
-                if getattr(late_iface, "client", None) is not None
-                else None
-            ),
+            (id(late_client_obj) if late_client_obj is not None else None),
         )
         try:
             facade._disconnect_ble_interface(
@@ -1016,6 +1013,7 @@ def _disconnect_ble_interface(
                 if inspect.isawaitable(result):
                     facade._wait_for_result(result, timeout=5.0)
 
+            iface_client_obj = getattr(iface, "client", None)
             facade._run_blocking_with_timeout(
                 _close_sync,
                 timeout=5.0,
@@ -1025,9 +1023,7 @@ def _disconnect_ble_interface(
                 ble_generation=generation,
                 iface_id=iface_id,
                 client_id=(
-                    id(getattr(iface, "client", None))
-                    if getattr(iface, "client", None) is not None
-                    else client_id
+                    id(iface_client_obj) if iface_client_obj is not None else client_id
                 ),
             )
     except TimeoutError as exc:

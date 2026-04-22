@@ -1064,14 +1064,15 @@ def _connect_meshtastic_impl(
                             raise TimeoutError(
                                 f"BLE teardown still unresolved for {ble_address}; waiting before connect()."
                             )
+                        iface_client_obj = getattr(iface, "client", None)
                         facade.logger.info(
                             "Initiating BLE connection to %s (sequential mode, generation=%s, iface_id=%s, client_id=%s)",
                             ble_address,
                             connect_generation,
                             id(iface),
                             (
-                                id(getattr(iface, "client", None))
-                                if getattr(iface, "client", None) is not None
+                                id(iface_client_obj)
+                                if iface_client_obj is not None
                                 else None
                             ),
                         )
@@ -1145,14 +1146,15 @@ def _connect_meshtastic_impl(
                                 connect_future,
                                 timeout_seconds=facade.BLE_CONNECT_TIMEOUT_SECS,
                             )
+                            connected_client_obj = getattr(iface, "client", None)
                             facade.logger.info(
                                 "BLE connection established to %s (generation=%s iface_id=%s client_id=%s)",
                                 ble_address,
                                 connect_generation,
                                 id(iface),
                                 (
-                                    id(getattr(iface, "client", None))
-                                    if getattr(iface, "client", None) is not None
+                                    id(connected_client_obj)
+                                    if connected_client_obj is not None
                                     else None
                                 ),
                             )
