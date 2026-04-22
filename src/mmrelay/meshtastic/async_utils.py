@@ -324,8 +324,49 @@ def _run_blocking_with_timeout(
     """
     done_event = threading.Event()
     timed_out_event = threading.Event()
+    teardown_timeout_recorded_event = threading.Event()
+    teardown_timeout_resolved_event = threading.Event()
+    teardown_timeout_resolution_lock = threading.Lock()
     action_error: Exception | None = None
     worker_started_at = facade.time.monotonic()
+    resolved_stale_generation: bool | None = None
+    resolved_remaining_unresolved: int | None = None
+
+    def _resolve_recorded_teardown_timeout_once() -> None:
+        """
+        Resolve a previously-recorded teardown timeout at most once.
+
+        Worker and caller timeout paths can both attempt to resolve. Guard with a
+        lock+event so unresolved teardown bookkeeping remains consistent.
+        """
+
+        nonlocal resolved_stale_generation
+        nonlocal resolved_remaining_unresolved
+
+        if not teardown_timeout_recorded_event.is_set():
+            return
+        if not (ble_address and ble_generation is not None and ble_generation > 0):
+            return
+
+        resolve_teardown_timeout = getattr(
+            facade,
+            "_resolve_ble_teardown_timeout",
+            None,
+        )
+        if not callable(resolve_teardown_timeout):
+            return
+
+        with teardown_timeout_resolution_lock:
+            if teardown_timeout_resolved_event.is_set():
+                return
+            (
+                resolved_remaining_unresolved,
+                resolved_stale_generation,
+            ) = resolve_teardown_timeout(
+                ble_address,
+                ble_generation,
+            )
+            teardown_timeout_resolved_event.set()
 
     def _runner() -> None:
         """
@@ -341,31 +382,24 @@ def _run_blocking_with_timeout(
         finally:
             done_event.set()
             if timed_out_event.is_set():
-                stale_generation: bool | None = None
-                remaining_unresolved: int | None = None
-                if ble_address and ble_generation is not None and ble_generation > 0:
-                    resolve_teardown_timeout = getattr(
+                _resolve_recorded_teardown_timeout_once()
+                stale_generation_for_log = resolved_stale_generation
+                remaining_unresolved_for_log = resolved_remaining_unresolved
+                if (
+                    stale_generation_for_log is None
+                    and ble_address
+                    and ble_generation is not None
+                    and ble_generation > 0
+                ):
+                    is_generation_stale = getattr(
                         facade,
-                        "_resolve_ble_teardown_timeout",
+                        "_is_ble_generation_stale",
                         None,
                     )
-                    if callable(resolve_teardown_timeout):
-                        remaining_unresolved, stale_generation = (
-                            resolve_teardown_timeout(
-                                ble_address,
-                                ble_generation,
-                            )
+                    if callable(is_generation_stale):
+                        stale_generation_for_log = bool(
+                            is_generation_stale(ble_address, ble_generation)
                         )
-                    else:
-                        is_generation_stale = getattr(
-                            facade,
-                            "_is_ble_generation_stale",
-                            None,
-                        )
-                        if callable(is_generation_stale):
-                            stale_generation = bool(
-                                is_generation_stale(ble_address, ble_generation)
-                            )
                 worker_elapsed = max(
                     0.0,
                     facade.time.monotonic() - worker_started_at,
@@ -381,8 +415,8 @@ def _run_blocking_with_timeout(
                     ble_generation,
                     iface_id,
                     client_id,
-                    stale_generation,
-                    remaining_unresolved,
+                    stale_generation_for_log,
+                    remaining_unresolved_for_log,
                 )
 
     thread = threading.Thread(
@@ -404,7 +438,6 @@ def _run_blocking_with_timeout(
     )
     thread.start()
     if not done_event.wait(timeout=timeout):
-        timed_out_event.set()
         elapsed = max(0.0, facade.time.monotonic() - worker_started_at)
         unresolved_generation_workers: int | None = None
         if ble_address and ble_generation is not None and ble_generation > 0:
@@ -418,6 +451,13 @@ def _run_blocking_with_timeout(
                     ble_address,
                     ble_generation,
                 )
+                if unresolved_generation_workers > 0:
+                    teardown_timeout_recorded_event.set()
+        timed_out_event.set()
+        if done_event.is_set():
+            # Worker can finish after timeout expiry but before timeout signaling.
+            # Resolve now so we don't leave a stale unresolved teardown entry.
+            _resolve_recorded_teardown_timeout_once()
         if timeout_log_level is not None:
             facade.logger.log(
                 timeout_log_level,

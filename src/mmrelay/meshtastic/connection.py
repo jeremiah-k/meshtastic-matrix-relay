@@ -1056,6 +1056,11 @@ def _connect_meshtastic_impl(
                                 connect_generation,
                                 unresolved_teardown,
                             )
+                            # This barrier can trigger after publishing the interface
+                            # singleton but before connect(). Hand ownership to the
+                            # shared rollback path so teardown always clears the
+                            # published interface and generation registration.
+                            client = iface
                             raise TimeoutError(
                                 f"BLE teardown still unresolved for {ble_address}; waiting before connect()."
                             )
