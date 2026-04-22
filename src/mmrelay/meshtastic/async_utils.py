@@ -356,13 +356,17 @@ def _run_blocking_with_timeout(
         if not callable(resolve_teardown_timeout):
             return
 
+        resolve_teardown_timeout_fn = cast(
+            Callable[[str, int], tuple[int, bool]],
+            resolve_teardown_timeout,
+        )
         with teardown_timeout_resolution_lock:
             if teardown_timeout_resolved_event.is_set():
                 return
             (
                 resolved_remaining_unresolved,
                 resolved_stale_generation,
-            ) = resolve_teardown_timeout(
+            ) = resolve_teardown_timeout_fn(
                 ble_address,
                 ble_generation,
             )
@@ -447,11 +451,16 @@ def _run_blocking_with_timeout(
                 None,
             )
             if callable(record_teardown_timeout):
-                unresolved_generation_workers = record_teardown_timeout(
+                record_teardown_timeout_fn = cast(
+                    Callable[[str, int], int],
+                    record_teardown_timeout,
+                )
+                recorded_unresolved_count = record_teardown_timeout_fn(
                     ble_address,
                     ble_generation,
                 )
-                if unresolved_generation_workers > 0:
+                unresolved_generation_workers = recorded_unresolved_count
+                if recorded_unresolved_count > 0:
                     teardown_timeout_recorded_event.set()
         timed_out_event.set()
         if done_event.is_set():

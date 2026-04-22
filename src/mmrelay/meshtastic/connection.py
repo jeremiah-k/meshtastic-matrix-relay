@@ -602,7 +602,7 @@ def _connect_meshtastic_impl(
         signal_startup_drain_complete_for_this_connect = False
         client_assigned_for_this_connect = False
 
-        client = None
+        client: Any | None = None
         try:
             if connection_type == CONNECTION_TYPE_SERIAL:
                 # Serial connection
