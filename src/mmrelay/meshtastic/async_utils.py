@@ -299,6 +299,11 @@ def _run_blocking_with_timeout(
     timeout: float,
     label: str,
     timeout_log_level: int | None = logging.WARNING,
+    *,
+    ble_address: str | None = None,
+    ble_generation: int | None = None,
+    iface_id: int | None = None,
+    client_id: int | None = None,
 ) -> None:
     """
     Run a blocking callable in a daemon thread with a timeout to avoid hangs.
@@ -318,7 +323,54 @@ def _run_blocking_with_timeout(
         Exception: Any exception raised by the action is re-raised.
     """
     done_event = threading.Event()
+    timed_out_event = threading.Event()
+    teardown_timeout_recorded_event = threading.Event()
+    teardown_timeout_resolved_event = threading.Event()
+    teardown_timeout_resolution_lock = threading.Lock()
     action_error: Exception | None = None
+    worker_started_at = facade.time.monotonic()
+    resolved_stale_generation: bool | None = None
+    resolved_remaining_unresolved: int | None = None
+
+    def _resolve_recorded_teardown_timeout_once() -> None:
+        """
+        Resolve a previously-recorded teardown timeout at most once.
+
+        Worker and caller timeout paths can both attempt to resolve. Guard with a
+        lock+event so unresolved teardown bookkeeping remains consistent.
+        """
+
+        nonlocal resolved_stale_generation
+        nonlocal resolved_remaining_unresolved
+
+        if not teardown_timeout_recorded_event.is_set():
+            return
+        if not (ble_address and ble_generation is not None and ble_generation > 0):
+            return
+
+        resolve_teardown_timeout = getattr(
+            facade,
+            "_resolve_ble_teardown_timeout",
+            None,
+        )
+        if not callable(resolve_teardown_timeout):
+            return
+
+        resolve_teardown_timeout_fn = cast(
+            Callable[[str, int], tuple[int, bool]],
+            resolve_teardown_timeout,
+        )
+        with teardown_timeout_resolution_lock:
+            if teardown_timeout_resolved_event.is_set():
+                return
+            (
+                resolved_remaining_unresolved,
+                resolved_stale_generation,
+            ) = resolve_teardown_timeout_fn(
+                ble_address,
+                ble_generation,
+            )
+            teardown_timeout_resolved_event.set()
 
     def _runner() -> None:
         """
@@ -333,17 +385,103 @@ def _run_blocking_with_timeout(
             action_error = exc
         finally:
             done_event.set()
+            if timed_out_event.is_set():
+                _resolve_recorded_teardown_timeout_once()
+                stale_generation_for_log = resolved_stale_generation
+                remaining_unresolved_for_log = resolved_remaining_unresolved
+                if (
+                    stale_generation_for_log is None
+                    and ble_address
+                    and ble_generation is not None
+                    and ble_generation > 0
+                ):
+                    is_generation_stale = getattr(
+                        facade,
+                        "_is_ble_generation_stale",
+                        None,
+                    )
+                    if callable(is_generation_stale):
+                        stale_generation_for_log = bool(
+                            is_generation_stale(ble_address, ble_generation)
+                        )
+                worker_elapsed = max(
+                    0.0,
+                    facade.time.monotonic() - worker_started_at,
+                )
+                facade.logger.warning(
+                    "Blocking worker completed after caller timeout: label=%s "
+                    "thread=%s elapsed=%.3fs address=%s generation=%s iface_id=%s "
+                    "client_id=%s stale_generation=%s remaining_unresolved=%s",
+                    label,
+                    threading.current_thread().name,
+                    worker_elapsed,
+                    ble_address,
+                    ble_generation,
+                    iface_id,
+                    client_id,
+                    stale_generation_for_log,
+                    remaining_unresolved_for_log,
+                )
 
     thread = threading.Thread(
         target=_runner,
         name=f"mmrelay-blocking-{label}",
         daemon=True,
     )
+    facade.logger.debug(
+        "Starting blocking worker label=%s thread=%s timeout=%.1fs address=%s "
+        "generation=%s iface_id=%s client_id=%s start_monotonic=%.6f",
+        label,
+        thread.name,
+        timeout,
+        ble_address,
+        ble_generation,
+        iface_id,
+        client_id,
+        worker_started_at,
+    )
     thread.start()
     if not done_event.wait(timeout=timeout):
+        elapsed = max(0.0, facade.time.monotonic() - worker_started_at)
+        unresolved_generation_workers: int | None = None
+        if ble_address and ble_generation is not None and ble_generation > 0:
+            record_teardown_timeout = getattr(
+                facade,
+                "_record_ble_teardown_timeout",
+                None,
+            )
+            if callable(record_teardown_timeout):
+                record_teardown_timeout_fn = cast(
+                    Callable[[str, int], int],
+                    record_teardown_timeout,
+                )
+                recorded_unresolved_count = record_teardown_timeout_fn(
+                    ble_address,
+                    ble_generation,
+                )
+                unresolved_generation_workers = recorded_unresolved_count
+                if recorded_unresolved_count > 0:
+                    teardown_timeout_recorded_event.set()
+        timed_out_event.set()
+        if done_event.is_set():
+            # Worker can finish after timeout expiry but before timeout signaling.
+            # Resolve now so we don't leave a stale unresolved teardown entry.
+            _resolve_recorded_teardown_timeout_once()
         if timeout_log_level is not None:
             facade.logger.log(
-                timeout_log_level, "%s timed out after %.1fs", label, timeout
+                timeout_log_level,
+                "%s timed out after %.1fs (thread=%s elapsed=%.3fs address=%s "
+                "generation=%s iface_id=%s client_id=%s "
+                "unresolved_generation_workers=%s)",
+                label,
+                timeout,
+                thread.name,
+                elapsed,
+                ble_address,
+                ble_generation,
+                iface_id,
+                client_id,
+                unresolved_generation_workers,
             )
         raise TimeoutError(f"{label} timed out after {timeout:.1f}s")
     if action_error is not None:

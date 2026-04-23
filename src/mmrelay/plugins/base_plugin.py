@@ -982,20 +982,20 @@ class BasePlugin(ABC):
             parsed = self.get_matching_matrix_command_with_args(event)
             if parsed is None:
                 return None
-            parsed_command, parsed_args = parsed
-            if parsed_command.casefold() != command.casefold():
+            matched_command, parsed_args = parsed
+            if matched_command.casefold() != command.casefold():
                 return None
             return parsed_args
 
         if not isinstance(text, str):
             return None
 
-        parsed = _parse_matrix_message_command(
+        parsed_message = _parse_matrix_message_command(
             text,
             (command,),
             require_mention=self.get_require_bot_mention(),
         )
-        return parsed.args if parsed is not None else None
+        return parsed_message.args if parsed_message is not None else None
 
     def parse_mesh_bang_command(
         self, text: str, commands: Iterable[str], *, allow_anywhere: bool = False

@@ -281,6 +281,11 @@ _ble_future_timeout_secs: float | None = None
 _ble_timeout_counts: dict[str, int] = {}
 _ble_executor_orphaned_workers_by_address: dict[str, int] = {}
 _ble_timeout_lock = threading.Lock()
+# BLE lifecycle ownership state (per sanitized BLE address).
+_ble_lifecycle_lock = threading.Lock()
+_ble_generation_by_address: dict[str, int] = {}
+_ble_iface_generation_by_id: dict[int, tuple[str, int]] = {}
+_ble_teardown_unresolved_by_generation: dict[tuple[str, int], int] = {}
 _ble_future_watchdog_secs = BLE_FUTURE_WATCHDOG_SECS
 _ble_timeout_reset_threshold = BLE_TIMEOUT_RESET_THRESHOLD
 _ble_scan_timeout_secs = BLE_SCAN_TIMEOUT_SECS
@@ -324,11 +329,21 @@ from mmrelay.meshtastic.async_utils import (
     _wait_for_result,
 )
 from mmrelay.meshtastic.ble import (
+    _advance_ble_generation,
     _attach_late_ble_interface_disposer,
+    _discard_ble_iface_generation,
     _disconnect_ble_by_address,
     _disconnect_ble_interface,
+    _extract_ble_address_from_interface,
+    _get_ble_generation,
+    _get_ble_iface_generation,
+    _get_ble_unresolved_teardown_generations,
     _is_ble_discovery_error,
     _is_ble_duplicate_connect_suppressed_error,
+    _is_ble_generation_stale,
+    _record_ble_teardown_timeout,
+    _register_ble_iface_generation,
+    _resolve_ble_teardown_timeout,
     _reset_ble_connection_gate_state,
     _sanitize_ble_address,
     _scan_for_ble_address,

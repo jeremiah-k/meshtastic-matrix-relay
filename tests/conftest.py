@@ -1154,6 +1154,15 @@ def reset_meshtastic_globals():
         "_ble_executor_orphaned_workers_by_address": dict(
             getattr(mu, "_ble_executor_orphaned_workers_by_address", None) or {}
         ),
+        "_ble_generation_by_address": dict(
+            getattr(mu, "_ble_generation_by_address", None) or {}
+        ),
+        "_ble_iface_generation_by_id": dict(
+            getattr(mu, "_ble_iface_generation_by_id", None) or {}
+        ),
+        "_ble_teardown_unresolved_by_generation": dict(
+            getattr(mu, "_ble_teardown_unresolved_by_generation", None) or {}
+        ),
         "_health_probe_request_deadlines": dict(
             getattr(mu, "_health_probe_request_deadlines", {})
         ),
@@ -1223,6 +1232,9 @@ def reset_meshtastic_globals():
     cleanup_ble_future_state(mu)
     mu._ble_timeout_counts = {}
     mu._ble_executor_orphaned_workers_by_address = {}
+    mu._ble_generation_by_address = {}
+    mu._ble_iface_generation_by_id = {}
+    mu._ble_teardown_unresolved_by_generation = {}
     mu._metadata_executor_orphaned_workers = 0
     mu._ble_executor_degraded_addresses = set()
     mu._metadata_executor_degraded = False

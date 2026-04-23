@@ -18,10 +18,10 @@ runtimes:
 # This is the section where you manage your linters. (https://docs.trunk.io/check/configuration)
 lint:
   enabled:
-    - renovate@43.136.1
+    - renovate@43.139.6
     - shellcheck@0.11.0
     - shfmt@3.6.0
-    - mypy@1.20.1
+    - mypy@1.20.2
     - pyright@1.1.409
     - dotenv-linter@4.0.0
     - hadolint@2.14.0
@@ -36,7 +36,7 @@ lint:
     - osv-scanner@2.3.5
     - prettier@3.8.3
     - ruff@0.15.11
-    - trufflehog@3.94.3
+    - trufflehog@3.95.2
     - yamllint@1.38.0
   definitions:
     - name: bandit

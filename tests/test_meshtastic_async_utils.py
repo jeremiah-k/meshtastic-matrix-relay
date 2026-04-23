@@ -1,4 +1,5 @@
 import threading
+import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from unittest.mock import patch
@@ -190,6 +191,142 @@ class TestRunBlockingWithTimeout:
         from mmrelay.meshtastic.async_utils import _run_blocking_with_timeout
 
         _run_blocking_with_timeout(lambda: None, timeout=2.0, label="test-ok")
+
+    def test_timeout_marks_unresolved_then_late_completion_clears(self):
+        from mmrelay.meshtastic.async_utils import _run_blocking_with_timeout
+
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        generation = mu._advance_ble_generation(
+            ble_address,
+            transition="test-disconnect",
+        )
+        blocker_done = threading.Event()
+        release_blocker = threading.Event()
+
+        def _blocking_action() -> None:
+            release_blocker.wait(timeout=2.0)
+            blocker_done.set()
+
+        with pytest.raises(TimeoutError):
+            _run_blocking_with_timeout(
+                _blocking_action,
+                timeout=0.05,
+                label="ble-interface-disconnect-test",
+                ble_address=ble_address,
+                ble_generation=generation,
+                iface_id=111,
+                client_id=222,
+            )
+
+        unresolved = mu._get_ble_unresolved_teardown_generations(ble_address)
+        assert unresolved == [(generation, 1)]
+
+        release_blocker.set()
+        assert blocker_done.wait(timeout=1.0)
+        for _ in range(50):
+            if not mu._get_ble_unresolved_teardown_generations(ble_address):
+                break
+            time.sleep(0.01)
+        assert mu._get_ble_unresolved_teardown_generations(ble_address) == []
+
+    def test_timeout_recording_race_does_not_leave_stale_unresolved(self):
+        from mmrelay.meshtastic.async_utils import _run_blocking_with_timeout
+
+        ble_address = "AA:00:BB:11:CC:22"
+        generation = mu._advance_ble_generation(
+            ble_address,
+            transition="test-timeout-record-race",
+        )
+        release_blocker = threading.Event()
+        blocker_done = threading.Event()
+
+        def _blocking_action() -> None:
+            release_blocker.wait(timeout=2.0)
+            blocker_done.set()
+
+        real_record_timeout = mu._record_ble_teardown_timeout
+        real_resolve_timeout = mu._resolve_ble_teardown_timeout
+
+        def _record_timeout_with_worker_finish(address: str, gen: int) -> int:
+            # While caller is still on the timeout path, let the worker finish
+            # before timeout signaling so caller-side immediate resolve is required.
+            release_blocker.set()
+            assert blocker_done.wait(timeout=1.0)
+            return real_record_timeout(address, gen)
+
+        with (
+            patch.object(
+                mu,
+                "_record_ble_teardown_timeout",
+                side_effect=_record_timeout_with_worker_finish,
+            ) as mock_record,
+            patch.object(
+                mu,
+                "_resolve_ble_teardown_timeout",
+                wraps=real_resolve_timeout,
+            ) as mock_resolve,
+            pytest.raises(TimeoutError),
+        ):
+            _run_blocking_with_timeout(
+                _blocking_action,
+                timeout=0.05,
+                label="ble-interface-disconnect-race",
+                ble_address=ble_address,
+                ble_generation=generation,
+                iface_id=5150,
+                client_id=6160,
+            )
+
+        assert mock_record.call_count == 1
+        assert mock_resolve.call_count >= 1
+        for _ in range(50):
+            if not mu._get_ble_unresolved_teardown_generations(ble_address):
+                break
+            time.sleep(0.01)
+        assert mu._get_ble_unresolved_teardown_generations(ble_address) == []
+
+    def test_late_completion_from_old_generation_is_stale(self):
+        from mmrelay.meshtastic.async_utils import _run_blocking_with_timeout
+
+        ble_address = "11:22:33:44:55:66"
+        old_generation = mu._advance_ble_generation(
+            ble_address,
+            transition="test-old-generation",
+        )
+        blocker_done = threading.Event()
+        release_blocker = threading.Event()
+
+        def _blocking_action() -> None:
+            release_blocker.wait(timeout=2.0)
+            blocker_done.set()
+
+        with pytest.raises(TimeoutError):
+            _run_blocking_with_timeout(
+                _blocking_action,
+                timeout=0.05,
+                label="ble-interface-close-test",
+                ble_address=ble_address,
+                ble_generation=old_generation,
+                iface_id=333,
+                client_id=444,
+            )
+
+        new_generation = mu._advance_ble_generation(
+            ble_address,
+            transition="test-new-connect",
+        )
+        assert new_generation > old_generation
+
+        release_blocker.set()
+        assert blocker_done.wait(timeout=1.0)
+        for _ in range(50):
+            if not mu._get_ble_unresolved_teardown_generations(ble_address):
+                break
+            time.sleep(0.01)
+
+        assert mu._get_ble_unresolved_teardown_generations(ble_address) == []
+        assert mu._get_ble_generation(ble_address) == new_generation
+        assert mu._is_ble_generation_stale(ble_address, old_generation) is True
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")

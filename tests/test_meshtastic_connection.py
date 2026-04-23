@@ -1,8 +1,16 @@
+from __future__ import annotations
+
+from concurrent.futures import Future
+from typing import Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 import mmrelay.meshtastic_utils as mu
+
+
+def _stop_retry_and_mark_shutdown(_seconds: float) -> None:
+    mu.shutting_down = True
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
@@ -307,3 +315,191 @@ class TestConnectMeshtastic:
                 "tcp",
             )
             assert mu.meshtastic_client is None
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+class TestBleTeardownBarrier:
+    def test_blocks_fresh_creation_when_teardown_unresolved(self):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        address_key = mu._sanitize_ble_address(ble_address)
+        mu._ble_generation_by_address[address_key] = 7
+        mu._ble_teardown_unresolved_by_generation[(address_key, 7)] = 1
+        mu.config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": ble_address,
+                "retries": 1,
+            }
+        }
+        mu.shutting_down = False
+        mu.reconnecting = False
+        mu.meshtastic_client = None
+        mu.meshtastic_iface = None
+
+        with (
+            patch.object(mu, "_disconnect_ble_by_address"),
+            patch.object(mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown),
+            patch.object(mu.meshtastic.ble_interface, "BLEInterface") as mock_ble_ctor,
+        ):
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        mock_ble_ctor.assert_not_called()
+
+    def test_allows_fresh_creation_after_teardown_resolves(self):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        ble_address = "11:22:33:44:55:66"
+        mu.config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": ble_address,
+                "retries": 1,
+            }
+        }
+        mu.shutting_down = False
+        mu.reconnecting = False
+        mu.meshtastic_client = None
+        mu.meshtastic_iface = None
+
+        with (
+            patch.object(mu, "_disconnect_ble_by_address"),
+            patch.object(mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown),
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=RuntimeError("creation failed"),
+            ) as mock_ble_ctor,
+        ):
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        assert mock_ble_ctor.call_count >= 1
+
+    def test_reconnect_proceeds_after_late_worker_resolution(self):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        ble_address = "22:33:44:55:66:77"
+        address_key = mu._sanitize_ble_address(ble_address)
+        mu._ble_generation_by_address[address_key] = 3
+        mu._ble_teardown_unresolved_by_generation[(address_key, 3)] = 1
+        remaining, stale = mu._resolve_ble_teardown_timeout(ble_address, 3)
+        assert remaining == 0
+        assert stale is False
+
+        mu.config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": ble_address,
+                "retries": 1,
+            }
+        }
+        mu.shutting_down = False
+        mu.reconnecting = False
+        mu.meshtastic_client = None
+        mu.meshtastic_iface = None
+
+        with (
+            patch.object(mu, "_disconnect_ble_by_address"),
+            patch.object(mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown),
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=RuntimeError("creation failed"),
+            ) as mock_ble_ctor,
+        ):
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        assert mock_ble_ctor.call_count >= 1
+
+    def test_late_barrier_after_iface_creation_rolls_back_published_iface(self):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        class BleInterfaceWithConnect:
+            def __init__(  # noqa: PLR0913
+                self,
+                *,
+                address: str,
+                noProto: bool,  # noqa: N803
+                debugOut: object,  # noqa: N803
+                noNodes: bool,  # noqa: N803
+                timeout: int,
+                auto_reconnect: bool = True,
+            ) -> None:
+                _ = (noProto, debugOut, noNodes, timeout)
+                self.address = address
+                self.client = object()
+                self.auto_reconnect = auto_reconnect
+                self.connect = MagicMock()
+
+        ble_address = "44:55:66:77:88:99"
+        mu.config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": ble_address,
+                "retries": 1,
+            }
+        }
+        mu.shutting_down = False
+        mu.reconnecting = False
+        mu.meshtastic_client = None
+        mu.meshtastic_iface = None
+
+        unresolved_calls = 0
+
+        def _unresolved_teardown_for_late_barrier(
+            _address: str,
+        ) -> list[tuple[int, int]]:
+            nonlocal unresolved_calls
+            unresolved_calls += 1
+            if unresolved_calls == 1:
+                # Allow interface creation pre-check.
+                return []
+            # Block at the post-creation barrier before connect().
+            return [(1, 1)]
+
+        def _sync_submit(
+            fn: Callable[..., object], *args: object, **kwargs: object
+        ) -> Future[object]:
+            future: Future[object] = Future()
+            try:
+                future.set_result(fn(*args, **kwargs))
+            except Exception as exc:  # noqa: BLE001 - test harness helper
+                future.set_exception(exc)
+            return future
+
+        mock_executor = MagicMock()
+        mock_executor.submit.side_effect = _sync_submit
+
+        with (
+            patch.object(
+                mu, "_get_ble_unresolved_teardown_generations"
+            ) as mock_unresolved,
+            patch.object(mu, "_disconnect_ble_by_address"),
+            patch.object(mu, "_get_ble_executor", return_value=mock_executor),
+            patch.object(mu, "_disconnect_ble_interface") as mock_disconnect_iface,
+            patch.object(mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown),
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                BleInterfaceWithConnect,
+            ),
+        ):
+            mock_unresolved.side_effect = _unresolved_teardown_for_late_barrier
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        assert unresolved_calls >= 2
+        assert mock_disconnect_iface.call_count == 1
+        disconnected_iface = mock_disconnect_iface.call_args.args[0]
+        assert disconnected_iface is not None
+        assert disconnected_iface.address == ble_address
+        assert (
+            mock_disconnect_iface.call_args.kwargs["reason"] == "connect setup failed"
+        )
+        assert disconnected_iface.connect.call_count == 0
+        assert mu.meshtastic_iface is None
+        assert mu.meshtastic_client is None

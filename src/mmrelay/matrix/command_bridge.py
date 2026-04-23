@@ -352,6 +352,8 @@ def _parse_matrix_message_command(
         return None
 
     if require_mention:
+        if bot_mxid is None:
+            return None
         # Pass 1: require exact MXID mention semantics across all body variants.
         # This tier includes plain-body MXID prefixes and formatted-body mention
         # pills that normalize to MXID prefixes.
