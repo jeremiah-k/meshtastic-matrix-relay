@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import Future
 from typing import Callable
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
@@ -315,6 +315,238 @@ class TestConnectMeshtastic:
                 "tcp",
             )
             assert mu.meshtastic_client is None
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+class TestTypedBleRetryHandling:
+    def _configure_ble(self) -> str:
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        mu.config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": ble_address,
+                "retries": 1,
+            }
+        }
+        mu.shutting_down = False
+        mu.reconnecting = False
+        mu.meshtastic_client = None
+        mu.meshtastic_iface = None
+        return ble_address
+
+    def test_address_mismatch_does_not_retry(self, monkeypatch):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        class FakeAddressMismatchError(Exception):
+            pass
+
+        self._configure_ble()
+        monkeypatch.setattr(mu, "BLEAddressMismatchError", FakeAddressMismatchError)
+
+        with (
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=FakeAddressMismatchError("expected AA got BB"),
+            ),
+            patch.object(
+                mu,
+                "_rollback_connect_attempt_state",
+                wraps=mu._rollback_connect_attempt_state,
+            ) as mock_rollback,
+            patch.object(mu.time, "sleep") as mock_sleep,
+        ):
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        assert mock_rollback.called
+        mock_sleep.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "attr_name", ["BLEDiscoveryError", "BLEDeviceNotFoundError"]
+    )
+    def test_discovery_errors_retry_with_backoff(self, monkeypatch, attr_name):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        class FakeDiscoveryError(Exception):
+            pass
+
+        self._configure_ble()
+        monkeypatch.setattr(mu, attr_name, FakeDiscoveryError)
+
+        with (
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=FakeDiscoveryError("not found"),
+            ),
+            patch.object(
+                mu,
+                "_rollback_connect_attempt_state",
+                wraps=mu._rollback_connect_attempt_state,
+            ) as mock_rollback,
+            patch.object(
+                mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown
+            ) as mock_sleep,
+        ):
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        assert mock_rollback.called
+        assert mock_sleep.called
+
+    def test_connection_timeout_error_uses_timeout_backoff(self, monkeypatch):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        class FakeConnectionTimeoutError(Exception):
+            pass
+
+        self._configure_ble()
+        monkeypatch.setattr(mu, "BLEConnectionTimeoutError", FakeConnectionTimeoutError)
+
+        with (
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=FakeConnectionTimeoutError("library timeout"),
+            ),
+            patch.object(
+                mu,
+                "_rollback_connect_attempt_state",
+                wraps=mu._rollback_connect_attempt_state,
+            ) as mock_rollback,
+            patch.object(
+                mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown
+            ) as mock_sleep,
+            patch.object(mu, "logger") as mock_logger,
+        ):
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        assert mock_rollback.called
+        assert mock_sleep.called
+        mock_logger.warning.assert_any_call("BLE library timeout: %s", ANY)
+
+    def test_dbus_transport_error_retries_and_logs_diagnostics(self, monkeypatch):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        class FakeDBusTransportError(Exception):
+            dbus_error_name = "org.bluez.Error.Failed"
+            dbus_error_body = "busy"
+
+            def __str__(self) -> str:
+                return "normalized dbus message"
+
+        self._configure_ble()
+        monkeypatch.setattr(mu, "BLEDBusTransportError", FakeDBusTransportError)
+
+        with (
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=FakeDBusTransportError(),
+            ),
+            patch.object(
+                mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown
+            ) as mock_sleep,
+            patch.object(mu, "logger") as mock_logger,
+        ):
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        assert mock_sleep.called
+        mock_logger.warning.assert_any_call(
+            "BLE DBus transport error: %s",
+            ANY,
+        )
+        mock_logger.debug.assert_any_call(
+            "BLE DBus diagnostics name=%r body=%r",
+            "org.bluez.Error.Failed",
+            "busy",
+        )
+
+    def test_connection_suppressed_error_resets_gate_and_retries(self, monkeypatch):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        class FakeConnectionSuppressedError(Exception):
+            pass
+
+        self._configure_ble()
+        monkeypatch.setattr(
+            mu,
+            "BLEConnectionSuppressedError",
+            FakeConnectionSuppressedError,
+        )
+
+        with (
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=FakeConnectionSuppressedError("suppressed"),
+            ),
+            patch.object(
+                mu, "_reset_ble_connection_gate_state", return_value=True
+            ) as mock_reset,
+            patch.object(
+                mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown
+            ) as mock_sleep,
+        ):
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        mock_reset.assert_called_once()
+        assert mock_sleep.called
+
+    def test_modern_mode_skips_preconnect_cleanup(self, monkeypatch):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        class FakeMeshtasticBLEError(Exception):
+            pass
+
+        self._configure_ble()
+        monkeypatch.setattr(mu, "MeshtasticBLEError", FakeMeshtasticBLEError)
+
+        with (
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=RuntimeError("creation failed"),
+            ),
+            patch.object(mu, "_disconnect_ble_by_address") as mock_disconnect,
+            patch.object(mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown),
+        ):
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        mock_disconnect.assert_not_called()
+
+    def test_legacy_mode_keeps_preconnect_cleanup(self, monkeypatch):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        self._configure_ble()
+        for attr_name in (
+            "MeshtasticBLEError",
+            "BLEDiscoveryError",
+            "BLEConnectionTimeoutError",
+            "BLEConnectionSuppressedError",
+            "BLEAddressMismatchError",
+            "BLEDBusTransportError",
+        ):
+            monkeypatch.setattr(mu, attr_name, None)
+
+        with (
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=RuntimeError("creation failed"),
+            ),
+            patch.object(mu, "_disconnect_ble_by_address") as mock_disconnect,
+            patch.object(mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown),
+        ):
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        mock_disconnect.assert_called_once()
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")

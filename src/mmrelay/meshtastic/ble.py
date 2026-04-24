@@ -2,6 +2,7 @@ import atexit
 import contextlib
 import inspect
 import logging
+import re
 from concurrent.futures import Future
 from typing import Any, Awaitable, Callable, Coroutine, cast
 
@@ -37,6 +38,10 @@ def _is_ble_duplicate_connect_suppressed_error(exc: BaseException) -> bool:
     This targets forked meshtastic BLE gate errors such as:
     "Connection suppressed: recently connected elsewhere".
     """
+    suppressed_error = facade.BLEConnectionSuppressedError
+    if isinstance(suppressed_error, type) and isinstance(exc, suppressed_error):
+        return True
+
     message = str(exc).strip().lower()
     if not message:
         return False
@@ -248,6 +253,30 @@ def _is_ble_discovery_error(error: Exception) -> bool:
     Returns:
         True if the exception indicates a BLE discovery or connection completion failure, False otherwise.
     """
+    discovery_types = tuple(
+        candidate
+        for candidate in (
+            facade.BLEDiscoveryError,
+            facade.BLEDeviceNotFoundError,
+        )
+        if isinstance(candidate, type)
+    )
+    if discovery_types and isinstance(error, discovery_types):
+        return True
+
+    non_discovery_types = tuple(
+        candidate
+        for candidate in (
+            facade.BLEConnectionTimeoutError,
+            facade.BLEConnectionSuppressedError,
+            facade.BLEAddressMismatchError,
+            facade.BLEDBusTransportError,
+        )
+        if isinstance(candidate, type)
+    )
+    if non_discovery_types and isinstance(error, non_discovery_types):
+        return False
+
     message = str(error)
     if "No Meshtastic BLE peripheral" in message:
         return True
@@ -304,7 +333,19 @@ def _sanitize_ble_address(address: str) -> str:
     """
     if not address:
         return address
+    if callable(facade.sanitize_address):
+        try:
+            sanitized = facade.sanitize_address(address)
+        except Exception:  # noqa: BLE001 - fallback keeps legacy behavior
+            sanitized = None
+        if isinstance(sanitized, str) and sanitized:
+            return sanitized
     return address.replace("-", "").replace("_", "").replace(":", "").lower()
+
+
+def _is_ble_mac_like(value: str) -> bool:
+    """Return whether a sanitized value looks like a 12-hex BLE MAC address."""
+    return bool(re.fullmatch(r"[0-9a-f]{12}", value.lower()))
 
 
 def _extract_ble_address_from_interface(iface: Any) -> str | None:
@@ -313,6 +354,13 @@ def _extract_ble_address_from_interface(iface: Any) -> str | None:
         return None
 
     candidates: list[str | None] = []
+    for attr_name in ("bleAddress", "ble_address"):
+        attr_value = getattr(iface, attr_name, None)
+        if isinstance(attr_value, str):
+            sanitized = _sanitize_ble_address(attr_value)
+            if _is_ble_mac_like(sanitized):
+                return sanitized.lower()
+
     iface_address = getattr(iface, "address", None)
     if isinstance(iface_address, str):
         candidates.append(iface_address)
@@ -330,8 +378,8 @@ def _extract_ble_address_from_interface(iface: Any) -> str | None:
 
     for candidate in candidates:
         sanitized = _sanitize_ble_address(candidate or "")
-        if sanitized:
-            return sanitized
+        if _is_ble_mac_like(sanitized):
+            return sanitized.lower()
     return None
 
 
@@ -497,9 +545,11 @@ def _validate_ble_connection_address(interface: Any, expected_address: str) -> b
 
     Compares the configured address to the interface's connected address after normalizing
     (both addresses have separators removed and are lowercased). Works with both the
-    official and forked Meshtastic interface shapes by attempting common attribute paths.
-    This is a best-effort check: if the connected address cannot be determined the
-    function returns `True` to avoid false negatives; it returns `False` only when a
+    official and forked Meshtastic interface shapes by attempting common attribute
+    paths. This is a legacy dual-library guard; modern mtjk should normally raise
+    BLEAddressMismatchError earlier during explicit-address connection setup. This is
+    a best-effort check: if the connected address cannot be determined the function
+    returns `True` to avoid false negatives; it returns `False` only when a
     determinate mismatch is detected.
 
     Parameters:
@@ -544,8 +594,8 @@ def _validate_ble_connection_address(interface: Any, expected_address: str) -> b
         else:
             facade.logger.error(
                 f"BLE CONNECTION VALIDATION FAILED: Connected to {actual_address} "
-                f"but expected {expected_address}. This could be caused by "
-                "substring matching in device discovery selecting wrong device. "
+                f"but expected {expected_address}. Modern mtjk should normally "
+                "raise BLEAddressMismatchError before this legacy guard. "
                 "Disconnecting to prevent misconfiguration."
             )
             return False
@@ -853,6 +903,24 @@ def _disconnect_ble_interface(
     retry_log = facade.logger.debug if reason == "shutdown" else facade.logger.warning
     final_log = facade.logger.debug if reason == "shutdown" else facade.logger.error
 
+    def _is_unexpected_keyword_error(exc: TypeError) -> bool:
+        message = str(exc).lower()
+        return "unexpected keyword" in message or "got an unexpected keyword" in message
+
+    def _call_interface_method_with_optional_timeout(
+        method: Callable[..., Any],
+        timeout: float,
+    ) -> bool:
+        try:
+            result = method(timeout=timeout)
+        except TypeError as exc:
+            if _is_unexpected_keyword_error(exc):
+                return False
+            raise
+        if inspect.isawaitable(result):
+            facade._wait_for_result(result, timeout=timeout)
+        return True
+
     try:
         if hasattr(iface, "_exit_handler") and iface._exit_handler:
             # Best-effort: avoid atexit callbacks blocking shutdown when the
@@ -861,6 +929,7 @@ def _disconnect_ble_interface(
                 atexit.unregister(iface._exit_handler)
             iface._exit_handler = None
 
+        modern_disconnect_succeeded = False
         # Check if interface has a disconnect method (forked version)
         if hasattr(iface, "disconnect"):
             facade.logger.debug(f"Disconnecting BLE interface ({reason})")
@@ -870,7 +939,12 @@ def _disconnect_ble_interface(
             for attempt in range(max_disconnect_retries):
                 try:
                     disconnect_method = iface.disconnect
-                    if inspect.iscoroutinefunction(disconnect_method):
+                    if _call_interface_method_with_optional_timeout(
+                        disconnect_method,
+                        timeout=3.0,
+                    ):
+                        modern_disconnect_succeeded = True
+                    elif inspect.iscoroutinefunction(disconnect_method):
                         facade._wait_for_result(disconnect_method(), timeout=3.0)
                     else:
                         # Run sync disconnect in a daemon thread to avoid hangs.
@@ -926,7 +1000,10 @@ def _disconnect_ble_interface(
         # For BLE interfaces, explicitly disconnect the underlying BleakClient
         # to prevent stale connections in BlueZ (official library bug)
         # Check that client attribute exists AND is not None (handles forked lib close race)
-        if getattr(iface, "client", None) is not None:
+        if (
+            not modern_disconnect_succeeded
+            and getattr(iface, "client", None) is not None
+        ):
             facade.logger.debug(f"Explicitly disconnecting BLE client ({reason})")
 
             # Retry logic for client disconnect
@@ -1001,7 +1078,9 @@ def _disconnect_ble_interface(
         close_method = iface.close
         with contextlib.suppress(Exception):
             atexit.unregister(close_method)
-        if inspect.iscoroutinefunction(close_method):
+        if _call_interface_method_with_optional_timeout(close_method, timeout=5.0):
+            pass
+        elif inspect.iscoroutinefunction(close_method):
             facade._wait_for_result(close_method(), timeout=5.0)
         else:
             # Close can block indefinitely in the official library; run it in

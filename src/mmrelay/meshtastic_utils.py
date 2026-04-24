@@ -142,6 +142,44 @@ except ImportError:
     BleakDBusError = Exception  # type: ignore[misc,assignment]
     BleakError = Exception  # type: ignore[misc,assignment]
 
+MeshtasticBLEError = None
+BLEDiscoveryError = None
+BLEDeviceNotFoundError = None
+BLEConnectionTimeoutError = None
+BLEConnectionSuppressedError = None
+BLEAddressMismatchError = None
+BLEDBusTransportError = None
+sanitize_address = None
+try:
+    _ble_interface_module = importlib.import_module("meshtastic.ble_interface")
+except Exception:  # noqa: BLE001 - optional mtjk capabilities vary by install
+    _ble_interface_module = None
+if _ble_interface_module is not None:
+    MeshtasticBLEError = getattr(_ble_interface_module, "MeshtasticBLEError", None)
+    BLEDiscoveryError = getattr(_ble_interface_module, "BLEDiscoveryError", None)
+    BLEDeviceNotFoundError = getattr(
+        _ble_interface_module,
+        "BLEDeviceNotFoundError",
+        None,
+    )
+    BLEConnectionTimeoutError = getattr(
+        _ble_interface_module,
+        "BLEConnectionTimeoutError",
+        None,
+    )
+    BLEConnectionSuppressedError = getattr(
+        _ble_interface_module,
+        "BLEConnectionSuppressedError",
+        None,
+    )
+    BLEAddressMismatchError = getattr(
+        _ble_interface_module,
+        "BLEAddressMismatchError",
+        None,
+    )
+    BLEDBusTransportError = getattr(_ble_interface_module, "BLEDBusTransportError", None)
+    sanitize_address = getattr(_ble_interface_module, "sanitize_address", None)
+
 
 class BleExecutorDegradedError(Exception):
     """Raised when a BLE address has too many orphaned workers and needs manual recovery."""

@@ -7,6 +7,18 @@ import mmrelay.meshtastic_utils as mu
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestIsBleDuplicateConnectSuppressedError:
+    def test_typed_suppressed_error(self, monkeypatch):
+        from mmrelay.meshtastic.ble import _is_ble_duplicate_connect_suppressed_error
+
+        class FakeSuppressedError(Exception):
+            pass
+
+        monkeypatch.setattr(mu, "BLEConnectionSuppressedError", FakeSuppressedError)
+        assert (
+            _is_ble_duplicate_connect_suppressed_error(FakeSuppressedError("typed"))
+            is True
+        )
+
     def test_empty_message(self):
         from mmrelay.meshtastic.ble import _is_ble_duplicate_connect_suppressed_error
 
@@ -88,6 +100,33 @@ class TestAttachLateBleInterfaceDisposer:
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestSanitizeBleAddress:
+    def test_delegates_to_facade_sanitize_address(self, monkeypatch):
+        from mmrelay.meshtastic.ble import _sanitize_ble_address
+
+        sanitizer = MagicMock(return_value="facadevalue")
+        monkeypatch.setattr(mu, "sanitize_address", sanitizer)
+
+        assert _sanitize_ble_address("AA:BB") == "facadevalue"
+        sanitizer.assert_called_once_with("AA:BB")
+
+    def test_falls_back_when_facade_sanitize_address_raises(self, monkeypatch):
+        from mmrelay.meshtastic.ble import _sanitize_ble_address
+
+        monkeypatch.setattr(
+            mu,
+            "sanitize_address",
+            MagicMock(side_effect=RuntimeError("boom")),
+        )
+
+        assert _sanitize_ble_address("AA:BB_CC-DD") == "aabbccdd"
+
+    def test_falls_back_when_facade_sanitize_address_bad_return(self, monkeypatch):
+        from mmrelay.meshtastic.ble import _sanitize_ble_address
+
+        monkeypatch.setattr(mu, "sanitize_address", MagicMock(return_value=object()))
+
+        assert _sanitize_ble_address("AA:BB_CC-DD") == "aabbccdd"
+
     def test_normal_address(self):
         from mmrelay.meshtastic.ble import _sanitize_ble_address
 
@@ -116,6 +155,45 @@ class TestSanitizeBleAddress:
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestIsBleDiscoveryError:
+    def test_typed_discovery_errors(self, monkeypatch):
+        from mmrelay.meshtastic.ble import _is_ble_discovery_error
+
+        class FakeDiscoveryError(Exception):
+            pass
+
+        class FakeDeviceNotFoundError(Exception):
+            pass
+
+        monkeypatch.setattr(mu, "BLEDiscoveryError", FakeDiscoveryError)
+        monkeypatch.setattr(mu, "BLEDeviceNotFoundError", FakeDeviceNotFoundError)
+
+        assert _is_ble_discovery_error(FakeDiscoveryError("discovery")) is True
+        assert _is_ble_discovery_error(FakeDeviceNotFoundError("missing")) is True
+
+    @pytest.mark.parametrize(
+        "attr_name",
+        [
+            "BLEAddressMismatchError",
+            "BLEConnectionTimeoutError",
+            "BLEDBusTransportError",
+            "BLEConnectionSuppressedError",
+        ],
+    )
+    def test_typed_non_discovery_errors(self, monkeypatch, attr_name):
+        from mmrelay.meshtastic.ble import _is_ble_discovery_error
+
+        class FakeNonDiscoveryError(Exception):
+            pass
+
+        monkeypatch.setattr(mu, attr_name, FakeNonDiscoveryError)
+
+        assert (
+            _is_ble_discovery_error(
+                FakeNonDiscoveryError("No Meshtastic BLE peripheral")
+            )
+            is False
+        )
+
     def test_no_peripheral_message(self):
         from mmrelay.meshtastic.ble import _is_ble_discovery_error
 
@@ -194,6 +272,52 @@ class TestValidateBleConnectionAddress:
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
+class TestExtractBleAddressFromInterface:
+    def test_prefers_ble_address_properties(self):
+        from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
+
+        iface = MagicMock()
+        iface.bleAddress = "AA:BB:CC:DD:EE:FF"
+        iface.ble_address = "11:22:33:44:55:66"
+        iface.address = "Device Name"
+
+        assert _extract_ble_address_from_interface(iface) == "aabbccddeeff"
+
+    def test_uses_ble_address_shim_when_camel_missing(self):
+        from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
+
+        iface = MagicMock()
+        iface.bleAddress = None
+        iface.ble_address = "11:22:33:44:55:66"
+        iface.address = "Device Name"
+
+        assert _extract_ble_address_from_interface(iface) == "112233445566"
+
+    def test_ignores_non_mac_device_names(self):
+        from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
+
+        iface = MagicMock()
+        iface.bleAddress = "living-room-node"
+        iface.ble_address = None
+        iface.address = "another-device-name"
+        iface.client = None
+
+        assert _extract_ble_address_from_interface(iface) is None
+
+    def test_falls_back_to_client_bleak_mac(self):
+        from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
+
+        iface = MagicMock()
+        iface.bleAddress = None
+        iface.ble_address = None
+        iface.address = "device-name"
+        iface.client.address = "also-name"
+        iface.client.bleak_client.address = "22:33:44:55:66:77"
+
+        assert _extract_ble_address_from_interface(iface) == "223344556677"
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestDisconnectBleInterface:
     def test_none_iface(self):
         from mmrelay.meshtastic.ble import _disconnect_ble_interface
@@ -250,3 +374,36 @@ class TestDisconnectBleInterface:
 
         with patch.object(mu.time, "sleep"):
             _disconnect_ble_interface(iface, reason="shutdown")
+
+    def test_modern_timeout_disconnect_and_close(self):
+        from mmrelay.meshtastic.ble import _disconnect_ble_interface
+
+        iface = MagicMock()
+        iface._exit_handler = None
+        iface.client = MagicMock()
+        iface.disconnect.return_value = None
+        iface.close.return_value = None
+
+        with patch.object(mu.time, "sleep"):
+            _disconnect_ble_interface(iface, reason="test")
+
+        iface.disconnect.assert_called_once_with(timeout=3.0)
+        iface.close.assert_called_once_with(timeout=5.0)
+        iface.client.disconnect.assert_not_called()
+
+    def test_timeout_kwarg_typeerror_falls_back_to_legacy_calls(self):
+        from mmrelay.meshtastic.ble import _disconnect_ble_interface
+
+        iface = MagicMock()
+        iface._exit_handler = None
+        iface.client = None
+        iface.disconnect.side_effect = [TypeError("unexpected keyword 'timeout'"), None]
+        iface.close.side_effect = [TypeError("unexpected keyword 'timeout'"), None]
+
+        with patch.object(mu.time, "sleep"):
+            _disconnect_ble_interface(iface, reason="test")
+
+        assert iface.disconnect.call_args_list[0].kwargs == {"timeout": 3.0}
+        assert iface.disconnect.call_args_list[1].args == ()
+        assert iface.close.call_args_list[0].kwargs == {"timeout": 5.0}
+        assert iface.close.call_args_list[1].args == ()

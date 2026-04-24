@@ -23,7 +23,7 @@ classifiers = [
   "Topic :: Communications",
 ]
 dependencies = [
-  "mtjk==2.7.8.post2",
+  "mtjk @ git+https://github.com/jeremiah-k/mtjk.git@develop",
   "Pillow==12.2.0",
   "aiohttp==3.13.5",
   "matrix-nio==0.25.2",
