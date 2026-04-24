@@ -83,6 +83,7 @@ def _modern_ble_library_owns_stale_cleanup(supports_auto_reconnect: bool) -> boo
         for candidate in (
             facade.MeshtasticBLEError,
             facade.BLEDiscoveryError,
+            facade.BLEDeviceNotFoundError,
             facade.BLEConnectionTimeoutError,
             facade.BLEConnectionSuppressedError,
             facade.BLEAddressMismatchError,
