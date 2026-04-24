@@ -1,3 +1,4 @@
+from typing import NoReturn
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -315,6 +316,84 @@ class TestExtractBleAddressFromInterface:
         iface.client.bleak_client.address = "22:33:44:55:66:77"
 
         assert _extract_ble_address_from_interface(iface) == "223344556677"
+
+    def test_ignores_property_access_errors_and_continues(self):
+        from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
+
+        class RaisingProperty:
+            def __init__(self, exc: Exception) -> None:
+                self._exc = exc
+
+            def __get__(self, obj: object, type: type | None = None) -> NoReturn:
+                raise self._exc
+
+        class IfaceWithRaisingProperties:
+            bleAddress = RaisingProperty(AttributeError("no bleAddress"))
+            ble_address = "AA:BB:CC:DD:EE:FF"
+
+        iface = IfaceWithRaisingProperties()
+        assert _extract_ble_address_from_interface(iface) == "aabbccddeeff"
+
+    def test_ignores_client_property_raises_and_uses_address(self):
+        from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
+
+        class RaisingProperty:
+            def __init__(self, exc: Exception) -> None:
+                self._exc = exc
+
+            def __get__(self, obj: object, type: type | None = None) -> NoReturn:
+                raise self._exc
+
+        class IfaceWithRaisingClient:
+            bleAddress = RaisingProperty(AttributeError("no bleAddress"))
+            ble_address = RaisingProperty(AttributeError("no ble_address"))
+            address = "AA:BB:CC:DD:EE:FF"
+            client = RaisingProperty(RuntimeError("client boom"))
+
+        assert (
+            _extract_ble_address_from_interface(IfaceWithRaisingClient())
+            == "aabbccddeeff"
+        )
+
+    def test_ignores_client_address_raise_and_uses_bleak_client(self):
+        from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
+
+        class RaisingProperty:
+            def __init__(self, exc: Exception) -> None:
+                self._exc = exc
+
+            def __get__(self, obj: object, type: type | None = None) -> NoReturn:
+                raise self._exc
+
+        class BleakClient:
+            address = "22:33:44:55:66:77"
+
+        class Client:
+            address = RaisingProperty(AttributeError("no address"))
+            bleak_client = BleakClient()
+
+        class Iface:
+            bleAddress = None
+            ble_address = None
+            address = "device-name"
+            client = Client()
+
+        assert _extract_ble_address_from_interface(Iface()) == "223344556677"
+
+    def test_returns_none_when_all_available_values_are_non_mac(self):
+        from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
+
+        class Client:
+            address = "device-name"
+            bleak_client = type("BleakClient", (), {"address": "another-name"})()
+
+        class Iface:
+            bleAddress = None
+            ble_address = None
+            address = "iface-name"
+            client = Client()
+
+        assert _extract_ble_address_from_interface(Iface()) is None
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")

@@ -548,6 +548,47 @@ class TestTypedBleRetryHandling:
         assert result is None
         mock_disconnect.assert_called_once()
 
+    def test_auto_reconnect_only_still_calls_preconnect_cleanup(self, monkeypatch):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        class FakeAutoReconnectBLE:
+            def __init__(
+                self,
+                *,
+                address: str,
+                noProto: bool,
+                debugOut: object,
+                noNodes: bool,
+                timeout: int,
+                auto_reconnect: bool = True,
+            ) -> None:
+                raise RuntimeError("creation failed")
+
+        self._configure_ble()
+        for attr_name in (
+            "MeshtasticBLEError",
+            "BLEDiscoveryError",
+            "BLEConnectionTimeoutError",
+            "BLEConnectionSuppressedError",
+            "BLEAddressMismatchError",
+            "BLEDBusTransportError",
+        ):
+            monkeypatch.setattr(mu, attr_name, None)
+
+        with (
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                FakeAutoReconnectBLE,
+            ),
+            patch.object(mu, "_disconnect_ble_by_address") as mock_disconnect,
+            patch.object(mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown),
+        ):
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        mock_disconnect.assert_called_once()
+
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestBleTeardownBarrier:

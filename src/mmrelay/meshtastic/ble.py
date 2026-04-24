@@ -355,24 +355,47 @@ def _extract_ble_address_from_interface(iface: Any) -> str | None:
 
     candidates: list[str | None] = []
     for attr_name in ("bleAddress", "ble_address"):
-        attr_value = getattr(iface, attr_name, None)
+        try:
+            attr_value = getattr(iface, attr_name, None)
+        except Exception:  # noqa: BLE001 - best-effort probe  # nosec B112
+            continue
         if isinstance(attr_value, str):
             sanitized = _sanitize_ble_address(attr_value)
             if _is_ble_mac_like(sanitized):
                 return sanitized.lower()
 
-    iface_address = getattr(iface, "address", None)
+    try:
+        iface_address = getattr(iface, "address", None)
+    except Exception:  # noqa: BLE001
+        iface_address = None
     if isinstance(iface_address, str):
         candidates.append(iface_address)
 
-    client_obj = getattr(iface, "client", None)
+    client_obj = None
+    try:
+        client_obj = getattr(iface, "client", None)
+    except Exception:  # noqa: BLE001
+        client_obj = None
+
     if client_obj is not None:
-        client_address = getattr(client_obj, "address", None)
+        try:
+            client_address = getattr(client_obj, "address", None)
+        except Exception:  # noqa: BLE001
+            client_address = None
         if isinstance(client_address, str):
             candidates.append(client_address)
-        bleak_client = getattr(client_obj, "bleak_client", None)
+
+        bleak_client = None
+        try:
+            bleak_client = getattr(client_obj, "bleak_client", None)
+        except Exception:  # noqa: BLE001
+            bleak_client = None
+
         if bleak_client is not None:
-            bleak_address = getattr(bleak_client, "address", None)
+            try:
+                bleak_address = getattr(bleak_client, "address", None)
+            except Exception:  # noqa: BLE001
+                bleak_address = None
             if isinstance(bleak_address, str):
                 candidates.append(bleak_address)
 

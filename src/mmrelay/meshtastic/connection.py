@@ -77,8 +77,13 @@ def _optional_exception_tuple(*candidates: object) -> tuple[type[BaseException],
 
 
 def _modern_ble_library_owns_stale_cleanup(supports_auto_reconnect: bool) -> bool:
-    """Return whether BLE library capabilities indicate internal stale cleanup."""
-    return supports_auto_reconnect or any(
+    """Return whether BLE library capabilities indicate internal stale cleanup.
+
+    Uses typed BLE capability presence as the proxy, not auto_reconnect support.
+    When modern mtjk typed exceptions are available, the library owns targeted
+    stale BlueZ cleanup and mmrelay skips its app-level pre-cleanup.
+    """
+    return any(
         isinstance(candidate, type)
         for candidate in (
             facade.MeshtasticBLEError,

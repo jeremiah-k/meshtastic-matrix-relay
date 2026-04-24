@@ -25,7 +25,8 @@ compatible with older Meshtastic BLE implementations.
 - `mmrelay` is the top-level reconnect orchestrator.
 - `mtjk` provides BLE transport/interface behavior.
 - Capability detection is feature-based, not version-based.
-- Modern mtjk owns targeted stale BlueZ cleanup and explicit-address validation.
+- Modern mtjk owns targeted stale BlueZ cleanup when typed BLE capabilities are
+  present, and explicit-address validation.
 
 Primary integration point:
 
@@ -38,22 +39,25 @@ The gate is constructor signature introspection for
 
 ### Modern managed mode
 
-Used when `auto_reconnect` is supported:
+Used when typed BLE capabilities are present:
 
-- `mmrelay` passes `auto_reconnect=False`
+- `mmrelay` passes `auto_reconnect=False` when the constructor supports it
 - `mmrelay` owns retry/backoff sequencing
 - `mmrelay` owns executor/degraded-state/generation lifecycle, bootstrap
   sequencing, and late-future cleanup
 - explicit-address retries stay direct (no discovery scan from `mmrelay`)
 - constructor watchdog includes grace budget for staged setup behavior
-- app-level stale BlueZ pre-cleanup is skipped because mtjk performs targeted
-  cleanup internally
+- app-level stale BlueZ pre-cleanup is skipped when typed mtjk BLE exceptions
+  are present, because the library performs targeted cleanup internally
+
+`auto_reconnect` support alone does **not** mean mtjk owns stale cleanup;
+only typed BLE capability presence gates the skip.
 
 ### Legacy compatibility mode
 
-Used when `auto_reconnect` is absent or signature introspection is unavailable:
+Used when typed BLE capabilities are absent or signature introspection is unavailable:
 
-- `mmrelay` does not pass `auto_reconnect`
+- `mmrelay` does not pass `auto_reconnect` when unsupported
 - compatibility decision remains sticky for that attempt
 - `mmrelay` avoids assuming modern staged connect semantics
 - `mmrelay` keeps daemon-thread timeout wrappers and explicit stale-address
@@ -114,8 +118,8 @@ client cleanup, and daemon-thread timeout wrappers.
 
 ### Startup
 
-- Do one best-effort stale-address cleanup before creating interface in legacy
-  mode only.
+- Do one best-effort stale-address cleanup before creating interface when typed
+  BLE capabilities are absent (legacy mode only).
 - Build one interface instance per attempt.
 - Use bounded constructor timeout + watchdog.
 
