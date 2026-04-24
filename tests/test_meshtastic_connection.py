@@ -504,6 +504,15 @@ class TestTypedBleRetryHandling:
             pass
 
         self._configure_ble()
+        for attr_name in (
+            "BLEDiscoveryError",
+            "BLEDeviceNotFoundError",
+            "BLEConnectionTimeoutError",
+            "BLEConnectionSuppressedError",
+            "BLEAddressMismatchError",
+            "BLEDBusTransportError",
+        ):
+            monkeypatch.setattr(mu, attr_name, None)
         monkeypatch.setattr(mu, "MeshtasticBLEError", FakeMeshtasticBLEError)
 
         with (
@@ -552,16 +561,19 @@ class TestTypedBleRetryHandling:
         from mmrelay.meshtastic.connection import _connect_meshtastic_impl
 
         class FakeAutoReconnectBLE:
-            def __init__(
+            def __init__(  # noqa: PLR0913
                 self,
                 *,
                 address: str,
-                noProto: bool,
-                debugOut: object,
-                noNodes: bool,
+                noProto: bool,  # noqa: N803
+                debugOut: object,  # noqa: N803
+                noNodes: bool,  # noqa: N803
                 timeout: int,
                 auto_reconnect: bool = True,
             ) -> None:
+                _ = (noProto, debugOut, noNodes, timeout)
+                self.address = address
+                self.auto_reconnect = auto_reconnect
                 raise RuntimeError("creation failed")
 
         self._configure_ble()

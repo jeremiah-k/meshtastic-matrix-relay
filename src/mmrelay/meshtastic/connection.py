@@ -140,6 +140,10 @@ def _handle_typed_ble_exception_after_rollback(
 
     if isinstance(err, _optional_exception_type(facade.BLEConnectionTimeoutError)):
         facade.logger.warning("BLE library timeout: %s", err)
+        if connection_type == CONNECTION_TYPE_BLE and ble_address:
+            facade.logger.warning(
+                facade.BLE_TROUBLESHOOTING_GUIDANCE.format(ble_address=ble_address)
+            )
         attempts += 1
         if retry_limit == facade.INFINITE_RETRIES:
             timeout_attempts += 1
@@ -848,9 +852,8 @@ def _connect_meshtastic_impl(
                             facade.logger.debug(
                                 f"Creating new BLE interface for {ble_address} (sanitized: {sanitized_address})"
                             )
-                            ble_interface_cls = getattr(
-                                facade.meshtastic.ble_interface,
-                                "BLEInterface",
+                            ble_interface_cls = (
+                                facade.meshtastic.ble_interface.BLEInterface
                             )
                             # Detect whether this BLEInterface implementation supports
                             # explicit auto_reconnect control.

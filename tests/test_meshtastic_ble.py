@@ -12,7 +12,7 @@ class _RaisingProperty:
     def __init__(self, exc: Exception) -> None:
         self._exc = exc
 
-    def __get__(self, obj: object, type: type | None = None) -> NoReturn:
+    def __get__(self, obj: object, owner: type | None = None) -> NoReturn:
         raise self._exc
 
 
