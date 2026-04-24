@@ -4,8 +4,8 @@
 
 `mmrelay` currently supports two Meshtastic BLE interface contracts:
 
-1. Modern mtjk-style BLE interface (supports `auto_reconnect` constructor kwarg)
-2. Legacy upstream-style BLE interface (no `auto_reconnect` kwarg)
+1. Modern mtjk-style BLE interface (exports typed BLE exceptions)
+2. Legacy upstream-style BLE interface (no typed BLE exceptions)
 
 Reference fork for the modern interface contract:
 [mtjk (Meshtastic Python fork)](https://github.com/jeremiah-k/mtjk).
@@ -25,8 +25,8 @@ compatible with older Meshtastic BLE implementations.
 - `mmrelay` is the top-level reconnect orchestrator.
 - `mtjk` provides BLE transport/interface behavior.
 - Capability detection is feature-based, not version-based.
-- Modern mtjk owns targeted stale BlueZ cleanup when typed BLE capabilities are
-  present, and explicit-address validation.
+- Modern mtjk owns targeted stale BlueZ cleanup when typed BLE exception
+  capabilities are present, and explicit-address validation.
 
 Primary integration point:
 
@@ -39,7 +39,8 @@ The gate is constructor signature introspection for
 
 ### Modern managed mode
 
-Used when typed BLE capabilities are present:
+Used when typed BLE exception capabilities are present (mtjk exports
+`MeshtasticBLEError`, `BLEDiscoveryError`, `BLEConnectionTimeoutError`, etc.):
 
 - `mmrelay` passes `auto_reconnect=False` when the constructor supports it
 - `mmrelay` owns retry/backoff sequencing
@@ -47,15 +48,15 @@ Used when typed BLE capabilities are present:
   sequencing, and late-future cleanup
 - explicit-address retries stay direct (no discovery scan from `mmrelay`)
 - constructor watchdog includes grace budget for staged setup behavior
-- app-level stale BlueZ pre-cleanup is skipped when typed mtjk BLE exceptions
-  are present, because the library performs targeted cleanup internally
+- app-level stale BlueZ pre-cleanup is skipped because the library owns
+  targeted cleanup internally
 
 `auto_reconnect` support alone does **not** mean mtjk owns stale cleanup;
-only typed BLE capability presence gates the skip.
+only typed BLE exception presence gates the skip.
 
 ### Legacy compatibility mode
 
-Used when typed BLE capabilities are absent or signature introspection is unavailable:
+Used when typed BLE exception capabilities are absent or signature introspection is unavailable:
 
 - `mmrelay` does not pass `auto_reconnect` when unsupported
 - compatibility decision remains sticky for that attempt
@@ -119,7 +120,7 @@ client cleanup, and daemon-thread timeout wrappers.
 ### Startup
 
 - Do one best-effort stale-address cleanup before creating interface when typed
-  BLE capabilities are absent (legacy mode only).
+  BLE exception capabilities are absent (legacy mode only).
 - Build one interface instance per attempt.
 - Use bounded constructor timeout + watchdog.
 

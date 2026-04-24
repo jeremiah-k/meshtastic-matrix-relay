@@ -23,10 +23,7 @@ This follow-up keeps `mmrelay` app-specific orchestration (executor/generation/d
 ### P0 - Required to leverage new mtjk behavior safely
 
 1. Bump mtjk dependency to a release or exact commit that includes this BLE PR.
-   - Do not depend on a mutable branch such as `develop` for normal dependency
-     resolution; use the first released version containing these BLE changes, or
-     pin to the exact commit hash if no release exists yet.
-   - An exact release/tag/commit is required so builds remain reproducible.
+   - Dependency pinning is handled separately from this tranche.
 
 2. Add capability-aware typed exception imports in `mmrelay` facade layer.
    - File target: `src/mmrelay/meshtastic_utils.py`
@@ -114,9 +111,11 @@ This follow-up keeps `mmrelay` app-specific orchestration (executor/generation/d
     - Modern mtjk already performs targeted stale cleanup on stale/busy direct-connect failures (stale BlueZ cleanup + retry).
     - Implemented direction:
       - keep startup pre-cleanup for legacy mode
-      - skip app-level pre-cleanup when typed BLE capabilities are detected.
-    - The stale-cleanup skip is gated by typed BLE capability presence, not by
-      `auto_reconnect` support alone.
+      - skip app-level pre-cleanup when typed BLE exception capabilities are detected.
+    - The stale-cleanup skip is gated by typed BLE exception capability presence,
+      not by `auto_reconnect` support alone.
+    - `auto_reconnect` support only controls whether mmrelay passes
+      `auto_reconnect=False` to the constructor.
 
 11. Update compatibility docs/tests for typed-exception-aware behavior.
     - Candidate files:

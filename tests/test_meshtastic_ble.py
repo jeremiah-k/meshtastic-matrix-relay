@@ -6,6 +6,16 @@ import pytest
 import mmrelay.meshtastic_utils as mu
 
 
+class _RaisingProperty:
+    """Descriptor that raises a stored exception on every attribute access."""
+
+    def __init__(self, exc: Exception) -> None:
+        self._exc = exc
+
+    def __get__(self, obj: object, type: type | None = None) -> NoReturn:
+        raise self._exc
+
+
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestIsBleDuplicateConnectSuppressedError:
     def test_typed_suppressed_error(self, monkeypatch):
@@ -320,15 +330,8 @@ class TestExtractBleAddressFromInterface:
     def test_ignores_property_access_errors_and_continues(self):
         from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
 
-        class RaisingProperty:
-            def __init__(self, exc: Exception) -> None:
-                self._exc = exc
-
-            def __get__(self, obj: object, type: type | None = None) -> NoReturn:
-                raise self._exc
-
         class IfaceWithRaisingProperties:
-            bleAddress = RaisingProperty(AttributeError("no bleAddress"))
+            bleAddress = _RaisingProperty(AttributeError("no bleAddress"))
             ble_address = "AA:BB:CC:DD:EE:FF"
 
         iface = IfaceWithRaisingProperties()
@@ -337,18 +340,11 @@ class TestExtractBleAddressFromInterface:
     def test_ignores_client_property_raises_and_uses_address(self):
         from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
 
-        class RaisingProperty:
-            def __init__(self, exc: Exception) -> None:
-                self._exc = exc
-
-            def __get__(self, obj: object, type: type | None = None) -> NoReturn:
-                raise self._exc
-
         class IfaceWithRaisingClient:
-            bleAddress = RaisingProperty(AttributeError("no bleAddress"))
-            ble_address = RaisingProperty(AttributeError("no ble_address"))
+            bleAddress = _RaisingProperty(AttributeError("no bleAddress"))
+            ble_address = _RaisingProperty(AttributeError("no ble_address"))
             address = "AA:BB:CC:DD:EE:FF"
-            client = RaisingProperty(RuntimeError("client boom"))
+            client = _RaisingProperty(RuntimeError("client boom"))
 
         assert (
             _extract_ble_address_from_interface(IfaceWithRaisingClient())
@@ -358,18 +354,11 @@ class TestExtractBleAddressFromInterface:
     def test_ignores_client_address_raise_and_uses_bleak_client(self):
         from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
 
-        class RaisingProperty:
-            def __init__(self, exc: Exception) -> None:
-                self._exc = exc
-
-            def __get__(self, obj: object, type: type | None = None) -> NoReturn:
-                raise self._exc
-
         class BleakClient:
             address = "22:33:44:55:66:77"
 
         class Client:
-            address = RaisingProperty(AttributeError("no address"))
+            address = _RaisingProperty(AttributeError("no address"))
             bleak_client = BleakClient()
 
         class Iface:

@@ -359,7 +359,7 @@ class TestTypedBleRetryHandling:
             result = _connect_meshtastic_impl()
 
         assert result is None
-        assert mock_rollback.called
+        mock_rollback.assert_called()
         mock_sleep.assert_not_called()
 
     @pytest.mark.parametrize(
@@ -392,7 +392,7 @@ class TestTypedBleRetryHandling:
             result = _connect_meshtastic_impl()
 
         assert result is None
-        assert mock_rollback.called
+        mock_rollback.assert_called()
         assert mock_sleep.called
 
     def test_connection_timeout_error_uses_timeout_backoff(self, monkeypatch):
@@ -423,7 +423,7 @@ class TestTypedBleRetryHandling:
             result = _connect_meshtastic_impl()
 
         assert result is None
-        assert mock_rollback.called
+        mock_rollback.assert_called()
         assert mock_sleep.called
         mock_logger.warning.assert_any_call("BLE library timeout: %s", ANY)
 
