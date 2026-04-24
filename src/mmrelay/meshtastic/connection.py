@@ -852,9 +852,9 @@ def _connect_meshtastic_impl(
                             facade.logger.debug(
                                 f"Creating new BLE interface for {ble_address} (sanitized: {sanitized_address})"
                             )
-                            ble_interface_cls = (
-                                facade.meshtastic.ble_interface.BLEInterface
-                            )
+                            ble_interface_cls = vars(facade.meshtastic.ble_interface)[
+                                "BLEInterface"
+                            ]
                             # Detect whether this BLEInterface implementation supports
                             # explicit auto_reconnect control.
                             try:
