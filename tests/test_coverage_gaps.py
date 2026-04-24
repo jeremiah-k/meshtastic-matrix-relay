@@ -952,7 +952,13 @@ class TestDisconnectBleInterfaceSyncAwaitable:
 
         iface = MagicMock()
         iface._exit_handler = None
-        iface.disconnect.return_value = MagicMock()
+
+        def _disconnect_no_timeout(*args, **kwargs):
+            if "timeout" in kwargs:
+                raise TypeError("got an unexpected keyword argument 'timeout'")
+            return MagicMock()
+
+        iface.disconnect.side_effect = _disconnect_no_timeout
         iface.client = None
         iface.close.return_value = None
 
@@ -999,7 +1005,13 @@ class TestDisconnectBleCloseSyncAwaitableResult:
         iface._exit_handler = None
         del iface.disconnect
         iface.client = None
-        iface.close.return_value = mock_awaitable
+
+        def _close_no_timeout(*args, **kwargs):
+            if "timeout" in kwargs:
+                raise TypeError("got an unexpected keyword argument 'timeout'")
+            return mock_awaitable
+
+        iface.close.side_effect = _close_no_timeout
 
         with (
             patch.object(mu, "_get_ble_iface_generation", return_value=(None, None)),
