@@ -27,7 +27,7 @@ dependencies = [
   "Pillow==12.2.0",
   "aiohttp==3.13.5",
   "matrix-nio==0.25.2",
-  "matplotlib==3.10.8",
+  "matplotlib==3.10.9",
   "requests==2.33.1",
   "markdown==3.10.2",
   "bleach==6.3.0",
