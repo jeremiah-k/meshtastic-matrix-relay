@@ -761,6 +761,320 @@ class TestConnectMeshtasticTimeoutBranches:
             result = _connect_meshtastic_impl()
         assert result is None
 
+    def test_timeout_infinite_retries_exceeds_max(self, monkeypatch):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        ble_address = self._configure_ble()
+        mu.config["meshtastic"]["retries"] = mu.INFINITE_RETRIES
+        for attr_name in (
+            "BLEConnectionTimeoutError",
+            "BLEDiscoveryError",
+            "BLEDeviceNotFoundError",
+            "BLEConnectionSuppressedError",
+            "BLEAddressMismatchError",
+            "BLEDBusTransportError",
+        ):
+            monkeypatch.setattr(mu, attr_name, None)
+
+        with (
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=TimeoutError("generic timeout"),
+            ),
+            patch.object(
+                mu,
+                "_rollback_connect_attempt_state",
+                wraps=mu._rollback_connect_attempt_state,
+            ),
+            patch(
+                "mmrelay.meshtastic.connection._get_typed_ble_timeout_error",
+                return_value=None,
+            ),
+            patch.object(mu.time, "sleep"),
+            patch.object(mu, "logger") as mock_logger,
+        ):
+            result = _connect_meshtastic_impl()
+        assert result is None
+        expected_attempt = mu.MAX_TIMEOUT_RETRIES_INFINITE + 1
+        mock_logger.exception.assert_any_call(
+            "Connection timed out after %s attempts (unlimited retries); aborting",
+            expected_attempt,
+        )
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+class TestConnectMeshtasticExceptionBranches:
+    """Tests for the general Exception handler in connect_meshtastic (lines 1856+)."""
+
+    def _configure_ble(self) -> str:
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        mu.config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": ble_address,
+                "retries": 1,
+            }
+        }
+        mu.shutting_down = False
+        mu.reconnecting = False
+        mu.meshtastic_client = None
+        mu.meshtastic_iface = None
+        return ble_address
+
+    def test_exception_handler_break_action(self, monkeypatch):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        self._configure_ble()
+        for attr_name in (
+            "BLEConnectionTimeoutError",
+            "BLEDiscoveryError",
+            "BLEDeviceNotFoundError",
+            "BLEConnectionSuppressedError",
+            "BLEAddressMismatchError",
+            "BLEDBusTransportError",
+        ):
+            monkeypatch.setattr(mu, attr_name, None)
+
+        with (
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=RuntimeError("unexpected error"),
+            ),
+            patch.object(
+                mu,
+                "_rollback_connect_attempt_state",
+                wraps=mu._rollback_connect_attempt_state,
+            ),
+            patch(
+                "mmrelay.meshtastic.connection._get_typed_ble_timeout_error",
+                return_value=None,
+            ),
+            patch(
+                "mmrelay.meshtastic.connection._handle_typed_ble_exception_after_rollback",
+                return_value=("break", 1, 0),
+            ),
+        ):
+            result = _connect_meshtastic_impl()
+        assert result is None
+
+    def test_exception_handler_shutdown_after_typed(self, monkeypatch):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        self._configure_ble()
+        for attr_name in (
+            "BLEConnectionTimeoutError",
+            "BLEDiscoveryError",
+            "BLEDeviceNotFoundError",
+            "BLEConnectionSuppressedError",
+            "BLEAddressMismatchError",
+            "BLEDBusTransportError",
+        ):
+            monkeypatch.setattr(mu, attr_name, None)
+
+        def _unhandled_and_shutdown(*args, **kwargs):
+            mu.shutting_down = True
+            return "unhandled", 1, 0
+
+        with (
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=RuntimeError("unexpected error"),
+            ),
+            patch.object(
+                mu,
+                "_rollback_connect_attempt_state",
+                wraps=mu._rollback_connect_attempt_state,
+            ),
+            patch(
+                "mmrelay.meshtastic.connection._get_typed_ble_timeout_error",
+                return_value=None,
+            ),
+            patch(
+                "mmrelay.meshtastic.connection._handle_typed_ble_exception_after_rollback",
+                side_effect=_unhandled_and_shutdown,
+            ),
+            patch.object(mu, "logger") as mock_logger,
+        ):
+            result = _connect_meshtastic_impl()
+        assert result is None
+        mock_logger.debug.assert_any_call(
+            "Shutdown in progress. Aborting connection attempts."
+        )
+
+    def test_exception_handler_duplicate_connect_suppression(self, monkeypatch):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        ble_address = self._configure_ble()
+        for attr_name in (
+            "BLEConnectionTimeoutError",
+            "BLEDiscoveryError",
+            "BLEDeviceNotFoundError",
+            "BLEConnectionSuppressedError",
+            "BLEAddressMismatchError",
+            "BLEDBusTransportError",
+        ):
+            monkeypatch.setattr(mu, attr_name, None)
+
+        class FakeDuplicateSuppressedError(Exception):
+            pass
+
+        with (
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=FakeDuplicateSuppressedError("dup"),
+            ),
+            patch.object(
+                mu,
+                "_rollback_connect_attempt_state",
+                wraps=mu._rollback_connect_attempt_state,
+            ),
+            patch(
+                "mmrelay.meshtastic.connection._get_typed_ble_timeout_error",
+                return_value=None,
+            ),
+            patch(
+                "mmrelay.meshtastic.connection._handle_typed_ble_exception_after_rollback",
+                return_value=("unhandled", 1, 0),
+            ),
+            patch.object(
+                mu,
+                "_is_ble_duplicate_connect_suppressed_error",
+                return_value=True,
+            ),
+            patch.object(
+                mu,
+                "_reset_ble_connection_gate_state",
+                return_value=False,
+            ) as mock_reset,
+            patch.object(mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown),
+            patch.object(mu, "logger") as mock_logger,
+        ):
+            result = _connect_meshtastic_impl()
+        assert result is None
+        mock_logger.warning.assert_any_call(
+            "Detected duplicate BLE connect suppression for %s",
+            ble_address,
+        )
+        mock_reset.assert_called_once()
+
+    def test_exception_handler_duplicate_connect_suppression_gate_reset_success(
+        self, monkeypatch
+    ):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        ble_address = self._configure_ble()
+        for attr_name in (
+            "BLEConnectionTimeoutError",
+            "BLEDiscoveryError",
+            "BLEDeviceNotFoundError",
+            "BLEConnectionSuppressedError",
+            "BLEAddressMismatchError",
+            "BLEDBusTransportError",
+        ):
+            monkeypatch.setattr(mu, attr_name, None)
+
+        class FakeDuplicateSuppressedError(Exception):
+            pass
+
+        with (
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=FakeDuplicateSuppressedError("dup"),
+            ),
+            patch.object(
+                mu,
+                "_rollback_connect_attempt_state",
+                wraps=mu._rollback_connect_attempt_state,
+            ),
+            patch(
+                "mmrelay.meshtastic.connection._get_typed_ble_timeout_error",
+                return_value=None,
+            ),
+            patch(
+                "mmrelay.meshtastic.connection._handle_typed_ble_exception_after_rollback",
+                return_value=("unhandled", 1, 0),
+            ),
+            patch.object(
+                mu,
+                "_is_ble_duplicate_connect_suppressed_error",
+                return_value=True,
+            ),
+            patch.object(
+                mu,
+                "_reset_ble_connection_gate_state",
+                return_value=True,
+            ) as mock_reset,
+            patch.object(mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown),
+            patch.object(mu, "logger") as mock_logger,
+        ):
+            result = _connect_meshtastic_impl()
+        assert result is None
+        mock_logger.warning.assert_any_call(
+            "Detected duplicate BLE connect suppression for %s",
+            ble_address,
+        )
+        mock_reset.assert_called_once()
+        debug_calls = [
+            c for c in mock_logger.debug.call_args_list if "gate reset" in str(c)
+        ]
+        assert len(debug_calls) == 0
+
+    def test_exception_handler_non_duplicate_error_retries(self, monkeypatch):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        ble_address = self._configure_ble()
+        mu.config["meshtastic"]["retries"] = 3
+        for attr_name in (
+            "BLEConnectionTimeoutError",
+            "BLEDiscoveryError",
+            "BLEDeviceNotFoundError",
+            "BLEConnectionSuppressedError",
+            "BLEAddressMismatchError",
+            "BLEDBusTransportError",
+        ):
+            monkeypatch.setattr(mu, attr_name, None)
+
+        with (
+            patch.object(
+                mu.meshtastic.ble_interface,
+                "BLEInterface",
+                side_effect=RuntimeError("unexpected error"),
+            ),
+            patch.object(
+                mu,
+                "_rollback_connect_attempt_state",
+                wraps=mu._rollback_connect_attempt_state,
+            ),
+            patch(
+                "mmrelay.meshtastic.connection._get_typed_ble_timeout_error",
+                return_value=None,
+            ),
+            patch(
+                "mmrelay.meshtastic.connection._handle_typed_ble_exception_after_rollback",
+                return_value=("unhandled", 1, 0),
+            ),
+            patch.object(
+                mu,
+                "_is_ble_duplicate_connect_suppressed_error",
+                return_value=False,
+            ),
+            patch.object(mu.time, "sleep", side_effect=_stop_retry_and_mark_shutdown),
+            patch.object(mu, "logger") as mock_logger,
+        ):
+            result = _connect_meshtastic_impl()
+        assert result is None
+        mock_logger.warning.assert_any_call(
+            "An unexpected error occurred on attempt %s: %s. Retrying in %s seconds...",
+            2,
+            ANY,
+            ANY,
+        )
+
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestTypedBleRetryHandling:
