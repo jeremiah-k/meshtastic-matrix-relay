@@ -1954,10 +1954,188 @@ class TestReconnectResetsDegradedStateWithoutDeadlock:
         ):
             mu.on_lost_meshtastic_connection(detection_source="test source")
 
-            assert len(mu._ble_executor_degraded_addresses) == 0
-            assert len(mu._ble_executor_orphaned_workers_by_address) == 0
+        assert len(mu._ble_executor_degraded_addresses) == 0
+        assert len(mu._ble_executor_orphaned_workers_by_address) == 0
+
+
+class TestBleInterfaceImport:
+    """Test meshtastic.ble_interface import paths."""
+
+    def test_import_failure_sets_none(self):
+        """Test that ImportError during ble_interface import sets module to None."""
+        import importlib
+        import sys
+
+        import mmrelay.meshtastic_utils as mu_module
+
+        original_ble_interface = sys.modules.get("meshtastic.ble_interface")
+        # Save key attributes that reload might reset
+        saved = {
+            attr: getattr(mu_module, attr, None)
+            for attr in [
+                "config",
+                "logger",
+                "meshtastic_client",
+                "meshtastic_iface",
+                "event_loop",
+                "reconnecting",
+                "shutting_down",
+            ]
+        }
+
+        try:
+            real_import_module = importlib.import_module
+
+            def _raising_import(name, package=None):
+                if name == "meshtastic.ble_interface":
+                    raise ImportError("no ble interface")
+                return real_import_module(name, package)
+
+            with patch.object(importlib, "import_module", side_effect=_raising_import):
+                importlib.reload(mu_module)
+
+            assert mu_module._ble_interface_module is None
+            assert mu_module.MeshtasticBLEError is None
+        finally:
+            if original_ble_interface is not None:
+                sys.modules["meshtastic.ble_interface"] = original_ble_interface
+            importlib.reload(mu_module)
+            for attr, value in saved.items():
+                setattr(mu_module, attr, value)
+
             assert mu._metadata_executor_degraded is False
             assert mu._metadata_executor_orphaned_workers == 0
+
+    def test_gating_module_import_exception_sets_none(self):
+        """Test that a non-ModuleNotFoundError during gating import sets module to None."""
+        import importlib
+        import sys
+
+        import mmrelay.meshtastic_utils as mu_module
+        from mmrelay.constants.network import (
+            MESHTASTIC_BLE_GATING_MODULE_PATH,
+        )
+
+        saved = {
+            attr: getattr(mu_module, attr, None)
+            for attr in [
+                "config",
+                "logger",
+                "meshtastic_client",
+                "meshtastic_iface",
+                "event_loop",
+                "reconnecting",
+                "shutting_down",
+            ]
+        }
+
+        try:
+            real_import_module = importlib.import_module
+
+            def _raising_import(name, package=None):
+                if name == MESHTASTIC_BLE_GATING_MODULE_PATH:
+                    raise RuntimeError("gating boom")
+                return real_import_module(name, package)
+
+            with patch.object(importlib, "import_module", side_effect=_raising_import):
+                importlib.reload(mu_module)
+
+            assert mu_module._ble_gating_module is None
+        finally:
+            importlib.reload(mu_module)
+            for attr, value in saved.items():
+                setattr(mu_module, attr, value)
+
+    def test_gating_module_import_success_sets_callable(self):
+        """Test successful gating import sets _ble_gate_reset_callable."""
+        import importlib
+        import sys
+        import types
+
+        import mmrelay.meshtastic_utils as mu_module
+        from mmrelay.constants.network import (
+            MESHTASTIC_BLE_GATE_RESET_FUNC,
+            MESHTASTIC_BLE_GATING_MODULE_PATH,
+        )
+
+        saved = {
+            attr: getattr(mu_module, attr, None)
+            for attr in [
+                "config",
+                "logger",
+                "meshtastic_client",
+                "meshtastic_iface",
+                "event_loop",
+                "reconnecting",
+                "shutting_down",
+            ]
+        }
+
+        fake_module = types.ModuleType(MESHTASTIC_BLE_GATING_MODULE_PATH)
+        setattr(fake_module, MESHTASTIC_BLE_GATE_RESET_FUNC, lambda: None)
+
+        try:
+            real_import_module = importlib.import_module
+
+            def _fake_import(name, package=None):
+                if name == MESHTASTIC_BLE_GATING_MODULE_PATH:
+                    return fake_module
+                return real_import_module(name, package)
+
+            with patch.object(importlib, "import_module", side_effect=_fake_import):
+                importlib.reload(mu_module)
+
+            assert mu_module._ble_gating_module is fake_module
+            assert mu_module._ble_gate_reset_callable is not None
+        finally:
+            importlib.reload(mu_module)
+            for attr, value in saved.items():
+                setattr(mu_module, attr, value)
+
+    def test_gating_module_import_success_non_callable(self):
+        """Test successful gating import with non-callable reset func."""
+        import importlib
+        import types
+
+        import mmrelay.meshtastic_utils as mu_module
+        from mmrelay.constants.network import (
+            MESHTASTIC_BLE_GATE_RESET_FUNC,
+            MESHTASTIC_BLE_GATING_MODULE_PATH,
+        )
+
+        saved = {
+            attr: getattr(mu_module, attr, None)
+            for attr in [
+                "config",
+                "logger",
+                "meshtastic_client",
+                "meshtastic_iface",
+                "event_loop",
+                "reconnecting",
+                "shutting_down",
+            ]
+        }
+
+        fake_module = types.ModuleType(MESHTASTIC_BLE_GATING_MODULE_PATH)
+        setattr(fake_module, MESHTASTIC_BLE_GATE_RESET_FUNC, "not_callable")
+
+        try:
+            real_import_module = importlib.import_module
+
+            def _fake_import(name, package=None):
+                if name == MESHTASTIC_BLE_GATING_MODULE_PATH:
+                    return fake_module
+                return real_import_module(name, package)
+
+            with patch.object(importlib, "import_module", side_effect=_fake_import):
+                importlib.reload(mu_module)
+
+            assert mu_module._ble_gating_module is fake_module
+            assert mu_module._ble_gate_reset_callable is None
+        finally:
+            importlib.reload(mu_module)
+            for attr, value in saved.items():
+                setattr(mu_module, attr, value)
 
 
 class TestShutdownClearsDegradedState:

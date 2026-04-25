@@ -475,3 +475,147 @@ class TestDisconnectBleInterface:
         assert iface.disconnect.call_args_list[1].args == ()
         assert iface.close.call_args_list[0].kwargs == {"timeout": 5.0}
         assert iface.close.call_args_list[1].args == ()
+
+    def test_disconnect_raises_non_keyword_typeerror(self):
+        from mmrelay.meshtastic.ble import _disconnect_ble_interface
+
+        iface = MagicMock()
+        iface._exit_handler = None
+
+        def bad_disconnect(timeout):
+            raise TypeError("unsupported operand type(s) for +: 'int' and 'str'")
+
+        iface.disconnect = bad_disconnect
+        iface.client = None
+        iface.close.return_value = None
+
+        with patch.object(mu.time, "sleep"):
+            # Should not raise; exception is caught in retry loop
+            _disconnect_ble_interface(iface, reason="test")
+
+    def test_disconnect_method_returns_awaitable(self):
+        from mmrelay.meshtastic.ble import _disconnect_ble_interface
+
+        iface = MagicMock()
+        iface._exit_handler = None
+
+        async def async_disconnect(timeout):
+            return None
+
+        iface.disconnect = async_disconnect
+        iface.client = None
+        iface.close.return_value = None
+
+        def _mock_wait_for_result(result, timeout):
+            close_fn = getattr(result, "close", None)
+            if callable(close_fn):
+                close_fn()
+
+        with patch.object(mu.time, "sleep"):
+            with patch.object(
+                mu, "_wait_for_result", side_effect=_mock_wait_for_result
+            ) as mock_wait:
+                _disconnect_ble_interface(iface, reason="test")
+
+        mock_wait.assert_called_once()
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+class TestSanitizeBleAddressBranches:
+    def test_fallback_when_sanitize_address_not_callable(self, monkeypatch):
+        from mmrelay.meshtastic.ble import _sanitize_ble_address
+
+        monkeypatch.setattr(mu, "sanitize_address", None)
+        assert _sanitize_ble_address("AA:BB:CC") == "aabbcc"
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+class TestExtractBleAddressFromInterfaceBranches:
+    def test_none_iface(self):
+        from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
+
+        assert _extract_ble_address_from_interface(None) is None
+
+    def test_ble_address_getattr_raises(self):
+        from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
+
+        class Iface:
+            bleAddress = _RaisingProperty(RuntimeError("no"))
+            ble_address = _RaisingProperty(RuntimeError("no"))
+            address = "AA:BB:CC:DD:EE:FF"
+
+        assert _extract_ble_address_from_interface(Iface()) == "aabbccddeeff"
+
+    def test_iface_address_getattr_raises(self):
+        from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
+
+        class Iface:
+            bleAddress = None
+            ble_address = None
+            address = _RaisingProperty(RuntimeError("no"))
+            client = None
+
+        assert _extract_ble_address_from_interface(Iface()) is None
+
+    def test_client_address_getattr_raises(self):
+        from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
+
+        class Client:
+            address = _RaisingProperty(RuntimeError("no"))
+            bleak_client = None
+
+        class Iface:
+            bleAddress = None
+            ble_address = None
+            address = "device"
+            client = Client()
+
+        assert _extract_ble_address_from_interface(Iface()) is None
+
+    def test_bleak_client_getattr_raises(self):
+        from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
+
+        class Client:
+            address = "device"
+            bleak_client = _RaisingProperty(RuntimeError("no"))
+
+        class Iface:
+            bleAddress = None
+            ble_address = None
+            address = "device2"
+            client = Client()
+
+        assert _extract_ble_address_from_interface(Iface()) is None
+
+    def test_bleak_client_none(self):
+        from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
+
+        class Client:
+            address = "device"
+            bleak_client = None
+
+        class Iface:
+            bleAddress = None
+            ble_address = None
+            address = "device2"
+            client = Client()
+
+        assert _extract_ble_address_from_interface(Iface()) is None
+
+    def test_bleak_address_getattr_raises(self):
+        from mmrelay.meshtastic.ble import _extract_ble_address_from_interface
+
+        class BleakClient:
+            address = _RaisingProperty(RuntimeError("no"))
+
+        class Client:
+            address = "device"
+            bleak_client = BleakClient()
+
+        class Iface:
+            bleAddress = None
+            ble_address = None
+            address = "device2"
+            client = Client()
+
+        assert _extract_ble_address_from_interface(Iface()) is None
