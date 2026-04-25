@@ -30,13 +30,15 @@
         "pinDigest",
         "lockFileMaintenance"
       ],
-      "automerge": true
+      "automerge": true,
+      "minimumReleaseAge": "12 hours"
     },
     {
       "description": "Automerge mtjk updates when new releases are detected",
       "matchManagers": ["pep621"],
       "matchPackageNames": ["mtjk"],
-      "automerge": true
+      "automerge": true,
+      "minimumReleaseAge": "12 hours"
     }
   ]
 }

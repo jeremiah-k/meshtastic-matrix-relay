@@ -4,8 +4,8 @@
 
 `mmrelay` currently supports two Meshtastic BLE interface contracts:
 
-1. Modern mtjk-style BLE interface (supports `auto_reconnect` constructor kwarg)
-2. Legacy upstream-style BLE interface (no `auto_reconnect` kwarg)
+1. Modern mtjk-style BLE interface (exports typed BLE exceptions)
+2. Legacy upstream-style BLE interface (no typed BLE exceptions)
 
 Reference fork for the modern interface contract:
 [mtjk (Meshtastic Python fork)](https://github.com/jeremiah-k/mtjk).
@@ -25,6 +25,8 @@ compatible with older Meshtastic BLE implementations.
 - `mmrelay` is the top-level reconnect orchestrator.
 - `mtjk` provides BLE transport/interface behavior.
 - Capability detection is feature-based, not version-based.
+- Modern mtjk owns targeted stale BlueZ cleanup when typed BLE exception
+  capabilities are present, and explicit-address validation.
 
 Primary integration point:
 
@@ -37,20 +39,52 @@ The gate is constructor signature introspection for
 
 ### Modern managed mode
 
-Used when `auto_reconnect` is supported:
+Used when typed BLE exception capabilities are present (mtjk exports
+`MeshtasticBLEError`, `BLEDiscoveryError`, `BLEConnectionTimeoutError`, etc.):
 
-- `mmrelay` passes `auto_reconnect=False`
+- `mmrelay` passes `auto_reconnect=False` when the constructor supports it
 - `mmrelay` owns retry/backoff sequencing
+- `mmrelay` owns executor/degraded-state/generation lifecycle, bootstrap
+  sequencing, and late-future cleanup
 - explicit-address retries stay direct (no discovery scan from `mmrelay`)
 - constructor watchdog includes grace budget for staged setup behavior
+- app-level stale BlueZ pre-cleanup is skipped because the library owns
+  targeted cleanup internally
+
+`auto_reconnect` support alone does **not** mean mtjk owns stale cleanup;
+only typed BLE exception presence gates the skip.
 
 ### Legacy compatibility mode
 
-Used when `auto_reconnect` is absent or signature introspection is unavailable:
+Used when typed BLE exception capabilities are absent or signature introspection is unavailable:
 
-- `mmrelay` does not pass `auto_reconnect`
+- `mmrelay` does not pass `auto_reconnect` when unsupported
 - compatibility decision remains sticky for that attempt
 - `mmrelay` avoids assuming modern staged connect semantics
+- `mmrelay` keeps daemon-thread timeout wrappers and explicit stale-address
+  pre-cleanup for older libraries
+
+## Typed BLE Exceptions
+
+When available from `meshtastic.ble_interface`, `mmrelay` imports typed mtjk BLE
+exceptions through guarded capability checks:
+
+- `BLEAddressMismatchError`: hard explicit-target mismatch. `mmrelay` rolls back
+  the attempt and does not retry.
+- `BLEDiscoveryError` / `BLEDeviceNotFoundError`: transient discovery/setup
+  failure. `mmrelay` rolls back and retries with normal backoff.
+- `BLEConnectionTimeoutError`: BLE-library timeout. `mmrelay` rolls back and uses
+  the timeout/backoff path before generic `TimeoutError` handling.
+- `BLEDBusTransportError`: BlueZ/DBus transport failure. `mmrelay` logs
+  `str(err)` for operators, logs DBus diagnostics at debug level, and retries.
+- `BLEConnectionSuppressedError`: duplicate/recent connection gate suppression.
+  `mmrelay` rolls back, resets process-local BLE gate state when available, and
+  retries.
+
+Legacy string and broad BLE error fallbacks remain for older Meshtastic installs.
+The broad `BLEInterface.BLEError` fallback must run only after typed
+non-discovery exceptions are excluded, because modern mtjk aliases
+`BLEInterface.BLEError` to the typed BLE base class.
 
 ## Addressing and Discovery Rules
 
@@ -59,17 +93,34 @@ Used when `auto_reconnect` is absent or signature introspection is unavailable:
 - Treat as transport/reconnect workflow.
 - Use direct connect + cleanup + backoff.
 - Do not add scan fallback from `mmrelay`.
+- Prefer `iface.bleAddress`, then `iface.ble_address`, for connected MAC
+  extraction. Only 12-hex-character sanitized MACs are accepted; device names are
+  not returned from `_extract_ble_address_from_interface`.
+- Delegate address normalization to mtjk `sanitize_address()` when available,
+  falling back to local separator removal for legacy installs.
 
 ### Identifier/no-address flows
 
 - Discovery remains valid and library-owned.
 - `mmrelay` should not force explicit-address semantics onto identifier flows.
+- Use `iface.address` when a configured identifier or device name is needed for
+  logs; do not treat it as a validated BLE MAC unless it sanitizes to 12 hex
+  characters.
+
+## Shutdown Contract
+
+Modern mtjk exposes bounded `BLEInterface.disconnect(timeout=...)` and
+`close(timeout=...)`. `mmrelay` tries those APIs first and avoids repeating
+interface-level daemon-thread wrappers when they succeed. If a library rejects
+the `timeout` keyword, `mmrelay` falls back to the legacy no-arg calls, explicit
+client cleanup, and daemon-thread timeout wrappers.
 
 ## Startup vs Reconnect Policy
 
 ### Startup
 
-- Do one best-effort stale-address cleanup before creating interface.
+- Do one best-effort stale-address cleanup before creating interface when typed
+  BLE exception capabilities are absent (legacy mode only).
 - Build one interface instance per attempt.
 - Use bounded constructor timeout + watchdog.
 

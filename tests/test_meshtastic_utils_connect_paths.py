@@ -782,6 +782,17 @@ def test_connect_meshtastic_preserves_active_startup_drain_on_reconnect():
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_get_startup_drain_complete_event_returns_none_for_non_event():
+    """Should return None when the internal event is not a threading.Event."""
+    original_event = mu._relay_startup_drain_complete_event
+    try:
+        mu._relay_startup_drain_complete_event = "not_an_event"
+        assert mu.get_startup_drain_complete_event() is None
+    finally:
+        mu._relay_startup_drain_complete_event = original_event
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_connect_meshtastic_schedules_one_shot_probe_when_periodic_health_disabled():
     """Connect should schedule one-shot probe when explicitly enabled, even with periodic checks off."""
     mock_client = MagicMock()

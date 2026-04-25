@@ -5100,8 +5100,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         class _SimulatedDisconnectError(RuntimeError):
             """Test-specific error for simulated disconnect failures."""
 
-        # Mock interface where client becomes None during disconnect attempts
-        mock_iface = Mock()
+        mock_iface = Mock(spec=["close", "client"])
         mock_client = Mock()
         mock_client._exit_handler = None
         mock_iface.client = mock_client

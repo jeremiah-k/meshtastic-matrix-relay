@@ -5,7 +5,7 @@ import math
 import threading
 from collections.abc import Callable
 from concurrent.futures import Future
-from typing import Any, NoReturn
+from typing import Any, Literal, NoReturn
 
 import mmrelay.meshtastic_utils as facade
 from mmrelay.constants.config import (
@@ -55,6 +55,179 @@ class BLEDiscoveryTransientError(Exception):
 
 class ConnectionCompletedWithoutClientError(ConnectionError):
     """Connection path returned without producing a usable client."""
+
+
+class _NoTypedBleError(Exception):
+    """Sentinel used when an optional typed BLE exception is unavailable."""
+
+
+def _optional_exception_type(candidate: object) -> type[BaseException]:
+    if isinstance(candidate, type) and issubclass(candidate, BaseException):
+        return candidate
+    return _NoTypedBleError
+
+
+def _optional_exception_tuple(*candidates: object) -> tuple[type[BaseException], ...]:
+    exception_types = tuple(
+        candidate
+        for candidate in candidates
+        if isinstance(candidate, type) and issubclass(candidate, BaseException)
+    )
+    return exception_types or (_NoTypedBleError,)
+
+
+def _modern_ble_library_owns_stale_cleanup() -> bool:
+    """Return whether BLE library capabilities indicate internal stale cleanup.
+
+    Uses typed BLE exception presence as the proxy. When modern mtjk exports
+    typed BLE exceptions, the library owns targeted stale BlueZ cleanup and
+    mmrelay skips its app-level pre-cleanup.
+    """
+    return any(
+        isinstance(candidate, type) and issubclass(candidate, BaseException)
+        for candidate in (
+            facade.MeshtasticBLEError,
+            facade.BLEDiscoveryError,
+            facade.BLEDeviceNotFoundError,
+            facade.BLEConnectionTimeoutError,
+            facade.BLEConnectionSuppressedError,
+            facade.BLEAddressMismatchError,
+            facade.BLEDBusTransportError,
+        )
+    )
+
+
+def _handle_typed_ble_exception_after_rollback(
+    err: BaseException,
+    *,
+    attempts: int,
+    timeout_attempts: int,
+    retry_limit: int,
+    connection_type: str,
+    ble_address: str | None,
+) -> tuple[Literal["unhandled", "break", "continue", "return"], int, int]:
+    """Handle optional mtjk typed BLE exceptions after common rollback."""
+    if isinstance(err, _optional_exception_type(facade.BLEAddressMismatchError)):
+        facade.logger.error(
+            "Hard BLE explicit-target address mismatch; not retrying: %s",
+            err,
+        )
+        return "return", attempts, timeout_attempts
+
+    if facade.shutting_down:
+        return "break", attempts, timeout_attempts
+
+    if isinstance(
+        err,
+        _optional_exception_tuple(
+            facade.BLEDiscoveryError,
+            facade.BLEDeviceNotFoundError,
+        ),
+    ):
+        attempts += 1
+        if retry_limit == facade.INFINITE_RETRIES or attempts <= retry_limit:
+            wait_time = facade._get_connection_retry_wait_time(attempts)
+            facade.logger.warning(
+                "Connection attempt %s hit BLE discovery/setup failure (%s). Retrying in %s seconds...",
+                attempts,
+                err,
+                wait_time,
+            )
+            facade.time.sleep(wait_time)
+            return "continue", attempts, timeout_attempts
+        facade.logger.exception("Connection failed after %s attempts", attempts)
+        return "return", attempts, timeout_attempts
+
+    if isinstance(err, _optional_exception_type(facade.BLEConnectionTimeoutError)):
+        facade.logger.warning("BLE library timeout: %s", err)
+        if connection_type == CONNECTION_TYPE_BLE and ble_address:
+            facade.logger.warning(
+                BLE_TROUBLESHOOTING_GUIDANCE.format(ble_address=ble_address)
+            )
+        attempts += 1
+        if retry_limit == facade.INFINITE_RETRIES:
+            timeout_attempts += 1
+            if timeout_attempts > facade.MAX_TIMEOUT_RETRIES_INFINITE:
+                facade.logger.exception(
+                    "Connection timed out after %s attempts (unlimited retries); aborting",
+                    attempts,
+                )
+                return "return", attempts, timeout_attempts
+        elif attempts > retry_limit:
+            facade.logger.exception("Connection failed after %s attempts", attempts)
+            return "return", attempts, timeout_attempts
+        wait_time = facade._get_connection_retry_wait_time(attempts)
+        facade.logger.warning(
+            "Connection attempt %s timed out (%s). Retrying in %s seconds...",
+            attempts,
+            err,
+            wait_time,
+        )
+        facade.time.sleep(wait_time)
+        return "continue", attempts, timeout_attempts
+
+    if isinstance(err, _optional_exception_type(facade.BLEDBusTransportError)):
+        facade.logger.warning("BLE DBus transport error: %s", err)
+        dbus_error_name = getattr(err, "dbus_error_name", None)
+        dbus_error_body = getattr(err, "dbus_error_body", None)
+        if dbus_error_name is not None or dbus_error_body is not None:
+            facade.logger.debug(
+                "BLE DBus diagnostics name=%r body=%r",
+                dbus_error_name,
+                dbus_error_body,
+            )
+        if connection_type == CONNECTION_TYPE_BLE and ble_address:
+            facade.logger.warning(
+                BLE_TROUBLESHOOTING_GUIDANCE.format(ble_address=ble_address)
+            )
+        attempts += 1
+        if retry_limit == facade.INFINITE_RETRIES or attempts <= retry_limit:
+            wait_time = facade._get_connection_retry_wait_time(attempts)
+            facade.logger.warning(
+                "Connection attempt %s hit BLE DBus transport failure. Retrying in %s seconds...",
+                attempts,
+                wait_time,
+            )
+            facade.time.sleep(wait_time)
+            return "continue", attempts, timeout_attempts
+        facade.logger.exception("Connection failed after %s attempts", attempts)
+        return "return", attempts, timeout_attempts
+
+    if isinstance(err, _optional_exception_type(facade.BLEConnectionSuppressedError)):
+        if ble_address and not facade._reset_ble_connection_gate_state(
+            ble_address,
+            reason="typed connection suppression",
+        ):
+            facade.logger.debug(
+                "BLE gate reset hook unavailable for %s; retrying without local reset",
+                ble_address,
+            )
+        attempts += 1
+        if retry_limit == facade.INFINITE_RETRIES or attempts <= retry_limit:
+            wait_time = facade._get_connection_retry_wait_time(attempts)
+            facade.logger.warning(
+                "Connection attempt %s hit BLE connection suppression (%s). Retrying in %s seconds...",
+                attempts,
+                err,
+                wait_time,
+            )
+            facade.time.sleep(wait_time)
+            return "continue", attempts, timeout_attempts
+        facade.logger.exception("Connection failed after %s attempts", attempts)
+        return "return", attempts, timeout_attempts
+
+    return "unhandled", attempts, timeout_attempts
+
+
+def _get_typed_ble_timeout_error(err: BaseException) -> BaseException | None:
+    """Return the direct or wrapped typed BLE timeout exception, if present."""
+    timeout_type = _optional_exception_type(facade.BLEConnectionTimeoutError)
+    if isinstance(err, timeout_type):
+        return err
+    cause = err.__cause__
+    if isinstance(cause, timeout_type):
+        return cause
+    return None
 
 
 def _raise_no_client(connection_type: str) -> NoReturn:
@@ -683,9 +856,6 @@ def _connect_meshtastic_impl(
                                     f"{ble_address}; waiting before new interface creation."
                                 )
 
-                            # Disconnect any stale BlueZ connection before creating new interface
-                            facade._disconnect_ble_by_address(ble_address)
-
                             # Create a single BLEInterface instance for process lifetime
                             sanitized_address = facade._sanitize_ble_address(
                                 ble_address
@@ -693,9 +863,11 @@ def _connect_meshtastic_impl(
                             facade.logger.debug(
                                 f"Creating new BLE interface for {ble_address} (sanitized: {sanitized_address})"
                             )
-                            ble_interface_cls = (
-                                facade.meshtastic.ble_interface.BLEInterface
-                            )  # pyright: ignore[reportPrivateImportUsage]
+                            ble_interface_attr = "BLEInterface"
+                            ble_interface_cls = getattr(
+                                facade.meshtastic.ble_interface,
+                                ble_interface_attr,
+                            )
                             # Detect whether this BLEInterface implementation supports
                             # explicit auto_reconnect control.
                             try:
@@ -767,6 +939,16 @@ def _connect_meshtastic_impl(
                                 facade.logger.debug(
                                     "BLEInterface auto_reconnect parameter not available; using compatibility mode"
                                 )
+
+                            if _modern_ble_library_owns_stale_cleanup():
+                                facade.logger.debug(
+                                    "Skipping app-level stale BlueZ pre-cleanup for %s; "
+                                    "BLE library owns targeted cleanup",
+                                    ble_address,
+                                )
+                            else:
+                                # Legacy libraries do not own targeted stale BlueZ cleanup.
+                                facade._disconnect_ble_by_address(ble_address)
 
                             # Create BLE interface with timeout protection to prevent indefinite hangs
                             # Use ThreadPoolExecutor to run with timeout, as BLEInterface.__init__
@@ -1312,20 +1494,9 @@ def _connect_meshtastic_impl(
 
             # Acquire lock only for the final setup and subscription
             with facade.meshtastic_lock:
-                # CRITICAL VALIDATION: Verify we're connected to the correct BLE device.
-                # This prevents connection to wrong device due to substring matching
-                # bugs in meshtastic library's find_device() function. The official
-                # version uses substring matching: `address in (device.name, device.address)`
-                # which can match a non-target device if its name contains to
-                # configured address as a substring.
-                #
-                # Example vulnerability scenario:
-                # - Configured address: AA:BB:CC:DD:EE:FF (Meshtastic device)
-                # - Nearby device name: "AA:BB:CC:DD:EE:FF-Sensor" (car/handset/etc)
-                # - Result: Bot incorrectly matches and connects to non-Meshtastic device
-                #
-                # This validation works with both official and forked meshtastic versions.
-                # If validation fails, we disconnect immediately to prevent further issues.
+                # Legacy dual-library guard: modern mtjk performs explicit-address
+                # mismatch validation internally and should normally raise
+                # BLEAddressMismatchError before this point.
                 if connection_type == CONNECTION_TYPE_BLE:
                     expected_ble_address = facade.config["meshtastic"].get(
                         CONFIG_KEY_BLE_ADDRESS
@@ -1626,6 +1797,24 @@ def _connect_meshtastic_impl(
                 startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
                 reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
             )
+            typed_timeout = _get_typed_ble_timeout_error(e)
+            if typed_timeout is not None:
+                typed_action, attempts, timeout_attempts = (
+                    _handle_typed_ble_exception_after_rollback(
+                        typed_timeout,
+                        attempts=attempts,
+                        timeout_attempts=timeout_attempts,
+                        retry_limit=retry_limit,
+                        connection_type=connection_type,
+                        ble_address=ble_address,
+                    )
+                )
+                if typed_action == "return":
+                    return None
+                if typed_action == "break":
+                    break
+                if typed_action == "continue":
+                    continue
             if facade.shutting_down:
                 break
             if (
@@ -1673,6 +1862,22 @@ def _connect_meshtastic_impl(
                 startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
                 reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
             )
+            typed_action, attempts, timeout_attempts = (
+                _handle_typed_ble_exception_after_rollback(
+                    e,
+                    attempts=attempts,
+                    timeout_attempts=timeout_attempts,
+                    retry_limit=retry_limit,
+                    connection_type=connection_type,
+                    ble_address=ble_address,
+                )
+            )
+            if typed_action == "return":
+                return None
+            if typed_action == "break":
+                break
+            if typed_action == "continue":
+                continue
             if facade.shutting_down:
                 facade.logger.debug(
                     "Shutdown in progress. Aborting connection attempts."
