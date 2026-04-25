@@ -393,12 +393,12 @@ class TestTypedBleRetryHandling:
 
         assert result is None
         mock_rollback.assert_called()
-        assert mock_sleep.called
+        mock_sleep.assert_called()
 
     def test_connection_timeout_error_uses_timeout_backoff(self, monkeypatch):
         from mmrelay.meshtastic.connection import _connect_meshtastic_impl
 
-        class FakeConnectionTimeoutError(Exception):
+        class FakeConnectionTimeoutError(TimeoutError):
             pass
 
         self._configure_ble()
@@ -424,7 +424,7 @@ class TestTypedBleRetryHandling:
 
         assert result is None
         mock_rollback.assert_called()
-        assert mock_sleep.called
+        mock_sleep.assert_called()
         mock_logger.warning.assert_any_call("BLE library timeout: %s", ANY)
 
     def test_dbus_transport_error_retries_and_logs_diagnostics(self, monkeypatch):
@@ -454,7 +454,7 @@ class TestTypedBleRetryHandling:
             result = _connect_meshtastic_impl()
 
         assert result is None
-        assert mock_sleep.called
+        mock_sleep.assert_called()
         mock_logger.warning.assert_any_call(
             "BLE DBus transport error: %s",
             ANY,
@@ -495,7 +495,7 @@ class TestTypedBleRetryHandling:
 
         assert result is None
         mock_reset.assert_called_once()
-        assert mock_sleep.called
+        mock_sleep.assert_called()
 
     def test_modern_mode_skips_preconnect_cleanup(self, monkeypatch):
         from mmrelay.meshtastic.connection import _connect_meshtastic_impl
@@ -536,6 +536,7 @@ class TestTypedBleRetryHandling:
         for attr_name in (
             "MeshtasticBLEError",
             "BLEDiscoveryError",
+            "BLEDeviceNotFoundError",
             "BLEConnectionTimeoutError",
             "BLEConnectionSuppressedError",
             "BLEAddressMismatchError",
@@ -571,15 +572,14 @@ class TestTypedBleRetryHandling:
                 timeout: int,
                 auto_reconnect: bool = True,
             ) -> None:
-                _ = (noProto, debugOut, noNodes, timeout)
-                self.address = address
-                self.auto_reconnect = auto_reconnect
+                _ = (address, noProto, debugOut, noNodes, timeout, auto_reconnect)
                 raise RuntimeError("creation failed")
 
         self._configure_ble()
         for attr_name in (
             "MeshtasticBLEError",
             "BLEDiscoveryError",
+            "BLEDeviceNotFoundError",
             "BLEConnectionTimeoutError",
             "BLEConnectionSuppressedError",
             "BLEAddressMismatchError",

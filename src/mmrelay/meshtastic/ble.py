@@ -928,7 +928,17 @@ def _disconnect_ble_interface(
 
     def _is_unexpected_keyword_error(exc: TypeError) -> bool:
         message = str(exc).lower()
-        return "unexpected keyword" in message or "got an unexpected keyword" in message
+        return any(
+            token in message
+            for token in (
+                "unexpected keyword",
+                "got an unexpected keyword",
+                "takes no keyword arguments",
+                "does not take keyword arguments",
+                "takes no keyword",
+                "doesn't take keyword",
+            )
+        )
 
     def _call_interface_method_with_optional_timeout(
         method: Callable[..., Any],

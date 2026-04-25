@@ -98,7 +98,7 @@ def _modern_ble_library_owns_stale_cleanup() -> bool:
 
 
 def _handle_typed_ble_exception_after_rollback(
-    err: Exception,
+    err: BaseException,
     *,
     attempts: int,
     timeout_attempts: int,
@@ -142,7 +142,7 @@ def _handle_typed_ble_exception_after_rollback(
         facade.logger.warning("BLE library timeout: %s", err)
         if connection_type == CONNECTION_TYPE_BLE and ble_address:
             facade.logger.warning(
-                facade.BLE_TROUBLESHOOTING_GUIDANCE.format(ble_address=ble_address)
+                BLE_TROUBLESHOOTING_GUIDANCE.format(ble_address=ble_address)
             )
         attempts += 1
         if retry_limit == facade.INFINITE_RETRIES:
@@ -178,7 +178,7 @@ def _handle_typed_ble_exception_after_rollback(
             )
         if connection_type == CONNECTION_TYPE_BLE and ble_address:
             facade.logger.warning(
-                facade.BLE_TROUBLESHOOTING_GUIDANCE.format(ble_address=ble_address)
+                BLE_TROUBLESHOOTING_GUIDANCE.format(ble_address=ble_address)
             )
         attempts += 1
         if retry_limit == facade.INFINITE_RETRIES or attempts <= retry_limit:
@@ -217,6 +217,17 @@ def _handle_typed_ble_exception_after_rollback(
         return "return", attempts, timeout_attempts
 
     return "unhandled", attempts, timeout_attempts
+
+
+def _get_typed_ble_timeout_error(err: BaseException) -> BaseException | None:
+    """Return the direct or wrapped typed BLE timeout exception, if present."""
+    timeout_type = _optional_exception_type(facade.BLEConnectionTimeoutError)
+    if isinstance(err, timeout_type):
+        return err
+    cause = err.__cause__
+    if isinstance(cause, timeout_type):
+        return cause
+    return None
 
 
 def _raise_no_client(connection_type: str) -> NoReturn:
@@ -1786,6 +1797,24 @@ def _connect_meshtastic_impl(
                 startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
                 reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
             )
+            typed_timeout = _get_typed_ble_timeout_error(e)
+            if typed_timeout is not None:
+                typed_action, attempts, timeout_attempts = (
+                    _handle_typed_ble_exception_after_rollback(
+                        typed_timeout,
+                        attempts=attempts,
+                        timeout_attempts=timeout_attempts,
+                        retry_limit=retry_limit,
+                        connection_type=connection_type,
+                        ble_address=ble_address,
+                    )
+                )
+                if typed_action == "return":
+                    return None
+                if typed_action == "break":
+                    break
+                if typed_action == "continue":
+                    continue
             if facade.shutting_down:
                 break
             if (
