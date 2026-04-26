@@ -1770,9 +1770,6 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo")
-    @patch("mmrelay.plugin_loader._requirements_install_target_identity")
-    @patch("mmrelay.plugin_loader._requirements_hash")
-    @patch("mmrelay.plugin_loader._effective_requirements_for_repo")
     @patch(
         "mmrelay.plugin_loader._resolve_local_head_commit",
         return_value="0123456789abcdef0123456789abcdef01234567",
@@ -1792,16 +1789,13 @@ class Plugin:
         mock_get_community_dirs,
         mock_load_from_dir,
         _mock_resolve_local_head_commit,
-        mock_effective_requirements,
-        mock_requirements_hash,
-        mock_target_identity,
         mock_install_reqs,
         mock_clone_repo,
     ):
         """No requirements.txt should not compute install state or churn cache."""
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
-        self._community_repo_path()
+        repo_path = self._community_repo_path()
         config = {
             "community-plugins": {
                 "commit-plugin": {
@@ -1821,10 +1815,12 @@ class Plugin:
 
         load_plugins(config)
 
-        mock_effective_requirements.assert_not_called()
-        mock_requirements_hash.assert_not_called()
-        mock_target_identity.assert_not_called()
         mock_install_reqs.assert_not_called()
+        self.assertEqual(pl._load_plugin_state(repo_path), {})
+        self.assertFalse(
+            os.path.exists(pl._requirements_install_marker_path(repo_path, "repo"))
+        )
+        mock_load_from_dir.assert_called()
         mock_logger.debug.assert_any_call(
             "Skipping requirements install for community plugin %s; no %s found",
             "commit-plugin",
@@ -1953,7 +1949,10 @@ class Plugin:
         mock_clone_repo.return_value = True
         mock_load_from_dir.return_value = []
 
-        with patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir):
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir),
+            patch("mmrelay.plugin_loader.logger") as mock_logger,
+        ):
             load_plugins(config)
 
         mock_install_reqs.assert_called_once_with(
@@ -1968,6 +1967,11 @@ class Plugin:
         )
         self.assertEqual(
             saved_state.get(pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET),
+            requirements_target,
+        )
+        mock_logger.debug.assert_any_call(
+            "Reinstalling requirements for community plugin %s; install state matches but marker validation failed for target %s",
+            "commit-plugin",
             requirements_target,
         )
         mock_start_scheduler.assert_called_once()
@@ -4878,7 +4882,7 @@ class TestDependencyInstallation(BaseGitTest):
             self.assertEqual(pl._requirements_install_target_identity(), "user:unknown")
 
     def test_requirements_install_target_pipx_uses_site_packages_marker_dir(self):
-        """pipx fallback target should include site-packages freshness."""
+        """pipx fallback target should use site-packages as marker location."""
         site_packages = os.path.join(self.temp_dir, "pipx-venv", "site-packages")
         os.makedirs(site_packages)
         with (
@@ -4894,11 +4898,10 @@ class TestDependencyInstallation(BaseGitTest):
 
         self.assertTrue(target.identity.startswith("pipx:"))
         self.assertIn(os.path.abspath(site_packages), target.identity)
-        self.assertIn(str(os.stat(site_packages).st_mtime_ns), target.identity)
         self.assertEqual(target.marker_dir, site_packages)
 
     def test_requirements_install_target_venv_uses_site_packages_marker_dir(self):
-        """venv fallback target should include site-packages freshness."""
+        """venv fallback target should use site-packages as marker location."""
         site_packages = os.path.join(self.temp_dir, "venv", "site-packages")
         os.makedirs(site_packages)
         with (
@@ -4915,11 +4918,10 @@ class TestDependencyInstallation(BaseGitTest):
 
         self.assertTrue(target.identity.startswith("python:"))
         self.assertIn(os.path.abspath(site_packages), target.identity)
-        self.assertIn(str(os.stat(site_packages).st_mtime_ns), target.identity)
         self.assertEqual(target.marker_dir, site_packages)
 
     def test_requirements_install_target_user_uses_user_site_marker_dir(self):
-        """user fallback target should include user-site freshness."""
+        """user fallback target should use user-site as marker location."""
         user_site = os.path.join(self.temp_dir, "user-site")
         os.makedirs(user_site)
         with (
@@ -4934,8 +4936,116 @@ class TestDependencyInstallation(BaseGitTest):
         self.assertTrue(
             target.identity.startswith(f"user:{os.path.abspath(user_site)}")
         )
-        self.assertIn(str(os.stat(user_site).st_mtime_ns), target.identity)
         self.assertEqual(target.marker_dir, user_site)
+
+    def test_requirements_install_target_identity_stable_after_marker_write(self):
+        """Writing a colocated marker should not change the target identity."""
+        user_site = os.path.join(self.temp_dir, "user-site")
+        os.makedirs(user_site)
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch.dict(os.environ, {}, clear=True),
+            patch("sys.prefix", "/fake/prefix"),
+            patch("sys.base_prefix", "/fake/prefix"),
+            patch("site.getusersitepackages", return_value=user_site),
+        ):
+            before = pl._requirements_install_target_identity()
+            pl._write_requirements_install_marker(
+                self.repo_path, "test-plugin", "hash", before
+            )
+            after = pl._requirements_install_target_identity()
+
+        self.assertEqual(after, before)
+
+    def test_requirements_install_marker_path_falls_back_to_repo_when_unwritable(self):
+        """Marker should fall back to repo path when install marker dir is unavailable."""
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch.dict(os.environ, {}, clear=True),
+            patch("sys.prefix", "/fake/prefix"),
+            patch("sys.base_prefix", "/fake/prefix"),
+            patch("site.getusersitepackages", return_value="/missing/user-site"),
+        ):
+            marker_path = pl._requirements_install_marker_path(
+                self.repo_path, "test-plugin"
+            )
+
+        self.assertTrue(marker_path.startswith(self.repo_path + os.sep))
+
+    def test_site_packages_for_prefix_uses_posix_prefix_scheme(self):
+        """site-packages discovery should include the POSIX prefix scheme."""
+        prefix = os.path.join(self.temp_dir, "venv")
+        site_packages = os.path.join(prefix, "lib", "python3.12", "site-packages")
+        os.makedirs(site_packages)
+
+        def fake_get_path(name, scheme, **_kwargs):
+            if name == "purelib" and scheme == "posix_prefix":
+                return site_packages
+            return None
+
+        with (
+            patch("sys.platform", "linux"),
+            patch("site.getsitepackages", return_value=[]),
+            patch(
+                "mmrelay.plugin_loader.sysconfig.get_path",
+                side_effect=fake_get_path,
+            ),
+        ):
+            self.assertEqual(pl._site_packages_for_prefix(prefix), site_packages)
+
+    def test_site_packages_for_prefix_uses_windows_nt_scheme(self):
+        """site-packages discovery should include the Windows nt scheme."""
+        prefix = os.path.join(self.temp_dir, "venv")
+        site_packages = os.path.join(prefix, "Lib", "site-packages")
+        os.makedirs(site_packages)
+
+        def fake_get_path(name, scheme, **_kwargs):
+            if name == "purelib" and scheme == "nt":
+                return site_packages
+            return None
+
+        with (
+            patch("sys.platform", "win32"),
+            patch("site.getsitepackages", return_value=[]),
+            patch(
+                "mmrelay.plugin_loader.sysconfig.get_path",
+                side_effect=fake_get_path,
+            ),
+        ):
+            self.assertEqual(pl._site_packages_for_prefix(prefix), site_packages)
+
+    def test_resolve_plugin_deps_dir_uses_paths_module_for_primary_root(self):
+        """Canonical deps dir should come from paths.py for the primary plugin root."""
+        plugin_root = os.path.join(self.temp_dir, "plugins")
+        canonical_deps = os.path.join(self.temp_dir, "canonical-deps")
+
+        with (
+            patch(
+                "mmrelay.plugin_loader.paths_module.get_plugins_dir",
+                return_value=plugin_root,
+            ),
+            patch(
+                "mmrelay.plugin_loader.paths_module.resolve_all_paths",
+                return_value={"deps_dir": canonical_deps},
+            ),
+        ):
+            self.assertEqual(
+                pl._resolve_plugin_deps_dir_for_root(plugin_root),
+                os.path.abspath(canonical_deps),
+            )
+
+    def test_resolve_plugin_deps_dir_falls_back_when_paths_module_fails(self):
+        """Deps dir setup should fall back safely if paths.py resolution fails."""
+        plugin_root = os.path.join(self.temp_dir, "plugins")
+
+        with patch(
+            "mmrelay.plugin_loader.paths_module.get_plugins_dir",
+            side_effect=RuntimeError("boom"),
+        ):
+            self.assertEqual(
+                pl._resolve_plugin_deps_dir_for_root(plugin_root),
+                os.path.join(plugin_root, pl.PLUGIN_DEPS_DIRNAME),
+            )
 
     def test_requirements_hash_includes_safe_pip_options(self):
         """Requirement state hash covers all safe effective lines, including options."""

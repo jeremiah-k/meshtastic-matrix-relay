@@ -274,6 +274,22 @@ def _get_legacy_plugin_roots() -> set[str]:
     return legacy_roots
 
 
+def _resolve_plugin_deps_dir_for_root(deps_root: str) -> str:
+    """Resolve the dependency directory for a plugin root using paths.py when possible."""
+    try:
+        primary_plugins_dir = os.path.abspath(str(paths_module.get_plugins_dir()))
+        resolved_deps_dir = os.path.abspath(
+            str(paths_module.resolve_all_paths()["deps_dir"])
+        )
+    except (KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        logger.debug("Could not resolve canonical deps dir: %s", exc)
+        return os.path.join(deps_root, PLUGIN_DEPS_DIRNAME)
+
+    if os.path.abspath(deps_root) == primary_plugins_dir:
+        return resolved_deps_dir
+    return os.path.join(deps_root, PLUGIN_DEPS_DIRNAME)
+
+
 try:
     deps_roots = _get_plugin_root_dirs()
 except (OSError, RuntimeError, ValueError) as exc:  # pragma: no cover
@@ -288,10 +304,7 @@ else:
                 deps_root,
             )
             continue
-        if deps_root == str(paths_module.get_plugins_dir()):
-            deps_dir = str(paths_module.resolve_all_paths()["deps_dir"])
-        else:
-            deps_dir = os.path.join(deps_root, PLUGIN_DEPS_DIRNAME)
+        deps_dir = _resolve_plugin_deps_dir_for_root(deps_root)
         try:
             os.makedirs(deps_dir, exist_ok=True)
         except (
@@ -835,15 +848,6 @@ def _requirements_marker_repo_identity(repo_path: str, repo_name: str) -> str:
     return hashlib.sha256(repo_identity.encode(DEFAULT_TEXT_ENCODING)).hexdigest()[:24]
 
 
-def _path_freshness_stamp(path: str | None) -> str:
-    if not path:
-        return "unavailable"
-    try:
-        return str(os.stat(path).st_mtime_ns)
-    except OSError:
-        return "missing"
-
-
 def _is_writable_directory(path: str | None) -> bool:
     return bool(path and os.path.isdir(path) and os.access(path, os.W_OK))
 
@@ -858,7 +862,8 @@ def _site_packages_for_prefix(prefix: str) -> str | None:
     except AttributeError:
         logger.debug("site.getsitepackages() not available in this environment.")
 
-    for scheme in ("venv", "posix_prefix"):
+    schemes = ("venv", "nt") if sys.platform == "win32" else ("venv", "posix_prefix")
+    for scheme in schemes:
         try:
             purelib = sysconfig.get_path(
                 "purelib",
@@ -872,9 +877,7 @@ def _site_packages_for_prefix(prefix: str) -> str | None:
 
     for candidate in dict.fromkeys(candidates):
         candidate_path = os.path.abspath(candidate)
-        if candidate_path == prefix_path or candidate_path.startswith(
-            prefix_path + os.sep
-        ):
+        if _is_path_contained(prefix_path, candidate_path):
             return candidate_path
 
     return None
@@ -890,11 +893,9 @@ def _requirements_install_target() -> RequirementsInstallTarget:
     prefix = os.path.abspath(sys.prefix)
     if any(key in os.environ for key in PIPX_ENVIRONMENT_KEYS):
         site_packages = _site_packages_for_prefix(prefix)
-        stamp_path = site_packages or prefix
         identity = (
             f"pipx:{prefix}:"
-            f"{os.path.abspath(site_packages) if site_packages else 'site-packages:unknown'}:"
-            f"{_path_freshness_stamp(stamp_path)}"
+            f"{os.path.abspath(site_packages) if site_packages else 'site-packages:unknown'}"
         )
         return RequirementsInstallTarget(
             identity=identity,
@@ -906,11 +907,9 @@ def _requirements_install_target() -> RequirementsInstallTarget:
     )
     if in_venv:
         site_packages = _site_packages_for_prefix(prefix)
-        stamp_path = site_packages or prefix
         identity = (
             f"python:{prefix}:"
-            f"{os.path.abspath(site_packages) if site_packages else 'site-packages:unknown'}:"
-            f"{_path_freshness_stamp(stamp_path)}"
+            f"{os.path.abspath(site_packages) if site_packages else 'site-packages:unknown'}"
         )
         return RequirementsInstallTarget(
             identity=identity,
@@ -925,21 +924,18 @@ def _requirements_install_target() -> RequirementsInstallTarget:
     if isinstance(user_site, str):
         user_site_path = os.path.abspath(user_site)
         return RequirementsInstallTarget(
-            identity=f"user:{user_site_path}:{_path_freshness_stamp(user_site_path)}",
+            identity=f"user:{user_site_path}",
             marker_dir=(
                 user_site_path if _is_writable_directory(user_site_path) else None
             ),
         )
 
     user_site_paths = [os.path.abspath(path) for path in user_site]
-    identity_parts = [
-        f"{path}:{_path_freshness_stamp(path)}" for path in user_site_paths
-    ]
     marker_dir = next(
         (path for path in user_site_paths if _is_writable_directory(path)), None
     )
     return RequirementsInstallTarget(
-        identity="user:" + os.pathsep.join(identity_parts),
+        identity="user:" + os.pathsep.join(user_site_paths),
         marker_dir=marker_dir,
     )
 
@@ -3533,28 +3529,36 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                         last_installed_target = state.get(
                             PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET
                         )
-                        if (
+                        state_matches_requirements = (
                             isinstance(last_installed_commit, str)
                             and last_installed_commit == pinned_sha
                             and isinstance(last_installed_hash, str)
                             and last_installed_hash == requirements_hash
                             and isinstance(last_installed_target, str)
                             and last_installed_target == requirements_target
-                            and _requirements_install_target_valid(
+                        )
+                        if state_matches_requirements:
+                            if _requirements_install_target_valid(
                                 repo_path,
                                 repo_name,
                                 requirements_hash,
                                 requirements_target,
-                            )
-                        ):
+                            ):
+                                logger.debug(
+                                    "Skipping requirements install for community plugin %s; already installed for commit %s, requirements hash %s, target %s",
+                                    plugin_name,
+                                    pinned_sha,
+                                    requirements_hash,
+                                    requirements_target,
+                                )
+                                ready_community_plugins.append(plugin_name)
+                                continue
                             logger.debug(
-                                "Skipping requirements install for community plugin %s; already installed for commit %s, requirements hash %s, target %s",
+                                "Reinstalling requirements for community plugin %s; install state matches but marker validation failed for target %s",
                                 plugin_name,
-                                pinned_sha,
-                                requirements_hash,
                                 requirements_target,
                             )
-                        elif _install_requirements_for_repo(
+                        if _install_requirements_for_repo(
                             repo_path, repo_name, plugin_type=PLUGIN_TYPE_COMMUNITY
                         ):
                             requirements_target = (
