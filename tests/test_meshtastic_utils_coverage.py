@@ -2009,7 +2009,6 @@ class TestBleInterfaceImport:
     def test_gating_module_import_exception_sets_none(self):
         """Test that a non-ModuleNotFoundError during gating import sets module to None."""
         import importlib
-        import sys
 
         import mmrelay.meshtastic_utils as mu_module
         from mmrelay.constants.network import (
@@ -2049,7 +2048,6 @@ class TestBleInterfaceImport:
     def test_gating_module_import_success_sets_callable(self):
         """Test successful gating import sets _ble_gate_reset_callable."""
         import importlib
-        import sys
         import types
 
         import mmrelay.meshtastic_utils as mu_module

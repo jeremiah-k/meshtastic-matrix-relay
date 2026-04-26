@@ -4826,7 +4826,6 @@ class TestDependencyInstallation(BaseGitTest):
             "requests==2.28.0",
             "--extra-index-url https://pypi.org/simple",
         ]
-        # The function tokenizes lines from _collect_requirements, so filter receives tokenized input
         mock_filter.return_value = (
             ["requests==2.28.0", "--extra-index-url https://pypi.org/simple"],
             [],
