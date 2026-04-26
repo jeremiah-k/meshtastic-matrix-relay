@@ -111,8 +111,17 @@ PLUGIN_STATE_FILENAME: Final[str] = ".mmrelay-plugin-state.json"
 PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT: Final[str] = (
     "last_installed_requirements_commit"
 )
+PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH: Final[str] = (
+    "last_installed_requirements_hash"
+)
+PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET: Final[str] = (
+    "last_installed_requirements_target"
+)
 PLUGIN_STATE_LAST_REQUIREMENTS_INSTALLED_AT: Final[str] = (
     "last_requirements_installed_at"
+)
+PLUGIN_REQUIREMENTS_INSTALL_MARKER_FILENAME: Final[str] = (
+    ".mmrelay-requirements-installed"
 )
 COMMUNITY_PLUGIN_UPDATE_CHECK_INTERVAL: Final[timedelta] = timedelta(hours=24)
 _community_dep_install_warning_logged = False
@@ -798,6 +807,85 @@ def _refresh_dependency_paths() -> None:
     importlib.invalidate_caches()
 
 
+def _requirements_install_marker_path(repo_path: str) -> str:
+    if _PLUGIN_DEPS_DIR:
+        return os.path.join(
+            os.fspath(_PLUGIN_DEPS_DIR), PLUGIN_REQUIREMENTS_INSTALL_MARKER_FILENAME
+        )
+    return os.path.join(repo_path, PLUGIN_REQUIREMENTS_INSTALL_MARKER_FILENAME)
+
+
+def _write_requirements_install_marker(repo_path: str) -> None:
+    marker_path = _requirements_install_marker_path(repo_path)
+    os.makedirs(os.path.dirname(marker_path), exist_ok=True)
+    with open(marker_path, "w", encoding=DEFAULT_TEXT_ENCODING) as marker_file:
+        marker_file.write(datetime.now(timezone.utc).isoformat() + "\n")
+
+
+def _requirements_install_target_identity() -> str:
+    if _PLUGIN_DEPS_DIR:
+        return f"target:{os.path.abspath(os.fspath(_PLUGIN_DEPS_DIR))}"
+
+    if any(key in os.environ for key in PIPX_ENVIRONMENT_KEYS):
+        return "pipx:mmrelay"
+
+    in_venv = (sys.prefix != getattr(sys, "base_prefix", sys.prefix)) or (
+        "VIRTUAL_ENV" in os.environ
+    )
+    if in_venv:
+        return f"python:{os.path.abspath(sys.prefix)}"
+
+    try:
+        user_site = site.getusersitepackages()
+    except AttributeError:
+        user_site = "unknown"
+    if isinstance(user_site, str):
+        return f"user:{os.path.abspath(user_site)}"
+    return "user:" + os.pathsep.join(os.path.abspath(path) for path in user_site)
+
+
+def _requirements_install_target_valid(repo_path: str) -> bool:
+    marker_exists = os.path.isfile(_requirements_install_marker_path(repo_path))
+    if _PLUGIN_DEPS_DIR:
+        deps_path = os.fspath(_PLUGIN_DEPS_DIR)
+        deps_has_content = False
+        if os.path.isdir(deps_path):
+            try:
+                with os.scandir(deps_path) as entries:
+                    deps_has_content = any(entries)
+            except OSError:
+                deps_has_content = False
+        return deps_has_content or marker_exists
+    return marker_exists
+
+
+def _effective_requirements_for_repo(repo_path: str, repo_name: str) -> list[str]:
+    requirements_path = os.path.join(repo_path, PLUGIN_REQUIREMENTS_FILENAME)
+    requirements_lines = _collect_requirements(requirements_path)
+    safe_requirements, flagged_requirements = _filter_risky_requirement_lines(
+        requirements_lines
+    )
+
+    allow_untrusted = bool(
+        _get_security_settings().get("allow_untrusted_dependencies", False)
+    )
+    if flagged_requirements and allow_untrusted:
+        safe_requirements.extend(flagged_requirements)
+
+    logger.debug(
+        "Computed effective requirements for plugin %s: %d allowed, %d flagged",
+        repo_name,
+        len(safe_requirements),
+        len(flagged_requirements),
+    )
+    return safe_requirements
+
+
+def _requirements_hash(requirements: Sequence[str]) -> str:
+    payload = "\n".join(requirements).encode(DEFAULT_TEXT_ENCODING)
+    return hashlib.sha256(payload).hexdigest()
+
+
 def _install_requirements_for_repo(
     repo_path: str,
     repo_name: str,
@@ -827,12 +915,12 @@ def _install_requirements_for_repo(
 
     global _community_dep_install_warning_logged
     try:
-        in_pipx = any(key in os.environ for key in PIPX_ENVIRONMENT_KEYS)
+        install_target = _PLUGIN_DEPS_DIR
+        in_pipx = install_target is None and any(
+            key in os.environ for key in PIPX_ENVIRONMENT_KEYS
+        )
 
-        # Collect requirements as full lines to preserve PEP 508 compliance
-        # (version specifiers, environment markers, etc.)
         requirements_lines = _collect_requirements(requirements_path)
-
         safe_requirements, flagged_requirements = _filter_risky_requirement_lines(
             requirements_lines
         )
@@ -860,7 +948,58 @@ def _install_requirements_for_repo(
 
         installed_packages = False
 
-        if in_pipx:
+        if install_target is not None:
+            logger.info(
+                "Installing requirements for plugin %s into persistent dependency directory %s",
+                repo_name,
+                install_target,
+            )
+            packages = [r for r in safe_requirements if not r.startswith("-")]
+            if not packages:
+                logger.info(
+                    "Requirements in %s provided no installable packages; skipping pip install.",
+                    requirements_path,
+                )
+            else:
+                if (
+                    plugin_type == PLUGIN_TYPE_COMMUNITY
+                    and not _community_dep_install_warning_logged
+                ):
+                    logger.warning(
+                        "Community plugin dependencies execute arbitrary code and are unsafe"
+                    )
+                    _community_dep_install_warning_logged = True
+                cmd = [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--disable-pip-version-check",
+                    "--no-input",
+                    "--target",
+                    os.fspath(install_target),
+                ]
+
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".txt", delete=False
+                ) as temp_file:
+                    temp_path = temp_file.name
+                    for entry in safe_requirements:
+                        temp_file.write(entry + "\n")
+
+                try:
+                    cmd.extend(["-r", temp_path])
+                    _run(cmd, timeout=PIP_INSTALL_TIMEOUT_SECONDS)
+                    installed_packages = True
+                finally:
+                    try:
+                        os.unlink(temp_path)
+                    except OSError:
+                        logger.debug(
+                            "Failed to clean up temporary requirements file: %s",
+                            temp_path,
+                        )
+        elif in_pipx:
             logger.info("Installing requirements for plugin %s with pipx", repo_name)
             pipx_path = shutil.which("pipx")
             if not pipx_path:
@@ -964,6 +1103,7 @@ def _install_requirements_for_repo(
 
         if installed_packages:
             logger.info("Successfully installed requirements for plugin %s", repo_name)
+            _write_requirements_install_marker(repo_path)
             _refresh_dependency_paths()
         else:
             logger.info("No dependency installation run for plugin %s", repo_name)
@@ -3218,23 +3358,46 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                         )
                     else:
                         state = _load_plugin_state(repo_path)
+                        requirements_hash = _requirements_hash(
+                            _effective_requirements_for_repo(repo_path, repo_name)
+                        )
+                        requirements_target = _requirements_install_target_identity()
                         last_installed_commit = state.get(
                             PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT
+                        )
+                        last_installed_hash = state.get(
+                            PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH
+                        )
+                        last_installed_target = state.get(
+                            PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET
                         )
                         if (
                             isinstance(last_installed_commit, str)
                             and last_installed_commit == pinned_sha
+                            and isinstance(last_installed_hash, str)
+                            and last_installed_hash == requirements_hash
+                            and isinstance(last_installed_target, str)
+                            and last_installed_target == requirements_target
+                            and _requirements_install_target_valid(repo_path)
                         ):
                             logger.debug(
-                                "Skipping requirements install for community plugin %s; already installed for commit %s",
+                                "Skipping requirements install for community plugin %s; already installed for commit %s, requirements hash %s, target %s",
                                 plugin_name,
                                 pinned_sha,
+                                requirements_hash,
+                                requirements_target,
                             )
                         elif _install_requirements_for_repo(
                             repo_path, repo_name, plugin_type=PLUGIN_TYPE_COMMUNITY
                         ):
                             state[PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT] = (
                                 pinned_sha
+                            )
+                            state[PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH] = (
+                                requirements_hash
+                            )
+                            state[PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET] = (
+                                requirements_target
                             )
                             state[PLUGIN_STATE_LAST_REQUIREMENTS_INSTALLED_AT] = (
                                 datetime.now(timezone.utc).isoformat()
