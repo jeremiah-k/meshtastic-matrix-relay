@@ -263,6 +263,7 @@ class TestPluginLoader(BaseGitTest):
         # Use a temporary directory instead of hardcoded path
         with tempfile.TemporaryDirectory() as temp_app_dir:
             mock_get_app_path.return_value = temp_app_dir
+            os.makedirs(os.path.join(temp_app_dir, "plugins", "custom"))
 
             dirs = get_custom_plugin_dirs()
 
@@ -289,6 +290,7 @@ class TestPluginLoader(BaseGitTest):
         # Use a temporary directory instead of hardcoded path
         with tempfile.TemporaryDirectory() as temp_app_dir:
             mock_get_app_path.return_value = temp_app_dir
+            os.makedirs(os.path.join(temp_app_dir, "plugins", "community"))
 
             dirs = get_community_plugin_dirs()
 
@@ -4605,10 +4607,12 @@ class TestPluginDirectories(unittest.TestCase):
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_legacy_dirs")
     @patch("mmrelay.plugin_loader.get_app_path")
+    @patch("os.path.isdir")
     @patch("os.makedirs")
     def test_get_plugin_dirs_user_dir_success(
         self,
         mock_makedirs,
+        mock_isdir,
         mock_get_app_path,
         mock_get_legacy_dirs,
         mock_get_home_dir,
@@ -4619,21 +4623,27 @@ class TestPluginDirectories(unittest.TestCase):
         mock_get_home_dir.return_value = "/user/base"
         mock_get_legacy_dirs.return_value = []
         mock_get_app_path.return_value = "/app/path"
+        mock_isdir.return_value = True
 
         dirs = _get_plugin_dirs("custom")
 
         self.assertIn("/user/base/plugins/custom", dirs)
         self.assertIn("/app/path/plugins/custom", dirs)
+        mock_makedirs.assert_called_once_with(
+            "/user/base/plugins/custom", exist_ok=True
+        )
 
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_legacy_dirs")
     @patch("mmrelay.plugin_loader.get_app_path")
+    @patch("os.path.isdir")
     @patch("mmrelay.plugin_loader.logger")
     @patch("os.makedirs")
     def test_get_plugin_dirs_user_dir_permission_error(
         self,
         mock_makedirs,
         mock_logger,
+        mock_isdir,
         mock_get_app_path,
         mock_get_legacy_dirs,
         mock_get_home_dir,
@@ -4644,10 +4654,8 @@ class TestPluginDirectories(unittest.TestCase):
         mock_get_home_dir.return_value = "/user/base"
         mock_get_legacy_dirs.return_value = []
         mock_get_app_path.return_value = "/app/path"
-        mock_makedirs.side_effect = [
-            PermissionError("Permission denied"),
-            None,  # Second call succeeds
-        ]
+        mock_isdir.return_value = True
+        mock_makedirs.side_effect = PermissionError("Permission denied")
 
         dirs = _get_plugin_dirs("custom")
 
@@ -4659,33 +4667,69 @@ class TestPluginDirectories(unittest.TestCase):
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_legacy_dirs")
     @patch("mmrelay.plugin_loader.get_app_path")
+    @patch("os.path.isdir")
     @patch("mmrelay.plugin_loader.logger")
     @patch("os.makedirs")
-    def test_get_plugin_dirs_local_dir_os_error(
+    def test_get_plugin_dirs_missing_local_dir_is_skipped_without_noise(
         self,
         mock_makedirs,
         mock_logger,
+        mock_isdir,
         mock_get_app_path,
         mock_get_legacy_dirs,
         mock_get_home_dir,
     ):
-        """Test handling of OS error in local directory."""
+        """Missing package-local fallback directories should be skipped quietly."""
         from mmrelay.plugin_loader import _get_plugin_dirs
 
         mock_get_home_dir.return_value = "/user/base"
         mock_get_legacy_dirs.return_value = []
         mock_get_app_path.return_value = "/app/path"
-        mock_makedirs.side_effect = [
-            None,  # User dir succeeds
-            OSError("Disk full"),
-        ]
+        mock_isdir.return_value = False
 
         dirs = _get_plugin_dirs("custom")
 
-        # Should only include user directory since local dir failed
         self.assertEqual(len(dirs), 1)
         self.assertIn("/user/base/plugins/custom", dirs)
-        mock_logger.debug.assert_called()
+        mock_makedirs.assert_called_once_with(
+            "/user/base/plugins/custom", exist_ok=True
+        )
+        mock_logger.warning.assert_not_called()
+        mock_logger.debug.assert_not_called()
+
+    @patch("mmrelay.paths.get_home_dir")
+    @patch("mmrelay.paths.get_legacy_dirs")
+    @patch("mmrelay.plugin_loader.get_app_path")
+    @patch("os.path.isdir")
+    @patch("os.makedirs")
+    def test_get_plugin_dirs_existing_local_dir_is_included(
+        self,
+        mock_makedirs,
+        mock_isdir,
+        mock_get_app_path,
+        mock_get_legacy_dirs,
+        mock_get_home_dir,
+    ):
+        """Existing package-local fallback directories should still be searched."""
+        from mmrelay.plugin_loader import _get_plugin_dirs
+
+        mock_get_home_dir.return_value = "/user/base"
+        mock_get_legacy_dirs.return_value = []
+        mock_get_app_path.return_value = "/app/path"
+        mock_isdir.return_value = True
+
+        dirs = _get_plugin_dirs("community")
+
+        self.assertEqual(
+            dirs,
+            [
+                "/user/base/plugins/community",
+                "/app/path/plugins/community",
+            ],
+        )
+        mock_makedirs.assert_called_once_with(
+            "/user/base/plugins/community", exist_ok=True
+        )
 
 
 class TestDependencyInstallation(BaseGitTest):

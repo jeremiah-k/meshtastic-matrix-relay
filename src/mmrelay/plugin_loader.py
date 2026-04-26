@@ -1388,13 +1388,13 @@ def _get_plugin_dirs(plugin_type: str) -> list[str]:
     """
     Compute ordered plugin directories for the given plugin type.
 
-    Prefers per-root user plugin directories (created if missing) for each discovered plugin root and includes the local application `plugins/<type>` directory for backward compatibility; any directory that cannot be created or accessed is omitted.
+    Prefers per-root user plugin directories (created if missing) for each discovered plugin root and includes an existing local application `plugins/<type>` directory for backward compatibility.
 
     Parameters:
         plugin_type (str): Plugin category, e.g. "custom" or "community".
 
     Returns:
-        list[str]: Ordered list of filesystem paths to plugin directories (per-root user dirs first, then the local app directory).
+        list[str]: Ordered list of filesystem paths to plugin directories (per-root user dirs first, then an existing local app directory).
     """
     dirs = []
 
@@ -1420,14 +1420,11 @@ def _get_plugin_dirs(plugin_type: str) -> list[str]:
         except (OSError, PermissionError) as e:
             logger.warning("Cannot create user plugin directory %s: %s", user_dir, e)
 
-    # Check local directory (backward compatibility)
+    # Check local directory (backward compatibility). This path is part of the
+    # installed application package, so never try to create runtime data there.
     local_dir = os.path.join(get_app_path(), PLUGINS_DIRNAME, plugin_type)
-    try:
-        os.makedirs(local_dir, exist_ok=True)
+    if os.path.isdir(local_dir):
         dirs.append(local_dir)
-    except (OSError, PermissionError):
-        # Skip local directory if we can't create it (e.g., in Docker)
-        logger.debug(f"Cannot create local plugin directory {local_dir}, skipping")
 
     return dirs
 
