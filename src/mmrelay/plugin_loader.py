@@ -1010,6 +1010,7 @@ def _requirements_install_target_valid(
         isinstance(marker, dict)
         and marker.get("requirements_hash") == requirements_hash
         and marker.get("target") == target
+        and marker.get("repo") == repo_name
     )
 
 
@@ -1070,7 +1071,10 @@ def _installable_requirement_lines(requirements: Sequence[str]) -> list[str]:
 @contextmanager
 def _temporary_requirements_file(requirements: Sequence[str]) -> Iterator[str]:
     with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".txt", delete=False
+        mode="w",
+        suffix=".txt",
+        encoding=DEFAULT_TEXT_ENCODING,
+        delete=False,
     ) as temp_file:
         temp_path = temp_file.name
         for entry in requirements:
@@ -1086,6 +1090,69 @@ def _temporary_requirements_file(requirements: Sequence[str]) -> Iterator[str]:
                 "Failed to clean up temporary requirements file: %s",
                 temp_path,
             )
+
+
+def _replace_dependency_target_item(source_path: str, destination_path: str) -> None:
+    if os.path.lexists(destination_path):
+        if os.path.isdir(destination_path) and not os.path.islink(destination_path):
+            shutil.rmtree(destination_path)
+        else:
+            os.unlink(destination_path)
+    shutil.move(source_path, destination_path)
+
+
+def _normalize_distribution_name(distribution_name: str) -> str:
+    return re.sub(r"[-_.]+", "-", distribution_name).lower()
+
+
+def _metadata_distribution_key(item_name: str, item_path: str) -> str | None:
+    for suffix in (".dist-info", ".egg-info"):
+        if item_name.endswith(suffix):
+            metadata_path = os.path.join(item_path, "METADATA")
+            try:
+                with open(
+                    metadata_path, encoding=DEFAULT_TEXT_ENCODING
+                ) as metadata_file:
+                    for line in metadata_file:
+                        if line.lower().startswith("name:"):
+                            _, _, distribution_name = line.partition(":")
+                            return _normalize_distribution_name(
+                                distribution_name.strip()
+                            )
+            except OSError:
+                pass
+            metadata_name = item_name[: -len(suffix)]
+            distribution_name = metadata_name.split("-", 1)[0]
+            return _normalize_distribution_name(distribution_name)
+    return None
+
+
+def _remove_stale_dependency_metadata(
+    target_dir: str, staged_item_name: str, staged_item_path: str
+) -> None:
+    staged_key = _metadata_distribution_key(staged_item_name, staged_item_path)
+    if not staged_key:
+        return
+
+    for existing_name in os.listdir(target_dir):
+        if existing_name == staged_item_name:
+            continue
+        existing_path = os.path.join(target_dir, existing_name)
+        if _metadata_distribution_key(existing_name, existing_path) != staged_key:
+            continue
+        if os.path.isdir(existing_path) and not os.path.islink(existing_path):
+            shutil.rmtree(existing_path)
+        else:
+            os.unlink(existing_path)
+
+
+def _merge_staged_dependency_target(staged_dir: str, target_dir: str) -> None:
+    os.makedirs(target_dir, exist_ok=True)
+    for item_name in os.listdir(staged_dir):
+        source_path = os.path.join(staged_dir, item_name)
+        destination_path = os.path.join(target_dir, item_name)
+        _remove_stale_dependency_metadata(target_dir, item_name, source_path)
+        _replace_dependency_target_item(source_path, destination_path)
 
 
 def _install_requirements_for_repo(
@@ -1130,7 +1197,6 @@ def _install_requirements_for_repo(
         )
         safe_requirements = effective_requirements.allowed
         requirements_hash = _requirements_hash(safe_requirements)
-        requirements_target = _requirements_install_target_identity()
         packages = _installable_requirement_lines(safe_requirements)
 
         installed_packages = False
@@ -1164,15 +1230,25 @@ def _install_requirements_for_repo(
                     "install",
                     "--disable-pip-version-check",
                     "--no-input",
-                    "--target",
-                    os.fspath(install_target),
                 ]
 
-                with _temporary_requirements_file(safe_requirements) as temp_path:
-                    cmd.extend(["-r", temp_path])
-                    _run(cmd, timeout=PIP_INSTALL_TIMEOUT_SECONDS)
+                target_dir = os.path.abspath(os.fspath(install_target))
+                staging_parent = os.path.dirname(target_dir) or None
+                if staging_parent:
+                    os.makedirs(staging_parent, exist_ok=True)
+                staged_dir = tempfile.mkdtemp(
+                    prefix=".mmrelay-deps-install-", dir=staging_parent
+                )
+                try:
+                    cmd.extend(["--target", staged_dir])
+                    with _temporary_requirements_file(safe_requirements) as temp_path:
+                        cmd.extend(["-r", temp_path])
+                        _run(cmd, timeout=PIP_INSTALL_TIMEOUT_SECONDS)
+                    _merge_staged_dependency_target(staged_dir, target_dir)
                     installed_packages = True
                     handled_requirements = True
+                finally:
+                    shutil.rmtree(staged_dir, ignore_errors=True)
         elif in_pipx:
             logger.info("Installing requirements for plugin %s with pipx", repo_name)
             pipx_path = shutil.which("pipx")

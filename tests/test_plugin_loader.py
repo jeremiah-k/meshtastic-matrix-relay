@@ -4670,6 +4670,7 @@ class TestDependencyInstallation(BaseGitTest):
         with (
             patch.dict(os.environ, {"VIRTUAL_ENV": "/venv"}, clear=True),
             patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths"),
             patch("mmrelay.plugin_loader._write_requirements_install_marker"),
         ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
@@ -4684,9 +4685,11 @@ class TestDependencyInstallation(BaseGitTest):
             "--disable-pip-version-check",
             "--no-input",
             "--target",
-            self.deps_dir,
         ]
-        assert called_cmd[:8] == expected_base
+        assert called_cmd[:7] == expected_base
+        target_path = called_cmd[called_cmd.index("--target") + 1]
+        assert target_path != self.deps_dir
+        assert os.path.dirname(target_path) == os.path.dirname(self.deps_dir)
         assert "-r" in called_cmd
         assert called_cmd[called_cmd.index("-r") + 1] == temp_req
         mock_run.assert_called_once_with(called_cmd, timeout=600)
@@ -4720,6 +4723,7 @@ class TestDependencyInstallation(BaseGitTest):
         with (
             patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
             patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths"),
         ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
 
@@ -4756,6 +4760,7 @@ class TestDependencyInstallation(BaseGitTest):
             patch("sys.base_prefix", "/fake/prefix"),
             patch("shutil.which", return_value=None),
             patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths"),
             patch(
                 "mmrelay.plugin_loader.tempfile.NamedTemporaryFile"
             ) as mock_temp_file,
@@ -4817,7 +4822,9 @@ class TestDependencyInstallation(BaseGitTest):
             ],
         )
         self.assertIn("--target", cmd)
-        self.assertEqual(cmd[cmd.index("--target") + 1], self.deps_dir)
+        target_path = cmd[cmd.index("--target") + 1]
+        self.assertNotEqual(target_path, self.deps_dir)
+        self.assertEqual(os.path.dirname(target_path), os.path.dirname(self.deps_dir))
         self.assertNotIn("--user", cmd)
         self.assertNotIn("inject", cmd)
 
@@ -4835,7 +4842,9 @@ class TestDependencyInstallation(BaseGitTest):
         cmd = mock_run.call_args.args[0]
         self.assertEqual(cmd[:4], [sys.executable, "-m", "pip", "install"])
         self.assertIn("--target", cmd)
-        self.assertEqual(cmd[cmd.index("--target") + 1], self.deps_dir)
+        target_path = cmd[cmd.index("--target") + 1]
+        self.assertNotEqual(target_path, self.deps_dir)
+        self.assertEqual(os.path.dirname(target_path), os.path.dirname(self.deps_dir))
         self.assertNotIn("inject", cmd)
         mock_which.assert_not_called()
 
@@ -4845,6 +4854,7 @@ class TestDependencyInstallation(BaseGitTest):
             patch("mmrelay.plugin_loader._run") as mock_run,
             patch.object(pl, "_PLUGIN_DEPS_DIR", None),
             patch("shutil.which", return_value="/usr/bin/pipx"),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths"),
             patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
         ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
@@ -4861,6 +4871,7 @@ class TestDependencyInstallation(BaseGitTest):
             patch.object(pl, "_PLUGIN_DEPS_DIR", None),
             patch("sys.prefix", "/fake/prefix"),
             patch("sys.base_prefix", "/fake/prefix"),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths"),
             patch.dict(os.environ, {}, clear=True),
         ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
@@ -5065,12 +5076,21 @@ class TestDependencyInstallation(BaseGitTest):
 
     def test_temporary_requirements_file_cleans_up_after_success(self):
         """Temporary requirements helper should remove the file after normal use."""
-        with pl._temporary_requirements_file(["requests==2.28.0"]) as temp_path:
+        with (
+            patch(
+                "mmrelay.plugin_loader.tempfile.NamedTemporaryFile",
+                wraps=tempfile.NamedTemporaryFile,
+            ) as mock_temp_file,
+            pl._temporary_requirements_file(["requests==2.28.0"]) as temp_path,
+        ):
             self.assertTrue(os.path.exists(temp_path))
             with open(temp_path, encoding="utf-8") as temp_file:
                 self.assertEqual(temp_file.read(), "requests==2.28.0\n")
 
         self.assertFalse(os.path.exists(temp_path))
+        self.assertEqual(
+            mock_temp_file.call_args.kwargs["encoding"], pl.DEFAULT_TEXT_ENCODING
+        )
 
     def test_temporary_requirements_file_cleans_up_after_failure(self):
         """Temporary requirements helper should remove the file when callers fail."""
@@ -5128,6 +5148,27 @@ class TestDependencyInstallation(BaseGitTest):
                 )
             )
 
+    def test_requirements_install_target_valid_marker_repo_mismatch_is_invalid(self):
+        """A marker with a mismatched repo payload should not validate."""
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
+            marker_path = pl._requirements_install_marker_path(
+                self.repo_path, "test-plugin"
+            )
+            with open(marker_path, "w", encoding="utf-8") as marker_file:
+                json.dump(
+                    {
+                        "requirements_hash": "hash",
+                        "target": "target",
+                        "repo": "other-plugin",
+                    },
+                    marker_file,
+                )
+            self.assertFalse(
+                pl._requirements_install_target_valid(
+                    self.repo_path, "test-plugin", "hash", "target"
+                )
+            )
+
     def test_requirements_install_target_valid_unrelated_deps_file_is_invalid(self):
         """Unrelated files in the shared deps dir should not validate a plugin."""
         with open(os.path.join(self.deps_dir, "unrelated.txt"), "w") as handle:
@@ -5161,6 +5202,115 @@ class TestDependencyInstallation(BaseGitTest):
         self.assertEqual(marker["requirements_hash"], requirements_hash)
         self.assertEqual(marker["target"], target)
         self.assertEqual(marker["repo"], "test-plugin")
+
+    def test_install_plugin_requirements_stages_target_and_replaces_matching_items(
+        self,
+    ):
+        """Persistent installs should merge staged outputs without deleting unrelated deps."""
+        package_dir = os.path.join(self.deps_dir, "requests")
+        dist_info_dir = os.path.join(self.deps_dir, "requests-2.27.0.dist-info")
+        unrelated_dir = os.path.join(self.deps_dir, "unrelated")
+        os.makedirs(package_dir)
+        os.makedirs(dist_info_dir)
+        os.makedirs(unrelated_dir)
+        with open(os.path.join(package_dir, "__init__.py"), "w") as handle:
+            handle.write("old = True\n")
+        with open(os.path.join(dist_info_dir, "METADATA"), "w") as handle:
+            handle.write("old metadata\n")
+        with open(os.path.join(unrelated_dir, "keep.txt"), "w") as handle:
+            handle.write("keep\n")
+
+        staged_targets: list[str] = []
+
+        def fake_run(cmd, **_kwargs):
+            staged_target = cmd[cmd.index("--target") + 1]
+            staged_targets.append(staged_target)
+            os.makedirs(os.path.join(staged_target, "requests"))
+            os.makedirs(os.path.join(staged_target, "requests-2.28.0.dist-info"))
+            with open(
+                os.path.join(staged_target, "requests", "__init__.py"), "w"
+            ) as handle:
+                handle.write("new = True\n")
+            with open(
+                os.path.join(staged_target, "requests-2.28.0.dist-info", "METADATA"),
+                "w",
+            ) as handle:
+                handle.write("new metadata\n")
+
+        with (
+            patch("mmrelay.plugin_loader._run", side_effect=fake_run) as mock_run,
+            patch("mmrelay.plugin_loader._refresh_dependency_paths"),
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+        ):
+            result = _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        self.assertTrue(result)
+        mock_run.assert_called_once()
+        self.assertEqual(len(staged_targets), 1)
+        self.assertNotEqual(staged_targets[0], self.deps_dir)
+        self.assertFalse(os.path.exists(staged_targets[0]))
+        self.assertEqual(
+            os.listdir(os.path.join(self.deps_dir, "requests")),
+            ["__init__.py"],
+        )
+        with open(
+            os.path.join(self.deps_dir, "requests", "__init__.py"),
+            encoding="utf-8",
+        ) as handle:
+            self.assertEqual(handle.read(), "new = True\n")
+        self.assertFalse(os.path.exists(dist_info_dir))
+        self.assertTrue(
+            os.path.exists(os.path.join(self.deps_dir, "requests-2.28.0.dist-info"))
+        )
+        self.assertTrue(os.path.exists(os.path.join(unrelated_dir, "keep.txt")))
+
+    def test_install_plugin_requirements_failed_staged_target_leaves_deps_unchanged(
+        self,
+    ):
+        """Failed persistent installs should not merge staged outputs or write markers."""
+        package_dir = os.path.join(self.deps_dir, "requests")
+        unrelated_dir = os.path.join(self.deps_dir, "unrelated")
+        os.makedirs(package_dir)
+        os.makedirs(unrelated_dir)
+        with open(os.path.join(package_dir, "__init__.py"), "w") as handle:
+            handle.write("old = True\n")
+        with open(os.path.join(unrelated_dir, "keep.txt"), "w") as handle:
+            handle.write("keep\n")
+
+        staged_targets: list[str] = []
+
+        def fake_run(cmd, **_kwargs):
+            staged_target = cmd[cmd.index("--target") + 1]
+            staged_targets.append(staged_target)
+            os.makedirs(os.path.join(staged_target, "requests"))
+            with open(
+                os.path.join(staged_target, "requests", "__init__.py"), "w"
+            ) as handle:
+                handle.write("new = True\n")
+            raise subprocess.CalledProcessError(1, cmd)
+
+        with (
+            patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+        ):
+            result = _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        self.assertFalse(result)
+        self.assertEqual(len(staged_targets), 1)
+        self.assertFalse(os.path.exists(staged_targets[0]))
+        with open(
+            os.path.join(self.deps_dir, "requests", "__init__.py"),
+            encoding="utf-8",
+        ) as handle:
+            self.assertEqual(handle.read(), "old = True\n")
+        self.assertTrue(os.path.exists(os.path.join(unrelated_dir, "keep.txt")))
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
+            marker_path = pl._requirements_install_marker_path(
+                self.repo_path, "test-plugin"
+            )
+        self.assertFalse(os.path.exists(marker_path))
+        mock_refresh.assert_not_called()
 
     def test_install_plugin_requirements_no_packages_writes_marker(self):
         """No-installable-package requirements should still mark successful handling."""
