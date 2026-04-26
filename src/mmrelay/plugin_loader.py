@@ -14,7 +14,7 @@ import sysconfig
 import tempfile
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta, timezone
 from types import ModuleType
 from typing import Any, Final, Iterator, NamedTuple, NoReturn, Sequence, cast
@@ -983,10 +983,8 @@ def _write_requirements_install_marker(
         os.replace(tmp_path, marker_path)
     finally:
         if tmp_path and os.path.exists(tmp_path):
-            try:
+            with suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
 
 
 def _requirements_install_target_identity() -> str:
@@ -1092,7 +1090,31 @@ def _temporary_requirements_file(requirements: Sequence[str]) -> Iterator[str]:
             )
 
 
+def _merge_dependency_directory(source_dir: str, destination_dir: str) -> None:
+    os.makedirs(destination_dir, exist_ok=True)
+    for item_name in os.listdir(source_dir):
+        source_path = os.path.join(source_dir, item_name)
+        destination_path = os.path.join(destination_dir, item_name)
+        _replace_dependency_target_item(source_path, destination_path)
+    shutil.rmtree(source_dir)
+
+
+def _is_namespace_package_directory(path: str) -> bool:
+    return not os.path.exists(os.path.join(path, "__init__.py"))
+
+
 def _replace_dependency_target_item(source_path: str, destination_path: str) -> None:
+    if (
+        os.path.isdir(source_path)
+        and not os.path.islink(source_path)
+        and os.path.isdir(destination_path)
+        and not os.path.islink(destination_path)
+        and _is_namespace_package_directory(source_path)
+        and _is_namespace_package_directory(destination_path)
+    ):
+        _merge_dependency_directory(source_path, destination_path)
+        return
+
     if os.path.lexists(destination_path):
         if os.path.isdir(destination_path) and not os.path.islink(destination_path):
             shutil.rmtree(destination_path)
@@ -1108,7 +1130,8 @@ def _normalize_distribution_name(distribution_name: str) -> str:
 def _metadata_distribution_key(item_name: str, item_path: str) -> str | None:
     for suffix in (".dist-info", ".egg-info"):
         if item_name.endswith(suffix):
-            metadata_path = os.path.join(item_path, "METADATA")
+            metadata_filename = "PKG-INFO" if suffix == ".egg-info" else "METADATA"
+            metadata_path = os.path.join(item_path, metadata_filename)
             try:
                 with open(
                     metadata_path, encoding=DEFAULT_TEXT_ENCODING
@@ -1159,6 +1182,8 @@ def _install_requirements_for_repo(
     repo_path: str,
     repo_name: str,
     plugin_type: str = PLUGIN_TYPE_CUSTOM,
+    *,
+    requirements_target: str | None = None,
 ) -> bool:
     """
     Install dependencies listed in repo_path/requirements.txt for a community plugin and refresh import paths.
@@ -1323,7 +1348,9 @@ def _install_requirements_for_repo(
         else:
             logger.info("No dependency installation run for plugin %s", repo_name)
         if handled_requirements:
-            requirements_target = _requirements_install_target_identity()
+            requirements_target = (
+                requirements_target or _requirements_install_target_identity()
+            )
             _write_requirements_install_marker(
                 repo_path, repo_name, requirements_hash, requirements_target
             )
@@ -3635,11 +3662,11 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                                 requirements_target,
                             )
                         if _install_requirements_for_repo(
-                            repo_path, repo_name, plugin_type=PLUGIN_TYPE_COMMUNITY
+                            repo_path,
+                            repo_name,
+                            plugin_type=PLUGIN_TYPE_COMMUNITY,
+                            requirements_target=requirements_target,
                         ):
-                            requirements_target = (
-                                _requirements_install_target_identity()
-                            )
                             state[PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT] = (
                                 pinned_sha
                             )

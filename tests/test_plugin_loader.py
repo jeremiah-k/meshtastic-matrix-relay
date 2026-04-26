@@ -1566,6 +1566,7 @@ class Plugin:
             os.path.join(self.community_dir, "repo"),
             "repo",
             plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+            requirements_target=ANY,
         )
         saved_state = mock_save_state.call_args.args[1]
         self.assertEqual(
@@ -1633,6 +1634,7 @@ class Plugin:
             os.path.join(self.community_dir, "repo"),
             "repo",
             plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+            requirements_target=ANY,
         )
         saved_state = mock_save_state.call_args.args[1]
         self.assertEqual(
@@ -1705,6 +1707,7 @@ class Plugin:
             os.path.join(self.community_dir, "repo"),
             "repo",
             plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+            requirements_target=ANY,
         )
         saved_state = mock_save_state.call_args.args[1]
         self.assertEqual(
@@ -1959,6 +1962,7 @@ class Plugin:
             repo_path,
             "repo",
             plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+            requirements_target=requirements_target,
         )
         saved_state = pl._load_plugin_state(repo_path)
         self.assertEqual(
@@ -1975,6 +1979,148 @@ class Plugin:
             requirements_target,
         )
         mock_start_scheduler.assert_called_once()
+
+    def test_load_plugins_matching_commit_stale_hash_reinstalls_requirements(self):
+        """Matching commit should reinstall when saved requirements hash is stale."""
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+        repo_path = self._write_community_requirements()
+        deps_dir = os.path.join(self.test_dir, "plugins", "deps")
+        os.makedirs(deps_dir, exist_ok=True)
+        current_hash = pl._requirements_hash(["requests==2.28.0"])
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir):
+            current_target = pl._requirements_install_target_identity()
+            pl._write_requirements_install_marker(
+                repo_path, "repo", current_hash, current_target
+            )
+        pl._save_plugin_state(
+            repo_path,
+            {
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT: "0123456789abcdef0123456789abcdef01234567",
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH: "stale-hash",
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET: current_target,
+            },
+        )
+        config = {
+            "community-plugins": {
+                "commit-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "commit": "0123456789abcdef0123456789abcdef01234567",
+                    "install_requirements": True,
+                }
+            },
+            "plugins": {},
+        }
+
+        with (
+            patch("mmrelay.plugin_loader.get_custom_plugin_dirs", return_value=[]),
+            patch(
+                "mmrelay.plugin_loader.get_community_plugin_dirs",
+                return_value=[self.community_dir],
+            ),
+            patch("mmrelay.plugin_loader.clone_or_update_repo", return_value=True),
+            patch(
+                "mmrelay.plugin_loader._resolve_local_head_commit",
+                return_value="0123456789abcdef0123456789abcdef01234567",
+            ),
+            patch("mmrelay.plugin_loader.load_plugins_from_directory", return_value=[]),
+            patch("mmrelay.plugin_loader.start_global_scheduler"),
+            patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates"),
+            patch(
+                "mmrelay.plugin_loader._install_requirements_for_repo",
+                return_value=True,
+            ) as mock_install_reqs,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir),
+        ):
+            load_plugins(config)
+
+        mock_install_reqs.assert_called_once_with(
+            repo_path,
+            "repo",
+            plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+            requirements_target=current_target,
+        )
+        saved_state = pl._load_plugin_state(repo_path)
+        self.assertEqual(
+            saved_state[pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH],
+            current_hash,
+        )
+        self.assertEqual(
+            saved_state[pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET],
+            current_target,
+        )
+
+    def test_load_plugins_matching_commit_stale_target_reinstalls_requirements(self):
+        """Matching commit should reinstall when saved target identity is stale."""
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+        repo_path = self._write_community_requirements()
+        deps_dir = os.path.join(self.test_dir, "plugins", "deps")
+        os.makedirs(deps_dir, exist_ok=True)
+        current_hash = pl._requirements_hash(["requests==2.28.0"])
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir):
+            current_target = pl._requirements_install_target_identity()
+            pl._write_requirements_install_marker(
+                repo_path, "repo", current_hash, current_target
+            )
+        pl._save_plugin_state(
+            repo_path,
+            {
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT: "0123456789abcdef0123456789abcdef01234567",
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH: current_hash,
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET: "target:/stale",
+            },
+        )
+        config = {
+            "community-plugins": {
+                "commit-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "commit": "0123456789abcdef0123456789abcdef01234567",
+                    "install_requirements": True,
+                }
+            },
+            "plugins": {},
+        }
+
+        with (
+            patch("mmrelay.plugin_loader.get_custom_plugin_dirs", return_value=[]),
+            patch(
+                "mmrelay.plugin_loader.get_community_plugin_dirs",
+                return_value=[self.community_dir],
+            ),
+            patch("mmrelay.plugin_loader.clone_or_update_repo", return_value=True),
+            patch(
+                "mmrelay.plugin_loader._resolve_local_head_commit",
+                return_value="0123456789abcdef0123456789abcdef01234567",
+            ),
+            patch("mmrelay.plugin_loader.load_plugins_from_directory", return_value=[]),
+            patch("mmrelay.plugin_loader.start_global_scheduler"),
+            patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates"),
+            patch(
+                "mmrelay.plugin_loader._install_requirements_for_repo",
+                return_value=True,
+            ) as mock_install_reqs,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir),
+        ):
+            load_plugins(config)
+
+        mock_install_reqs.assert_called_once_with(
+            repo_path,
+            "repo",
+            plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+            requirements_target=current_target,
+        )
+        saved_state = pl._load_plugin_state(repo_path)
+        self.assertEqual(
+            saved_state[pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH],
+            current_hash,
+        )
+        self.assertEqual(
+            saved_state[pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET],
+            current_target,
+        )
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo", return_value=False)
@@ -2093,6 +2239,7 @@ class Plugin:
             os.path.join(self.community_dir, "repo"),
             "repo",
             plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+            requirements_target=ANY,
         )
         saved_state = mock_save_state.call_args.args[1]
         self.assertEqual(
@@ -4718,7 +4865,7 @@ class TestDependencyInstallation(BaseGitTest):
         ]
         # The function tokenizes lines from _collect_requirements, so filter receives tokenized input
         mock_filter.return_value = (
-            ["requests==2.28.0", "--extra-index-url", "https://pypi.org/simple"],
+            ["requests==2.28.0", "--extra-index-url https://pypi.org/simple"],
             [],
         )
         with (
@@ -5179,6 +5326,24 @@ class TestDependencyInstallation(BaseGitTest):
                 )
             )
 
+    def test_metadata_distribution_key_reads_egg_info_pkg_info(self):
+        """egg-info distribution names should be read from PKG-INFO."""
+        egg_info_dir = os.path.join(self.temp_dir, "python_dateutil-2.8.2.egg-info")
+        os.makedirs(egg_info_dir)
+        with open(
+            os.path.join(egg_info_dir, "PKG-INFO"),
+            "w",
+            encoding=pl.DEFAULT_TEXT_ENCODING,
+        ) as metadata_file:
+            metadata_file.write("Metadata-Version: 2.1\nName: python-dateutil\n")
+
+        self.assertEqual(
+            pl._metadata_distribution_key(
+                "python_dateutil-2.8.2.egg-info", egg_info_dir
+            ),
+            "python-dateutil",
+        )
+
     def test_requirements_install_target_valid_unrelated_deps_file_is_invalid(self):
         """Unrelated files in the shared deps dir should not validate a plugin."""
         with open(os.path.join(self.deps_dir, "unrelated.txt"), "w") as handle:
@@ -5226,6 +5391,8 @@ class TestDependencyInstallation(BaseGitTest):
         os.makedirs(unrelated_dir)
         with open(os.path.join(package_dir, "__init__.py"), "w") as handle:
             handle.write("old = True\n")
+        with open(os.path.join(package_dir, "old.py"), "w") as handle:
+            handle.write("stale = True\n")
         with open(os.path.join(dist_info_dir, "METADATA"), "w") as handle:
             handle.write("old metadata\n")
         with open(os.path.join(unrelated_dir, "keep.txt"), "w") as handle:
@@ -5275,6 +5442,46 @@ class TestDependencyInstallation(BaseGitTest):
             os.path.exists(os.path.join(self.deps_dir, "requests-2.28.0.dist-info"))
         )
         self.assertTrue(os.path.exists(os.path.join(unrelated_dir, "keep.txt")))
+
+    def test_install_plugin_requirements_preserves_namespace_package_siblings(self):
+        """Staged merge should not delete existing namespace package subpackages."""
+        existing_namespace = os.path.join(self.deps_dir, "zope", "interface")
+        os.makedirs(existing_namespace)
+        with open(os.path.join(existing_namespace, "__init__.py"), "w") as handle:
+            handle.write("interface = True\n")
+
+        staged_targets: list[str] = []
+
+        def fake_run(cmd, **_kwargs):
+            staged_target = cmd[cmd.index("--target") + 1]
+            staged_targets.append(staged_target)
+            staged_namespace = os.path.join(staged_target, "zope", "proxy")
+            os.makedirs(staged_namespace)
+            with open(os.path.join(staged_namespace, "__init__.py"), "w") as handle:
+                handle.write("proxy = True\n")
+            dist_info = os.path.join(staged_target, "zope_proxy-5.2.dist-info")
+            os.makedirs(dist_info)
+            with open(
+                os.path.join(dist_info, "METADATA"),
+                "w",
+                encoding=pl.DEFAULT_TEXT_ENCODING,
+            ) as handle:
+                handle.write("Name: zope.proxy\n")
+
+        with (
+            patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+        ):
+            result = _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        self.assertTrue(result)
+        mock_refresh.assert_called_once()
+        self.assertFalse(os.path.exists(staged_targets[0]))
+        self.assertTrue(
+            os.path.exists(os.path.join(self.deps_dir, "zope", "interface"))
+        )
+        self.assertTrue(os.path.exists(os.path.join(self.deps_dir, "zope", "proxy")))
 
     def test_install_plugin_requirements_failed_staged_target_leaves_deps_unchanged(
         self,
