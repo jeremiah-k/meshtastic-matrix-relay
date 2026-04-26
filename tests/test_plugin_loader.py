@@ -4670,7 +4670,7 @@ class TestDependencyInstallation(BaseGitTest):
         with (
             patch.dict(os.environ, {"VIRTUAL_ENV": "/venv"}, clear=True),
             patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
-            patch("mmrelay.plugin_loader._refresh_dependency_paths"),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
             patch("mmrelay.plugin_loader._write_requirements_install_marker"),
         ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
@@ -4695,6 +4695,7 @@ class TestDependencyInstallation(BaseGitTest):
         mock_run.assert_called_once_with(called_cmd, timeout=600)
         mock_unlink.assert_called_once_with(temp_req)
         mock_which.assert_not_called()
+        mock_refresh.assert_called_once()
         mock_logger.info.assert_called()
 
     @patch("mmrelay.plugin_loader.logger")
@@ -4723,7 +4724,7 @@ class TestDependencyInstallation(BaseGitTest):
         with (
             patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
             patch.object(pl, "_PLUGIN_DEPS_DIR", None),
-            patch("mmrelay.plugin_loader._refresh_dependency_paths"),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
         ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
 
@@ -4745,6 +4746,7 @@ class TestDependencyInstallation(BaseGitTest):
         # Verify timeout
         assert call_args[1]["timeout"] == 600
         mock_which.assert_called_once_with("pipx")
+        mock_refresh.assert_called_once()
         mock_logger.info.assert_called()
 
     def test_install_plugin_requirements_pip_install(self):
@@ -4760,7 +4762,7 @@ class TestDependencyInstallation(BaseGitTest):
             patch("sys.base_prefix", "/fake/prefix"),
             patch("shutil.which", return_value=None),
             patch.object(pl, "_PLUGIN_DEPS_DIR", None),
-            patch("mmrelay.plugin_loader._refresh_dependency_paths"),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
             patch(
                 "mmrelay.plugin_loader.tempfile.NamedTemporaryFile"
             ) as mock_temp_file,
@@ -4796,12 +4798,13 @@ class TestDependencyInstallation(BaseGitTest):
                 tempfile.gettempdir(), "test_requirements.txt"
             )
             mock_run.assert_called_once_with(called_cmd, timeout=600)
+            mock_refresh.assert_called_once()
 
     def test_install_plugin_requirements_uses_target_when_deps_dir_set(self):
         """Persistent deps dir should use pip --target instead of --user."""
         with (
             patch("mmrelay.plugin_loader._run") as mock_run,
-            patch("mmrelay.plugin_loader._refresh_dependency_paths"),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
             patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
             patch("sys.prefix", "/fake/prefix"),
             patch("sys.base_prefix", "/fake/prefix"),
@@ -4827,12 +4830,13 @@ class TestDependencyInstallation(BaseGitTest):
         self.assertEqual(os.path.dirname(target_path), os.path.dirname(self.deps_dir))
         self.assertNotIn("--user", cmd)
         self.assertNotIn("inject", cmd)
+        mock_refresh.assert_called_once()
 
     def test_install_plugin_requirements_deps_dir_overrides_pipx(self):
         """Persistent deps dir should be preferred even when pipx is detected."""
         with (
             patch("mmrelay.plugin_loader._run") as mock_run,
-            patch("mmrelay.plugin_loader._refresh_dependency_paths"),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
             patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
             patch("shutil.which", return_value="/usr/bin/pipx") as mock_which,
             patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
@@ -4847,6 +4851,7 @@ class TestDependencyInstallation(BaseGitTest):
         self.assertEqual(os.path.dirname(target_path), os.path.dirname(self.deps_dir))
         self.assertNotIn("inject", cmd)
         mock_which.assert_not_called()
+        mock_refresh.assert_called_once()
 
     def test_install_plugin_requirements_without_deps_dir_uses_pipx(self):
         """Without a persistent deps dir, pipx environments should use pipx inject."""
@@ -4854,7 +4859,7 @@ class TestDependencyInstallation(BaseGitTest):
             patch("mmrelay.plugin_loader._run") as mock_run,
             patch.object(pl, "_PLUGIN_DEPS_DIR", None),
             patch("shutil.which", return_value="/usr/bin/pipx"),
-            patch("mmrelay.plugin_loader._refresh_dependency_paths"),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
             patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
         ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
@@ -4863,6 +4868,7 @@ class TestDependencyInstallation(BaseGitTest):
         self.assertEqual(
             cmd[:4], ["/usr/bin/pipx", "inject", "mmrelay", "--requirement"]
         )
+        mock_refresh.assert_called_once()
 
     def test_install_plugin_requirements_without_deps_dir_no_venv_uses_user(self):
         """Without deps dir, non-venv pip installs should use --user."""
@@ -4871,7 +4877,7 @@ class TestDependencyInstallation(BaseGitTest):
             patch.object(pl, "_PLUGIN_DEPS_DIR", None),
             patch("sys.prefix", "/fake/prefix"),
             patch("sys.base_prefix", "/fake/prefix"),
-            patch("mmrelay.plugin_loader._refresh_dependency_paths"),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
             patch.dict(os.environ, {}, clear=True),
         ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
@@ -4880,6 +4886,7 @@ class TestDependencyInstallation(BaseGitTest):
         self.assertEqual(cmd[:4], [sys.executable, "-m", "pip", "install"])
         self.assertIn("--user", cmd)
         self.assertNotIn("--target", cmd)
+        mock_refresh.assert_called_once()
 
     def test_requirements_install_target_identity_unknown_user_site_is_stable(self):
         """Missing user-site support should not produce cwd-dependent target IDs."""
@@ -4970,12 +4977,15 @@ class TestDependencyInstallation(BaseGitTest):
 
     def test_requirements_install_marker_path_falls_back_to_repo_when_unwritable(self):
         """Marker should fall back to repo path when install marker dir is unavailable."""
+        user_site = os.path.join(self.temp_dir, "user-site")
+        os.makedirs(user_site)
         with (
             patch.object(pl, "_PLUGIN_DEPS_DIR", None),
             patch.dict(os.environ, {}, clear=True),
             patch("sys.prefix", "/fake/prefix"),
             patch("sys.base_prefix", "/fake/prefix"),
-            patch("site.getusersitepackages", return_value="/missing/user-site"),
+            patch("site.getusersitepackages", return_value=user_site),
+            patch("mmrelay.plugin_loader._is_writable_directory", return_value=False),
         ):
             marker_path = pl._requirements_install_marker_path(
                 self.repo_path, "test-plugin"
@@ -5185,12 +5195,13 @@ class TestDependencyInstallation(BaseGitTest):
         """Successful installs should write a per-plugin marker with hash and target."""
         with (
             patch("mmrelay.plugin_loader._run"),
-            patch("mmrelay.plugin_loader._refresh_dependency_paths"),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
             patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
         ):
             result = _install_requirements_for_repo(self.repo_path, "test-plugin")
 
         self.assertTrue(result)
+        mock_refresh.assert_called_once()
         requirements_hash = pl._requirements_hash(["requests==2.28.0"])
         target = f"target:{os.path.abspath(self.deps_dir)}"
         with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
@@ -5239,13 +5250,14 @@ class TestDependencyInstallation(BaseGitTest):
 
         with (
             patch("mmrelay.plugin_loader._run", side_effect=fake_run) as mock_run,
-            patch("mmrelay.plugin_loader._refresh_dependency_paths"),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
             patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
         ):
             result = _install_requirements_for_repo(self.repo_path, "test-plugin")
 
         self.assertTrue(result)
         mock_run.assert_called_once()
+        mock_refresh.assert_called_once()
         self.assertEqual(len(staged_targets), 1)
         self.assertNotEqual(staged_targets[0], self.deps_dir)
         self.assertFalse(os.path.exists(staged_targets[0]))
@@ -5319,12 +5331,14 @@ class TestDependencyInstallation(BaseGitTest):
 
         with (
             patch("mmrelay.plugin_loader._run") as mock_run,
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
             patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
         ):
             result = _install_requirements_for_repo(self.repo_path, "test-plugin")
 
         self.assertTrue(result)
         mock_run.assert_not_called()
+        mock_refresh.assert_not_called()
         requirements_hash = pl._requirements_hash(["--pre"])
         with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
             self.assertTrue(
@@ -5501,11 +5515,13 @@ class TestDependencyInstallation(BaseGitTest):
             patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
             patch.object(pl, "_PLUGIN_DEPS_DIR", None),
             patch("shutil.which", return_value="/usr/bin/pipx"),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
         ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
 
         # Should not call pipx inject when no packages
         mock_run.assert_not_called()
+        mock_refresh.assert_not_called()
         mock_logger.info.assert_called_with(
             "No dependency installation run for plugin %s",
             "test-plugin",
