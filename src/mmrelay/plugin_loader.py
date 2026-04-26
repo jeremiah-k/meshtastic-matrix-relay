@@ -10,6 +10,7 @@ import shutil
 import site
 import subprocess
 import sys
+import sysconfig
 import tempfile
 import threading
 import time
@@ -23,6 +24,7 @@ import mmrelay.paths as paths_module
 from mmrelay.config import (
     get_app_path,
 )
+from mmrelay.constants.app import PLUGINS_DIRNAME
 from mmrelay.constants.config import (
     CONFIG_SECTION_COMMUNITY_PLUGINS,
     CONFIG_SECTION_CUSTOM_PLUGINS,
@@ -106,6 +108,7 @@ _global_scheduler_stop_event: threading.Event | None = None
 
 # Plugin dependency directory (may not be set if base dir can't be resolved)
 _PLUGIN_DEPS_DIR: str | None = None
+PLUGIN_DEPS_DIRNAME: Final[str] = "deps"
 PLUGIN_REQUIREMENTS_FILENAME: Final[str] = "requirements.txt"
 PLUGIN_STATE_FILENAME: Final[str] = ".mmrelay-plugin-state.json"
 PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT: Final[str] = (
@@ -132,6 +135,13 @@ class EffectiveRequirements(NamedTuple):
 
     allowed: list[str]
     flagged: list[str]
+
+
+class RequirementsInstallTarget(NamedTuple):
+    """Dependency install target identity and preferred marker location."""
+
+    identity: str
+    marker_dir: str | None
 
 
 def _is_safe_plugin_name(name: str) -> bool:
@@ -201,12 +211,15 @@ def _get_plugin_root_dirs() -> list[str]:
     seen: set[str] = set()
 
     try:
-        home_dir = str(paths_module.get_home_dir())
-        if home_dir:
-            home_plugins = os.path.join(home_dir, "plugins")
-            if home_plugins not in seen:
-                roots.append(home_plugins)
-                seen.add(home_plugins)
+        try:
+            home_plugins = str(paths_module.get_plugins_dir())
+        except TypeError:
+            home_plugins = os.path.join(
+                str(paths_module.get_home_dir()), PLUGINS_DIRNAME
+            )
+        if home_plugins not in seen:
+            roots.append(home_plugins)
+            seen.add(home_plugins)
     except (OSError, RuntimeError, ValueError) as e:
         logger.warning("Could not determine primary plugin root: %s", e)
 
@@ -217,7 +230,7 @@ def _get_plugin_root_dirs() -> list[str]:
         legacy_dirs_list = []
 
     for legacy_root in legacy_dirs_list:
-        legacy_plugins = os.path.join(str(legacy_root), "plugins")
+        legacy_plugins = os.path.join(str(legacy_root), PLUGINS_DIRNAME)
         if legacy_plugins not in seen and os.path.exists(legacy_plugins):
             roots.append(legacy_plugins)
             seen.add(legacy_plugins)
@@ -247,7 +260,7 @@ def _get_legacy_plugin_roots() -> set[str]:
     If discovery of legacy bases fails, an empty set is returned and a warning is logged.
 
     Returns:
-        A set of path strings for legacy "plugins" directories; empty if discovery fails or none are found.
+        A set of path strings for legacy plugin directories; empty if discovery fails or none are found.
     """
     try:
         legacy_dirs = paths_module.get_legacy_dirs()
@@ -257,7 +270,7 @@ def _get_legacy_plugin_roots() -> set[str]:
 
     legacy_roots: set[str] = set()
     for legacy_root in legacy_dirs:
-        legacy_roots.add(os.path.join(str(legacy_root), "plugins"))
+        legacy_roots.add(os.path.join(str(legacy_root), PLUGINS_DIRNAME))
     return legacy_roots
 
 
@@ -275,7 +288,10 @@ else:
                 deps_root,
             )
             continue
-        deps_dir = os.path.join(deps_root, "deps")
+        if deps_root == str(paths_module.get_plugins_dir()):
+            deps_dir = str(paths_module.resolve_all_paths()["deps_dir"])
+        else:
+            deps_dir = os.path.join(deps_root, PLUGIN_DEPS_DIRNAME)
         try:
             os.makedirs(deps_dir, exist_ok=True)
         except (
@@ -819,14 +835,122 @@ def _requirements_marker_repo_identity(repo_path: str, repo_name: str) -> str:
     return hashlib.sha256(repo_identity.encode(DEFAULT_TEXT_ENCODING)).hexdigest()[:24]
 
 
+def _path_freshness_stamp(path: str | None) -> str:
+    if not path:
+        return "unavailable"
+    try:
+        return str(os.stat(path).st_mtime_ns)
+    except OSError:
+        return "missing"
+
+
+def _is_writable_directory(path: str | None) -> bool:
+    return bool(path and os.path.isdir(path) and os.access(path, os.W_OK))
+
+
+def _site_packages_for_prefix(prefix: str) -> str | None:
+    prefix_path = os.path.abspath(prefix)
+    candidates: list[str] = []
+
+    try:
+        site_packages = site.getsitepackages()
+        candidates.extend(path for path in site_packages if isinstance(path, str))
+    except AttributeError:
+        logger.debug("site.getsitepackages() not available in this environment.")
+
+    for scheme in ("venv", "posix_prefix"):
+        try:
+            purelib = sysconfig.get_path(
+                "purelib",
+                scheme=scheme,
+                vars={"base": prefix_path, "platbase": prefix_path},
+            )
+            if purelib:
+                candidates.append(purelib)
+        except (KeyError, AttributeError):
+            continue
+
+    for candidate in dict.fromkeys(candidates):
+        candidate_path = os.path.abspath(candidate)
+        if candidate_path == prefix_path or candidate_path.startswith(
+            prefix_path + os.sep
+        ):
+            return candidate_path
+
+    return None
+
+
+def _requirements_install_target() -> RequirementsInstallTarget:
+    if _PLUGIN_DEPS_DIR:
+        deps_dir = os.path.abspath(os.fspath(_PLUGIN_DEPS_DIR))
+        return RequirementsInstallTarget(
+            identity=f"target:{deps_dir}", marker_dir=deps_dir
+        )
+
+    prefix = os.path.abspath(sys.prefix)
+    if any(key in os.environ for key in PIPX_ENVIRONMENT_KEYS):
+        site_packages = _site_packages_for_prefix(prefix)
+        stamp_path = site_packages or prefix
+        identity = (
+            f"pipx:{prefix}:"
+            f"{os.path.abspath(site_packages) if site_packages else 'site-packages:unknown'}:"
+            f"{_path_freshness_stamp(stamp_path)}"
+        )
+        return RequirementsInstallTarget(
+            identity=identity,
+            marker_dir=site_packages if _is_writable_directory(site_packages) else None,
+        )
+
+    in_venv = (sys.prefix != getattr(sys, "base_prefix", sys.prefix)) or (
+        "VIRTUAL_ENV" in os.environ
+    )
+    if in_venv:
+        site_packages = _site_packages_for_prefix(prefix)
+        stamp_path = site_packages or prefix
+        identity = (
+            f"python:{prefix}:"
+            f"{os.path.abspath(site_packages) if site_packages else 'site-packages:unknown'}:"
+            f"{_path_freshness_stamp(stamp_path)}"
+        )
+        return RequirementsInstallTarget(
+            identity=identity,
+            marker_dir=site_packages if _is_writable_directory(site_packages) else None,
+        )
+
+    try:
+        user_site = site.getusersitepackages()
+    except AttributeError:
+        return RequirementsInstallTarget(identity="user:unknown", marker_dir=None)
+
+    if isinstance(user_site, str):
+        user_site_path = os.path.abspath(user_site)
+        return RequirementsInstallTarget(
+            identity=f"user:{user_site_path}:{_path_freshness_stamp(user_site_path)}",
+            marker_dir=(
+                user_site_path if _is_writable_directory(user_site_path) else None
+            ),
+        )
+
+    user_site_paths = [os.path.abspath(path) for path in user_site]
+    identity_parts = [
+        f"{path}:{_path_freshness_stamp(path)}" for path in user_site_paths
+    ]
+    marker_dir = next(
+        (path for path in user_site_paths if _is_writable_directory(path)), None
+    )
+    return RequirementsInstallTarget(
+        identity="user:" + os.pathsep.join(identity_parts),
+        marker_dir=marker_dir,
+    )
+
+
 def _requirements_install_marker_path(repo_path: str, repo_name: str) -> str:
     marker_name = (
         f"{PLUGIN_REQUIREMENTS_INSTALL_MARKER_PREFIX}-"
         f"{_requirements_marker_repo_identity(repo_path, repo_name)}.json"
     )
-    if _PLUGIN_DEPS_DIR:
-        return os.path.join(os.fspath(_PLUGIN_DEPS_DIR), marker_name)
-    return os.path.join(repo_path, marker_name)
+    marker_dir = _requirements_install_target().marker_dir or repo_path
+    return os.path.join(marker_dir, marker_name)
 
 
 def _write_requirements_install_marker(
@@ -836,41 +960,41 @@ def _write_requirements_install_marker(
     target: str,
 ) -> None:
     marker_path = _requirements_install_marker_path(repo_path, repo_name)
-    os.makedirs(os.path.dirname(marker_path), exist_ok=True)
-    with open(marker_path, "w", encoding=DEFAULT_TEXT_ENCODING) as marker_file:
-        json.dump(
-            {
-                "requirements_hash": requirements_hash,
-                "target": target,
-                "installed_at": datetime.now(timezone.utc).isoformat(),
-                "repo": repo_name,
-            },
-            marker_file,
-            sort_keys=True,
-        )
-        marker_file.write("\n")
+    marker_dir = os.path.dirname(marker_path)
+    tmp_path: str | None = None
+    try:
+        os.makedirs(marker_dir, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding=DEFAULT_TEXT_ENCODING,
+            delete=False,
+            dir=marker_dir,
+        ) as marker_file:
+            json.dump(
+                {
+                    "requirements_hash": requirements_hash,
+                    "target": target,
+                    "installed_at": datetime.now(timezone.utc).isoformat(),
+                    "repo": repo_name,
+                },
+                marker_file,
+                sort_keys=True,
+            )
+            marker_file.write("\n")
+            marker_file.flush()
+            os.fsync(marker_file.fileno())
+            tmp_path = marker_file.name
+        os.replace(tmp_path, marker_path)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 
 def _requirements_install_target_identity() -> str:
-    if _PLUGIN_DEPS_DIR:
-        return f"target:{os.path.abspath(os.fspath(_PLUGIN_DEPS_DIR))}"
-
-    if any(key in os.environ for key in PIPX_ENVIRONMENT_KEYS):
-        return "pipx:mmrelay"
-
-    in_venv = (sys.prefix != getattr(sys, "base_prefix", sys.prefix)) or (
-        "VIRTUAL_ENV" in os.environ
-    )
-    if in_venv:
-        return f"python:{os.path.abspath(sys.prefix)}"
-
-    try:
-        user_site = site.getusersitepackages()
-    except AttributeError:
-        return "user:unknown"
-    if isinstance(user_site, str):
-        return f"user:{os.path.abspath(user_site)}"
-    return "user:" + os.pathsep.join(os.path.abspath(path) for path in user_site)
+    return _requirements_install_target().identity
 
 
 def _requirements_install_target_valid(
@@ -1127,6 +1251,7 @@ def _install_requirements_for_repo(
         else:
             logger.info("No dependency installation run for plugin %s", repo_name)
         if handled_requirements:
+            requirements_target = _requirements_install_target_identity()
             _write_requirements_install_marker(
                 repo_path, repo_name, requirements_hash, requirements_target
             )
@@ -1164,7 +1289,7 @@ def _get_plugin_dirs(plugin_type: str) -> list[str]:
 
     legacy_roots = _get_legacy_plugin_roots()
     for root_dir in _get_plugin_root_dirs():
-        if os.path.basename(root_dir) == "plugins":
+        if os.path.basename(root_dir) == PLUGINS_DIRNAME:
             user_dir = os.path.join(root_dir, plugin_type)
         else:
             user_dir = root_dir
@@ -1185,7 +1310,7 @@ def _get_plugin_dirs(plugin_type: str) -> list[str]:
             logger.warning("Cannot create user plugin directory %s: %s", user_dir, e)
 
     # Check local directory (backward compatibility)
-    local_dir = os.path.join(get_app_path(), "plugins", plugin_type)
+    local_dir = os.path.join(get_app_path(), PLUGINS_DIRNAME, plugin_type)
     try:
         os.makedirs(local_dir, exist_ok=True)
         dirs.append(local_dir)
@@ -3380,6 +3505,17 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                             plugin_name,
                         )
                     else:
+                        requirements_path = os.path.join(
+                            repo_path, PLUGIN_REQUIREMENTS_FILENAME
+                        )
+                        if not os.path.isfile(requirements_path):
+                            logger.debug(
+                                "Skipping requirements install for community plugin %s; no %s found",
+                                plugin_name,
+                                PLUGIN_REQUIREMENTS_FILENAME,
+                            )
+                            ready_community_plugins.append(plugin_name)
+                            continue
                         state = _load_plugin_state(repo_path)
                         effective_requirements = _effective_requirements_for_repo(
                             repo_path, repo_name
@@ -3421,6 +3557,9 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                         elif _install_requirements_for_repo(
                             repo_path, repo_name, plugin_type=PLUGIN_TYPE_COMMUNITY
                         ):
+                            requirements_target = (
+                                _requirements_install_target_identity()
+                            )
                             state[PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT] = (
                                 pinned_sha
                             )

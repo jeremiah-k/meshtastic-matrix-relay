@@ -223,6 +223,19 @@ class TestPluginLoader(BaseGitTest):
         mmrelay.plugin_loader.plugins_loaded = False
         mmrelay.plugin_loader.sorted_active_plugins = []
 
+    def _community_repo_path(self) -> str:
+        repo_path = os.path.join(self.community_dir, "repo")
+        os.makedirs(repo_path, exist_ok=True)
+        return repo_path
+
+    def _write_community_requirements(self, content: str = "requests==2.28.0\n") -> str:
+        repo_path = self._community_repo_path()
+        with open(
+            os.path.join(repo_path, pl.PLUGIN_REQUIREMENTS_FILENAME), "w"
+        ) as req_file:
+            req_file.write(content)
+        return repo_path
+
     def tearDown(self):
         """
         Remove temporary directories and clean up resources after each test.
@@ -1522,6 +1535,7 @@ class Plugin:
         """Opted-in commit-pinned community plugin should install requirements."""
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
+        self._write_community_requirements()
         config = {
             "community-plugins": {
                 "commit-plugin": {
@@ -1589,6 +1603,7 @@ class Plugin:
         """Explicit branch refs should warn but still allow dependency installation."""
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
+        self._write_community_requirements()
         config = {
             "community-plugins": {
                 "branch-plugin": {
@@ -1660,6 +1675,7 @@ class Plugin:
         """Explicit tag refs should warn but still allow dependency installation."""
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
+        self._write_community_requirements()
         config = {
             "community-plugins": {
                 "tag-plugin": {
@@ -1754,28 +1770,70 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo")
-    @patch("mmrelay.plugin_loader._save_plugin_state")
+    @patch("mmrelay.plugin_loader._requirements_install_target_identity")
+    @patch("mmrelay.plugin_loader._requirements_hash")
+    @patch("mmrelay.plugin_loader._effective_requirements_for_repo")
     @patch(
-        "mmrelay.plugin_loader._requirements_install_target_valid", return_value=True
+        "mmrelay.plugin_loader._resolve_local_head_commit",
+        return_value="0123456789abcdef0123456789abcdef01234567",
     )
-    @patch(
-        "mmrelay.plugin_loader._requirements_install_target_identity",
-        return_value="target:/plugins/deps",
-    )
-    @patch(
-        "mmrelay.plugin_loader._effective_requirements_for_repo",
-        return_value=pl.EffectiveRequirements(["requests==2.28.0"], []),
-    )
-    @patch(
-        "mmrelay.plugin_loader._load_plugin_state",
-        return_value={
-            pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT: "0123456789abcdef0123456789abcdef01234567",
-            pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH: pl._requirements_hash(
-                ["requests==2.28.0"]
-            ),
-            pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET: "target:/plugins/deps",
-        },
-    )
+    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
+    @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
+    @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    @patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_load_plugins_opted_in_no_requirements_file_skips_cache_work(
+        self,
+        mock_logger,
+        _mock_update_check,
+        mock_start_scheduler,
+        mock_get_custom_dirs,
+        mock_get_community_dirs,
+        mock_load_from_dir,
+        _mock_resolve_local_head_commit,
+        mock_effective_requirements,
+        mock_requirements_hash,
+        mock_target_identity,
+        mock_install_reqs,
+        mock_clone_repo,
+    ):
+        """No requirements.txt should not compute install state or churn cache."""
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+        self._community_repo_path()
+        config = {
+            "community-plugins": {
+                "commit-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "commit": "0123456789abcdef0123456789abcdef01234567",
+                    "install_requirements": True,
+                }
+            },
+            "plugins": {},
+        }
+
+        mock_get_custom_dirs.return_value = []
+        mock_get_community_dirs.return_value = [self.community_dir]
+        mock_clone_repo.return_value = True
+        mock_load_from_dir.return_value = []
+
+        load_plugins(config)
+
+        mock_effective_requirements.assert_not_called()
+        mock_requirements_hash.assert_not_called()
+        mock_target_identity.assert_not_called()
+        mock_install_reqs.assert_not_called()
+        mock_logger.debug.assert_any_call(
+            "Skipping requirements install for community plugin %s; no %s found",
+            "commit-plugin",
+            pl.PLUGIN_REQUIREMENTS_FILENAME,
+        )
+        mock_start_scheduler.assert_called_once()
+
+    @patch("mmrelay.plugin_loader.clone_or_update_repo")
+    @patch("mmrelay.plugin_loader._install_requirements_for_repo")
     @patch(
         "mmrelay.plugin_loader._resolve_local_head_commit",
         return_value="0123456789abcdef0123456789abcdef01234567",
@@ -1787,23 +1845,35 @@ class Plugin:
     @patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates")
     def test_load_plugins_opted_in_commit_unchanged_skips_dependency_install(
         self,
-        mock_update_check,
+        _mock_update_check,
         mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        mock_resolve_local_head_commit,
-        mock_load_state,
-        mock_effective_requirements,
-        mock_target_identity,
-        mock_target_valid,
-        mock_save_state,
+        _mock_resolve_local_head_commit,
         mock_install_reqs,
         mock_clone_repo,
     ):
         """Dependency install should be skipped when commit is already installed."""
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
+        repo_path = self._write_community_requirements()
+        deps_dir = os.path.join(self.test_dir, "plugins", "deps")
+        os.makedirs(deps_dir, exist_ok=True)
+        requirements_hash = pl._requirements_hash(["requests==2.28.0"])
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir):
+            requirements_target = pl._requirements_install_target_identity()
+            pl._write_requirements_install_marker(
+                repo_path, "repo", requirements_hash, requirements_target
+            )
+        pl._save_plugin_state(
+            repo_path,
+            {
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT: "0123456789abcdef0123456789abcdef01234567",
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH: requirements_hash,
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET: requirements_target,
+            },
+        )
         config = {
             "community-plugins": {
                 "commit-plugin": {
@@ -1821,53 +1891,14 @@ class Plugin:
         mock_clone_repo.return_value = True
         mock_load_from_dir.return_value = []
 
-        load_plugins(config)
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir):
+            load_plugins(config)
 
-        mock_update_check.assert_called_once()
-        mock_resolve_local_head_commit.assert_called_once_with(
-            os.path.join(self.community_dir, "repo")
-        )
-        mock_load_state.assert_called_once_with(
-            os.path.join(self.community_dir, "repo")
-        )
         mock_install_reqs.assert_not_called()
-        mock_effective_requirements.assert_called_once_with(
-            os.path.join(self.community_dir, "repo"), "repo"
-        )
-        mock_target_identity.assert_called_once()
-        mock_target_valid.assert_called_once_with(
-            os.path.join(self.community_dir, "repo"),
-            "repo",
-            pl._requirements_hash(["requests==2.28.0"]),
-            "target:/plugins/deps",
-        )
-        mock_save_state.assert_not_called()
         mock_start_scheduler.assert_called_once()
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo", return_value=True)
-    @patch("mmrelay.plugin_loader._save_plugin_state")
-    @patch(
-        "mmrelay.plugin_loader._requirements_install_target_valid", return_value=False
-    )
-    @patch(
-        "mmrelay.plugin_loader._requirements_install_target_identity",
-        return_value="target:/plugins/deps",
-    )
-    @patch(
-        "mmrelay.plugin_loader._effective_requirements_for_repo",
-        return_value=pl.EffectiveRequirements(["requests==2.28.0"], []),
-    )
-    @patch(
-        "mmrelay.plugin_loader._load_plugin_state",
-        return_value={
-            pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT: "0123456789abcdef0123456789abcdef01234567",
-            pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH: pl._requirements_hash(
-                ["requests==2.28.0"]
-            ),
-            pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET: "target:/plugins/deps",
-        },
-    )
     @patch(
         "mmrelay.plugin_loader._resolve_local_head_commit",
         return_value="0123456789abcdef0123456789abcdef01234567",
@@ -1879,23 +1910,32 @@ class Plugin:
     @patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates")
     def test_load_plugins_matching_commit_empty_deps_reinstalls_requirements(
         self,
-        mock_update_check,
+        _mock_update_check,
         mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        mock_resolve_local_head_commit,
-        mock_load_state,
-        mock_effective_requirements,
-        mock_target_identity,
-        mock_target_valid,
-        mock_save_state,
+        _mock_resolve_local_head_commit,
         mock_install_reqs,
         mock_clone_repo,
     ):
         """Matching state should not skip install when the target is invalid."""
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
+        repo_path = self._write_community_requirements()
+        deps_dir = os.path.join(self.test_dir, "plugins", "deps")
+        os.makedirs(deps_dir, exist_ok=True)
+        requirements_hash = pl._requirements_hash(["requests==2.28.0"])
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir):
+            requirements_target = pl._requirements_install_target_identity()
+        pl._save_plugin_state(
+            repo_path,
+            {
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT: "0123456789abcdef0123456789abcdef01234567",
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH: requirements_hash,
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET: requirements_target,
+            },
+        )
         config = {
             "community-plugins": {
                 "commit-plugin": {
@@ -1913,43 +1953,27 @@ class Plugin:
         mock_clone_repo.return_value = True
         mock_load_from_dir.return_value = []
 
-        load_plugins(config)
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir):
+            load_plugins(config)
 
-        mock_update_check.assert_called_once()
-        mock_target_valid.assert_called_once_with(
-            os.path.join(self.community_dir, "repo"),
-            "repo",
-            pl._requirements_hash(["requests==2.28.0"]),
-            "target:/plugins/deps",
-        )
         mock_install_reqs.assert_called_once_with(
-            os.path.join(self.community_dir, "repo"),
+            repo_path,
             "repo",
             plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
         )
-        saved_state = mock_save_state.call_args.args[1]
+        saved_state = pl._load_plugin_state(repo_path)
         self.assertEqual(
             saved_state.get(pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH),
-            pl._requirements_hash(["requests==2.28.0"]),
+            requirements_hash,
         )
         self.assertEqual(
             saved_state.get(pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET),
-            "target:/plugins/deps",
+            requirements_target,
         )
         mock_start_scheduler.assert_called_once()
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo", return_value=False)
-    @patch("mmrelay.plugin_loader._save_plugin_state")
-    @patch(
-        "mmrelay.plugin_loader._requirements_install_target_identity",
-        return_value="target:/plugins/deps",
-    )
-    @patch(
-        "mmrelay.plugin_loader._effective_requirements_for_repo",
-        return_value=pl.EffectiveRequirements(["requests==2.28.0"], []),
-    )
-    @patch("mmrelay.plugin_loader._load_plugin_state", return_value={})
     @patch(
         "mmrelay.plugin_loader._resolve_local_head_commit",
         return_value="0123456789abcdef0123456789abcdef01234567",
@@ -1961,22 +1985,21 @@ class Plugin:
     @patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates")
     def test_load_plugins_failed_requirements_install_does_not_update_state(
         self,
-        mock_update_check,
+        _mock_update_check,
         mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        mock_resolve_local_head_commit,
-        mock_load_state,
-        mock_effective_requirements,
-        mock_target_identity,
-        mock_save_state,
+        _mock_resolve_local_head_commit,
         mock_install_reqs,
         mock_clone_repo,
     ):
         """Failed dependency installs should not refresh plugin install state."""
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
+        repo_path = self._write_community_requirements()
+        deps_dir = os.path.join(self.test_dir, "plugins", "deps")
+        os.makedirs(deps_dir, exist_ok=True)
         config = {
             "community-plugins": {
                 "commit-plugin": {
@@ -1994,10 +2017,11 @@ class Plugin:
         mock_clone_repo.return_value = True
         mock_load_from_dir.return_value = []
 
-        load_plugins(config)
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir):
+            load_plugins(config)
 
         mock_install_reqs.assert_called_once()
-        mock_save_state.assert_not_called()
+        self.assertEqual(pl._load_plugin_state(repo_path), {})
         mock_start_scheduler.assert_called_once()
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
@@ -2034,6 +2058,7 @@ class Plugin:
         """Dependency install should run when commit changes."""
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
+        self._write_community_requirements()
         config = {
             "community-plugins": {
                 "commit-plugin": {
@@ -4641,6 +4666,7 @@ class TestDependencyInstallation(BaseGitTest):
         with (
             patch.dict(os.environ, {"VIRTUAL_ENV": "/venv"}, clear=True),
             patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+            patch("mmrelay.plugin_loader._write_requirements_install_marker"),
         ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
 
@@ -4688,7 +4714,7 @@ class TestDependencyInstallation(BaseGitTest):
             [],
         )
         with (
-            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}),
+            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
             patch.object(pl, "_PLUGIN_DEPS_DIR", None),
         ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
@@ -4730,6 +4756,7 @@ class TestDependencyInstallation(BaseGitTest):
                 "mmrelay.plugin_loader.tempfile.NamedTemporaryFile"
             ) as mock_temp_file,
             patch("mmrelay.plugin_loader.os.unlink"),
+            patch("mmrelay.plugin_loader._write_requirements_install_marker"),
         ):
             mock_collect.return_value = ["requests==2.28.0"]
             mock_filter.return_value = (["requests==2.28.0"], [])
@@ -4797,7 +4824,7 @@ class TestDependencyInstallation(BaseGitTest):
             patch("mmrelay.plugin_loader._refresh_dependency_paths"),
             patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
             patch("shutil.which", return_value="/usr/bin/pipx") as mock_which,
-            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}),
+            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
         ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
 
@@ -4814,7 +4841,7 @@ class TestDependencyInstallation(BaseGitTest):
             patch("mmrelay.plugin_loader._run") as mock_run,
             patch.object(pl, "_PLUGIN_DEPS_DIR", None),
             patch("shutil.which", return_value="/usr/bin/pipx"),
-            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}),
+            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
         ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
 
@@ -4849,6 +4876,66 @@ class TestDependencyInstallation(BaseGitTest):
             patch("site.getusersitepackages", side_effect=AttributeError),
         ):
             self.assertEqual(pl._requirements_install_target_identity(), "user:unknown")
+
+    def test_requirements_install_target_pipx_uses_site_packages_marker_dir(self):
+        """pipx fallback target should include site-packages freshness."""
+        site_packages = os.path.join(self.temp_dir, "pipx-venv", "site-packages")
+        os.makedirs(site_packages)
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
+            patch("sys.prefix", os.path.join(self.temp_dir, "pipx-venv")),
+            patch(
+                "mmrelay.plugin_loader._site_packages_for_prefix",
+                return_value=site_packages,
+            ),
+        ):
+            target = pl._requirements_install_target()
+
+        self.assertTrue(target.identity.startswith("pipx:"))
+        self.assertIn(os.path.abspath(site_packages), target.identity)
+        self.assertIn(str(os.stat(site_packages).st_mtime_ns), target.identity)
+        self.assertEqual(target.marker_dir, site_packages)
+
+    def test_requirements_install_target_venv_uses_site_packages_marker_dir(self):
+        """venv fallback target should include site-packages freshness."""
+        site_packages = os.path.join(self.temp_dir, "venv", "site-packages")
+        os.makedirs(site_packages)
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch.dict(os.environ, {"VIRTUAL_ENV": "/venv"}, clear=True),
+            patch("sys.prefix", os.path.join(self.temp_dir, "venv")),
+            patch("sys.base_prefix", "/usr"),
+            patch(
+                "mmrelay.plugin_loader._site_packages_for_prefix",
+                return_value=site_packages,
+            ),
+        ):
+            target = pl._requirements_install_target()
+
+        self.assertTrue(target.identity.startswith("python:"))
+        self.assertIn(os.path.abspath(site_packages), target.identity)
+        self.assertIn(str(os.stat(site_packages).st_mtime_ns), target.identity)
+        self.assertEqual(target.marker_dir, site_packages)
+
+    def test_requirements_install_target_user_uses_user_site_marker_dir(self):
+        """user fallback target should include user-site freshness."""
+        user_site = os.path.join(self.temp_dir, "user-site")
+        os.makedirs(user_site)
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch.dict(os.environ, {}, clear=True),
+            patch("sys.prefix", "/fake/prefix"),
+            patch("sys.base_prefix", "/fake/prefix"),
+            patch("site.getusersitepackages", return_value=user_site),
+        ):
+            target = pl._requirements_install_target()
+
+        self.assertTrue(
+            target.identity.startswith(f"user:{os.path.abspath(user_site)}")
+        )
+        self.assertIn(str(os.stat(user_site).st_mtime_ns), target.identity)
+        self.assertEqual(target.marker_dir, user_site)
 
     def test_requirements_hash_includes_safe_pip_options(self):
         """Requirement state hash covers all safe effective lines, including options."""
@@ -5070,6 +5157,7 @@ class TestDependencyInstallation(BaseGitTest):
                 "mmrelay.plugin_loader.tempfile.NamedTemporaryFile"
             ) as mock_temp_file,
             patch("mmrelay.plugin_loader.os.unlink"),
+            patch("mmrelay.plugin_loader._write_requirements_install_marker"),
         ):
             mock_collect.return_value = ["requests==2.28.0"]
             mock_filter.return_value = (["requests==2.28.0"], [])
@@ -5120,7 +5208,7 @@ class TestDependencyInstallation(BaseGitTest):
         mock_run.side_effect = subprocess.CalledProcessError(1, "pipx")
 
         with (
-            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}),
+            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
             patch.object(pl, "_PLUGIN_DEPS_DIR", None),
         ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
@@ -5150,7 +5238,7 @@ class TestDependencyInstallation(BaseGitTest):
             f.write("--extra-index-url https://pypi.org/simple\n")
 
         with (
-            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}),
+            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
             patch.object(pl, "_PLUGIN_DEPS_DIR", None),
             patch("shutil.which", return_value="/usr/bin/pipx"),
         ):
