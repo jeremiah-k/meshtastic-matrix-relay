@@ -1100,7 +1100,19 @@ def _merge_dependency_directory(source_dir: str, destination_dir: str) -> None:
 
 
 def _is_namespace_package_directory(path: str) -> bool:
-    return not os.path.exists(os.path.join(path, "__init__.py"))
+    if not os.path.isdir(path) or os.path.islink(path):
+        return False
+    init_path = os.path.join(path, "__init__.py")
+    if not os.path.exists(init_path):
+        return True
+    try:
+        with open(init_path, encoding=DEFAULT_TEXT_ENCODING) as init_file:
+            content = init_file.read()
+    except (OSError, UnicodeDecodeError):
+        return False
+    has_pkgutil = "pkgutil" in content and "extend_path" in content
+    has_pkg_resources = "pkg_resources" in content and "declare_namespace" in content
+    return has_pkgutil or has_pkg_resources
 
 
 def _replace_dependency_target_item(source_path: str, destination_path: str) -> None:

@@ -247,9 +247,8 @@ class TestPluginLoader(BaseGitTest):
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_legacy_dirs")
     @patch("mmrelay.plugin_loader.get_app_path")
-    @patch("os.makedirs")
     def test_get_custom_plugin_dirs(
-        self, _mock_makedirs, mock_get_app_path, mock_get_legacy_dirs, mock_get_home_dir
+        self, mock_get_app_path, mock_get_legacy_dirs, mock_get_home_dir
     ):
         """
         Test that custom plugin directories are discovered and created as expected.
@@ -272,15 +271,12 @@ class TestPluginLoader(BaseGitTest):
                 os.path.join(temp_app_dir, "plugins", "custom"),
             ]
             self.assertEqual(dirs, expected_dirs)
-        # Should be called twice: once for user dir, once for local dir
-        self.assertEqual(_mock_makedirs.call_count, 2)
 
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_legacy_dirs")
     @patch("mmrelay.plugin_loader.get_app_path")
-    @patch("os.makedirs")
     def test_get_community_plugin_dirs(
-        self, _mock_makedirs, mock_get_app_path, mock_get_legacy_dirs, mock_get_home_dir
+        self, mock_get_app_path, mock_get_legacy_dirs, mock_get_home_dir
     ):
         """
         Test that community plugin directory discovery returns correct directories and creates them if they do not exist.
@@ -301,8 +297,6 @@ class TestPluginLoader(BaseGitTest):
                 os.path.join(temp_app_dir, "plugins", "community"),
             ]
             self.assertEqual(dirs, expected_dirs)
-        # Should be called twice: once for user dir, once for local dir
-        self.assertEqual(_mock_makedirs.call_count, 2)
 
     def test_load_plugins_from_directory_empty(self):
         """
@@ -1773,25 +1767,18 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo")
-    @patch(
-        "mmrelay.plugin_loader._resolve_local_head_commit",
-        return_value="0123456789abcdef0123456789abcdef01234567",
-    )
     @patch("mmrelay.plugin_loader.load_plugins_from_directory")
     @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
-    @patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates")
     @patch("mmrelay.plugin_loader.logger")
     def test_load_plugins_opted_in_no_requirements_file_skips_cache_work(
         self,
         mock_logger,
-        _mock_update_check,
         mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        _mock_resolve_local_head_commit,
         mock_install_reqs,
         mock_clone_repo,
     ):
@@ -1816,7 +1803,14 @@ class Plugin:
         mock_clone_repo.return_value = True
         mock_load_from_dir.return_value = []
 
-        load_plugins(config)
+        with (
+            patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates"),
+            patch(
+                "mmrelay.plugin_loader._resolve_local_head_commit",
+                return_value="0123456789abcdef0123456789abcdef01234567",
+            ),
+        ):
+            load_plugins(config)
 
         mock_install_reqs.assert_not_called()
         self.assertEqual(pl._load_plugin_state(repo_path), {})
@@ -1833,23 +1827,16 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo")
-    @patch(
-        "mmrelay.plugin_loader._resolve_local_head_commit",
-        return_value="0123456789abcdef0123456789abcdef01234567",
-    )
     @patch("mmrelay.plugin_loader.load_plugins_from_directory")
     @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
-    @patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates")
     def test_load_plugins_opted_in_commit_unchanged_skips_dependency_install(
         self,
-        _mock_update_check,
         mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        _mock_resolve_local_head_commit,
         mock_install_reqs,
         mock_clone_repo,
     ):
@@ -1890,7 +1877,14 @@ class Plugin:
         mock_clone_repo.return_value = True
         mock_load_from_dir.return_value = []
 
-        with patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir):
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir),
+            patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates"),
+            patch(
+                "mmrelay.plugin_loader._resolve_local_head_commit",
+                return_value="0123456789abcdef0123456789abcdef01234567",
+            ),
+        ):
             load_plugins(config)
 
         mock_install_reqs.assert_not_called()
@@ -1898,23 +1892,16 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo", return_value=True)
-    @patch(
-        "mmrelay.plugin_loader._resolve_local_head_commit",
-        return_value="0123456789abcdef0123456789abcdef01234567",
-    )
     @patch("mmrelay.plugin_loader.load_plugins_from_directory")
     @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
-    @patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates")
     def test_load_plugins_matching_commit_empty_deps_reinstalls_requirements(
         self,
-        _mock_update_check,
         mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        _mock_resolve_local_head_commit,
         mock_install_reqs,
         mock_clone_repo,
     ):
@@ -1955,6 +1942,11 @@ class Plugin:
         with (
             patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir),
             patch("mmrelay.plugin_loader.logger") as mock_logger,
+            patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates"),
+            patch(
+                "mmrelay.plugin_loader._resolve_local_head_commit",
+                return_value="0123456789abcdef0123456789abcdef01234567",
+            ),
         ):
             load_plugins(config)
 
@@ -2124,23 +2116,16 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo", return_value=False)
-    @patch(
-        "mmrelay.plugin_loader._resolve_local_head_commit",
-        return_value="0123456789abcdef0123456789abcdef01234567",
-    )
     @patch("mmrelay.plugin_loader.load_plugins_from_directory")
     @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
-    @patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates")
     def test_load_plugins_failed_requirements_install_does_not_update_state(
         self,
-        _mock_update_check,
         mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        _mock_resolve_local_head_commit,
         mock_install_reqs,
         mock_clone_repo,
     ):
@@ -2167,7 +2152,14 @@ class Plugin:
         mock_clone_repo.return_value = True
         mock_load_from_dir.return_value = []
 
-        with patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir):
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir),
+            patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates"),
+            patch(
+                "mmrelay.plugin_loader._resolve_local_head_commit",
+                return_value="0123456789abcdef0123456789abcdef01234567",
+            ),
+        ):
             load_plugins(config)
 
         mock_install_reqs.assert_called_once()
@@ -2324,11 +2316,9 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
     @patch("os.path.isdir")
-    @patch("os.makedirs")
     def test_clone_or_update_repo_new_repo_commit(
-        self, _mock_makedirs, mock_isdir, _mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, mock_is_allowed, mock_run_git
     ):
         """Test cloning a new repository with commit ref."""
 
@@ -2355,9 +2345,10 @@ class Plugin:
 
         mock_run_git.side_effect = mock_git_func
 
-        result = clone_or_update_repo(
-            "https://github.com/user/repo.git", ref, self.temp_plugins_dir
-        )
+        with patch("os.makedirs"):
+            result = clone_or_update_repo(
+                "https://github.com/user/repo.git", ref, self.temp_plugins_dir
+            )
 
         self.assertTrue(result)
 
@@ -2402,10 +2393,9 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
     @patch("os.path.isdir")
     def test_clone_or_update_repo_existing_repo_commit(
-        self, mock_isdir, _mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, mock_is_allowed, mock_run_git
     ):
         """Test updating an existing repository to a specific commit."""
 
@@ -2507,10 +2497,9 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
     @patch("os.path.isdir")
     def test_clone_or_update_repo_commit_fetch_specific_fails_fallback(
-        self, mock_isdir, _mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, mock_is_allowed, mock_run_git
     ):
         """Test that when specific commit fetch fails, it falls back to fetching all."""
 
@@ -2585,10 +2574,9 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
     @patch("os.path.isdir")
     def test_clone_or_update_repo_commit_fetch_success_no_fallback(
-        self, mock_isdir, _mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, mock_is_allowed, mock_run_git
     ):
         """Test successful commit fetch without fallback."""
 
@@ -2648,10 +2636,9 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
     @patch("os.path.isdir")
     def test_clone_or_update_repo_commit_fetch_fallback_success(
-        self, mock_isdir, _mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, mock_is_allowed, mock_run_git
     ):
         """Test commit fetch that fails specific but succeeds with fallback."""
         mock_is_allowed.return_value = True
@@ -2793,18 +2780,17 @@ class Plugin:
         ]
         self.assertTrue(len(warning_calls) > 0)
 
+    @patch("os.makedirs")
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
     @patch("os.path.isdir")
-    @patch("os.makedirs")
     def test_clone_or_update_repo_logger_exception_on_error(
-        self, _mock_makedirs, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git, _mock_makedirs
     ):
         """Test that logger.exception is called for repository update errors."""
         mock_is_allowed.return_value = True
         mock_isdir.return_value = False  # Repo doesn't exist, will try to clone
-        _mock_makedirs.return_value = None
         ref = {"type": "commit", "value": "1234abcd"}
 
         # Configure mock to fail on git clone
@@ -3060,8 +3046,7 @@ class TestURLValidation(unittest.TestCase):
         result = _host_in_allowlist(None, ["github.com"])  # type: ignore[arg-type]
         self.assertFalse(result)
 
-    @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_rejected_for_dash_prefix(self, _mock_logger):
+    def test_repo_url_rejected_for_dash_prefix(self):
         """Test that URLs starting with dash are rejected."""
         self.pl.config = {}
         result = _is_repo_url_allowed("-evil-option")
@@ -3077,43 +3062,42 @@ class TestURLValidation(unittest.TestCase):
             "file:// repositories are disabled for security reasons."
         )
 
-    @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_allows_file_scheme_with_opt_in(self, _mock_logger):
+    def test_repo_url_allows_file_scheme_with_opt_in(self):
         """Test that file:// URLs are allowed when local paths are enabled."""
         self.pl.config = {"security": {"allow_local_plugin_paths": True}}
         result = _is_repo_url_allowed("file:///local/path")
         self.assertTrue(result)
 
     @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_rejected_for_unsupported_scheme(self, _mock_logger):
+    def test_repo_url_rejected_for_unsupported_scheme(self, mock_logger):
         """Test that unsupported schemes are rejected."""
         self.pl.config = {}
         result = _is_repo_url_allowed("ftp://github.com/user/repo.git")
         self.assertFalse(result)
-        _mock_logger.error.assert_called_with(
+        mock_logger.error.assert_called_with(
             "Unsupported repository scheme '%s' for %s",
             "ftp",
             "ftp://github.com/user/repo.git",
         )
 
     @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_local_path_nonexistent(self, _mock_logger):
+    def test_repo_url_local_path_nonexistent(self, mock_logger):
         """Test local path validation when path doesn't exist."""
         self.pl.config = {"security": {"allow_local_plugin_paths": True}}
         with patch("os.path.exists", return_value=False):
             result = _is_repo_url_allowed("/nonexistent/path")
             self.assertFalse(result)
-        _mock_logger.error.assert_called_with(
+        mock_logger.error.assert_called_with(
             "Local repository path does not exist: %s", "/nonexistent/path"
         )
 
     @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_local_path_disabled(self, _mock_logger):
+    def test_repo_url_local_path_disabled(self, mock_logger):
         """Test local path validation when local paths are disabled."""
         self.pl.config = {}
         result = _is_repo_url_allowed("/local/path")
         self.assertFalse(result)
-        _mock_logger.error.assert_called_with(
+        mock_logger.error.assert_called_with(
             "Invalid repository '%s'. Local paths are disabled, and remote URLs must include a scheme (e.g., 'https://').",
             "/local/path",
         )
@@ -3439,10 +3423,7 @@ class TestGitOperations(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_invalid_url_empty(
-        self, _mock_logger, mock_is_allowed
-    ):
+    def test_clone_or_update_repo_invalid_url_empty(self, mock_is_allowed):
         """Test clone with empty URL."""
         mock_is_allowed.return_value = False
         ref = {"type": "branch", "value": "main"}
@@ -3451,10 +3432,7 @@ class TestGitOperations(BaseGitTest):
         self.assertFalse(result)
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_invalid_url_whitespace(
-        self, _mock_logger, mock_is_allowed
-    ):
+    def test_clone_or_update_repo_invalid_url_whitespace(self, mock_is_allowed):
         """Test clone with whitespace-only URL."""
         mock_is_allowed.return_value = False
         ref = {"type": "branch", "value": "main"}
@@ -3462,11 +3440,8 @@ class TestGitOperations(BaseGitTest):
             result = clone_or_update_repo("   ", ref, tmpdir)
         self.assertFalse(result)
 
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_pull_current_branch_fails(
-        self, mock_run_git, _mock_is_allowed
-    ):
+    def test_clone_or_update_repo_pull_current_branch_fails(self, mock_run_git):
         """Test that clone_or_update_repo handles checkout failure on default branches."""
         mock_run_git.side_effect = [
             None,  # fetch
@@ -3516,11 +3491,8 @@ class TestGitOperations(BaseGitTest):
             ]
             self.assertEqual(mock_run_git.call_args_list, expected_calls)
 
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_checkout_and_pull_branch(
-        self, mock_run_git, _mock_is_allowed
-    ):
+    def test_clone_or_update_repo_checkout_and_pull_branch(self, mock_run_git):
         """Test that clone_or_update_repo handles checkout and pull for a different branch."""
 
         # Mock successful fetch, checkout and pull
@@ -3540,11 +3512,8 @@ class TestGitOperations(BaseGitTest):
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
             self.assertTrue(result)
 
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_branch_pull_failure_force_syncs(
-        self, mock_run_git, _mock_is_allowed
-    ):
+    def test_clone_or_update_repo_branch_pull_failure_force_syncs(self, mock_run_git):
         """Branch pull failures should fallback to a force-sync against origin."""
         mock_run_git.side_effect = [
             None,  # initial fetch in update flow
@@ -3599,11 +3568,8 @@ class TestGitOperations(BaseGitTest):
             ]
             self.assertEqual(mock_run_git.call_args_list, expected_calls)
 
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_checkout_and_pull_tag(
-        self, mock_run_git, _mock_is_allowed
-    ):
+    def test_clone_or_update_repo_checkout_and_pull_tag(self, mock_run_git):
         """Test that clone_or_update_repo handles checkout and pull for a tag."""
 
         def mock_run_git_side_effect(*args, **_kwargs):
@@ -3645,11 +3611,8 @@ class TestGitOperations(BaseGitTest):
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
             self.assertTrue(result)
 
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_checkout_fails_fallback(
-        self, mock_run_git, _mock_is_allowed
-    ):
+    def test_clone_or_update_repo_checkout_fails_fallback(self, mock_run_git):
         """Test that clone_or_update_repo handles checkout failure and tries fallback."""
         mock_run_git.side_effect = [
             None,  # fetch
@@ -3838,20 +3801,18 @@ class TestGitOperations(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader.logger")
-    @patch(
-        "mmrelay.plugin_loader._run_git",
-        side_effect=subprocess.CalledProcessError(1, "git"),
-    )
-    def test_fallback_to_default_branches_logs_warning_when_all_fail(
-        self, _mock_run_git, mock_logger
-    ):
+    def test_fallback_to_default_branches_logs_warning_when_all_fail(self, mock_logger):
         """Default branch fallback should warn when no branch can be checked out."""
-        result = pl._fallback_to_default_branches(
-            self.temp_repo_path,
-            list(DEFAULT_BRANCHES),
-            "v1.0.0",
-            "repo",
-        )
+        with patch(
+            "mmrelay.plugin_loader._run_git",
+            side_effect=subprocess.CalledProcessError(1, "git"),
+        ):
+            result = pl._fallback_to_default_branches(
+                self.temp_repo_path,
+                list(DEFAULT_BRANCHES),
+                "v1.0.0",
+                "repo",
+            )
 
         self.assertFalse(result)
         mock_logger.warning.assert_called_with(
@@ -3859,19 +3820,19 @@ class TestGitOperations(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader.logger")
-    @patch("mmrelay.plugin_loader._run_git", side_effect=FileNotFoundError())
     def test_update_existing_repo_to_branch_or_tag_handles_missing_git_binary(
-        self, _mock_run_git, mock_logger
+        self, mock_logger
     ):
         """Missing git during remote fetch should be logged and return False."""
-        result = pl._update_existing_repo_to_branch_or_tag(
-            self.temp_repo_path,
-            "branch",
-            "main",
-            "repo",
-            False,
-            list(DEFAULT_BRANCHES),
-        )
+        with patch("mmrelay.plugin_loader._run_git", side_effect=FileNotFoundError()):
+            result = pl._update_existing_repo_to_branch_or_tag(
+                self.temp_repo_path,
+                "branch",
+                "main",
+                "repo",
+                False,
+                list(DEFAULT_BRANCHES),
+            )
         self.assertFalse(result)
         mock_logger.exception.assert_called_with(
             "Error updating repository %s; git not found.",
@@ -3982,89 +3943,93 @@ class TestGitOperations(BaseGitTest):
             mock_run_git.call_args_list,
         )
 
-    @patch("mmrelay.plugin_loader.os.path.isdir", return_value=False)
     @patch("mmrelay.plugin_loader._run_git")
     def test_clone_new_repo_to_branch_or_tag_tag_returns_when_commit_matches(
-        self, mock_run_git, _mock_isdir
+        self, mock_run_git
     ):
         """Tag clones should return early when cloned HEAD already equals tag commit."""
+        with patch("mmrelay.plugin_loader.os.path.isdir", return_value=False):
 
-        def _side_effect(cmd, *args, **kwargs):
-            if cmd[:3] == ["git", "clone", "--filter=blob:none"]:
+            def _side_effect(cmd, *args, **kwargs):
+                if cmd[:3] == ["git", "clone", "--filter=blob:none"]:
+                    return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+                if cmd[-2:] == ["rev-parse", "HEAD"]:
+                    return subprocess.CompletedProcess(
+                        cmd, 0, stdout="abc123\n", stderr=""
+                    )
+                if cmd[-1] == "v2.0.0^{commit}":
+                    return subprocess.CompletedProcess(
+                        cmd, 0, stdout="abc123\n", stderr=""
+                    )
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-            if cmd[-2:] == ["rev-parse", "HEAD"]:
-                return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
-            if cmd[-1] == "v2.0.0^{commit}":
-                return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-        mock_run_git.side_effect = _side_effect
+            mock_run_git.side_effect = _side_effect
 
-        result = pl._clone_new_repo_to_branch_or_tag(
-            "https://github.com/user/repo.git",
-            self.temp_repo_path,
-            "tag",
-            "v2.0.0",
-            "repo",
-            self.temp_plugins_dir,
-            False,
-        )
+            result = pl._clone_new_repo_to_branch_or_tag(
+                "https://github.com/user/repo.git",
+                self.temp_repo_path,
+                "tag",
+                "v2.0.0",
+                "repo",
+                self.temp_plugins_dir,
+                False,
+            )
 
-        self.assertTrue(result)
-        self.assertNotIn(
-            call(
-                [
-                    "git",
-                    "-C",
-                    self.temp_repo_path,
-                    "fetch",
-                    "origin",
-                    "refs/tags/v2.0.0",
-                ],
-                timeout=TEST_GIT_TIMEOUT,
-            ),
-            mock_run_git.call_args_list,
-        )
+            self.assertTrue(result)
+            self.assertNotIn(
+                call(
+                    [
+                        "git",
+                        "-C",
+                        self.temp_repo_path,
+                        "fetch",
+                        "origin",
+                        "refs/tags/v2.0.0",
+                    ],
+                    timeout=TEST_GIT_TIMEOUT,
+                ),
+                mock_run_git.call_args_list,
+            )
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader.os.path.isdir", return_value=True)
     def test_clone_or_update_repo_validated_handles_update_exception(
-        self, _mock_isdir, mock_run_git, mock_logger
+        self, mock_run_git, mock_logger
     ):
         """Validated update path should catch and log raised git errors."""
-        mock_run_git.side_effect = FileNotFoundError("git")
+        with patch("mmrelay.plugin_loader.os.path.isdir", return_value=True):
+            mock_run_git.side_effect = FileNotFoundError("git")
 
-        result = pl._clone_or_update_repo_validated(
-            "https://github.com/user/repo.git",
-            "commit",
-            "deadbeef",
-            "repo",
-            self.temp_plugins_dir,
-        )
+            result = pl._clone_or_update_repo_validated(
+                "https://github.com/user/repo.git",
+                "commit",
+                "deadbeef",
+                "repo",
+                self.temp_plugins_dir,
+            )
 
-        self.assertFalse(result)
-        mock_logger.exception.assert_called_once()
+            self.assertFalse(result)
+            mock_logger.exception.assert_called_once()
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader.os.path.isdir", return_value=False)
     def test_clone_or_update_repo_validated_handles_clone_exception(
-        self, _mock_isdir, mock_run_git, mock_logger
+        self, mock_run_git, mock_logger
     ):
         """Validated clone path should catch and log raised git errors."""
-        mock_run_git.side_effect = FileNotFoundError("git")
+        with patch("mmrelay.plugin_loader.os.path.isdir", return_value=False):
+            mock_run_git.side_effect = FileNotFoundError("git")
 
-        result = pl._clone_or_update_repo_validated(
-            "https://github.com/user/repo.git",
-            "commit",
-            "deadbeef",
-            "repo",
-            self.temp_plugins_dir,
-        )
+            result = pl._clone_or_update_repo_validated(
+                "https://github.com/user/repo.git",
+                "commit",
+                "deadbeef",
+                "repo",
+                self.temp_plugins_dir,
+            )
 
-        self.assertFalse(result)
-        mock_logger.exception.assert_called_once()
+            self.assertFalse(result)
+            mock_logger.exception.assert_called_once()
 
     def test_load_plugins_from_directory_auto_install_uses_pipx_inject(self):
         """Missing deps should use pipx inject when running inside pipx."""
@@ -4637,18 +4602,16 @@ class TestCleanPythonCache(unittest.TestCase):
 class TestPluginDirectories(unittest.TestCase):
     """Test cases for plugin directory discovery and creation."""
 
-    @patch("os.makedirs")
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_legacy_dirs")
     @patch("mmrelay.plugin_loader.get_app_path")
-    @patch("mmrelay.plugin_loader.logger")
+    @patch("os.makedirs")
     def test_get_plugin_dirs_user_dir_success(
         self,
-        _mock_logger,
+        mock_makedirs,
         mock_get_app_path,
         mock_get_legacy_dirs,
         mock_get_home_dir,
-        _mock_makedirs,
     ):
         """Test successful user directory creation."""
         from mmrelay.plugin_loader import _get_plugin_dirs
@@ -4669,7 +4632,7 @@ class TestPluginDirectories(unittest.TestCase):
     @patch("os.makedirs")
     def test_get_plugin_dirs_user_dir_permission_error(
         self,
-        _mock_makedirs,
+        mock_makedirs,
         mock_logger,
         mock_get_app_path,
         mock_get_legacy_dirs,
@@ -4681,7 +4644,7 @@ class TestPluginDirectories(unittest.TestCase):
         mock_get_home_dir.return_value = "/user/base"
         mock_get_legacy_dirs.return_value = []
         mock_get_app_path.return_value = "/app/path"
-        _mock_makedirs.side_effect = [
+        mock_makedirs.side_effect = [
             PermissionError("Permission denied"),
             None,  # Second call succeeds
         ]
@@ -4700,7 +4663,7 @@ class TestPluginDirectories(unittest.TestCase):
     @patch("os.makedirs")
     def test_get_plugin_dirs_local_dir_os_error(
         self,
-        _mock_makedirs,
+        mock_makedirs,
         mock_logger,
         mock_get_app_path,
         mock_get_legacy_dirs,
@@ -4712,7 +4675,7 @@ class TestPluginDirectories(unittest.TestCase):
         mock_get_home_dir.return_value = "/user/base"
         mock_get_legacy_dirs.return_value = []
         mock_get_app_path.return_value = "/app/path"
-        _mock_makedirs.side_effect = [
+        mock_makedirs.side_effect = [
             None,  # User dir succeeds
             OSError("Disk full"),
         ]
@@ -5483,6 +5446,136 @@ class TestDependencyInstallation(BaseGitTest):
         )
         self.assertTrue(os.path.exists(os.path.join(self.deps_dir, "zope", "proxy")))
 
+    def test_install_plugin_requirements_pkgutil_namespace_keeps_siblings(self):
+        """pkgutil.extend_path namespace dirs should merge and keep existing subpackages."""
+        existing_ns = os.path.join(self.deps_dir, "google", "cloud")
+        os.makedirs(existing_ns)
+        with open(os.path.join(self.deps_dir, "google", "__init__.py"), "w") as handle:
+            handle.write(
+                "__path__ = __import__('pkgutil').extend_path(__path__, __name__)\n"
+            )
+        with open(os.path.join(existing_ns, "__init__.py"), "w") as handle:
+            handle.write("cloud = True\n")
+
+        staged_targets: list[str] = []
+
+        def fake_run(cmd, **_kwargs):
+            staged_target = cmd[cmd.index("--target") + 1]
+            staged_targets.append(staged_target)
+            staged_ns = os.path.join(staged_target, "google", "ads")
+            os.makedirs(staged_ns)
+            with open(
+                os.path.join(staged_target, "google", "__init__.py"), "w"
+            ) as handle:
+                handle.write(
+                    "__path__ = __import__('pkgutil').extend_path(__path__, __name__)\n"
+                )
+            with open(os.path.join(staged_ns, "__init__.py"), "w") as handle:
+                handle.write("ads = True\n")
+            dist_info = os.path.join(staged_target, "google_ads-1.0.dist-info")
+            os.makedirs(dist_info)
+            with open(os.path.join(dist_info, "METADATA"), "w") as handle:
+                handle.write("Name: google-ads\n")
+
+        with (
+            patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+        ):
+            result = _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        self.assertTrue(result)
+        mock_refresh.assert_called_once()
+        self.assertTrue(os.path.exists(os.path.join(self.deps_dir, "google", "cloud")))
+        self.assertTrue(os.path.exists(os.path.join(self.deps_dir, "google", "ads")))
+
+    def test_install_plugin_requirements_pkg_resources_namespace_keeps_siblings(self):
+        """pkg_resources.declare_namespace dirs should merge and keep existing subpackages."""
+        existing_ns = os.path.join(self.deps_dir, "zope", "event")
+        os.makedirs(existing_ns)
+        with open(os.path.join(self.deps_dir, "zope", "__init__.py"), "w") as handle:
+            handle.write("__import__('pkg_resources').declare_namespace(__name__)\n")
+        with open(os.path.join(existing_ns, "__init__.py"), "w") as handle:
+            handle.write("event = True\n")
+
+        staged_targets: list[str] = []
+
+        def fake_run(cmd, **_kwargs):
+            staged_target = cmd[cmd.index("--target") + 1]
+            staged_targets.append(staged_target)
+            staged_ns = os.path.join(staged_target, "zope", "proxy")
+            os.makedirs(staged_ns)
+            with open(
+                os.path.join(staged_target, "zope", "__init__.py"), "w"
+            ) as handle:
+                handle.write(
+                    "__import__('pkg_resources').declare_namespace(__name__)\n"
+                )
+            with open(os.path.join(staged_ns, "__init__.py"), "w") as handle:
+                handle.write("proxy = True\n")
+            dist_info = os.path.join(staged_target, "zope_proxy-5.2.dist-info")
+            os.makedirs(dist_info)
+            with open(os.path.join(dist_info, "METADATA"), "w") as handle:
+                handle.write("Name: zope.proxy\n")
+
+        with (
+            patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+        ):
+            result = _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        self.assertTrue(result)
+        mock_refresh.assert_called_once()
+        self.assertTrue(os.path.exists(os.path.join(self.deps_dir, "zope", "event")))
+        self.assertTrue(os.path.exists(os.path.join(self.deps_dir, "zope", "proxy")))
+
+    def test_install_plugin_requirements_regular_package_replaces_stale_files(self):
+        """Regular packages with normal __init__.py should be replaced, removing stale files."""
+        package_dir = os.path.join(self.deps_dir, "requests")
+        os.makedirs(package_dir)
+        with open(os.path.join(package_dir, "__init__.py"), "w") as handle:
+            handle.write("old = True\n")
+        with open(os.path.join(package_dir, "stale_module.py"), "w") as handle:
+            handle.write("stale = True\n")
+
+        staged_targets: list[str] = []
+
+        def fake_run(cmd, **_kwargs):
+            staged_target = cmd[cmd.index("--target") + 1]
+            staged_targets.append(staged_target)
+            os.makedirs(os.path.join(staged_target, "requests"))
+            with open(
+                os.path.join(staged_target, "requests", "__init__.py"), "w"
+            ) as handle:
+                handle.write("new = True\n")
+            dist_info = os.path.join(staged_target, "requests-2.28.0.dist-info")
+            os.makedirs(dist_info)
+            with open(os.path.join(dist_info, "METADATA"), "w") as handle:
+                handle.write("Name: requests\n")
+
+        with (
+            patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+        ):
+            result = _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        self.assertTrue(result)
+        mock_refresh.assert_called_once()
+        self.assertEqual(
+            sorted(os.listdir(os.path.join(self.deps_dir, "requests"))),
+            ["__init__.py"],
+        )
+        with open(
+            os.path.join(self.deps_dir, "requests", "__init__.py"),
+            encoding="utf-8",
+        ) as handle:
+            self.assertEqual(handle.read(), "new = True\n")
+        self.assertFalse(
+            os.path.exists(os.path.join(self.deps_dir, "requests", "stale_module.py"))
+        )
+
     def test_install_plugin_requirements_failed_staged_target_leaves_deps_unchanged(
         self,
     ):
@@ -5928,10 +6021,9 @@ class TestDependencyInstallation(BaseGitTest):
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
-    @patch("os.makedirs")
     @patch("os.path.isdir")
     def test_clone_or_update_repo_commit_ref_type_validation(
-        self, mock_isdir, _mock_makedirs, mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test that 'commit' is accepted as a valid ref type."""
         mock_is_allowed.return_value = True
@@ -6082,9 +6174,8 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader.logger")
     def test_clone_new_repo_to_branch_or_tag_default_branch_fallback(
-        self, _mock_logger, mock_run_git
+        self, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with default branch fallback."""
         # First call fails, second succeeds
@@ -6133,9 +6224,8 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader.logger")
     def test_clone_new_repo_to_branch_or_tag_default_branch_final_fallback(
-        self, _mock_logger, mock_run_git
+        self, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with final fallback to default branch."""
         # Both main and master fail, fallback to clone without branch
@@ -6258,10 +6348,7 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_new_repo_to_branch_or_tag_tag_fetch_fallback(
-        self, _mock_logger, mock_run_git
-    ):
+    def test_clone_new_repo_to_branch_or_tag_tag_fetch_fallback(self, mock_run_git):
         """Test _clone_new_repo_to_branch_or_tag with tag fetch fallback."""
         # Clone succeeds, rev-parse succeed but don't match, then fetch and checkout succeed
         mock_run_git.side_effect = [
@@ -6297,10 +6384,7 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_new_repo_to_branch_or_tag_tag_fetch_fallback_alt(
-        self, _mock_logger, mock_run_git
-    ):
+    def test_clone_new_repo_to_branch_or_tag_tag_fetch_fallback_alt(self, mock_run_git):
         """Test _clone_new_repo_to_branch_or_tag with alternative tag fetch."""
         # Clone succeeds, rev-parse succeed but don't match, first fetch fails, alternative fetch succeeds, checkout succeeds
         mock_run_git.side_effect = [
@@ -6339,10 +6423,7 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_new_repo_to_branch_or_tag_tag_as_branch_fallback(
-        self, _mock_logger, mock_run_git
-    ):
+    def test_clone_new_repo_to_branch_or_tag_tag_as_branch_fallback(self, mock_run_git):
         """Test _clone_new_repo_to_branch_or_tag with tag as branch fallback."""
         mock_run_git.side_effect = [
             subprocess.CalledProcessError(1, "git"),  # clone --branch fails
@@ -6882,6 +6963,70 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
             self.assertIs(sys.modules.get(mod_name), previous)
         finally:
             sys.modules.pop(mod_name, None)
+
+
+class TestIsNamespacePackageDirectory(unittest.TestCase):
+    """Tests for _is_namespace_package_directory detection logic."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(self.temp_dir, ignore_errors=True))
+
+    def test_implicit_namespace_no_init_py(self):
+        """Directory without __init__.py should be detected as implicit namespace."""
+        ns_dir = os.path.join(self.temp_dir, "mypackage")
+        os.makedirs(ns_dir)
+        self.assertTrue(pl._is_namespace_package_directory(ns_dir))
+
+    def test_pkgutil_namespace(self):
+        """Directory with pkgutil.extend_path in __init__.py should be namespace."""
+        ns_dir = os.path.join(self.temp_dir, "google")
+        os.makedirs(ns_dir)
+        with open(os.path.join(ns_dir, "__init__.py"), "w") as f:
+            f.write(
+                "__path__ = __import__('pkgutil').extend_path(__path__, __name__)\n"
+            )
+        self.assertTrue(pl._is_namespace_package_directory(ns_dir))
+
+    def test_pkg_resources_namespace(self):
+        """Directory with pkg_resources.declare_namespace should be namespace."""
+        ns_dir = os.path.join(self.temp_dir, "zope")
+        os.makedirs(ns_dir)
+        with open(os.path.join(ns_dir, "__init__.py"), "w") as f:
+            f.write("__import__('pkg_resources').declare_namespace(__name__)\n")
+        self.assertTrue(pl._is_namespace_package_directory(ns_dir))
+
+    def test_regular_package_not_namespace(self):
+        """Directory with normal __init__.py should NOT be detected as namespace."""
+        pkg_dir = os.path.join(self.temp_dir, "requests")
+        os.makedirs(pkg_dir)
+        with open(os.path.join(pkg_dir, "__init__.py"), "w") as f:
+            f.write("__version__ = '2.28.0'\n")
+        self.assertFalse(pl._is_namespace_package_directory(pkg_dir))
+
+    def test_symlink_not_namespace(self):
+        """Symlinked directory should not be treated as namespace package."""
+        real_dir = os.path.join(self.temp_dir, "real")
+        link_dir = os.path.join(self.temp_dir, "link")
+        os.makedirs(real_dir)
+        os.symlink(real_dir, link_dir)
+        self.assertFalse(pl._is_namespace_package_directory(link_dir))
+
+    def test_nonexistent_path_not_namespace(self):
+        """Non-existent path should not be treated as namespace package."""
+        self.assertFalse(
+            pl._is_namespace_package_directory(os.path.join(self.temp_dir, "nope"))
+        )
+
+    def test_unreadable_init_py_fails_safe(self):
+        """Unreadable __init__.py should fail safe (return False)."""
+        pkg_dir = os.path.join(self.temp_dir, "badpkg")
+        os.makedirs(pkg_dir)
+        init_path = os.path.join(pkg_dir, "__init__.py")
+        with open(init_path, "w") as f:
+            f.write("some content\n")
+        with patch("builtins.open", side_effect=OSError("permission denied")):
+            self.assertFalse(pl._is_namespace_package_directory(pkg_dir))
 
 
 if __name__ == "__main__":
