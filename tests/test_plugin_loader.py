@@ -4839,6 +4839,53 @@ class TestDependencyInstallation(BaseGitTest):
         self.assertIn("--user", cmd)
         self.assertNotIn("--target", cmd)
 
+    def test_requirements_install_target_identity_unknown_user_site_is_stable(self):
+        """Missing user-site support should not produce cwd-dependent target IDs."""
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch.dict(os.environ, {}, clear=True),
+            patch("sys.prefix", "/fake/prefix"),
+            patch("sys.base_prefix", "/fake/prefix"),
+            patch("site.getusersitepackages", side_effect=AttributeError),
+        ):
+            self.assertEqual(pl._requirements_install_target_identity(), "user:unknown")
+
+    def test_requirements_hash_includes_safe_pip_options(self):
+        """Requirement state hash covers all safe effective lines, including options."""
+        requirements = ["--pre", "requests==2.28.0"]
+        self.assertEqual(
+            pl._requirements_hash(requirements),
+            hashlib.sha256("--pre\nrequests==2.28.0".encode("utf-8")).hexdigest(),
+        )
+
+    def test_installable_requirement_lines_filters_option_lines(self):
+        """Install execution only runs when non-option requirement lines are present."""
+        self.assertEqual(
+            pl._installable_requirement_lines(["--pre", "requests==2.28.0"]),
+            ["requests==2.28.0"],
+        )
+        self.assertEqual(pl._installable_requirement_lines(["--pre"]), [])
+
+    def test_temporary_requirements_file_cleans_up_after_success(self):
+        """Temporary requirements helper should remove the file after normal use."""
+        with pl._temporary_requirements_file(["requests==2.28.0"]) as temp_path:
+            self.assertTrue(os.path.exists(temp_path))
+            with open(temp_path, encoding="utf-8") as temp_file:
+                self.assertEqual(temp_file.read(), "requests==2.28.0\n")
+
+        self.assertFalse(os.path.exists(temp_path))
+
+    def test_temporary_requirements_file_cleans_up_after_failure(self):
+        """Temporary requirements helper should remove the file when callers fail."""
+        temp_path = None
+        with self.assertRaises(RuntimeError):
+            with pl._temporary_requirements_file(["requests==2.28.0"]) as path:
+                temp_path = path
+                raise RuntimeError("boom")
+
+        self.assertIsNotNone(temp_path)
+        self.assertFalse(os.path.exists(temp_path))
+
     def test_requirements_install_target_valid_empty_deps_dir_is_invalid(self):
         """An empty persistent deps dir should not satisfy cached install state."""
         with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
@@ -4921,7 +4968,7 @@ class TestDependencyInstallation(BaseGitTest):
     def test_install_plugin_requirements_no_packages_writes_marker(self):
         """No-installable-package requirements should still mark successful handling."""
         with open(self.requirements_path, "w") as f:
-            f.write("--extra-index-url https://pypi.org/simple\n")
+            f.write("--pre\n")
 
         with (
             patch("mmrelay.plugin_loader._run") as mock_run,
@@ -4931,7 +4978,7 @@ class TestDependencyInstallation(BaseGitTest):
 
         self.assertTrue(result)
         mock_run.assert_not_called()
-        requirements_hash = pl._requirements_hash([])
+        requirements_hash = pl._requirements_hash(["--pre"])
         with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
             self.assertTrue(
                 pl._requirements_install_target_valid(

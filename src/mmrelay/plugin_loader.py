@@ -867,7 +867,7 @@ def _requirements_install_target_identity() -> str:
     try:
         user_site = site.getusersitepackages()
     except AttributeError:
-        user_site = "unknown"
+        return "user:unknown"
     if isinstance(user_site, str):
         return f"user:{os.path.abspath(user_site)}"
     return "user:" + os.pathsep.join(os.path.abspath(path) for path in user_site)
@@ -936,8 +936,36 @@ def _effective_requirements_for_repo(
 
 
 def _requirements_hash(requirements: Sequence[str]) -> str:
+    """Hash all safe effective requirement lines, including pip option lines."""
     payload = "\n".join(requirements).encode(DEFAULT_TEXT_ENCODING)
     return hashlib.sha256(payload).hexdigest()
+
+
+def _installable_requirement_lines(requirements: Sequence[str]) -> list[str]:
+    return [
+        requirement for requirement in requirements if not requirement.startswith("-")
+    ]
+
+
+@contextmanager
+def _temporary_requirements_file(requirements: Sequence[str]) -> Iterator[str]:
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".txt", delete=False
+    ) as temp_file:
+        temp_path = temp_file.name
+        for entry in requirements:
+            temp_file.write(entry + "\n")
+
+    try:
+        yield temp_path
+    finally:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            logger.debug(
+                "Failed to clean up temporary requirements file: %s",
+                temp_path,
+            )
 
 
 def _install_requirements_for_repo(
@@ -983,6 +1011,7 @@ def _install_requirements_for_repo(
         safe_requirements = effective_requirements.allowed
         requirements_hash = _requirements_hash(safe_requirements)
         requirements_target = _requirements_install_target_identity()
+        packages = _installable_requirement_lines(safe_requirements)
 
         installed_packages = False
         handled_requirements = False
@@ -993,7 +1022,6 @@ def _install_requirements_for_repo(
                 repo_name,
                 install_target,
             )
-            packages = [r for r in safe_requirements if not r.startswith("-")]
             if not packages:
                 logger.info(
                     "Requirements in %s provided no installable packages; skipping pip install.",
@@ -1020,33 +1048,16 @@ def _install_requirements_for_repo(
                     os.fspath(install_target),
                 ]
 
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".txt", delete=False
-                ) as temp_file:
-                    temp_path = temp_file.name
-                    for entry in safe_requirements:
-                        temp_file.write(entry + "\n")
-
-                try:
+                with _temporary_requirements_file(safe_requirements) as temp_path:
                     cmd.extend(["-r", temp_path])
                     _run(cmd, timeout=PIP_INSTALL_TIMEOUT_SECONDS)
                     installed_packages = True
                     handled_requirements = True
-                finally:
-                    try:
-                        os.unlink(temp_path)
-                    except OSError:
-                        logger.debug(
-                            "Failed to clean up temporary requirements file: %s",
-                            temp_path,
-                        )
         elif in_pipx:
             logger.info("Installing requirements for plugin %s with pipx", repo_name)
             pipx_path = shutil.which("pipx")
             if not pipx_path:
                 raise FileNotFoundError("pipx executable not found on PATH")
-            # Check if there are actual packages to install (not just flags)
-            packages = [r for r in safe_requirements if not r.startswith("-")]
             if packages:
                 if (
                     plugin_type == PLUGIN_TYPE_COMMUNITY
@@ -1056,16 +1067,7 @@ def _install_requirements_for_repo(
                         "Community plugin dependencies execute arbitrary code and are unsafe"
                     )
                     _community_dep_install_warning_logged = True
-                # Write safe requirements to a temporary file to handle hashed requirements
-                # and environment markers properly
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".txt", delete=False
-                ) as temp_file:
-                    temp_path = temp_file.name
-                    for entry in safe_requirements:
-                        temp_file.write(entry + "\n")
-
-                try:
+                with _temporary_requirements_file(safe_requirements) as temp_path:
                     cmd = [
                         pipx_path,
                         "inject",
@@ -1076,15 +1078,6 @@ def _install_requirements_for_repo(
                     _run(cmd, timeout=PIP_INSTALL_TIMEOUT_SECONDS)
                     installed_packages = True
                     handled_requirements = True
-                finally:
-                    # Clean up the temporary file
-                    try:
-                        os.unlink(temp_path)
-                    except OSError:
-                        logger.debug(
-                            "Failed to clean up temporary requirements file: %s",
-                            temp_path,
-                        )
             else:
                 logger.info(
                     "No dependencies listed in %s; skipping pipx injection.",
@@ -1096,7 +1089,6 @@ def _install_requirements_for_repo(
                 "VIRTUAL_ENV" in os.environ
             )
             logger.info("Installing requirements for plugin %s with pip", repo_name)
-            packages = [r for r in safe_requirements if not r.startswith("-")]
             if not packages:
                 logger.info(
                     "Requirements in %s provided no installable packages; skipping pip install.",
@@ -1123,28 +1115,11 @@ def _install_requirements_for_repo(
                 if not in_venv:
                     cmd.append("--user")
 
-                # Write safe requirements to a temporary file to handle hashed requirements properly
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".txt", delete=False
-                ) as temp_file:
-                    temp_path = temp_file.name
-                    for entry in safe_requirements:
-                        temp_file.write(entry + "\n")
-
-                try:
+                with _temporary_requirements_file(safe_requirements) as temp_path:
                     cmd.extend(["-r", temp_path])
                     _run(cmd, timeout=PIP_INSTALL_TIMEOUT_SECONDS)
                     installed_packages = True
                     handled_requirements = True
-                finally:
-                    # Clean up the temporary file
-                    try:
-                        os.unlink(temp_path)
-                    except OSError:
-                        logger.debug(
-                            "Failed to clean up temporary requirements file: %s",
-                            temp_path,
-                        )
 
         if installed_packages:
             logger.info("Successfully installed requirements for plugin %s", repo_name)
