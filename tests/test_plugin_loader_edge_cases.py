@@ -289,11 +289,15 @@ class Plugin:
         ):
             with patch("mmrelay.plugin_loader.get_app_path", return_value="/test/app"):
                 with patch("os.makedirs", side_effect=side_effect):
-                    with patch("mmrelay.plugin_loader.logger"):
-                        dirs = get_custom_plugin_dirs()
-                        # Should still include local directory
-                        self.assertEqual(len(dirs), 1)
-                        self.assertIn("/test/app/plugins/custom", dirs)
+                    with patch(
+                        "os.path.isdir",
+                        side_effect=lambda path: path == "/test/app/plugins/custom",
+                    ):
+                        with patch("mmrelay.plugin_loader.logger"):
+                            dirs = get_custom_plugin_dirs()
+                            # Should still include existing local directory
+                            self.assertEqual(len(dirs), 1)
+                            self.assertIn("/test/app/plugins/custom", dirs)
 
     def test_get_custom_plugin_dirs_broken_symlinks(self):
         """
@@ -307,13 +311,19 @@ class Plugin:
         ):
             with patch("mmrelay.plugin_loader.get_app_path", return_value="/test/app"):
                 with patch("os.makedirs") as mock_makedirs:
-                    dirs = get_custom_plugin_dirs()
-                    # Should have called makedirs for the user directory
-                    mock_makedirs.assert_called()
-                    # Should return both directories
-                    self.assertEqual(len(dirs), 2)
-                    self.assertIn("/test/plugins/custom", dirs)
-                    self.assertIn("/test/app/plugins/custom", dirs)
+                    with patch(
+                        "os.path.isdir",
+                        side_effect=lambda path: path == "/test/app/plugins/custom",
+                    ):
+                        dirs = get_custom_plugin_dirs()
+                        # Should have called makedirs for the user directory
+                        mock_makedirs.assert_called_once_with(
+                            "/test/plugins/custom", exist_ok=True
+                        )
+                        # Should return both directories
+                        self.assertEqual(len(dirs), 2)
+                        self.assertIn("/test/plugins/custom", dirs)
+                        self.assertIn("/test/app/plugins/custom", dirs)
 
     def test_get_community_plugin_dirs_git_clone_failure(self):
         """
@@ -322,6 +332,7 @@ class Plugin:
         with tempfile.TemporaryDirectory() as temp_dir:
             plugin_root = os.path.join(temp_dir, "plugins")
             app_root = os.path.join(temp_dir, "app")
+            os.makedirs(os.path.join(app_root, "plugins", "community"))
 
             with patch(
                 "mmrelay.plugin_loader._get_plugin_root_dirs",
@@ -343,6 +354,7 @@ class Plugin:
         with tempfile.TemporaryDirectory() as temp_dir:
             plugin_root = os.path.join(temp_dir, "plugins")
             app_root = os.path.join(temp_dir, "app")
+            os.makedirs(os.path.join(app_root, "plugins", "community"))
 
             with patch(
                 "mmrelay.plugin_loader._get_plugin_root_dirs",
@@ -364,6 +376,7 @@ class Plugin:
         with tempfile.TemporaryDirectory() as temp_dir:
             plugin_root = os.path.join(temp_dir, "plugins")
             app_root = os.path.join(temp_dir, "app")
+            os.makedirs(os.path.join(app_root, "plugins", "community"))
 
             with patch(
                 "mmrelay.plugin_loader._get_plugin_root_dirs",
@@ -602,8 +615,8 @@ class Plugin:
                     self.assertEqual(result[0], os.path.join(home_dir, "plugins"))
                     self.assertIn(legacy_root, result)
 
-    def test_get_plugin_dirs_local_directory_error(self):
-        """Test _get_plugin_dirs handles errors when creating local directory."""
+    def test_get_plugin_dirs_missing_local_directory_is_skipped(self):
+        """Test _get_plugin_dirs skips missing local fallback directories."""
         with tempfile.TemporaryDirectory() as temp_dir:
             plugin_type = "custom"
 
@@ -611,28 +624,23 @@ class Plugin:
                 "mmrelay.plugin_loader._get_plugin_root_dirs", return_value=[temp_dir]
             ):
                 with patch("os.makedirs") as mock_makedirs:
-                    # Make local directory creation fail
-                    def side_effect(_path, **_kwargs):
-                        if "app" in _path:  # Local app directory
-                            raise OSError()
-                        return None
-
-                    mock_makedirs.side_effect = side_effect
-
                     with patch(
                         "mmrelay.plugin_loader.get_app_path", return_value="/fake/app"
                     ):
-                        with patch("mmrelay.plugin_loader.logger") as mock_logger:
-                            result = _get_plugin_dirs(plugin_type)
+                        with patch("os.path.isdir", return_value=False):
+                            with patch("mmrelay.plugin_loader.logger") as mock_logger:
+                                result = _get_plugin_dirs(plugin_type)
 
-                            # Should still return the root directory
-                            self.assertEqual(len(result), 1)
-                            self.assertIn(temp_dir, result)
-                            # Should log debug about local directory creation failure
-                            mock_logger.debug.assert_called()
+                                # Should still return the root directory
+                                self.assertEqual(len(result), 1)
+                                self.assertIn(temp_dir, result)
+                                mock_makedirs.assert_called_once_with(
+                                    temp_dir, exist_ok=True
+                                )
+                                mock_logger.debug.assert_not_called()
 
-    def test_get_plugin_dirs_local_permission_error(self):
-        """Test _get_plugin_dirs handles PermissionError when creating local directory."""
+    def test_get_plugin_dirs_missing_local_permission_path_is_skipped(self):
+        """Test _get_plugin_dirs does not create local fallback directories."""
         with tempfile.TemporaryDirectory() as temp_dir:
             plugin_type = "community"
 
@@ -640,25 +648,20 @@ class Plugin:
                 "mmrelay.plugin_loader._get_plugin_root_dirs", return_value=[temp_dir]
             ):
                 with patch("os.makedirs") as mock_makedirs:
-                    # Make local directory creation fail with PermissionError
-                    def side_effect(_path, **_kwargs):
-                        if "app" in _path:  # Local app directory
-                            raise PermissionError()
-                        return None
-
-                    mock_makedirs.side_effect = side_effect
-
                     with patch(
                         "mmrelay.plugin_loader.get_app_path", return_value="/fake/app"
                     ):
-                        with patch("mmrelay.plugin_loader.logger") as mock_logger:
-                            result = _get_plugin_dirs(plugin_type)
+                        with patch("os.path.isdir", return_value=False):
+                            with patch("mmrelay.plugin_loader.logger") as mock_logger:
+                                result = _get_plugin_dirs(plugin_type)
 
-                            # Should still return the root directory
-                            self.assertEqual(len(result), 1)
-                            self.assertIn(temp_dir, result)
-                            # Should log debug about local directory creation failure
-                            mock_logger.debug.assert_called()
+                                # Should still return the root directory
+                                self.assertEqual(len(result), 1)
+                                self.assertIn(temp_dir, result)
+                                mock_makedirs.assert_called_once_with(
+                                    temp_dir, exist_ok=True
+                                )
+                                mock_logger.debug.assert_not_called()
 
 
 if __name__ == "__main__":
