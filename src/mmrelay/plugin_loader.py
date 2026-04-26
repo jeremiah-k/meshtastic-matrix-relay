@@ -120,11 +120,18 @@ PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET: Final[str] = (
 PLUGIN_STATE_LAST_REQUIREMENTS_INSTALLED_AT: Final[str] = (
     "last_requirements_installed_at"
 )
-PLUGIN_REQUIREMENTS_INSTALL_MARKER_FILENAME: Final[str] = (
+PLUGIN_REQUIREMENTS_INSTALL_MARKER_PREFIX: Final[str] = (
     ".mmrelay-requirements-installed"
 )
 COMMUNITY_PLUGIN_UPDATE_CHECK_INTERVAL: Final[timedelta] = timedelta(hours=24)
 _community_dep_install_warning_logged = False
+
+
+class EffectiveRequirements(NamedTuple):
+    """Filtered plugin requirements used for both installs and state hashing."""
+
+    allowed: list[str]
+    flagged: list[str]
 
 
 def _is_safe_plugin_name(name: str) -> bool:
@@ -807,19 +814,41 @@ def _refresh_dependency_paths() -> None:
     importlib.invalidate_caches()
 
 
-def _requirements_install_marker_path(repo_path: str) -> str:
+def _requirements_marker_repo_identity(repo_path: str, repo_name: str) -> str:
+    repo_identity = f"{repo_name}:{os.path.abspath(repo_path)}"
+    return hashlib.sha256(repo_identity.encode(DEFAULT_TEXT_ENCODING)).hexdigest()[:24]
+
+
+def _requirements_install_marker_path(repo_path: str, repo_name: str) -> str:
+    marker_name = (
+        f"{PLUGIN_REQUIREMENTS_INSTALL_MARKER_PREFIX}-"
+        f"{_requirements_marker_repo_identity(repo_path, repo_name)}.json"
+    )
     if _PLUGIN_DEPS_DIR:
-        return os.path.join(
-            os.fspath(_PLUGIN_DEPS_DIR), PLUGIN_REQUIREMENTS_INSTALL_MARKER_FILENAME
-        )
-    return os.path.join(repo_path, PLUGIN_REQUIREMENTS_INSTALL_MARKER_FILENAME)
+        return os.path.join(os.fspath(_PLUGIN_DEPS_DIR), marker_name)
+    return os.path.join(repo_path, marker_name)
 
 
-def _write_requirements_install_marker(repo_path: str) -> None:
-    marker_path = _requirements_install_marker_path(repo_path)
+def _write_requirements_install_marker(
+    repo_path: str,
+    repo_name: str,
+    requirements_hash: str,
+    target: str,
+) -> None:
+    marker_path = _requirements_install_marker_path(repo_path, repo_name)
     os.makedirs(os.path.dirname(marker_path), exist_ok=True)
     with open(marker_path, "w", encoding=DEFAULT_TEXT_ENCODING) as marker_file:
-        marker_file.write(datetime.now(timezone.utc).isoformat() + "\n")
+        json.dump(
+            {
+                "requirements_hash": requirements_hash,
+                "target": target,
+                "installed_at": datetime.now(timezone.utc).isoformat(),
+                "repo": repo_name,
+            },
+            marker_file,
+            sort_keys=True,
+        )
+        marker_file.write("\n")
 
 
 def _requirements_install_target_identity() -> str:
@@ -844,22 +873,32 @@ def _requirements_install_target_identity() -> str:
     return "user:" + os.pathsep.join(os.path.abspath(path) for path in user_site)
 
 
-def _requirements_install_target_valid(repo_path: str) -> bool:
-    marker_exists = os.path.isfile(_requirements_install_marker_path(repo_path))
-    if _PLUGIN_DEPS_DIR:
-        deps_path = os.fspath(_PLUGIN_DEPS_DIR)
-        deps_has_content = False
-        if os.path.isdir(deps_path):
-            try:
-                with os.scandir(deps_path) as entries:
-                    deps_has_content = any(entries)
-            except OSError:
-                deps_has_content = False
-        return deps_has_content or marker_exists
-    return marker_exists
+def _requirements_install_target_valid(
+    repo_path: str,
+    repo_name: str,
+    requirements_hash: str,
+    target: str,
+) -> bool:
+    marker_path = _requirements_install_marker_path(repo_path, repo_name)
+    try:
+        with open(marker_path, encoding=DEFAULT_TEXT_ENCODING) as marker_file:
+            marker = json.load(marker_file)
+    except (OSError, json.JSONDecodeError):
+        return False
+
+    return (
+        isinstance(marker, dict)
+        and marker.get("requirements_hash") == requirements_hash
+        and marker.get("target") == target
+    )
 
 
-def _effective_requirements_for_repo(repo_path: str, repo_name: str) -> list[str]:
+def _effective_requirements_for_repo(
+    repo_path: str,
+    repo_name: str,
+    *,
+    log_flagged: bool = False,
+) -> EffectiveRequirements:
     requirements_path = os.path.join(repo_path, PLUGIN_REQUIREMENTS_FILENAME)
     requirements_lines = _collect_requirements(requirements_path)
     safe_requirements, flagged_requirements = _filter_risky_requirement_lines(
@@ -869,8 +908,21 @@ def _effective_requirements_for_repo(repo_path: str, repo_name: str) -> list[str
     allow_untrusted = bool(
         _get_security_settings().get("allow_untrusted_dependencies", False)
     )
-    if flagged_requirements and allow_untrusted:
-        safe_requirements.extend(flagged_requirements)
+    if flagged_requirements:
+        if allow_untrusted:
+            if log_flagged:
+                logger.warning(
+                    "Allowing %d flagged dependency entries for %s due to security.allow_untrusted_dependencies=True",
+                    len(flagged_requirements),
+                    repo_name,
+                )
+            safe_requirements.extend(flagged_requirements)
+        elif log_flagged:
+            logger.warning(
+                "Skipping %d flagged dependency entries for %s. Set security.allow_untrusted_dependencies=True to override.",
+                len(flagged_requirements),
+                repo_name,
+            )
 
     logger.debug(
         "Computed effective requirements for plugin %s: %d allowed, %d flagged",
@@ -878,7 +930,9 @@ def _effective_requirements_for_repo(repo_path: str, repo_name: str) -> list[str
         len(safe_requirements),
         len(flagged_requirements),
     )
-    return safe_requirements
+    return EffectiveRequirements(
+        allowed=safe_requirements, flagged=flagged_requirements
+    )
 
 
 def _requirements_hash(requirements: Sequence[str]) -> str:
@@ -894,11 +948,14 @@ def _install_requirements_for_repo(
     """
     Install dependencies listed in repo_path/requirements.txt for a community plugin and refresh import paths.
 
-    This function is a no-op if no requirements file exists. It installs allowed dependency
-    entries either into the application's pipx environment (when pipx is in use) or into
-    the current Python environment (using pip). After a successful installation the
-    interpreter import/search paths are refreshed so newly installed packages become
-    importable. Failures are logged and do not raise from this function.
+    This function is a no-op if no requirements file exists. When the persistent
+    plugin dependency directory is available, allowed dependency entries are
+    installed there with pip --target so they survive container restarts. If no
+    persistent dependency directory is configured, it falls back to pipx inject
+    when running under pipx, otherwise pip installs into the current environment
+    or the user site outside a virtual environment. After a successful install
+    the interpreter import/search paths are refreshed so newly installed packages
+    become importable. Failures are logged and do not raise from this function.
 
     Parameters:
         repo_path: Filesystem path to the plugin repository (looks for a requirements.txt file at this location).
@@ -920,33 +977,15 @@ def _install_requirements_for_repo(
             key in os.environ for key in PIPX_ENVIRONMENT_KEYS
         )
 
-        requirements_lines = _collect_requirements(requirements_path)
-        safe_requirements, flagged_requirements = _filter_risky_requirement_lines(
-            requirements_lines
+        effective_requirements = _effective_requirements_for_repo(
+            repo_path, repo_name, log_flagged=True
         )
-
-        # Check security configuration for handling flagged requirements
-        allow_untrusted = bool(
-            _get_security_settings().get("allow_untrusted_dependencies", False)
-        )
-
-        if flagged_requirements:
-            if allow_untrusted:
-                logger.warning(
-                    "Allowing %d flagged dependency entries for %s due to security.allow_untrusted_dependencies=True",
-                    len(flagged_requirements),
-                    repo_name,
-                )
-                # Include flagged requirements when allowed
-                safe_requirements.extend(flagged_requirements)
-            else:
-                logger.warning(
-                    "Skipping %d flagged dependency entries for %s. Set security.allow_untrusted_dependencies=True to override.",
-                    len(flagged_requirements),
-                    repo_name,
-                )
+        safe_requirements = effective_requirements.allowed
+        requirements_hash = _requirements_hash(safe_requirements)
+        requirements_target = _requirements_install_target_identity()
 
         installed_packages = False
+        handled_requirements = False
 
         if install_target is not None:
             logger.info(
@@ -960,6 +999,7 @@ def _install_requirements_for_repo(
                     "Requirements in %s provided no installable packages; skipping pip install.",
                     requirements_path,
                 )
+                handled_requirements = True
             else:
                 if (
                     plugin_type == PLUGIN_TYPE_COMMUNITY
@@ -991,6 +1031,7 @@ def _install_requirements_for_repo(
                     cmd.extend(["-r", temp_path])
                     _run(cmd, timeout=PIP_INSTALL_TIMEOUT_SECONDS)
                     installed_packages = True
+                    handled_requirements = True
                 finally:
                     try:
                         os.unlink(temp_path)
@@ -1034,6 +1075,7 @@ def _install_requirements_for_repo(
                     ]
                     _run(cmd, timeout=PIP_INSTALL_TIMEOUT_SECONDS)
                     installed_packages = True
+                    handled_requirements = True
                 finally:
                     # Clean up the temporary file
                     try:
@@ -1048,6 +1090,7 @@ def _install_requirements_for_repo(
                     "No dependencies listed in %s; skipping pipx injection.",
                     requirements_path,
                 )
+                handled_requirements = True
         else:
             in_venv = (sys.prefix != getattr(sys, "base_prefix", sys.prefix)) or (
                 "VIRTUAL_ENV" in os.environ
@@ -1059,6 +1102,7 @@ def _install_requirements_for_repo(
                     "Requirements in %s provided no installable packages; skipping pip install.",
                     requirements_path,
                 )
+                handled_requirements = True
             else:
                 if (
                     plugin_type == PLUGIN_TYPE_COMMUNITY
@@ -1091,6 +1135,7 @@ def _install_requirements_for_repo(
                     cmd.extend(["-r", temp_path])
                     _run(cmd, timeout=PIP_INSTALL_TIMEOUT_SECONDS)
                     installed_packages = True
+                    handled_requirements = True
                 finally:
                     # Clean up the temporary file
                     try:
@@ -1103,10 +1148,13 @@ def _install_requirements_for_repo(
 
         if installed_packages:
             logger.info("Successfully installed requirements for plugin %s", repo_name)
-            _write_requirements_install_marker(repo_path)
             _refresh_dependency_paths()
         else:
             logger.info("No dependency installation run for plugin %s", repo_name)
+        if handled_requirements:
+            _write_requirements_install_marker(
+                repo_path, repo_name, requirements_hash, requirements_target
+            )
         return True
     except (
         OSError,
@@ -3358,8 +3406,11 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                         )
                     else:
                         state = _load_plugin_state(repo_path)
+                        effective_requirements = _effective_requirements_for_repo(
+                            repo_path, repo_name
+                        )
                         requirements_hash = _requirements_hash(
-                            _effective_requirements_for_repo(repo_path, repo_name)
+                            effective_requirements.allowed
                         )
                         requirements_target = _requirements_install_target_identity()
                         last_installed_commit = state.get(
@@ -3378,7 +3429,12 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                             and last_installed_hash == requirements_hash
                             and isinstance(last_installed_target, str)
                             and last_installed_target == requirements_target
-                            and _requirements_install_target_valid(repo_path)
+                            and _requirements_install_target_valid(
+                                repo_path,
+                                repo_name,
+                                requirements_hash,
+                                requirements_target,
+                            )
                         ):
                             logger.debug(
                                 "Skipping requirements install for community plugin %s; already installed for commit %s, requirements hash %s, target %s",
