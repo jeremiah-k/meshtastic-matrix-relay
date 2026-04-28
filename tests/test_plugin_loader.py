@@ -13,6 +13,7 @@ Tests the plugin discovery, loading, and management functionality including:
 
 import hashlib
 import importlib
+import json
 import os
 import shutil
 import subprocess  # nosec B404 - Used for controlled test environment operations
@@ -222,6 +223,19 @@ class TestPluginLoader(BaseGitTest):
         mmrelay.plugin_loader.plugins_loaded = False
         mmrelay.plugin_loader.sorted_active_plugins = []
 
+    def _community_repo_path(self) -> str:
+        repo_path = os.path.join(self.community_dir, "repo")
+        os.makedirs(repo_path, exist_ok=True)
+        return repo_path
+
+    def _write_community_requirements(self, content: str = "requests==2.28.0\n") -> str:
+        repo_path = self._community_repo_path()
+        with open(
+            os.path.join(repo_path, pl.PLUGIN_REQUIREMENTS_FILENAME), "w"
+        ) as req_file:
+            req_file.write(content)
+        return repo_path
+
     def tearDown(self):
         """
         Remove temporary directories and clean up resources after each test.
@@ -233,9 +247,8 @@ class TestPluginLoader(BaseGitTest):
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_legacy_dirs")
     @patch("mmrelay.plugin_loader.get_app_path")
-    @patch("os.makedirs")
     def test_get_custom_plugin_dirs(
-        self, _mock_makedirs, mock_get_app_path, mock_get_legacy_dirs, mock_get_home_dir
+        self, mock_get_app_path, mock_get_legacy_dirs, mock_get_home_dir
     ):
         """
         Test that custom plugin directories are discovered and created as expected.
@@ -250,6 +263,7 @@ class TestPluginLoader(BaseGitTest):
         # Use a temporary directory instead of hardcoded path
         with tempfile.TemporaryDirectory() as temp_app_dir:
             mock_get_app_path.return_value = temp_app_dir
+            os.makedirs(os.path.join(temp_app_dir, "plugins", "custom"))
 
             dirs = get_custom_plugin_dirs()
 
@@ -258,15 +272,12 @@ class TestPluginLoader(BaseGitTest):
                 os.path.join(temp_app_dir, "plugins", "custom"),
             ]
             self.assertEqual(dirs, expected_dirs)
-        # Should be called twice: once for user dir, once for local dir
-        self.assertEqual(_mock_makedirs.call_count, 2)
 
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_legacy_dirs")
     @patch("mmrelay.plugin_loader.get_app_path")
-    @patch("os.makedirs")
     def test_get_community_plugin_dirs(
-        self, _mock_makedirs, mock_get_app_path, mock_get_legacy_dirs, mock_get_home_dir
+        self, mock_get_app_path, mock_get_legacy_dirs, mock_get_home_dir
     ):
         """
         Test that community plugin directory discovery returns correct directories and creates them if they do not exist.
@@ -279,6 +290,7 @@ class TestPluginLoader(BaseGitTest):
         # Use a temporary directory instead of hardcoded path
         with tempfile.TemporaryDirectory() as temp_app_dir:
             mock_get_app_path.return_value = temp_app_dir
+            os.makedirs(os.path.join(temp_app_dir, "plugins", "community"))
 
             dirs = get_community_plugin_dirs()
 
@@ -287,8 +299,6 @@ class TestPluginLoader(BaseGitTest):
                 os.path.join(temp_app_dir, "plugins", "community"),
             ]
             self.assertEqual(dirs, expected_dirs)
-        # Should be called twice: once for user dir, once for local dir
-        self.assertEqual(_mock_makedirs.call_count, 2)
 
     def test_load_plugins_from_directory_empty(self):
         """
@@ -1521,6 +1531,7 @@ class Plugin:
         """Opted-in commit-pinned community plugin should install requirements."""
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
+        self._write_community_requirements()
         config = {
             "community-plugins": {
                 "commit-plugin": {
@@ -1551,6 +1562,7 @@ class Plugin:
             os.path.join(self.community_dir, "repo"),
             "repo",
             plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+            requirements_target=ANY,
         )
         saved_state = mock_save_state.call_args.args[1]
         self.assertEqual(
@@ -1588,6 +1600,7 @@ class Plugin:
         """Explicit branch refs should warn but still allow dependency installation."""
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
+        self._write_community_requirements()
         config = {
             "community-plugins": {
                 "branch-plugin": {
@@ -1617,6 +1630,7 @@ class Plugin:
             os.path.join(self.community_dir, "repo"),
             "repo",
             plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+            requirements_target=ANY,
         )
         saved_state = mock_save_state.call_args.args[1]
         self.assertEqual(
@@ -1659,6 +1673,7 @@ class Plugin:
         """Explicit tag refs should warn but still allow dependency installation."""
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
+        self._write_community_requirements()
         config = {
             "community-plugins": {
                 "tag-plugin": {
@@ -1688,6 +1703,7 @@ class Plugin:
             os.path.join(self.community_dir, "repo"),
             "repo",
             plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+            requirements_target=ANY,
         )
         saved_state = mock_save_state.call_args.args[1]
         self.assertEqual(
@@ -1753,38 +1769,25 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
     @patch("mmrelay.plugin_loader._install_requirements_for_repo")
-    @patch("mmrelay.plugin_loader._save_plugin_state")
-    @patch(
-        "mmrelay.plugin_loader._load_plugin_state",
-        return_value={
-            pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT: "0123456789abcdef0123456789abcdef01234567"
-        },
-    )
-    @patch(
-        "mmrelay.plugin_loader._resolve_local_head_commit",
-        return_value="0123456789abcdef0123456789abcdef01234567",
-    )
     @patch("mmrelay.plugin_loader.load_plugins_from_directory")
     @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
-    @patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates")
-    def test_load_plugins_opted_in_commit_unchanged_skips_dependency_install(
+    @patch("mmrelay.plugin_loader.logger")
+    def test_load_plugins_opted_in_no_requirements_file_skips_cache_work(
         self,
-        mock_update_check,
+        mock_logger,
         mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        mock_resolve_local_head_commit,
-        mock_load_state,
-        mock_save_state,
         mock_install_reqs,
         mock_clone_repo,
     ):
-        """Dependency install should be skipped when commit is already installed."""
+        """No requirements.txt should not compute install state or churn cache."""
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
+        repo_path = self._community_repo_path()
         config = {
             "community-plugins": {
                 "commit-plugin": {
@@ -1802,17 +1805,367 @@ class Plugin:
         mock_clone_repo.return_value = True
         mock_load_from_dir.return_value = []
 
-        load_plugins(config)
+        with (
+            patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates"),
+            patch(
+                "mmrelay.plugin_loader._resolve_local_head_commit",
+                return_value="0123456789abcdef0123456789abcdef01234567",
+            ),
+        ):
+            load_plugins(config)
 
-        mock_update_check.assert_called_once()
-        mock_resolve_local_head_commit.assert_called_once_with(
-            os.path.join(self.community_dir, "repo")
-        )
-        mock_load_state.assert_called_once_with(
-            os.path.join(self.community_dir, "repo")
-        )
         mock_install_reqs.assert_not_called()
-        mock_save_state.assert_not_called()
+        self.assertEqual(pl._load_plugin_state(repo_path), {})
+        self.assertFalse(
+            os.path.exists(pl._requirements_install_marker_path(repo_path, "repo"))
+        )
+        mock_load_from_dir.assert_called()
+        mock_logger.debug.assert_any_call(
+            "Skipping requirements install for community plugin %s; no %s found",
+            "commit-plugin",
+            pl.PLUGIN_REQUIREMENTS_FILENAME,
+        )
+        mock_start_scheduler.assert_called_once()
+
+    @patch("mmrelay.plugin_loader.clone_or_update_repo")
+    @patch("mmrelay.plugin_loader._install_requirements_for_repo")
+    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
+    @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
+    @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    def test_load_plugins_opted_in_commit_unchanged_skips_dependency_install(
+        self,
+        mock_start_scheduler,
+        mock_get_custom_dirs,
+        mock_get_community_dirs,
+        mock_load_from_dir,
+        mock_install_reqs,
+        mock_clone_repo,
+    ):
+        """Dependency install should be skipped when commit is already installed."""
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+        repo_path = self._write_community_requirements()
+        deps_dir = os.path.join(self.test_dir, "plugins", "deps")
+        os.makedirs(deps_dir, exist_ok=True)
+        requirements_hash = pl._requirements_hash(["requests==2.28.0"])
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir):
+            requirements_target = pl._requirements_install_target_identity()
+            pl._write_requirements_install_marker(
+                repo_path, "repo", requirements_hash, requirements_target
+            )
+        pl._save_plugin_state(
+            repo_path,
+            {
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT: "0123456789abcdef0123456789abcdef01234567",
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH: requirements_hash,
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET: requirements_target,
+            },
+        )
+        config = {
+            "community-plugins": {
+                "commit-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "commit": "0123456789abcdef0123456789abcdef01234567",
+                    "install_requirements": True,
+                }
+            },
+            "plugins": {},
+        }
+
+        mock_get_custom_dirs.return_value = []
+        mock_get_community_dirs.return_value = [self.community_dir]
+        mock_clone_repo.return_value = True
+        mock_load_from_dir.return_value = []
+
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir),
+            patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates"),
+            patch(
+                "mmrelay.plugin_loader._resolve_local_head_commit",
+                return_value="0123456789abcdef0123456789abcdef01234567",
+            ),
+        ):
+            load_plugins(config)
+
+        mock_install_reqs.assert_not_called()
+        mock_start_scheduler.assert_called_once()
+
+    @patch("mmrelay.plugin_loader.clone_or_update_repo")
+    @patch("mmrelay.plugin_loader._install_requirements_for_repo", return_value=True)
+    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
+    @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
+    @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    def test_load_plugins_matching_commit_empty_deps_reinstalls_requirements(
+        self,
+        mock_start_scheduler,
+        mock_get_custom_dirs,
+        mock_get_community_dirs,
+        mock_load_from_dir,
+        mock_install_reqs,
+        mock_clone_repo,
+    ):
+        """Matching state should not skip install when the target is invalid."""
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+        repo_path = self._write_community_requirements()
+        deps_dir = os.path.join(self.test_dir, "plugins", "deps")
+        os.makedirs(deps_dir, exist_ok=True)
+        requirements_hash = pl._requirements_hash(["requests==2.28.0"])
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir):
+            requirements_target = pl._requirements_install_target_identity()
+        pl._save_plugin_state(
+            repo_path,
+            {
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT: "0123456789abcdef0123456789abcdef01234567",
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH: requirements_hash,
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET: requirements_target,
+            },
+        )
+        config = {
+            "community-plugins": {
+                "commit-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "commit": "0123456789abcdef0123456789abcdef01234567",
+                    "install_requirements": True,
+                }
+            },
+            "plugins": {},
+        }
+
+        mock_get_custom_dirs.return_value = []
+        mock_get_community_dirs.return_value = [self.community_dir]
+        mock_clone_repo.return_value = True
+        mock_load_from_dir.return_value = []
+
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir),
+            patch("mmrelay.plugin_loader.logger") as mock_logger,
+            patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates"),
+            patch(
+                "mmrelay.plugin_loader._resolve_local_head_commit",
+                return_value="0123456789abcdef0123456789abcdef01234567",
+            ),
+        ):
+            load_plugins(config)
+
+        mock_install_reqs.assert_called_once_with(
+            repo_path,
+            "repo",
+            plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+            requirements_target=requirements_target,
+        )
+        saved_state = pl._load_plugin_state(repo_path)
+        self.assertEqual(
+            saved_state.get(pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH),
+            requirements_hash,
+        )
+        self.assertEqual(
+            saved_state.get(pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET),
+            requirements_target,
+        )
+        mock_logger.debug.assert_any_call(
+            "Reinstalling requirements for community plugin %s; install state matches but marker validation failed for target %s",
+            "commit-plugin",
+            requirements_target,
+        )
+        mock_start_scheduler.assert_called_once()
+
+    def test_load_plugins_matching_commit_stale_hash_reinstalls_requirements(self):
+        """Matching commit should reinstall when saved requirements hash is stale."""
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+        repo_path = self._write_community_requirements()
+        deps_dir = os.path.join(self.test_dir, "plugins", "deps")
+        os.makedirs(deps_dir, exist_ok=True)
+        current_hash = pl._requirements_hash(["requests==2.28.0"])
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir):
+            current_target = pl._requirements_install_target_identity()
+            pl._write_requirements_install_marker(
+                repo_path, "repo", current_hash, current_target
+            )
+        pl._save_plugin_state(
+            repo_path,
+            {
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT: "0123456789abcdef0123456789abcdef01234567",
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH: "stale-hash",
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET: current_target,
+            },
+        )
+        config = {
+            "community-plugins": {
+                "commit-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "commit": "0123456789abcdef0123456789abcdef01234567",
+                    "install_requirements": True,
+                }
+            },
+            "plugins": {},
+        }
+
+        with (
+            patch("mmrelay.plugin_loader.get_custom_plugin_dirs", return_value=[]),
+            patch(
+                "mmrelay.plugin_loader.get_community_plugin_dirs",
+                return_value=[self.community_dir],
+            ),
+            patch("mmrelay.plugin_loader.clone_or_update_repo", return_value=True),
+            patch(
+                "mmrelay.plugin_loader._resolve_local_head_commit",
+                return_value="0123456789abcdef0123456789abcdef01234567",
+            ),
+            patch("mmrelay.plugin_loader.load_plugins_from_directory", return_value=[]),
+            patch("mmrelay.plugin_loader.start_global_scheduler"),
+            patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates"),
+            patch(
+                "mmrelay.plugin_loader._install_requirements_for_repo",
+                return_value=True,
+            ) as mock_install_reqs,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir),
+        ):
+            load_plugins(config)
+
+        mock_install_reqs.assert_called_once_with(
+            repo_path,
+            "repo",
+            plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+            requirements_target=current_target,
+        )
+        saved_state = pl._load_plugin_state(repo_path)
+        self.assertEqual(
+            saved_state[pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH],
+            current_hash,
+        )
+        self.assertEqual(
+            saved_state[pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET],
+            current_target,
+        )
+
+    def test_load_plugins_matching_commit_stale_target_reinstalls_requirements(self):
+        """Matching commit should reinstall when saved target identity is stale."""
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+        repo_path = self._write_community_requirements()
+        deps_dir = os.path.join(self.test_dir, "plugins", "deps")
+        os.makedirs(deps_dir, exist_ok=True)
+        current_hash = pl._requirements_hash(["requests==2.28.0"])
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir):
+            current_target = pl._requirements_install_target_identity()
+            pl._write_requirements_install_marker(
+                repo_path, "repo", current_hash, current_target
+            )
+        pl._save_plugin_state(
+            repo_path,
+            {
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT: "0123456789abcdef0123456789abcdef01234567",
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH: current_hash,
+                pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET: "target:/stale",
+            },
+        )
+        config = {
+            "community-plugins": {
+                "commit-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "commit": "0123456789abcdef0123456789abcdef01234567",
+                    "install_requirements": True,
+                }
+            },
+            "plugins": {},
+        }
+
+        with (
+            patch("mmrelay.plugin_loader.get_custom_plugin_dirs", return_value=[]),
+            patch(
+                "mmrelay.plugin_loader.get_community_plugin_dirs",
+                return_value=[self.community_dir],
+            ),
+            patch("mmrelay.plugin_loader.clone_or_update_repo", return_value=True),
+            patch(
+                "mmrelay.plugin_loader._resolve_local_head_commit",
+                return_value="0123456789abcdef0123456789abcdef01234567",
+            ),
+            patch("mmrelay.plugin_loader.load_plugins_from_directory", return_value=[]),
+            patch("mmrelay.plugin_loader.start_global_scheduler"),
+            patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates"),
+            patch(
+                "mmrelay.plugin_loader._install_requirements_for_repo",
+                return_value=True,
+            ) as mock_install_reqs,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir),
+        ):
+            load_plugins(config)
+
+        mock_install_reqs.assert_called_once_with(
+            repo_path,
+            "repo",
+            plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+            requirements_target=current_target,
+        )
+        saved_state = pl._load_plugin_state(repo_path)
+        self.assertEqual(
+            saved_state[pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_HASH],
+            current_hash,
+        )
+        self.assertEqual(
+            saved_state[pl.PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_TARGET],
+            current_target,
+        )
+
+    @patch("mmrelay.plugin_loader.clone_or_update_repo")
+    @patch("mmrelay.plugin_loader._install_requirements_for_repo", return_value=False)
+    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
+    @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
+    @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    def test_load_plugins_failed_requirements_install_does_not_update_state(
+        self,
+        mock_start_scheduler,
+        mock_get_custom_dirs,
+        mock_get_community_dirs,
+        mock_load_from_dir,
+        mock_install_reqs,
+        mock_clone_repo,
+    ):
+        """Failed dependency installs should not refresh plugin install state."""
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+        repo_path = self._write_community_requirements()
+        deps_dir = os.path.join(self.test_dir, "plugins", "deps")
+        os.makedirs(deps_dir, exist_ok=True)
+        config = {
+            "community-plugins": {
+                "commit-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "commit": "0123456789abcdef0123456789abcdef01234567",
+                    "install_requirements": True,
+                }
+            },
+            "plugins": {},
+        }
+
+        mock_get_custom_dirs.return_value = []
+        mock_get_community_dirs.return_value = [self.community_dir]
+        mock_clone_repo.return_value = True
+        mock_load_from_dir.return_value = []
+
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir),
+            patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates"),
+            patch(
+                "mmrelay.plugin_loader._resolve_local_head_commit",
+                return_value="0123456789abcdef0123456789abcdef01234567",
+            ),
+        ):
+            load_plugins(config)
+
+        mock_install_reqs.assert_called_once()
+        self.assertEqual(pl._load_plugin_state(repo_path), {})
         mock_start_scheduler.assert_called_once()
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
@@ -1849,6 +2202,7 @@ class Plugin:
         """Dependency install should run when commit changes."""
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
+        self._write_community_requirements()
         config = {
             "community-plugins": {
                 "commit-plugin": {
@@ -1879,6 +2233,7 @@ class Plugin:
             os.path.join(self.community_dir, "repo"),
             "repo",
             plugin_type=pl.PLUGIN_TYPE_COMMUNITY,
+            requirements_target=ANY,
         )
         saved_state = mock_save_state.call_args.args[1]
         self.assertEqual(
@@ -1963,11 +2318,9 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
     @patch("os.path.isdir")
-    @patch("os.makedirs")
     def test_clone_or_update_repo_new_repo_commit(
-        self, _mock_makedirs, mock_isdir, _mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, mock_is_allowed, mock_run_git
     ):
         """Test cloning a new repository with commit ref."""
 
@@ -1994,9 +2347,10 @@ class Plugin:
 
         mock_run_git.side_effect = mock_git_func
 
-        result = clone_or_update_repo(
-            "https://github.com/user/repo.git", ref, self.temp_plugins_dir
-        )
+        with patch("os.makedirs"):
+            result = clone_or_update_repo(
+                "https://github.com/user/repo.git", ref, self.temp_plugins_dir
+            )
 
         self.assertTrue(result)
 
@@ -2041,10 +2395,9 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
     @patch("os.path.isdir")
     def test_clone_or_update_repo_existing_repo_commit(
-        self, mock_isdir, _mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, mock_is_allowed, mock_run_git
     ):
         """Test updating an existing repository to a specific commit."""
 
@@ -2146,10 +2499,9 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
     @patch("os.path.isdir")
     def test_clone_or_update_repo_commit_fetch_specific_fails_fallback(
-        self, mock_isdir, _mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, mock_is_allowed, mock_run_git
     ):
         """Test that when specific commit fetch fails, it falls back to fetching all."""
 
@@ -2224,10 +2576,9 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
     @patch("os.path.isdir")
     def test_clone_or_update_repo_commit_fetch_success_no_fallback(
-        self, mock_isdir, _mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, mock_is_allowed, mock_run_git
     ):
         """Test successful commit fetch without fallback."""
 
@@ -2287,10 +2638,9 @@ class Plugin:
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
     @patch("os.path.isdir")
     def test_clone_or_update_repo_commit_fetch_fallback_success(
-        self, mock_isdir, _mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, mock_is_allowed, mock_run_git
     ):
         """Test commit fetch that fails specific but succeeds with fallback."""
         mock_is_allowed.return_value = True
@@ -2432,18 +2782,17 @@ class Plugin:
         ]
         self.assertTrue(len(warning_calls) > 0)
 
+    @patch("os.makedirs")
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
     @patch("os.path.isdir")
-    @patch("os.makedirs")
     def test_clone_or_update_repo_logger_exception_on_error(
-        self, _mock_makedirs, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git, _mock_makedirs
     ):
         """Test that logger.exception is called for repository update errors."""
         mock_is_allowed.return_value = True
         mock_isdir.return_value = False  # Repo doesn't exist, will try to clone
-        _mock_makedirs.return_value = None
         ref = {"type": "commit", "value": "1234abcd"}
 
         # Configure mock to fail on git clone
@@ -2699,8 +3048,7 @@ class TestURLValidation(unittest.TestCase):
         result = _host_in_allowlist(None, ["github.com"])  # type: ignore[arg-type]
         self.assertFalse(result)
 
-    @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_rejected_for_dash_prefix(self, _mock_logger):
+    def test_repo_url_rejected_for_dash_prefix(self):
         """Test that URLs starting with dash are rejected."""
         self.pl.config = {}
         result = _is_repo_url_allowed("-evil-option")
@@ -2716,43 +3064,42 @@ class TestURLValidation(unittest.TestCase):
             "file:// repositories are disabled for security reasons."
         )
 
-    @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_allows_file_scheme_with_opt_in(self, _mock_logger):
+    def test_repo_url_allows_file_scheme_with_opt_in(self):
         """Test that file:// URLs are allowed when local paths are enabled."""
         self.pl.config = {"security": {"allow_local_plugin_paths": True}}
         result = _is_repo_url_allowed("file:///local/path")
         self.assertTrue(result)
 
     @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_rejected_for_unsupported_scheme(self, _mock_logger):
+    def test_repo_url_rejected_for_unsupported_scheme(self, mock_logger):
         """Test that unsupported schemes are rejected."""
         self.pl.config = {}
         result = _is_repo_url_allowed("ftp://github.com/user/repo.git")
         self.assertFalse(result)
-        _mock_logger.error.assert_called_with(
+        mock_logger.error.assert_called_with(
             "Unsupported repository scheme '%s' for %s",
             "ftp",
             "ftp://github.com/user/repo.git",
         )
 
     @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_local_path_nonexistent(self, _mock_logger):
+    def test_repo_url_local_path_nonexistent(self, mock_logger):
         """Test local path validation when path doesn't exist."""
         self.pl.config = {"security": {"allow_local_plugin_paths": True}}
         with patch("os.path.exists", return_value=False):
             result = _is_repo_url_allowed("/nonexistent/path")
             self.assertFalse(result)
-        _mock_logger.error.assert_called_with(
+        mock_logger.error.assert_called_with(
             "Local repository path does not exist: %s", "/nonexistent/path"
         )
 
     @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_local_path_disabled(self, _mock_logger):
+    def test_repo_url_local_path_disabled(self, mock_logger):
         """Test local path validation when local paths are disabled."""
         self.pl.config = {}
         result = _is_repo_url_allowed("/local/path")
         self.assertFalse(result)
-        _mock_logger.error.assert_called_with(
+        mock_logger.error.assert_called_with(
             "Invalid repository '%s'. Local paths are disabled, and remote URLs must include a scheme (e.g., 'https://').",
             "/local/path",
         )
@@ -3078,10 +3425,7 @@ class TestGitOperations(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_invalid_url_empty(
-        self, _mock_logger, mock_is_allowed
-    ):
+    def test_clone_or_update_repo_invalid_url_empty(self, mock_is_allowed):
         """Test clone with empty URL."""
         mock_is_allowed.return_value = False
         ref = {"type": "branch", "value": "main"}
@@ -3090,10 +3434,7 @@ class TestGitOperations(BaseGitTest):
         self.assertFalse(result)
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_invalid_url_whitespace(
-        self, _mock_logger, mock_is_allowed
-    ):
+    def test_clone_or_update_repo_invalid_url_whitespace(self, mock_is_allowed):
         """Test clone with whitespace-only URL."""
         mock_is_allowed.return_value = False
         ref = {"type": "branch", "value": "main"}
@@ -3101,11 +3442,8 @@ class TestGitOperations(BaseGitTest):
             result = clone_or_update_repo("   ", ref, tmpdir)
         self.assertFalse(result)
 
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_pull_current_branch_fails(
-        self, mock_run_git, _mock_is_allowed
-    ):
+    def test_clone_or_update_repo_pull_current_branch_fails(self, mock_run_git):
         """Test that clone_or_update_repo handles checkout failure on default branches."""
         mock_run_git.side_effect = [
             None,  # fetch
@@ -3155,11 +3493,8 @@ class TestGitOperations(BaseGitTest):
             ]
             self.assertEqual(mock_run_git.call_args_list, expected_calls)
 
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_checkout_and_pull_branch(
-        self, mock_run_git, _mock_is_allowed
-    ):
+    def test_clone_or_update_repo_checkout_and_pull_branch(self, mock_run_git):
         """Test that clone_or_update_repo handles checkout and pull for a different branch."""
 
         # Mock successful fetch, checkout and pull
@@ -3179,11 +3514,8 @@ class TestGitOperations(BaseGitTest):
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
             self.assertTrue(result)
 
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_branch_pull_failure_force_syncs(
-        self, mock_run_git, _mock_is_allowed
-    ):
+    def test_clone_or_update_repo_branch_pull_failure_force_syncs(self, mock_run_git):
         """Branch pull failures should fallback to a force-sync against origin."""
         mock_run_git.side_effect = [
             None,  # initial fetch in update flow
@@ -3238,11 +3570,8 @@ class TestGitOperations(BaseGitTest):
             ]
             self.assertEqual(mock_run_git.call_args_list, expected_calls)
 
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_checkout_and_pull_tag(
-        self, mock_run_git, _mock_is_allowed
-    ):
+    def test_clone_or_update_repo_checkout_and_pull_tag(self, mock_run_git):
         """Test that clone_or_update_repo handles checkout and pull for a tag."""
 
         def mock_run_git_side_effect(*args, **_kwargs):
@@ -3284,11 +3613,8 @@ class TestGitOperations(BaseGitTest):
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
             self.assertTrue(result)
 
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_checkout_fails_fallback(
-        self, mock_run_git, _mock_is_allowed
-    ):
+    def test_clone_or_update_repo_checkout_fails_fallback(self, mock_run_git):
         """Test that clone_or_update_repo handles checkout failure and tries fallback."""
         mock_run_git.side_effect = [
             None,  # fetch
@@ -3477,20 +3803,18 @@ class TestGitOperations(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader.logger")
-    @patch(
-        "mmrelay.plugin_loader._run_git",
-        side_effect=subprocess.CalledProcessError(1, "git"),
-    )
-    def test_fallback_to_default_branches_logs_warning_when_all_fail(
-        self, _mock_run_git, mock_logger
-    ):
+    def test_fallback_to_default_branches_logs_warning_when_all_fail(self, mock_logger):
         """Default branch fallback should warn when no branch can be checked out."""
-        result = pl._fallback_to_default_branches(
-            self.temp_repo_path,
-            list(DEFAULT_BRANCHES),
-            "v1.0.0",
-            "repo",
-        )
+        with patch(
+            "mmrelay.plugin_loader._run_git",
+            side_effect=subprocess.CalledProcessError(1, "git"),
+        ):
+            result = pl._fallback_to_default_branches(
+                self.temp_repo_path,
+                list(DEFAULT_BRANCHES),
+                "v1.0.0",
+                "repo",
+            )
 
         self.assertFalse(result)
         mock_logger.warning.assert_called_with(
@@ -3498,19 +3822,19 @@ class TestGitOperations(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader.logger")
-    @patch("mmrelay.plugin_loader._run_git", side_effect=FileNotFoundError())
     def test_update_existing_repo_to_branch_or_tag_handles_missing_git_binary(
-        self, _mock_run_git, mock_logger
+        self, mock_logger
     ):
         """Missing git during remote fetch should be logged and return False."""
-        result = pl._update_existing_repo_to_branch_or_tag(
-            self.temp_repo_path,
-            "branch",
-            "main",
-            "repo",
-            False,
-            list(DEFAULT_BRANCHES),
-        )
+        with patch("mmrelay.plugin_loader._run_git", side_effect=FileNotFoundError()):
+            result = pl._update_existing_repo_to_branch_or_tag(
+                self.temp_repo_path,
+                "branch",
+                "main",
+                "repo",
+                False,
+                list(DEFAULT_BRANCHES),
+            )
         self.assertFalse(result)
         mock_logger.exception.assert_called_with(
             "Error updating repository %s; git not found.",
@@ -3621,89 +3945,93 @@ class TestGitOperations(BaseGitTest):
             mock_run_git.call_args_list,
         )
 
-    @patch("mmrelay.plugin_loader.os.path.isdir", return_value=False)
     @patch("mmrelay.plugin_loader._run_git")
     def test_clone_new_repo_to_branch_or_tag_tag_returns_when_commit_matches(
-        self, mock_run_git, _mock_isdir
+        self, mock_run_git
     ):
         """Tag clones should return early when cloned HEAD already equals tag commit."""
+        with patch("mmrelay.plugin_loader.os.path.isdir", return_value=False):
 
-        def _side_effect(cmd, *args, **kwargs):
-            if cmd[:3] == ["git", "clone", "--filter=blob:none"]:
+            def _side_effect(cmd, *args, **kwargs):
+                if cmd[:3] == ["git", "clone", "--filter=blob:none"]:
+                    return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+                if cmd[-2:] == ["rev-parse", "HEAD"]:
+                    return subprocess.CompletedProcess(
+                        cmd, 0, stdout="abc123\n", stderr=""
+                    )
+                if cmd[-1] == "v2.0.0^{commit}":
+                    return subprocess.CompletedProcess(
+                        cmd, 0, stdout="abc123\n", stderr=""
+                    )
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-            if cmd[-2:] == ["rev-parse", "HEAD"]:
-                return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
-            if cmd[-1] == "v2.0.0^{commit}":
-                return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-        mock_run_git.side_effect = _side_effect
+            mock_run_git.side_effect = _side_effect
 
-        result = pl._clone_new_repo_to_branch_or_tag(
-            "https://github.com/user/repo.git",
-            self.temp_repo_path,
-            "tag",
-            "v2.0.0",
-            "repo",
-            self.temp_plugins_dir,
-            False,
-        )
+            result = pl._clone_new_repo_to_branch_or_tag(
+                "https://github.com/user/repo.git",
+                self.temp_repo_path,
+                "tag",
+                "v2.0.0",
+                "repo",
+                self.temp_plugins_dir,
+                False,
+            )
 
-        self.assertTrue(result)
-        self.assertNotIn(
-            call(
-                [
-                    "git",
-                    "-C",
-                    self.temp_repo_path,
-                    "fetch",
-                    "origin",
-                    "refs/tags/v2.0.0",
-                ],
-                timeout=TEST_GIT_TIMEOUT,
-            ),
-            mock_run_git.call_args_list,
-        )
+            self.assertTrue(result)
+            self.assertNotIn(
+                call(
+                    [
+                        "git",
+                        "-C",
+                        self.temp_repo_path,
+                        "fetch",
+                        "origin",
+                        "refs/tags/v2.0.0",
+                    ],
+                    timeout=TEST_GIT_TIMEOUT,
+                ),
+                mock_run_git.call_args_list,
+            )
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader.os.path.isdir", return_value=True)
     def test_clone_or_update_repo_validated_handles_update_exception(
-        self, _mock_isdir, mock_run_git, mock_logger
+        self, mock_run_git, mock_logger
     ):
         """Validated update path should catch and log raised git errors."""
-        mock_run_git.side_effect = FileNotFoundError("git")
+        with patch("mmrelay.plugin_loader.os.path.isdir", return_value=True):
+            mock_run_git.side_effect = FileNotFoundError("git")
 
-        result = pl._clone_or_update_repo_validated(
-            "https://github.com/user/repo.git",
-            "commit",
-            "deadbeef",
-            "repo",
-            self.temp_plugins_dir,
-        )
+            result = pl._clone_or_update_repo_validated(
+                "https://github.com/user/repo.git",
+                "commit",
+                "deadbeef",
+                "repo",
+                self.temp_plugins_dir,
+            )
 
-        self.assertFalse(result)
-        mock_logger.exception.assert_called_once()
+            self.assertFalse(result)
+            mock_logger.exception.assert_called_once()
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader.os.path.isdir", return_value=False)
     def test_clone_or_update_repo_validated_handles_clone_exception(
-        self, _mock_isdir, mock_run_git, mock_logger
+        self, mock_run_git, mock_logger
     ):
         """Validated clone path should catch and log raised git errors."""
-        mock_run_git.side_effect = FileNotFoundError("git")
+        with patch("mmrelay.plugin_loader.os.path.isdir", return_value=False):
+            mock_run_git.side_effect = FileNotFoundError("git")
 
-        result = pl._clone_or_update_repo_validated(
-            "https://github.com/user/repo.git",
-            "commit",
-            "deadbeef",
-            "repo",
-            self.temp_plugins_dir,
-        )
+            result = pl._clone_or_update_repo_validated(
+                "https://github.com/user/repo.git",
+                "commit",
+                "deadbeef",
+                "repo",
+                self.temp_plugins_dir,
+            )
 
-        self.assertFalse(result)
-        mock_logger.exception.assert_called_once()
+            self.assertFalse(result)
+            mock_logger.exception.assert_called_once()
 
     def test_load_plugins_from_directory_auto_install_uses_pipx_inject(self):
         """Missing deps should use pipx inject when running inside pipx."""
@@ -4276,18 +4604,18 @@ class TestCleanPythonCache(unittest.TestCase):
 class TestPluginDirectories(unittest.TestCase):
     """Test cases for plugin directory discovery and creation."""
 
-    @patch("os.makedirs")
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_legacy_dirs")
     @patch("mmrelay.plugin_loader.get_app_path")
-    @patch("mmrelay.plugin_loader.logger")
+    @patch("os.path.isdir")
+    @patch("os.makedirs")
     def test_get_plugin_dirs_user_dir_success(
         self,
-        _mock_logger,
+        mock_makedirs,
+        mock_isdir,
         mock_get_app_path,
         mock_get_legacy_dirs,
         mock_get_home_dir,
-        _mock_makedirs,
     ):
         """Test successful user directory creation."""
         from mmrelay.plugin_loader import _get_plugin_dirs
@@ -4295,21 +4623,27 @@ class TestPluginDirectories(unittest.TestCase):
         mock_get_home_dir.return_value = "/user/base"
         mock_get_legacy_dirs.return_value = []
         mock_get_app_path.return_value = "/app/path"
+        mock_isdir.return_value = True
 
         dirs = _get_plugin_dirs("custom")
 
         self.assertIn("/user/base/plugins/custom", dirs)
         self.assertIn("/app/path/plugins/custom", dirs)
+        mock_makedirs.assert_called_once_with(
+            "/user/base/plugins/custom", exist_ok=True
+        )
 
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_legacy_dirs")
     @patch("mmrelay.plugin_loader.get_app_path")
+    @patch("os.path.isdir")
     @patch("mmrelay.plugin_loader.logger")
     @patch("os.makedirs")
     def test_get_plugin_dirs_user_dir_permission_error(
         self,
-        _mock_makedirs,
+        mock_makedirs,
         mock_logger,
+        mock_isdir,
         mock_get_app_path,
         mock_get_legacy_dirs,
         mock_get_home_dir,
@@ -4320,10 +4654,8 @@ class TestPluginDirectories(unittest.TestCase):
         mock_get_home_dir.return_value = "/user/base"
         mock_get_legacy_dirs.return_value = []
         mock_get_app_path.return_value = "/app/path"
-        _mock_makedirs.side_effect = [
-            PermissionError("Permission denied"),
-            None,  # Second call succeeds
-        ]
+        mock_isdir.return_value = True
+        mock_makedirs.side_effect = PermissionError("Permission denied")
 
         dirs = _get_plugin_dirs("custom")
 
@@ -4335,33 +4667,69 @@ class TestPluginDirectories(unittest.TestCase):
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_legacy_dirs")
     @patch("mmrelay.plugin_loader.get_app_path")
+    @patch("os.path.isdir")
     @patch("mmrelay.plugin_loader.logger")
     @patch("os.makedirs")
-    def test_get_plugin_dirs_local_dir_os_error(
+    def test_get_plugin_dirs_missing_local_dir_is_skipped_without_noise(
         self,
-        _mock_makedirs,
+        mock_makedirs,
         mock_logger,
+        mock_isdir,
         mock_get_app_path,
         mock_get_legacy_dirs,
         mock_get_home_dir,
     ):
-        """Test handling of OS error in local directory."""
+        """Missing package-local fallback directories should be skipped quietly."""
         from mmrelay.plugin_loader import _get_plugin_dirs
 
         mock_get_home_dir.return_value = "/user/base"
         mock_get_legacy_dirs.return_value = []
         mock_get_app_path.return_value = "/app/path"
-        _mock_makedirs.side_effect = [
-            None,  # User dir succeeds
-            OSError("Disk full"),
-        ]
+        mock_isdir.return_value = False
 
         dirs = _get_plugin_dirs("custom")
 
-        # Should only include user directory since local dir failed
         self.assertEqual(len(dirs), 1)
         self.assertIn("/user/base/plugins/custom", dirs)
-        mock_logger.debug.assert_called()
+        mock_makedirs.assert_called_once_with(
+            "/user/base/plugins/custom", exist_ok=True
+        )
+        mock_logger.warning.assert_not_called()
+        mock_logger.debug.assert_not_called()
+
+    @patch("mmrelay.paths.get_home_dir")
+    @patch("mmrelay.paths.get_legacy_dirs")
+    @patch("mmrelay.plugin_loader.get_app_path")
+    @patch("os.path.isdir")
+    @patch("os.makedirs")
+    def test_get_plugin_dirs_existing_local_dir_is_included(
+        self,
+        mock_makedirs,
+        mock_isdir,
+        mock_get_app_path,
+        mock_get_legacy_dirs,
+        mock_get_home_dir,
+    ):
+        """Existing package-local fallback directories should still be searched."""
+        from mmrelay.plugin_loader import _get_plugin_dirs
+
+        mock_get_home_dir.return_value = "/user/base"
+        mock_get_legacy_dirs.return_value = []
+        mock_get_app_path.return_value = "/app/path"
+        mock_isdir.return_value = True
+
+        dirs = _get_plugin_dirs("community")
+
+        self.assertEqual(
+            dirs,
+            [
+                "/user/base/plugins/community",
+                "/app/path/plugins/community",
+            ],
+        )
+        mock_makedirs.assert_called_once_with(
+            "/user/base/plugins/community", exist_ok=True
+        )
 
 
 class TestDependencyInstallation(BaseGitTest):
@@ -4373,6 +4741,8 @@ class TestDependencyInstallation(BaseGitTest):
         self.temp_dir = tempfile.mkdtemp()
         self.repo_path = os.path.join(self.temp_dir, "test-plugin")
         self.requirements_path = os.path.join(self.repo_path, "requirements.txt")
+        self.deps_dir = os.path.join(self.temp_dir, "deps")
+        os.makedirs(self.deps_dir, exist_ok=True)
         os.makedirs(self.repo_path, exist_ok=True)
         with open(self.requirements_path, "w") as f:
             f.write("requests==2.28.0\n")
@@ -4427,7 +4797,7 @@ class TestDependencyInstallation(BaseGitTest):
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._run")
-    @patch("mmrelay.plugin_loader._filter_risky_requirements")
+    @patch("mmrelay.plugin_loader._filter_risky_requirement_lines")
     @patch("mmrelay.plugin_loader._collect_requirements")
     @patch("shutil.which", return_value=None)
     @patch("mmrelay.plugin_loader.tempfile.NamedTemporaryFile")
@@ -4444,14 +4814,19 @@ class TestDependencyInstallation(BaseGitTest):
     ):
         """Test dependency installation with pip in virtual environment."""
         mock_collect.return_value = ["requests==2.28.0"]
-        mock_filter.return_value = (["requests==2.28.0"], [], False)
+        mock_filter.return_value = (["requests==2.28.0"], [])
 
         # Mock the temporary file
         mock_file = mock_temp_file.return_value.__enter__.return_value
         temp_req = os.path.join(self.temp_dir, "test_requirements.txt")
         mock_file.name = temp_req
 
-        with patch.dict(os.environ, {"VIRTUAL_ENV": "/venv"}, clear=True):
+        with (
+            patch.dict(os.environ, {"VIRTUAL_ENV": "/venv"}, clear=True),
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch("mmrelay.plugin_loader._write_requirements_install_marker"),
+        ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
 
         # Check that the command uses -r with the temporary file
@@ -4463,18 +4838,23 @@ class TestDependencyInstallation(BaseGitTest):
             "install",
             "--disable-pip-version-check",
             "--no-input",
+            "--target",
         ]
-        assert called_cmd[:6] == expected_base
+        assert called_cmd[:7] == expected_base
+        target_path = called_cmd[called_cmd.index("--target") + 1]
+        assert target_path != self.deps_dir
+        assert os.path.dirname(target_path) == os.path.dirname(self.deps_dir)
         assert "-r" in called_cmd
         assert called_cmd[called_cmd.index("-r") + 1] == temp_req
         mock_run.assert_called_once_with(called_cmd, timeout=600)
         mock_unlink.assert_called_once_with(temp_req)
         mock_which.assert_not_called()
+        mock_refresh.assert_called_once()
         mock_logger.info.assert_called()
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._run")
-    @patch("mmrelay.plugin_loader._filter_risky_requirements")
+    @patch("mmrelay.plugin_loader._filter_risky_requirement_lines")
     @patch("mmrelay.plugin_loader._collect_requirements")
     @patch("shutil.which", return_value="/usr/bin/pipx")
     def test_install_plugin_requirements_pipx_injection(
@@ -4490,13 +4870,15 @@ class TestDependencyInstallation(BaseGitTest):
             "requests==2.28.0",
             "--extra-index-url https://pypi.org/simple",
         ]
-        # The function tokenizes lines from _collect_requirements, so filter receives tokenized input
         mock_filter.return_value = (
-            ["requests==2.28.0", "--extra-index-url", "https://pypi.org/simple"],
+            ["requests==2.28.0", "--extra-index-url https://pypi.org/simple"],
             [],
-            False,
         )
-        with patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}):
+        with (
+            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+        ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
 
         # Verify the call uses temporary file approach
@@ -4517,6 +4899,7 @@ class TestDependencyInstallation(BaseGitTest):
         # Verify timeout
         assert call_args[1]["timeout"] == 600
         mock_which.assert_called_once_with("pipx")
+        mock_refresh.assert_called_once()
         mock_logger.info.assert_called()
 
     def test_install_plugin_requirements_pip_install(self):
@@ -4524,18 +4907,23 @@ class TestDependencyInstallation(BaseGitTest):
         with (
             patch("mmrelay.plugin_loader.logger"),
             patch("mmrelay.plugin_loader._run") as mock_run,
-            patch("mmrelay.plugin_loader._filter_risky_requirements") as mock_filter,
+            patch(
+                "mmrelay.plugin_loader._filter_risky_requirement_lines"
+            ) as mock_filter,
             patch("mmrelay.plugin_loader._collect_requirements") as mock_collect,
             patch("sys.prefix", "/fake/prefix"),
             patch("sys.base_prefix", "/fake/prefix"),
             patch("shutil.which", return_value=None),
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
             patch(
                 "mmrelay.plugin_loader.tempfile.NamedTemporaryFile"
             ) as mock_temp_file,
             patch("mmrelay.plugin_loader.os.unlink"),
+            patch("mmrelay.plugin_loader._write_requirements_install_marker"),
         ):
             mock_collect.return_value = ["requests==2.28.0"]
-            mock_filter.return_value = (["requests==2.28.0"], [], False)
+            mock_filter.return_value = (["requests==2.28.0"], [])
 
             # Mock temporary file
             mock_file = mock_temp_file.return_value.__enter__.return_value
@@ -4563,10 +4951,769 @@ class TestDependencyInstallation(BaseGitTest):
                 tempfile.gettempdir(), "test_requirements.txt"
             )
             mock_run.assert_called_once_with(called_cmd, timeout=600)
+            mock_refresh.assert_called_once()
+
+    def test_install_plugin_requirements_uses_target_when_deps_dir_set(self):
+        """Persistent deps dir should use pip --target instead of --user."""
+        with (
+            patch("mmrelay.plugin_loader._run") as mock_run,
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+            patch("sys.prefix", "/fake/prefix"),
+            patch("sys.base_prefix", "/fake/prefix"),
+            patch.dict(os.environ, {}, clear=True),
+        ):
+            _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        cmd = mock_run.call_args.args[0]
+        self.assertEqual(
+            cmd[:6],
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--disable-pip-version-check",
+                "--no-input",
+            ],
+        )
+        self.assertIn("--target", cmd)
+        target_path = cmd[cmd.index("--target") + 1]
+        self.assertNotEqual(target_path, self.deps_dir)
+        self.assertEqual(os.path.dirname(target_path), os.path.dirname(self.deps_dir))
+        self.assertNotIn("--user", cmd)
+        self.assertNotIn("inject", cmd)
+        mock_refresh.assert_called_once()
+
+    def test_install_plugin_requirements_deps_dir_overrides_pipx(self):
+        """Persistent deps dir should be preferred even when pipx is detected."""
+        with (
+            patch("mmrelay.plugin_loader._run") as mock_run,
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+            patch("shutil.which", return_value="/usr/bin/pipx") as mock_which,
+            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
+        ):
+            _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        cmd = mock_run.call_args.args[0]
+        self.assertEqual(cmd[:4], [sys.executable, "-m", "pip", "install"])
+        self.assertIn("--target", cmd)
+        target_path = cmd[cmd.index("--target") + 1]
+        self.assertNotEqual(target_path, self.deps_dir)
+        self.assertEqual(os.path.dirname(target_path), os.path.dirname(self.deps_dir))
+        self.assertNotIn("inject", cmd)
+        mock_which.assert_not_called()
+        mock_refresh.assert_called_once()
+
+    def test_install_plugin_requirements_without_deps_dir_uses_pipx(self):
+        """Without a persistent deps dir, pipx environments should use pipx inject."""
+        with (
+            patch("mmrelay.plugin_loader._run") as mock_run,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch("shutil.which", return_value="/usr/bin/pipx"),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
+        ):
+            _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        cmd = mock_run.call_args.args[0]
+        self.assertEqual(
+            cmd[:4], ["/usr/bin/pipx", "inject", "mmrelay", "--requirement"]
+        )
+        mock_refresh.assert_called_once()
+
+    def test_install_plugin_requirements_without_deps_dir_no_venv_uses_user(self):
+        """Without deps dir, non-venv pip installs should use --user."""
+        with (
+            patch("mmrelay.plugin_loader._run") as mock_run,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch("sys.prefix", "/fake/prefix"),
+            patch("sys.base_prefix", "/fake/prefix"),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.dict(os.environ, {}, clear=True),
+        ):
+            _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        cmd = mock_run.call_args.args[0]
+        self.assertEqual(cmd[:4], [sys.executable, "-m", "pip", "install"])
+        self.assertIn("--user", cmd)
+        self.assertNotIn("--target", cmd)
+        mock_refresh.assert_called_once()
+
+    def test_requirements_install_target_identity_unknown_user_site_is_stable(self):
+        """Missing user-site support should not produce cwd-dependent target IDs."""
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch.dict(os.environ, {}, clear=True),
+            patch("sys.prefix", "/fake/prefix"),
+            patch("sys.base_prefix", "/fake/prefix"),
+            patch("site.getusersitepackages", side_effect=AttributeError),
+        ):
+            self.assertEqual(pl._requirements_install_target_identity(), "user:unknown")
+
+    def test_requirements_install_target_pipx_uses_site_packages_marker_dir(self):
+        """pipx fallback target should use site-packages as marker location."""
+        site_packages = os.path.join(self.temp_dir, "pipx-venv", "site-packages")
+        os.makedirs(site_packages)
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
+            patch("sys.prefix", os.path.join(self.temp_dir, "pipx-venv")),
+            patch(
+                "mmrelay.plugin_loader._site_packages_for_prefix",
+                return_value=site_packages,
+            ),
+        ):
+            target = pl._requirements_install_target()
+
+        self.assertTrue(target.identity.startswith("pipx:"))
+        self.assertIn(os.path.abspath(site_packages), target.identity)
+        self.assertEqual(target.marker_dir, site_packages)
+
+    def test_requirements_install_target_venv_uses_site_packages_marker_dir(self):
+        """venv fallback target should use site-packages as marker location."""
+        site_packages = os.path.join(self.temp_dir, "venv", "site-packages")
+        os.makedirs(site_packages)
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch.dict(os.environ, {"VIRTUAL_ENV": "/venv"}, clear=True),
+            patch("sys.prefix", os.path.join(self.temp_dir, "venv")),
+            patch("sys.base_prefix", "/usr"),
+            patch(
+                "mmrelay.plugin_loader._site_packages_for_prefix",
+                return_value=site_packages,
+            ),
+        ):
+            target = pl._requirements_install_target()
+
+        self.assertTrue(target.identity.startswith("python:"))
+        self.assertIn(os.path.abspath(site_packages), target.identity)
+        self.assertEqual(target.marker_dir, site_packages)
+
+    def test_requirements_install_target_user_uses_user_site_marker_dir(self):
+        """user fallback target should use user-site as marker location."""
+        user_site = os.path.join(self.temp_dir, "user-site")
+        os.makedirs(user_site)
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch.dict(os.environ, {}, clear=True),
+            patch("sys.prefix", "/fake/prefix"),
+            patch("sys.base_prefix", "/fake/prefix"),
+            patch("site.getusersitepackages", return_value=user_site),
+        ):
+            target = pl._requirements_install_target()
+
+        self.assertTrue(
+            target.identity.startswith(f"user:{os.path.abspath(user_site)}")
+        )
+        self.assertEqual(target.marker_dir, user_site)
+
+    def test_requirements_install_target_identity_stable_after_marker_write(self):
+        """Writing a colocated marker should not change the target identity."""
+        user_site = os.path.join(self.temp_dir, "user-site")
+        os.makedirs(user_site)
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch.dict(os.environ, {}, clear=True),
+            patch("sys.prefix", "/fake/prefix"),
+            patch("sys.base_prefix", "/fake/prefix"),
+            patch("site.getusersitepackages", return_value=user_site),
+        ):
+            before = pl._requirements_install_target_identity()
+            pl._write_requirements_install_marker(
+                self.repo_path, "test-plugin", "hash", before
+            )
+            after = pl._requirements_install_target_identity()
+
+        self.assertEqual(after, before)
+
+    def test_requirements_install_marker_path_falls_back_to_repo_when_unwritable(self):
+        """Marker should fall back to repo path when install marker dir is unavailable."""
+        user_site = os.path.join(self.temp_dir, "user-site")
+        os.makedirs(user_site)
+        with (
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch.dict(os.environ, {}, clear=True),
+            patch("sys.prefix", "/fake/prefix"),
+            patch("sys.base_prefix", "/fake/prefix"),
+            patch("site.getusersitepackages", return_value=user_site),
+            patch("mmrelay.plugin_loader._is_writable_directory", return_value=False),
+        ):
+            marker_path = pl._requirements_install_marker_path(
+                self.repo_path, "test-plugin"
+            )
+
+        self.assertTrue(marker_path.startswith(self.repo_path + os.sep))
+
+    def test_site_packages_for_prefix_uses_posix_prefix_scheme(self):
+        """site-packages discovery should include the POSIX prefix scheme."""
+        prefix = os.path.join(self.temp_dir, "venv")
+        site_packages = os.path.join(prefix, "lib", "python3.12", "site-packages")
+        os.makedirs(site_packages)
+
+        def fake_get_path(name, scheme, **_kwargs):
+            if name == "purelib" and scheme == "posix_prefix":
+                return site_packages
+            return None
+
+        with (
+            patch("sys.platform", "linux"),
+            patch("site.getsitepackages", return_value=[]),
+            patch(
+                "mmrelay.plugin_loader.sysconfig.get_path",
+                side_effect=fake_get_path,
+            ),
+        ):
+            self.assertEqual(pl._site_packages_for_prefix(prefix), site_packages)
+
+    def test_site_packages_for_prefix_uses_windows_nt_scheme(self):
+        """site-packages discovery should include the Windows nt scheme."""
+        prefix = os.path.join(self.temp_dir, "venv")
+        site_packages = os.path.join(prefix, "Lib", "site-packages")
+        os.makedirs(site_packages)
+
+        def fake_get_path(name, scheme, **_kwargs):
+            if name == "purelib" and scheme == "nt":
+                return site_packages
+            return None
+
+        with (
+            patch("sys.platform", "win32"),
+            patch("site.getsitepackages", return_value=[]),
+            patch(
+                "mmrelay.plugin_loader.sysconfig.get_path",
+                side_effect=fake_get_path,
+            ),
+        ):
+            self.assertEqual(pl._site_packages_for_prefix(prefix), site_packages)
+
+    def test_resolve_plugin_deps_dir_uses_paths_module_for_primary_root(self):
+        """Canonical deps dir should come from paths.py for the primary plugin root."""
+        plugin_root = os.path.join(self.temp_dir, "plugins")
+        canonical_deps = os.path.join(self.temp_dir, "canonical-deps")
+
+        with (
+            patch(
+                "mmrelay.plugin_loader.paths_module.get_plugins_dir",
+                return_value=plugin_root,
+            ),
+            patch(
+                "mmrelay.plugin_loader.paths_module.resolve_all_paths",
+                return_value={"deps_dir": canonical_deps},
+            ),
+        ):
+            self.assertEqual(
+                pl._resolve_plugin_deps_dir_for_root(plugin_root),
+                os.path.abspath(canonical_deps),
+            )
+
+    def test_resolve_plugin_deps_dir_falls_back_when_paths_module_fails(self):
+        """Deps dir setup should fall back safely if paths.py resolution fails."""
+        plugin_root = os.path.join(self.temp_dir, "plugins")
+
+        with patch(
+            "mmrelay.plugin_loader.paths_module.get_plugins_dir",
+            side_effect=RuntimeError("boom"),
+        ):
+            self.assertEqual(
+                pl._resolve_plugin_deps_dir_for_root(plugin_root),
+                os.path.join(plugin_root, pl.PLUGIN_DEPS_DIRNAME),
+            )
+
+    def test_requirements_hash_includes_safe_pip_options(self):
+        """Requirement state hash covers all safe effective lines, including options."""
+        requirements = ["--pre", "requests==2.28.0"]
+        self.assertEqual(
+            pl._requirements_hash(requirements),
+            hashlib.sha256("--pre\nrequests==2.28.0".encode("utf-8")).hexdigest(),
+        )
+
+    def test_installable_requirement_lines_filters_option_lines(self):
+        """Install execution only runs when non-option requirement lines are present."""
+        self.assertEqual(
+            pl._installable_requirement_lines(["--pre", "requests==2.28.0"]),
+            ["requests==2.28.0"],
+        )
+        self.assertEqual(pl._installable_requirement_lines(["--pre"]), [])
+
+    def test_temporary_requirements_file_cleans_up_after_success(self):
+        """Temporary requirements helper should remove the file after normal use."""
+        with (
+            patch(
+                "mmrelay.plugin_loader.tempfile.NamedTemporaryFile",
+                wraps=tempfile.NamedTemporaryFile,
+            ) as mock_temp_file,
+            pl._temporary_requirements_file(["requests==2.28.0"]) as temp_path,
+        ):
+            self.assertTrue(os.path.exists(temp_path))
+            with open(temp_path, encoding="utf-8") as temp_file:
+                self.assertEqual(temp_file.read(), "requests==2.28.0\n")
+
+        self.assertFalse(os.path.exists(temp_path))
+        self.assertEqual(
+            mock_temp_file.call_args.kwargs["encoding"], pl.DEFAULT_TEXT_ENCODING
+        )
+
+    def test_temporary_requirements_file_cleans_up_after_failure(self):
+        """Temporary requirements helper should remove the file when callers fail."""
+        temp_path = None
+        with self.assertRaises(RuntimeError):
+            with pl._temporary_requirements_file(["requests==2.28.0"]) as path:
+                temp_path = path
+                raise RuntimeError("boom")
+
+        self.assertIsNotNone(temp_path)
+        self.assertFalse(os.path.exists(temp_path))
+
+    def test_requirements_install_target_valid_empty_deps_dir_is_invalid(self):
+        """An empty persistent deps dir should not satisfy cached install state."""
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
+            self.assertFalse(
+                pl._requirements_install_target_valid(
+                    self.repo_path, "test-plugin", "hash", "target"
+                )
+            )
+
+    def test_requirements_install_target_valid_deps_dir_marker_is_valid(self):
+        """A marker in the persistent deps dir should satisfy cached install state."""
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
+            pl._write_requirements_install_marker(
+                self.repo_path, "test-plugin", "hash", "target"
+            )
+            self.assertTrue(
+                pl._requirements_install_target_valid(
+                    self.repo_path, "test-plugin", "hash", "target"
+                )
+            )
+
+    def test_requirements_install_target_valid_marker_hash_mismatch_is_invalid(self):
+        """A stale marker with a different requirements hash should not validate."""
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
+            pl._write_requirements_install_marker(
+                self.repo_path, "test-plugin", "old-hash", "target"
+            )
+            self.assertFalse(
+                pl._requirements_install_target_valid(
+                    self.repo_path, "test-plugin", "new-hash", "target"
+                )
+            )
+
+    def test_requirements_install_target_valid_marker_target_mismatch_is_invalid(self):
+        """A marker for a different install target should not validate."""
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
+            pl._write_requirements_install_marker(
+                self.repo_path, "test-plugin", "hash", "old-target"
+            )
+            self.assertFalse(
+                pl._requirements_install_target_valid(
+                    self.repo_path, "test-plugin", "hash", "new-target"
+                )
+            )
+
+    def test_requirements_install_target_valid_marker_repo_mismatch_is_invalid(self):
+        """A marker with a mismatched repo payload should not validate."""
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
+            marker_path = pl._requirements_install_marker_path(
+                self.repo_path, "test-plugin"
+            )
+            with open(marker_path, "w", encoding="utf-8") as marker_file:
+                json.dump(
+                    {
+                        "requirements_hash": "hash",
+                        "target": "target",
+                        "repo": "other-plugin",
+                    },
+                    marker_file,
+                )
+            self.assertFalse(
+                pl._requirements_install_target_valid(
+                    self.repo_path, "test-plugin", "hash", "target"
+                )
+            )
+
+    def test_metadata_distribution_key_reads_egg_info_pkg_info(self):
+        """egg-info distribution names should be read from PKG-INFO."""
+        egg_info_dir = os.path.join(self.temp_dir, "python_dateutil-2.8.2.egg-info")
+        os.makedirs(egg_info_dir)
+        with open(
+            os.path.join(egg_info_dir, "PKG-INFO"),
+            "w",
+            encoding=pl.DEFAULT_TEXT_ENCODING,
+        ) as metadata_file:
+            metadata_file.write("Metadata-Version: 2.1\nName: python-dateutil\n")
+
+        self.assertEqual(
+            pl._metadata_distribution_key(
+                "python_dateutil-2.8.2.egg-info", egg_info_dir
+            ),
+            "python-dateutil",
+        )
+
+    def test_requirements_install_target_valid_unrelated_deps_file_is_invalid(self):
+        """Unrelated files in the shared deps dir should not validate a plugin."""
+        with open(os.path.join(self.deps_dir, "unrelated.txt"), "w") as handle:
+            handle.write("not a marker\n")
+
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
+            self.assertFalse(
+                pl._requirements_install_target_valid(
+                    self.repo_path, "test-plugin", "hash", "target"
+                )
+            )
+
+    def test_install_plugin_requirements_success_writes_marker(self):
+        """Successful installs should write a per-plugin marker with hash and target."""
+        with (
+            patch("mmrelay.plugin_loader._run"),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+        ):
+            result = _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        self.assertTrue(result)
+        mock_refresh.assert_called_once()
+        requirements_hash = pl._requirements_hash(["requests==2.28.0"])
+        target = f"target:{os.path.abspath(self.deps_dir)}"
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
+            marker_path = pl._requirements_install_marker_path(
+                self.repo_path, "test-plugin"
+            )
+        with open(marker_path, encoding="utf-8") as marker_file:
+            marker = json.load(marker_file)
+        self.assertEqual(marker["requirements_hash"], requirements_hash)
+        self.assertEqual(marker["target"], target)
+        self.assertEqual(marker["repo"], "test-plugin")
+
+    def test_install_plugin_requirements_stages_target_and_replaces_matching_items(
+        self,
+    ):
+        """Persistent installs should merge staged outputs without deleting unrelated deps."""
+        package_dir = os.path.join(self.deps_dir, "requests")
+        dist_info_dir = os.path.join(self.deps_dir, "requests-2.27.0.dist-info")
+        unrelated_dir = os.path.join(self.deps_dir, "unrelated")
+        os.makedirs(package_dir)
+        os.makedirs(dist_info_dir)
+        os.makedirs(unrelated_dir)
+        with open(os.path.join(package_dir, "__init__.py"), "w") as handle:
+            handle.write("old = True\n")
+        with open(os.path.join(package_dir, "old.py"), "w") as handle:
+            handle.write("stale = True\n")
+        with open(os.path.join(dist_info_dir, "METADATA"), "w") as handle:
+            handle.write("old metadata\n")
+        with open(os.path.join(unrelated_dir, "keep.txt"), "w") as handle:
+            handle.write("keep\n")
+
+        staged_targets: list[str] = []
+
+        def fake_run(cmd, **_kwargs):
+            staged_target = cmd[cmd.index("--target") + 1]
+            staged_targets.append(staged_target)
+            os.makedirs(os.path.join(staged_target, "requests"))
+            os.makedirs(os.path.join(staged_target, "requests-2.28.0.dist-info"))
+            with open(
+                os.path.join(staged_target, "requests", "__init__.py"), "w"
+            ) as handle:
+                handle.write("new = True\n")
+            with open(
+                os.path.join(staged_target, "requests-2.28.0.dist-info", "METADATA"),
+                "w",
+            ) as handle:
+                handle.write("new metadata\n")
+
+        with (
+            patch("mmrelay.plugin_loader._run", side_effect=fake_run) as mock_run,
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+        ):
+            result = _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        self.assertTrue(result)
+        mock_run.assert_called_once()
+        mock_refresh.assert_called_once()
+        self.assertEqual(len(staged_targets), 1)
+        self.assertNotEqual(staged_targets[0], self.deps_dir)
+        self.assertFalse(os.path.exists(staged_targets[0]))
+        self.assertEqual(
+            os.listdir(os.path.join(self.deps_dir, "requests")),
+            ["__init__.py"],
+        )
+        with open(
+            os.path.join(self.deps_dir, "requests", "__init__.py"),
+            encoding="utf-8",
+        ) as handle:
+            self.assertEqual(handle.read(), "new = True\n")
+        self.assertFalse(os.path.exists(dist_info_dir))
+        self.assertTrue(
+            os.path.exists(os.path.join(self.deps_dir, "requests-2.28.0.dist-info"))
+        )
+        self.assertTrue(os.path.exists(os.path.join(unrelated_dir, "keep.txt")))
+
+    def test_install_plugin_requirements_preserves_namespace_package_siblings(self):
+        """Staged merge should not delete existing namespace package subpackages."""
+        existing_namespace = os.path.join(self.deps_dir, "zope", "interface")
+        os.makedirs(existing_namespace)
+        with open(os.path.join(existing_namespace, "__init__.py"), "w") as handle:
+            handle.write("interface = True\n")
+
+        staged_targets: list[str] = []
+
+        def fake_run(cmd, **_kwargs):
+            staged_target = cmd[cmd.index("--target") + 1]
+            staged_targets.append(staged_target)
+            staged_namespace = os.path.join(staged_target, "zope", "proxy")
+            os.makedirs(staged_namespace)
+            with open(os.path.join(staged_namespace, "__init__.py"), "w") as handle:
+                handle.write("proxy = True\n")
+            dist_info = os.path.join(staged_target, "zope_proxy-5.2.dist-info")
+            os.makedirs(dist_info)
+            with open(
+                os.path.join(dist_info, "METADATA"),
+                "w",
+                encoding=pl.DEFAULT_TEXT_ENCODING,
+            ) as handle:
+                handle.write("Name: zope.proxy\n")
+
+        with (
+            patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+        ):
+            result = _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        self.assertTrue(result)
+        mock_refresh.assert_called_once()
+        self.assertFalse(os.path.exists(staged_targets[0]))
+        self.assertTrue(
+            os.path.exists(os.path.join(self.deps_dir, "zope", "interface"))
+        )
+        self.assertTrue(os.path.exists(os.path.join(self.deps_dir, "zope", "proxy")))
+
+    def test_install_plugin_requirements_pkgutil_namespace_keeps_siblings(self):
+        """pkgutil.extend_path namespace dirs should merge and keep existing subpackages."""
+        existing_ns = os.path.join(self.deps_dir, "google", "cloud")
+        os.makedirs(existing_ns)
+        with open(os.path.join(self.deps_dir, "google", "__init__.py"), "w") as handle:
+            handle.write(
+                "__path__ = __import__('pkgutil').extend_path(__path__, __name__)\n"
+            )
+        with open(os.path.join(existing_ns, "__init__.py"), "w") as handle:
+            handle.write("cloud = True\n")
+
+        staged_targets: list[str] = []
+
+        def fake_run(cmd, **_kwargs):
+            staged_target = cmd[cmd.index("--target") + 1]
+            staged_targets.append(staged_target)
+            staged_ns = os.path.join(staged_target, "google", "ads")
+            os.makedirs(staged_ns)
+            with open(
+                os.path.join(staged_target, "google", "__init__.py"), "w"
+            ) as handle:
+                handle.write(
+                    "__path__ = __import__('pkgutil').extend_path(__path__, __name__)\n"
+                )
+            with open(os.path.join(staged_ns, "__init__.py"), "w") as handle:
+                handle.write("ads = True\n")
+            dist_info = os.path.join(staged_target, "google_ads-1.0.dist-info")
+            os.makedirs(dist_info)
+            with open(os.path.join(dist_info, "METADATA"), "w") as handle:
+                handle.write("Name: google-ads\n")
+
+        with (
+            patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+        ):
+            result = _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        self.assertTrue(result)
+        mock_refresh.assert_called_once()
+        self.assertTrue(os.path.exists(os.path.join(self.deps_dir, "google", "cloud")))
+        self.assertTrue(os.path.exists(os.path.join(self.deps_dir, "google", "ads")))
+
+    def test_install_plugin_requirements_pkg_resources_namespace_keeps_siblings(self):
+        """pkg_resources.declare_namespace dirs should merge and keep existing subpackages."""
+        existing_ns = os.path.join(self.deps_dir, "zope", "event")
+        os.makedirs(existing_ns)
+        with open(os.path.join(self.deps_dir, "zope", "__init__.py"), "w") as handle:
+            handle.write("__import__('pkg_resources').declare_namespace(__name__)\n")
+        with open(os.path.join(existing_ns, "__init__.py"), "w") as handle:
+            handle.write("event = True\n")
+
+        staged_targets: list[str] = []
+
+        def fake_run(cmd, **_kwargs):
+            staged_target = cmd[cmd.index("--target") + 1]
+            staged_targets.append(staged_target)
+            staged_ns = os.path.join(staged_target, "zope", "proxy")
+            os.makedirs(staged_ns)
+            with open(
+                os.path.join(staged_target, "zope", "__init__.py"), "w"
+            ) as handle:
+                handle.write(
+                    "__import__('pkg_resources').declare_namespace(__name__)\n"
+                )
+            with open(os.path.join(staged_ns, "__init__.py"), "w") as handle:
+                handle.write("proxy = True\n")
+            dist_info = os.path.join(staged_target, "zope_proxy-5.2.dist-info")
+            os.makedirs(dist_info)
+            with open(os.path.join(dist_info, "METADATA"), "w") as handle:
+                handle.write("Name: zope.proxy\n")
+
+        with (
+            patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+        ):
+            result = _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        self.assertTrue(result)
+        mock_refresh.assert_called_once()
+        self.assertTrue(os.path.exists(os.path.join(self.deps_dir, "zope", "event")))
+        self.assertTrue(os.path.exists(os.path.join(self.deps_dir, "zope", "proxy")))
+
+    def test_install_plugin_requirements_regular_package_replaces_stale_files(self):
+        """Regular packages with normal __init__.py should be replaced, removing stale files."""
+        package_dir = os.path.join(self.deps_dir, "requests")
+        os.makedirs(package_dir)
+        with open(os.path.join(package_dir, "__init__.py"), "w") as handle:
+            handle.write("old = True\n")
+        with open(os.path.join(package_dir, "stale_module.py"), "w") as handle:
+            handle.write("stale = True\n")
+
+        staged_targets: list[str] = []
+
+        def fake_run(cmd, **_kwargs):
+            staged_target = cmd[cmd.index("--target") + 1]
+            staged_targets.append(staged_target)
+            os.makedirs(os.path.join(staged_target, "requests"))
+            with open(
+                os.path.join(staged_target, "requests", "__init__.py"), "w"
+            ) as handle:
+                handle.write("new = True\n")
+            dist_info = os.path.join(staged_target, "requests-2.28.0.dist-info")
+            os.makedirs(dist_info)
+            with open(os.path.join(dist_info, "METADATA"), "w") as handle:
+                handle.write("Name: requests\n")
+
+        with (
+            patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+        ):
+            result = _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        self.assertTrue(result)
+        mock_refresh.assert_called_once()
+        self.assertEqual(
+            sorted(os.listdir(os.path.join(self.deps_dir, "requests"))),
+            ["__init__.py"],
+        )
+        with open(
+            os.path.join(self.deps_dir, "requests", "__init__.py"),
+            encoding="utf-8",
+        ) as handle:
+            self.assertEqual(handle.read(), "new = True\n")
+        self.assertFalse(
+            os.path.exists(os.path.join(self.deps_dir, "requests", "stale_module.py"))
+        )
+
+    def test_install_plugin_requirements_failed_staged_target_leaves_deps_unchanged(
+        self,
+    ):
+        """Failed persistent installs should not merge staged outputs or write markers."""
+        package_dir = os.path.join(self.deps_dir, "requests")
+        unrelated_dir = os.path.join(self.deps_dir, "unrelated")
+        os.makedirs(package_dir)
+        os.makedirs(unrelated_dir)
+        with open(os.path.join(package_dir, "__init__.py"), "w") as handle:
+            handle.write("old = True\n")
+        with open(os.path.join(unrelated_dir, "keep.txt"), "w") as handle:
+            handle.write("keep\n")
+
+        staged_targets: list[str] = []
+
+        def fake_run(cmd, **_kwargs):
+            staged_target = cmd[cmd.index("--target") + 1]
+            staged_targets.append(staged_target)
+            os.makedirs(os.path.join(staged_target, "requests"))
+            with open(
+                os.path.join(staged_target, "requests", "__init__.py"), "w"
+            ) as handle:
+                handle.write("new = True\n")
+            raise subprocess.CalledProcessError(1, cmd)
+
+        with (
+            patch("mmrelay.plugin_loader._run", side_effect=fake_run),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+        ):
+            result = _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        self.assertFalse(result)
+        self.assertEqual(len(staged_targets), 1)
+        self.assertFalse(os.path.exists(staged_targets[0]))
+        with open(
+            os.path.join(self.deps_dir, "requests", "__init__.py"),
+            encoding="utf-8",
+        ) as handle:
+            self.assertEqual(handle.read(), "old = True\n")
+        self.assertTrue(os.path.exists(os.path.join(unrelated_dir, "keep.txt")))
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
+            marker_path = pl._requirements_install_marker_path(
+                self.repo_path, "test-plugin"
+            )
+        self.assertFalse(os.path.exists(marker_path))
+        mock_refresh.assert_not_called()
+
+    def test_install_plugin_requirements_no_packages_writes_marker(self):
+        """No-installable-package requirements should still mark successful handling."""
+        with open(self.requirements_path, "w") as f:
+            f.write("--pre\n")
+
+        with (
+            patch("mmrelay.plugin_loader._run") as mock_run,
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+        ):
+            result = _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        self.assertTrue(result)
+        mock_run.assert_not_called()
+        mock_refresh.assert_not_called()
+        requirements_hash = pl._requirements_hash(["--pre"])
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
+            self.assertTrue(
+                pl._requirements_install_target_valid(
+                    self.repo_path,
+                    "test-plugin",
+                    requirements_hash,
+                    f"target:{os.path.abspath(self.deps_dir)}",
+                )
+            )
+
+    def test_install_plugin_requirements_failure_writes_no_marker(self):
+        """Failed installs should not write a marker."""
+        with (
+            patch(
+                "mmrelay.plugin_loader._run",
+                side_effect=subprocess.CalledProcessError(1, "pip"),
+            ),
+            patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir),
+        ):
+            result = _install_requirements_for_repo(self.repo_path, "test-plugin")
+
+        self.assertFalse(result)
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
+            marker_path = pl._requirements_install_marker_path(
+                self.repo_path, "test-plugin"
+            )
+        self.assertFalse(os.path.exists(marker_path))
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._run")
-    @patch("mmrelay.plugin_loader._filter_risky_requirements")
+    @patch("mmrelay.plugin_loader._filter_risky_requirement_lines")
     @patch("mmrelay.plugin_loader._collect_requirements")
     def test_install_plugin_requirements_with_flagged_deps(
         self,
@@ -4583,7 +5730,6 @@ class TestDependencyInstallation(BaseGitTest):
         mock_filter.return_value = (
             ["requests==2.28.0"],
             ["git+https://github.com/user/repo.git"],
-            False,
         )
         _install_requirements_for_repo(self.repo_path, "test-plugin")
         mock_logger.warning.assert_called_with(
@@ -4595,7 +5741,7 @@ class TestDependencyInstallation(BaseGitTest):
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._run")
-    @patch("mmrelay.plugin_loader._filter_risky_requirements")
+    @patch("mmrelay.plugin_loader._filter_risky_requirement_lines")
     @patch("mmrelay.plugin_loader._collect_requirements")
     def test_install_plugin_requirements_installation_error(
         self,
@@ -4606,7 +5752,7 @@ class TestDependencyInstallation(BaseGitTest):
     ):
         """Test handling of installation errors."""
         mock_collect.return_value = ["requests==2.28.0"]
-        mock_filter.return_value = (["requests==2.28.0"], [], False)
+        mock_filter.return_value = (["requests==2.28.0"], [])
         mock_run.side_effect = subprocess.CalledProcessError(1, "pip")
         _install_requirements_for_repo(self.repo_path, "test-plugin")
         mock_logger.exception.assert_called()
@@ -4616,18 +5762,22 @@ class TestDependencyInstallation(BaseGitTest):
         with (
             patch("mmrelay.plugin_loader.logger"),
             patch("mmrelay.plugin_loader._run") as mock_run,
-            patch("mmrelay.plugin_loader._filter_risky_requirements") as mock_filter,
+            patch(
+                "mmrelay.plugin_loader._filter_risky_requirement_lines"
+            ) as mock_filter,
             patch("mmrelay.plugin_loader._collect_requirements") as mock_collect,
             patch("sys.prefix", "/fake/prefix"),
             patch("sys.base_prefix", "/fake/prefix"),
             patch("shutil.which", return_value=None),
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
             patch(
                 "mmrelay.plugin_loader.tempfile.NamedTemporaryFile"
             ) as mock_temp_file,
             patch("mmrelay.plugin_loader.os.unlink"),
+            patch("mmrelay.plugin_loader._write_requirements_install_marker"),
         ):
             mock_collect.return_value = ["requests==2.28.0"]
-            mock_filter.return_value = (["requests==2.28.0"], [], False)
+            mock_filter.return_value = (["requests==2.28.0"], [])
 
             # Mock temporary file
             mock_file = mock_temp_file.return_value.__enter__.return_value
@@ -4658,7 +5808,7 @@ class TestDependencyInstallation(BaseGitTest):
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._run")
-    @patch("mmrelay.plugin_loader._filter_risky_requirements")
+    @patch("mmrelay.plugin_loader._filter_risky_requirement_lines")
     @patch("mmrelay.plugin_loader._collect_requirements")
     @patch("shutil.which", return_value="/usr/bin/pipx")
     def test_install_plugin_requirements_pipx_inject_fails(
@@ -4671,10 +5821,13 @@ class TestDependencyInstallation(BaseGitTest):
     ):
         """Test handling of pipx inject failure."""
         mock_collect.return_value = ["requests==2.28.0"]
-        mock_filter.return_value = (["requests==2.28.0"], [], False)
+        mock_filter.return_value = (["requests==2.28.0"], [])
         mock_run.side_effect = subprocess.CalledProcessError(1, "pipx")
 
-        with patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}):
+        with (
+            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+        ):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
 
         # Should log error and warning
@@ -4686,7 +5839,7 @@ class TestDependencyInstallation(BaseGitTest):
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._run")
-    @patch("mmrelay.plugin_loader._filter_risky_requirements")
+    @patch("mmrelay.plugin_loader._filter_risky_requirement_lines")
     @patch("mmrelay.plugin_loader._collect_requirements")
     def test_install_plugin_requirements_pipx_no_packages(
         self, mock_collect, mock_filter, mock_run, mock_logger
@@ -4696,18 +5849,22 @@ class TestDependencyInstallation(BaseGitTest):
         mock_filter.return_value = (
             ["--extra-index-url https://pypi.org/simple"],
             [],
-            False,
         )
 
         with open(self.requirements_path, "w") as f:
             f.write("--extra-index-url https://pypi.org/simple\n")
 
-        with patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}):
-            with patch("shutil.which", return_value="/usr/bin/pipx"):
-                _install_requirements_for_repo(self.repo_path, "test-plugin")
+        with (
+            patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}, clear=True),
+            patch.object(pl, "_PLUGIN_DEPS_DIR", None),
+            patch("shutil.which", return_value="/usr/bin/pipx"),
+            patch("mmrelay.plugin_loader._refresh_dependency_paths") as mock_refresh,
+        ):
+            _install_requirements_for_repo(self.repo_path, "test-plugin")
 
         # Should not call pipx inject when no packages
         mock_run.assert_not_called()
+        mock_refresh.assert_not_called()
         mock_logger.info.assert_called_with(
             "No dependency installation run for plugin %s",
             "test-plugin",
@@ -4715,7 +5872,7 @@ class TestDependencyInstallation(BaseGitTest):
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._run")
-    @patch("mmrelay.plugin_loader._filter_risky_requirements")
+    @patch("mmrelay.plugin_loader._filter_risky_requirement_lines")
     @patch("mmrelay.plugin_loader._collect_requirements")
     def test_install_plugin_requirements_allow_untrusted(
         self, mock_collect, mock_filter, mock_run, mock_logger
@@ -4728,7 +5885,6 @@ class TestDependencyInstallation(BaseGitTest):
         mock_filter.return_value = (
             ["requests==2.28.0"],
             ["git+https://github.com/user/repo.git"],
-            True,
         )
 
         with open(self.requirements_path, "w") as f:
@@ -4908,10 +6064,9 @@ class TestDependencyInstallation(BaseGitTest):
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
-    @patch("os.makedirs")
     @patch("os.path.isdir")
     def test_clone_or_update_repo_commit_ref_type_validation(
-        self, mock_isdir, _mock_makedirs, mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test that 'commit' is accepted as a valid ref type."""
         mock_is_allowed.return_value = True
@@ -5062,9 +6217,8 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader.logger")
     def test_clone_new_repo_to_branch_or_tag_default_branch_fallback(
-        self, _mock_logger, mock_run_git
+        self, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with default branch fallback."""
         # First call fails, second succeeds
@@ -5113,9 +6267,8 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader.logger")
     def test_clone_new_repo_to_branch_or_tag_default_branch_final_fallback(
-        self, _mock_logger, mock_run_git
+        self, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with final fallback to default branch."""
         # Both main and master fail, fallback to clone without branch
@@ -5238,10 +6391,7 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_new_repo_to_branch_or_tag_tag_fetch_fallback(
-        self, _mock_logger, mock_run_git
-    ):
+    def test_clone_new_repo_to_branch_or_tag_tag_fetch_fallback(self, mock_run_git):
         """Test _clone_new_repo_to_branch_or_tag with tag fetch fallback."""
         # Clone succeeds, rev-parse succeed but don't match, then fetch and checkout succeed
         mock_run_git.side_effect = [
@@ -5277,10 +6427,7 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_new_repo_to_branch_or_tag_tag_fetch_fallback_alt(
-        self, _mock_logger, mock_run_git
-    ):
+    def test_clone_new_repo_to_branch_or_tag_tag_fetch_fallback_alt(self, mock_run_git):
         """Test _clone_new_repo_to_branch_or_tag with alternative tag fetch."""
         # Clone succeeds, rev-parse succeed but don't match, first fetch fails, alternative fetch succeeds, checkout succeeds
         mock_run_git.side_effect = [
@@ -5319,10 +6466,7 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
     @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_new_repo_to_branch_or_tag_tag_as_branch_fallback(
-        self, _mock_logger, mock_run_git
-    ):
+    def test_clone_new_repo_to_branch_or_tag_tag_as_branch_fallback(self, mock_run_git):
         """Test _clone_new_repo_to_branch_or_tag with tag as branch fallback."""
         mock_run_git.side_effect = [
             subprocess.CalledProcessError(1, "git"),  # clone --branch fails
@@ -5862,6 +7006,70 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
             self.assertIs(sys.modules.get(mod_name), previous)
         finally:
             sys.modules.pop(mod_name, None)
+
+
+class TestIsNamespacePackageDirectory(unittest.TestCase):
+    """Tests for _is_namespace_package_directory detection logic."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(self.temp_dir, ignore_errors=True))
+
+    def test_implicit_namespace_no_init_py(self):
+        """Directory without __init__.py should be detected as implicit namespace."""
+        ns_dir = os.path.join(self.temp_dir, "mypackage")
+        os.makedirs(ns_dir)
+        self.assertTrue(pl._is_namespace_package_directory(ns_dir))
+
+    def test_pkgutil_namespace(self):
+        """Directory with pkgutil.extend_path in __init__.py should be namespace."""
+        ns_dir = os.path.join(self.temp_dir, "google")
+        os.makedirs(ns_dir)
+        with open(os.path.join(ns_dir, "__init__.py"), "w") as f:
+            f.write(
+                "__path__ = __import__('pkgutil').extend_path(__path__, __name__)\n"
+            )
+        self.assertTrue(pl._is_namespace_package_directory(ns_dir))
+
+    def test_pkg_resources_namespace(self):
+        """Directory with pkg_resources.declare_namespace should be namespace."""
+        ns_dir = os.path.join(self.temp_dir, "zope")
+        os.makedirs(ns_dir)
+        with open(os.path.join(ns_dir, "__init__.py"), "w") as f:
+            f.write("__import__('pkg_resources').declare_namespace(__name__)\n")
+        self.assertTrue(pl._is_namespace_package_directory(ns_dir))
+
+    def test_regular_package_not_namespace(self):
+        """Directory with normal __init__.py should NOT be detected as namespace."""
+        pkg_dir = os.path.join(self.temp_dir, "requests")
+        os.makedirs(pkg_dir)
+        with open(os.path.join(pkg_dir, "__init__.py"), "w") as f:
+            f.write("__version__ = '2.28.0'\n")
+        self.assertFalse(pl._is_namespace_package_directory(pkg_dir))
+
+    def test_symlink_not_namespace(self):
+        """Symlinked directory should not be treated as namespace package."""
+        real_dir = os.path.join(self.temp_dir, "real")
+        link_dir = os.path.join(self.temp_dir, "link")
+        os.makedirs(real_dir)
+        os.symlink(real_dir, link_dir)
+        self.assertFalse(pl._is_namespace_package_directory(link_dir))
+
+    def test_nonexistent_path_not_namespace(self):
+        """Non-existent path should not be treated as namespace package."""
+        self.assertFalse(
+            pl._is_namespace_package_directory(os.path.join(self.temp_dir, "nope"))
+        )
+
+    def test_unreadable_init_py_fails_safe(self):
+        """Unreadable __init__.py should fail safe (return False)."""
+        pkg_dir = os.path.join(self.temp_dir, "badpkg")
+        os.makedirs(pkg_dir)
+        init_path = os.path.join(pkg_dir, "__init__.py")
+        with open(init_path, "w") as f:
+            f.write("some content\n")
+        with patch("builtins.open", side_effect=OSError("permission denied")):
+            self.assertFalse(pl._is_namespace_package_directory(pkg_dir))
 
 
 if __name__ == "__main__":

@@ -764,7 +764,7 @@ class TestConnectMeshtasticTimeoutBranches:
     def test_timeout_infinite_retries_exceeds_max(self, monkeypatch):
         from mmrelay.meshtastic.connection import _connect_meshtastic_impl
 
-        ble_address = self._configure_ble()
+        self._configure_ble()
         mu.config["meshtastic"]["retries"] = mu.INFINITE_RETRIES
         for attr_name in (
             "BLEConnectionTimeoutError",
@@ -1027,7 +1027,7 @@ class TestConnectMeshtasticExceptionBranches:
     def test_exception_handler_non_duplicate_error_retries(self, monkeypatch):
         from mmrelay.meshtastic.connection import _connect_meshtastic_impl
 
-        ble_address = self._configure_ble()
+        self._configure_ble()
         mu.config["meshtastic"]["retries"] = 3
         for attr_name in (
             "BLEConnectionTimeoutError",
