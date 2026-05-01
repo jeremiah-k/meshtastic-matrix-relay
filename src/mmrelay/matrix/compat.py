@@ -265,5 +265,9 @@ def format_e2ee_install_command(
             "pip install 'mindroom-nio[e2e]==0.25.2'. Do not install it alongside matrix-nio."
         )
     if detected.provider_distribution == "matrix-nio":
-        return "Install E2EE support: pipx install 'mmrelay[e2e]'"
+        return (
+            "Install matrix-nio E2EE in a controlled replacement environment: "
+            "pip install 'matrix-nio[e2e]==0.25.2'. "
+            "Do not install mmrelay[e2e] (it uses mindroom-nio)."
+        )
     return f"Install the active nio provider's E2EE extra ({detected.recommended_e2ee_extra})."

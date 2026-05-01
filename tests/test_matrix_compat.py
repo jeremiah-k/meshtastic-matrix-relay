@@ -159,28 +159,38 @@ def test_default_dependency_is_mindroom_not_matrix_nio():
     assert not any("matrix-nio" in dep for dep in deps)
 
 
+def test_only_e2e_extra_for_matrix_providers():
+    project = _read_pyproject_deps()
+    extras = project.get("optional-dependencies", {})
+    for name, deps in extras.items():
+        if name == "e2e":
+            continue
+        for dep in deps:
+            assert (
+                "matrix-nio" not in dep
+            ), f"extra {name} unexpectedly contains matrix-nio: {dep}"
+            assert (
+                "mindroom-nio" not in dep
+            ), f"extra {name} unexpectedly contains mindroom-nio: {dep}"
+
+
 def test_e2e_extra_points_to_mindroom():
     extras = _read_pyproject_deps().get("optional-dependencies", {})
     e2e_deps = extras.get("e2e", [])
     assert any("mindroom-nio[e2e]" in dep for dep in e2e_deps)
 
 
-def test_legacy_matrix_nio_extras_exist():
-    extras = _read_pyproject_deps().get("optional-dependencies", {})
-    matrix_nio_deps = extras.get("matrix-nio", [])
-    assert any("matrix-nio==" in dep for dep in matrix_nio_deps)
-    matrix_nio_e2e_deps = extras.get("matrix-nio-e2e", [])
-    assert any("matrix-nio[e2e]" in dep for dep in matrix_nio_e2e_deps)
+def test_no_extra_installs_both_providers_with_base():
+    project = _read_pyproject_deps()
+    base_deps = project.get("dependencies", [])
+    extras = project.get("optional-dependencies", {}).values()
 
-
-def test_no_extra_installs_both_providers():
-    extras = _read_pyproject_deps().get("optional-dependencies", {}).values()
-    for deps in extras:
+    for deps in list(extras) + [base_deps]:
         has_matrix = any("matrix-nio" in dep for dep in deps)
         has_mindroom = any("mindroom-nio" in dep for dep in deps)
         assert not (
             has_matrix and has_mindroom
-        ), f"extra {deps} installs both matrix-nio and mindroom-nio"
+        ), f"deps {deps} contain both matrix-nio and mindroom-nio"
 
 
 def test_both_providers_installed_disables_e2ee_even_with_crypto(monkeypatch):
@@ -214,3 +224,23 @@ def test_both_providers_installed_disables_e2ee_even_with_crypto(monkeypatch):
     assert capabilities.encryption_available is False
     assert capabilities.crypto_backend != "olm"
     assert capabilities.crypto_backend != "vodozemac"
+
+
+def test_matrix_nio_install_guidance_does_not_recommend_mmrelay_e2e(monkeypatch):
+    _patch_detection(
+        monkeypatch,
+        {"matrix-nio": "0.25.2"},
+        {
+            "nio": SimpleNamespace(AsyncClient=type("AsyncClient", (), {})),
+            "nio.crypto": SimpleNamespace(OlmDevice=object),
+            "nio.store": SimpleNamespace(SqliteStore=object),
+        },
+    )
+
+    capabilities = compat.detect_matrix_capabilities()
+    cmd = compat.format_e2ee_install_command(capabilities)
+
+    assert "pip install 'matrix-nio[e2e]==0.25.2'" in cmd
+    assert "controlled replacement" in cmd
+    assert "Do not install mmrelay[e2e]" in cmd
+    assert "mmrelay[e2e]" not in cmd.replace("Do not install mmrelay[e2e]", "")

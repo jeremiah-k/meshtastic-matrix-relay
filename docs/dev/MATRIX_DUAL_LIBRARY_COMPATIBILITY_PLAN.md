@@ -3,8 +3,14 @@
 ## Default Provider: mindroom-nio
 
 **mindroom-nio is now the default Matrix provider.** It replaces upstream
-`matrix-nio` as the base dependency. `matrix-nio` remains supported as a
-legacy option via explicit extras.
+`matrix-nio` as the base dependency. The `mmrelay[e2e]` extra installs
+`mindroom-nio[e2e]` (vodozemac backend).
+
+`matrix-nio` remains legacy-supported **only through a controlled manual
+replacement workflow**. There are no `mmrelay[matrix-nio]` extras because
+extras add dependencies on top of the base `mindroom-nio`; they cannot
+remove it. Installing both `matrix-nio` and `mindroom-nio` in the same
+environment is always a conflict.
 
 ## Problem Statement
 
@@ -75,8 +81,8 @@ E2EE readiness requires a usable crypto backend and a usable store:
 The public E2EE status shape remains stable for callers. User-facing issues and
 fix instructions should be provider-aware:
 
-- `matrix-nio` missing crypto should mention `python-olm`,
-  `matrix-nio[e2e]`, or `mmrelay[matrix-nio-e2e]`.
+- `matrix-nio` missing crypto should mention `python-olm` and
+  `matrix-nio[e2e]`.
 - `mindroom-nio` missing crypto should mention `vodozemac` and
   `mindroom-nio[e2e]`.
 - If both known providers are installed, the diagnostic should tell the user to
@@ -88,15 +94,9 @@ fix instructions should be provider-aware:
 brings in `mindroom-nio`. The `mmrelay[e2e]` extra installs
 `mindroom-nio[e2e]`.
 
-`matrix-nio` is legacy-supported via explicit extras that are NOT installed by
-default:
-
-- `mmrelay[matrix-nio]` — installs `matrix-nio` alongside mindroom-nio
-  (conflict; not recommended as a standalone install target)
-- `mmrelay[matrix-nio-e2e]` — same conflict issue
-
-**matrix-nio users should use a controlled replacement workflow** rather than
-relying on extras that would install both providers:
+**matrix-nio is legacy-supported through manual replacement only.** There are
+no `mmrelay[matrix-nio]` extras because extras add to base dependencies and
+cannot remove them. The recommended workflow:
 
 ```bash
 # Default install (mindroom-nio, no E2EE)
@@ -116,13 +116,9 @@ pip uninstall mindroom-nio
 pip install 'matrix-nio[e2e]==0.25.2'
 ```
 
-Mindroom extras are kept as explicit aliases:
-
-- `mindroom` — same as base dependency
-- `mindroom-e2e` — same as `e2e`
-
-**No extra installs both providers together.** Mixing matrix-nio and
-mindroom-nio in the same environment is always a conflict.
+**mix matrix-nio and mindroom-nio in the same environment is always a
+conflict.** The extra system cannot represent this cleanly; manual replacement
+is the only supported path.
 
 ## Hard Warning: conflicting nio namespace
 
@@ -185,7 +181,7 @@ centralized only if they become a recurring compatibility surface.
 - `mindroom-nio` with `mindroom-nio[e2e]` / `vodozemac` reports E2EE ready.
 - `mmrelay[e2e]` installs `mindroom-nio[e2e]`.
 
-### For matrix-nio (legacy provider)
+### For matrix-nio (legacy provider, manual replacement only)
 
 - `matrix-nio` without E2EE extras reports missing `python-olm`.
 - `matrix-nio` with `matrix-nio[e2e]` / `python-olm` reports E2EE ready.
@@ -196,5 +192,6 @@ centralized only if they become a recurring compatibility surface.
 - Encrypted-room send blocking uses the unified E2EE status.
 - Windows unsupported handling remains unchanged.
 - Normal unencrypted Matrix operation does not import hard crypto dependencies.
+- The CLI delegates to `get_matrix_capabilities()` instead of hardcoding `olm` imports.
 - If both providers are detected, encryption is disabled with a conflict diagnostic.
 - No extra installs both providers.

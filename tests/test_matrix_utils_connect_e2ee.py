@@ -561,7 +561,9 @@ class TestMatrixE2EEHasAttrChecks:
             # Verify ImportError was logged and E2EE was disabled
             mock_logger.error.assert_any_call("Missing E2EE dependency")
             mock_logger.error.assert_any_call(
-                "Install E2EE support: pipx install 'mmrelay[e2e]'"
+                "Install matrix-nio E2EE in a controlled replacement environment: "
+                "pip install 'matrix-nio[e2e]==0.25.2'. "
+                "Do not install mmrelay[e2e] (it uses mindroom-nio)."
             )
             mock_logger.warning.assert_called_with(
                 "E2EE will be disabled for this session."
@@ -596,7 +598,9 @@ class TestMatrixE2EEHasAttrChecks:
             # Verify ImportError was logged and E2EE was disabled
             mock_logger.error.assert_any_call("Missing E2EE dependency")
             mock_logger.error.assert_any_call(
-                "Install E2EE support: pipx install 'mmrelay[e2e]'"
+                "Install matrix-nio E2EE in a controlled replacement environment: "
+                "pip install 'matrix-nio[e2e]==0.25.2'. "
+                "Do not install mmrelay[e2e] (it uses mindroom-nio)."
             )
             mock_logger.warning.assert_called_with(
                 "E2EE will be disabled for this session."

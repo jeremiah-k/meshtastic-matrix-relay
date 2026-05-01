@@ -501,29 +501,18 @@ def print_version() -> None:
 
 def _e2ee_dependencies_available() -> bool:
     """
-    Check whether required E2EE runtime dependencies are importable.
+    Check whether Matrix E2EE dependencies are available using the compat boundary.
 
-    Checks for the presence of the `olm` package and the `OlmDevice` and `SqliteStore`
-    symbols in the `nio.crypto` and `nio.store` modules respectively.
+    Delegates to the compatibility layer which detects the active Matrix nio
+    provider and its crypto backend (vodozemac for mindroom-nio, python-olm
+    for matrix-nio).
 
     Returns:
-        True if all required dependencies and symbols are importable, False otherwise.
+        True if the active provider's E2EE is ready, False otherwise.
     """
-    try:
-        # import_module raises ImportError on failure; no None checks needed.
-        importlib.import_module("olm")
+    from mmrelay.matrix.compat import get_matrix_capabilities
 
-        nio_crypto = importlib.import_module("nio.crypto")
-        if not hasattr(nio_crypto, "OlmDevice"):
-            raise ImportError("nio.crypto.OlmDevice is unavailable")
-
-        nio_store = importlib.import_module("nio.store")
-        if not hasattr(nio_store, "SqliteStore"):
-            raise ImportError("nio.store.SqliteStore is unavailable")
-
-        return True
-    except ImportError:
-        return False
+    return get_matrix_capabilities().encryption_available
 
 
 def _validate_e2ee_dependencies() -> bool:
@@ -537,7 +526,7 @@ def _validate_e2ee_dependencies() -> bool:
     """
     if sys.platform == WINDOWS_PLATFORM:
         print("❌ Error: E2EE is not supported on Windows")
-        print("   Reason: python-olm library requires native C libraries")
+        print("   Reason: E2EE crypto requires native C libraries")
         print("   Solution: Use Linux or macOS for E2EE support")
         return False
 
@@ -990,9 +979,9 @@ def _print_e2ee_analysis(analysis: dict[str, Any]) -> None:
 
     # Dependencies
     if analysis["dependencies_available"]:
-        print("   ✅ Dependencies: Installed (python-olm available)")
+        print("   ✅ Dependencies: Installed")
     else:
-        print("   ❌ Dependencies: Missing (python-olm not installed)")
+        print("   ❌ Dependencies: Not installed")
 
     # Credentials
     if analysis["credentials_available"]:
@@ -2104,9 +2093,9 @@ def _print_system_health(paths_info: dict[str, Any]) -> None:
     if sys.platform == WINDOWS_PLATFORM:
         print("   ⚠️  Not supported on Windows")
     elif _e2ee_dependencies_available():
-        print("   ✅ python-olm and nio crypto available")
+        print("   ✅ E2EE crypto libraries available")
     else:
-        print("   ❌ Missing python-olm or nio crypto libraries")
+        print("   ❌ Missing E2EE crypto libraries")
         print("       Install with: pip install mmrelay[e2e]")
 
     # Disk Space
