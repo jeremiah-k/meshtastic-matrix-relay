@@ -26,7 +26,7 @@ dependencies = [
   "mtjk==2.7.8.post3",
   "Pillow==12.2.0",
   "aiohttp==3.13.5",
-  "matrix-nio==0.25.2",
+  "mindroom-nio==0.25.2",
   "matplotlib==3.10.9",
   "requests==2.33.1",
   "markdown==3.10.2",
@@ -40,7 +40,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-e2e = ["matrix-nio[e2e]==0.25.2"]
+e2e = ["mindroom-nio[e2e]==0.25.2"]
+matrix-nio = ["matrix-nio==0.25.2"]
+matrix-nio-e2e = ["matrix-nio[e2e]==0.25.2"]
 mindroom = ["mindroom-nio==0.25.2"]
 mindroom-e2e = ["mindroom-nio[e2e]==0.25.2"]
 test = [

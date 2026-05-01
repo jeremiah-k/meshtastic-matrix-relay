@@ -5,7 +5,6 @@ This module provides a unified approach to E2EE status detection, warning messag
 formatting across all components of the meshtastic-matrix-relay application.
 """
 
-import importlib
 import os
 import sys
 from typing import Any, Dict, List, Literal, Optional, TypedDict
@@ -36,7 +35,6 @@ from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
 logger = get_logger("E2EE")
 
 _E2EE_INCOMPLETE_STATUS = "E2EE setup is incomplete"
-_LEGACY_IMPORT_MODULE_PATCH_TARGET = importlib.import_module
 
 
 class E2EEStatus(TypedDict):

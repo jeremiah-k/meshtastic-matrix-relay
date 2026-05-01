@@ -1,27 +1,22 @@
 # Matrix Dual-Library Compatibility
 
+## Default Provider: mindroom-nio
+
+**mindroom-nio is now the default Matrix provider.** It replaces upstream
+`matrix-nio` as the base dependency. `matrix-nio` remains supported as a
+legacy option via explicit extras.
+
 ## Problem Statement
 
 MMRelay imports the `nio` namespace for Matrix support. Historically that
-namespace came from upstream `matrix-nio`. The project now needs to support the
-`mindroom-nio` fork as an alternate provider without assuming the two
+namespace came from upstream `matrix-nio`. The project now uses the
+`mindroom-nio` fork as the default provider without assuming the two
 distributions can coexist in one Python environment.
 
 Both providers expose the same import namespace, so runtime code must detect
 capabilities from the imported `nio` package and its optional crypto backend.
 Provider metadata is useful for diagnostics and install guidance, but it should
 not drive behavior when a direct capability check is available.
-
-## Current Failure Mode
-
-With `matrix-nio` replaced by `mindroom-nio`, MMRelay can start and sync, but
-E2EE setup is incorrectly disabled because the existing checks hard-require the
-legacy `olm` module. `mindroom-nio` uses `vodozemac` and reports encryption
-support through `nio.crypto.ENCRYPTION_ENABLED`, so an `olm` import failure does
-not mean Matrix E2EE is unavailable.
-
-The visible result is that encrypted rooms are treated as blocked even when the
-active provider may be capable of encrypting and decrypting messages.
 
 ## Supported Provider Matrix
 
@@ -47,8 +42,9 @@ active provider may be capable of encrypting and decrypting messages.
   provider: `python-olm` for upstream legacy E2EE and `vodozemac` for
   `mindroom-nio`.
 - Treat `matrix-nio` and `mindroom-nio` as mutually exclusive namespace owners
-  in normal installs. If both distributions are installed, report that clearly
-  and rely on imported `nio` capabilities, not assumptions about ownership.
+  in normal installs. If both distributions are installed, report that clearly,
+  disable E2EE, and do not rely on imported `nio` capabilities to enable
+  encryption.
 - Preserve existing public MMRelay APIs and existing matrix-nio behavior.
 
 ## Compatibility Boundary
@@ -80,7 +76,7 @@ The public E2EE status shape remains stable for callers. User-facing issues and
 fix instructions should be provider-aware:
 
 - `matrix-nio` missing crypto should mention `python-olm`,
-  `matrix-nio[e2e]`, or `mmrelay[e2e]`.
+  `matrix-nio[e2e]`, or `mmrelay[matrix-nio-e2e]`.
 - `mindroom-nio` missing crypto should mention `vodozemac` and
   `mindroom-nio[e2e]`.
 - If both known providers are installed, the diagnostic should tell the user to
@@ -88,18 +84,56 @@ fix instructions should be provider-aware:
 
 ## Packaging Contract
 
-MMRelay keeps `matrix-nio` as the default Matrix provider. The `mmrelay[e2e]`
-extra remains upstream-compatible and installs `matrix-nio[e2e]`.
+**mindroom-nio is the default Matrix provider.** The base `mmrelay` install
+brings in `mindroom-nio`. The `mmrelay[e2e]` extra installs
+`mindroom-nio[e2e]`.
 
-Mindroom extras are explicit replacement-provider install targets:
+`matrix-nio` is legacy-supported via explicit extras that are NOT installed by
+default:
 
-- `mindroom`
-- `mindroom-e2e`
+- `mmrelay[matrix-nio]` — installs `matrix-nio` alongside mindroom-nio
+  (conflict; not recommended as a standalone install target)
+- `mmrelay[matrix-nio-e2e]` — same conflict issue
 
-These extras must not be presented as safe to install alongside the default
-provider. User documentation and diagnostics should say that mindroom users must
-replace `matrix-nio` in their environment because both distributions provide
-the `nio` namespace.
+**matrix-nio users should use a controlled replacement workflow** rather than
+relying on extras that would install both providers:
+
+```bash
+# Default install (mindroom-nio, no E2EE)
+pip install mmrelay
+
+# Default E2EE install (mindroom-nio with vodozemac)
+pip install 'mmrelay[e2e]'
+
+# Legacy matrix-nio (manual replacement)
+pip install mmrelay
+pip uninstall mindroom-nio
+pip install 'matrix-nio==0.25.2'
+
+# Legacy matrix-nio with E2EE (manual replacement)
+pip install mmrelay
+pip uninstall mindroom-nio
+pip install 'matrix-nio[e2e]==0.25.2'
+```
+
+Mindroom extras are kept as explicit aliases:
+
+- `mindroom` — same as base dependency
+- `mindroom-e2e` — same as `e2e`
+
+**No extra installs both providers together.** Mixing matrix-nio and
+mindroom-nio in the same environment is always a conflict.
+
+## Hard Warning: conflicting nio namespace
+
+`matrix-nio` and `mindroom-nio` both own the `nio` import namespace. They
+**MUST NOT** be installed in the same Python environment. If both are present:
+
+1. `both_known_providers_installed` is set to `True`.
+2. `encryption_available` is forced to `False`.
+3. E2EE is blocked regardless of what each provider individually supports.
+4. A clear conflict diagnostic is emitted.
+5. The user is told to uninstall one provider.
 
 ## Runtime API Surface
 
@@ -145,15 +179,22 @@ centralized only if they become a recurring compatibility surface.
 
 ## Validation Checklist
 
-- `matrix-nio` without E2EE extras reports missing `python-olm`.
-- `matrix-nio` with E2EE extras remains ready.
+### For mindroom-nio (default provider)
+
 - `mindroom-nio` without E2EE extras reports missing `vodozemac`.
-- `mindroom-nio` with E2EE extras reports ready.
+- `mindroom-nio` with `mindroom-nio[e2e]` / `vodozemac` reports E2EE ready.
+- `mmrelay[e2e]` installs `mindroom-nio[e2e]`.
+
+### For matrix-nio (legacy provider)
+
+- `matrix-nio` without E2EE extras reports missing `python-olm`.
+- `matrix-nio` with `matrix-nio[e2e]` / `python-olm` reports E2EE ready.
+- Custom install workflow: `pip install mmrelay` → `pip uninstall mindroom-nio` → `pip install 'matrix-nio[e2e]==0.25.2'`.
+
+### Cross-cutting
+
 - Encrypted-room send blocking uses the unified E2EE status.
 - Windows unsupported handling remains unchanged.
 - Normal unencrypted Matrix operation does not import hard crypto dependencies.
-
-## Open Questions
-
-- What exact `mindroom-nio` version should be pinned once the fork publishes a
-  stable release for MMRelay consumption?
+- If both providers are detected, encryption is disabled with a conflict diagnostic.
+- No extra installs both providers.

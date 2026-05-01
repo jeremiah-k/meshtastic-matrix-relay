@@ -154,20 +154,27 @@ def detect_matrix_capabilities() -> MatrixLibraryCapabilities:
         and sqlite_store_available
     )
 
-    if vodozemac_ready:
+    if both_installed:
+        crypto_backend: CryptoBackend = "unavailable"
+        encryption_available = False
+    elif vodozemac_ready:
         crypto_backend: CryptoBackend = "vodozemac"
+        encryption_available = True
     elif legacy_olm_ready:
         crypto_backend = "olm"
+        encryption_available = True
     elif vodozemac_available or nio_crypto_encryption_enabled is True:
         crypto_backend = "vodozemac"
+        encryption_available = False
     elif olm_available or nio_crypto_olm_device_available:
         crypto_backend = "olm"
+        encryption_available = False
     elif nio_crypto_available:
         crypto_backend = "unavailable"
+        encryption_available = False
     else:
         crypto_backend = "unknown"
-
-    encryption_available = legacy_olm_ready or vodozemac_ready
+        encryption_available = False
     recommended_e2ee_extra, install_hint = _e2ee_install_guidance(
         provider_distribution, crypto_backend, both_installed
     )

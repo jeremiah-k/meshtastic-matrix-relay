@@ -1,3 +1,4 @@
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -66,7 +67,9 @@ def test_detects_matrix_nio_without_olm(monkeypatch):
 
     assert capabilities.provider_distribution == "matrix-nio"
     assert capabilities.encryption_available is False
-    assert "python-olm" in compat.format_e2ee_unavailable_message(capabilities)
+    message = compat.format_e2ee_unavailable_message(capabilities)
+    assert "python-olm" in message
+    assert "matrix-nio" in message
 
 
 def test_detects_mindroom_vodozemac_backend(monkeypatch):
@@ -108,8 +111,10 @@ def test_detects_mindroom_without_vodozemac(monkeypatch):
 
     assert capabilities.provider_distribution == "mindroom-nio"
     assert capabilities.encryption_available is False
-    assert "vodozemac" in compat.format_e2ee_unavailable_message(capabilities)
-    assert "python-olm" not in compat.format_e2ee_unavailable_message(capabilities)
+    message = compat.format_e2ee_unavailable_message(capabilities)
+    assert "vodozemac" in message
+    assert "mindroom" in message
+    assert "python-olm" not in message
     assert "mindroom-nio[e2e]" in compat.format_e2ee_install_command(capabilities)
     assert "alongside matrix-nio" in compat.format_e2ee_install_command(capabilities)
 
@@ -125,6 +130,7 @@ def test_reports_multiple_known_provider_distributions(monkeypatch):
 
     assert capabilities.provider_distribution == "unknown"
     assert capabilities.both_known_providers_installed is True
+    assert capabilities.encryption_available is False
     assert "matrix-nio=0.25.2" in capabilities.provider_version
     assert "mindroom-nio=0.25.2" in capabilities.provider_version
     message = compat.format_e2ee_unavailable_message(capabilities)
@@ -132,3 +138,79 @@ def test_reports_multiple_known_provider_distributions(monkeypatch):
     assert "both installed" in message
     assert "uninstall one nio namespace owner" in message
     assert "Uninstall either matrix-nio or mindroom-nio first" in install_command
+
+
+def _read_pyproject_deps():
+    """Read pyproject.toml and extract dependencies and optional-dependencies."""
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib
+
+    with open("pyproject.toml", "rb") as f:
+        data = tomllib.load(f)
+    return data.get("project", {})
+
+
+def test_default_dependency_is_mindroom_not_matrix_nio():
+    project = _read_pyproject_deps()
+    deps = project.get("dependencies", [])
+    assert any("mindroom-nio" in dep for dep in deps)
+    assert not any("matrix-nio" in dep for dep in deps)
+
+
+def test_e2e_extra_points_to_mindroom():
+    extras = _read_pyproject_deps().get("optional-dependencies", {})
+    e2e_deps = extras.get("e2e", [])
+    assert any("mindroom-nio[e2e]" in dep for dep in e2e_deps)
+
+
+def test_legacy_matrix_nio_extras_exist():
+    extras = _read_pyproject_deps().get("optional-dependencies", {})
+    matrix_nio_deps = extras.get("matrix-nio", [])
+    assert any("matrix-nio==" in dep for dep in matrix_nio_deps)
+    matrix_nio_e2e_deps = extras.get("matrix-nio-e2e", [])
+    assert any("matrix-nio[e2e]" in dep for dep in matrix_nio_e2e_deps)
+
+
+def test_no_extra_installs_both_providers():
+    extras = _read_pyproject_deps().get("optional-dependencies", {}).values()
+    for deps in extras:
+        has_matrix = any("matrix-nio" in dep for dep in deps)
+        has_mindroom = any("mindroom-nio" in dep for dep in deps)
+        assert not (
+            has_matrix and has_mindroom
+        ), f"extra {deps} installs both matrix-nio and mindroom-nio"
+
+
+def test_both_providers_installed_disables_e2ee_even_with_crypto(monkeypatch):
+    _patch_detection(
+        monkeypatch,
+        {"matrix-nio": "0.25.2", "mindroom-nio": "0.25.2"},
+        {
+            "nio": SimpleNamespace(
+                AsyncClient=type("AsyncClient", (), {}),
+                crypto=SimpleNamespace(
+                    ENCRYPTION_ENABLED=True,
+                    OlmDevice=object,
+                ),
+                api=SimpleNamespace(Api=type("Api_dummy", (), {})),
+                store=SimpleNamespace(SqliteStore=object),
+            ),
+            "nio.api": SimpleNamespace(Api=type("Api_dummy", (), {})),
+            "nio.crypto": SimpleNamespace(
+                ENCRYPTION_ENABLED=True,
+                OlmDevice=object,
+            ),
+            "nio.store": SimpleNamespace(SqliteStore=object),
+            "olm": SimpleNamespace(),
+            "vodozemac": SimpleNamespace(),
+        },
+    )
+
+    capabilities = compat.detect_matrix_capabilities()
+
+    assert capabilities.both_known_providers_installed is True
+    assert capabilities.encryption_available is False
+    assert capabilities.crypto_backend != "olm"
+    assert capabilities.crypto_backend != "vodozemac"
