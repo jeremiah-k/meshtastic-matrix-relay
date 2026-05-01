@@ -1080,7 +1080,7 @@ async def test_connect_matrix_e2ee_missing_nio_crypto():
         # Should still create client but with E2EE disabled
         assert result == mock_client_instance
         # Should log exception about missing nio.crypto.OlmDevice
-        mock_logger.exception.assert_called_with("Missing E2EE dependency")
+        mock_logger.error.assert_any_call("Missing E2EE dependency")
 
 
 async def test_connect_matrix_e2ee_missing_sqlite_store():
@@ -1146,7 +1146,7 @@ async def test_connect_matrix_e2ee_missing_sqlite_store():
         # Should still create client but with E2EE disabled
         assert result == mock_client_instance
         # Should log exception about missing nio.store.SqliteStore
-        mock_logger.exception.assert_called_with("Missing E2EE dependency")
+        mock_logger.error.assert_any_call("Missing E2EE dependency")
 
 
 TEST_HOMESERVER = "https://matrix.org"

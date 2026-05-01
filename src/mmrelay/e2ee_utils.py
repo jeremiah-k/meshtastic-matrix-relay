@@ -15,7 +15,6 @@ from mmrelay.constants.app import (
     CREDENTIALS_FILENAME,
     MATRIX_DIRNAME,
     PACKAGE_NAME_E2E,
-    PYTHON_OLM_PACKAGE,
     WINDOWS_PLATFORM,
 )
 from mmrelay.constants.config import CONFIG_SECTION_MATRIX
@@ -28,11 +27,16 @@ from mmrelay.constants.messages import (
     MSG_E2EE_WINDOWS_UNSUPPORTED_SHORT,
 )
 from mmrelay.log_utils import get_logger
+from mmrelay.matrix.compat import (
+    detect_matrix_capabilities,
+    format_e2ee_unavailable_message,
+)
 from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
 
 logger = get_logger("E2EE")
 
 _E2EE_INCOMPLETE_STATUS = "E2EE setup is incomplete"
+_LEGACY_IMPORT_MODULE_PATCH_TARGET = importlib.import_module
 
 
 class E2EEStatus(TypedDict):
@@ -87,25 +91,29 @@ def get_e2ee_status(
         logger.debug("E2EE platform check: Windows/msys/cygwin not supported")
 
     # Check dependencies
-    try:
-        importlib.import_module("olm")
-
-        nio_crypto = importlib.import_module("nio.crypto")
-        if not hasattr(nio_crypto, "OlmDevice"):
-            raise ImportError("nio.crypto.OlmDevice is unavailable")
-
-        nio_store = importlib.import_module("nio.store")
-        if not hasattr(nio_store, "SqliteStore"):
-            raise ImportError("nio.store.SqliteStore is unavailable")
-
+    matrix_capabilities = detect_matrix_capabilities()
+    if matrix_capabilities.encryption_available:
         status["dependencies_installed"] = True
-        logger.debug("E2EE dependency check: olm and nio components available")
-    except ImportError:
-        status["dependencies_installed"] = False
-        status["issues"].append(
-            f"E2EE dependencies not installed ({PYTHON_OLM_PACKAGE})"
+        logger.debug(
+            "E2EE dependency check: %s crypto available via %s",
+            matrix_capabilities.crypto_backend,
+            matrix_capabilities.provider_name,
         )
-        logger.debug("E2EE dependency check: missing olm or nio components")
+    else:
+        status["dependencies_installed"] = False
+        status["issues"].append(format_e2ee_unavailable_message(matrix_capabilities))
+        logger.debug(
+            "E2EE dependency check failed: provider=%s version=%s backend=%s "
+            "olm=%s vodozemac=%s nio_crypto=%s sqlite_store=%s encryption_enabled=%s",
+            matrix_capabilities.provider_name,
+            matrix_capabilities.provider_version,
+            matrix_capabilities.crypto_backend,
+            matrix_capabilities.olm_available,
+            matrix_capabilities.vodozemac_available,
+            matrix_capabilities.nio_crypto_available,
+            matrix_capabilities.sqlite_store_available,
+            matrix_capabilities.nio_crypto_encryption_enabled,
+        )
 
     # Check configuration
     matrix_section = config.get(CONFIG_SECTION_MATRIX, {})

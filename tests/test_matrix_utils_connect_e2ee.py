@@ -619,7 +619,7 @@ class TestMatrixE2EEHasAttrChecks:
             await connect_matrix(e2ee_config)
 
             # Verify ImportError was logged and E2EE was disabled
-            mock_logger.exception.assert_called_with("Missing E2EE dependency")
+            mock_logger.error.assert_any_call("Missing E2EE dependency")
             mock_logger.error.assert_called_with(
                 "Please reinstall with: pipx install 'mmrelay[e2e]'"
             )
@@ -681,7 +681,7 @@ class TestMatrixE2EEHasAttrChecks:
             await connect_matrix(e2ee_config)
 
             # Verify ImportError was logged and E2EE was disabled
-            mock_logger.exception.assert_called_with("Missing E2EE dependency")
+            mock_logger.error.assert_any_call("Missing E2EE dependency")
             mock_logger.error.assert_called_with(
                 "Please reinstall with: pipx install 'mmrelay[e2e]'"
             )
