@@ -40,7 +40,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-e2e = ["mindroom-nio[e2e]"]
+e2e = ["matrix-nio[e2e]==0.25.2"]
+mindroom = ["mindroom-nio==0.25.2"]
+mindroom-e2e = ["mindroom-nio[e2e]==0.25.2"]
 test = [
   "coverage==7.13.5",
   "pytest==9.0.3",

@@ -14,7 +14,6 @@ from mmrelay.cli_utils import get_command
 from mmrelay.constants.app import (
     CREDENTIALS_FILENAME,
     MATRIX_DIRNAME,
-    PACKAGE_NAME_E2E,
     WINDOWS_PLATFORM,
 )
 from mmrelay.constants.config import CONFIG_SECTION_MATRIX
@@ -28,8 +27,9 @@ from mmrelay.constants.messages import (
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.matrix.compat import (
-    detect_matrix_capabilities,
+    format_e2ee_install_command,
     format_e2ee_unavailable_message,
+    get_matrix_capabilities,
 )
 from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
 
@@ -91,7 +91,7 @@ def get_e2ee_status(
         logger.debug("E2EE platform check: Windows/msys/cygwin not supported")
 
     # Check dependencies
-    matrix_capabilities = detect_matrix_capabilities()
+    matrix_capabilities = get_matrix_capabilities()
     if matrix_capabilities.encryption_available:
         status["dependencies_installed"] = True
         logger.debug(
@@ -340,11 +340,12 @@ def get_e2ee_warning_messages() -> dict[str, str]:
             "unavailable", "disabled", "incomplete", "missing_deps", "missing_auth",
             and "missing_config".
     """
+    matrix_capabilities = get_matrix_capabilities()
     return {
         "unavailable": f"{MSG_E2EE_WINDOWS_UNSUPPORTED} - messages to encrypted rooms will be blocked",
         "disabled": f"{MSG_E2EE_DISABLED} - messages to encrypted rooms will be blocked",
         "incomplete": f"{_E2EE_INCOMPLETE_STATUS} - messages to encrypted rooms may be blocked",
-        "missing_deps": f"E2EE dependencies not installed - run: pipx install {PACKAGE_NAME_E2E}",
+        "missing_deps": format_e2ee_unavailable_message(matrix_capabilities),
         "missing_auth": f"{MSG_E2EE_NO_AUTH} - run: {get_command('auth_login')}",
         "missing_config": "E2EE not enabled in configuration - add 'e2ee: enabled: true' under matrix section",
     }
@@ -413,7 +414,7 @@ def get_e2ee_fix_instructions(e2ee_status: E2EEStatus) -> List[str]:
     step = 1
     if not e2ee_status["dependencies_installed"]:
         instructions.append(f"{step}. Install E2EE dependencies:")
-        instructions.append(f"   pipx install {PACKAGE_NAME_E2E}")
+        instructions.append(f"   {format_e2ee_install_command()}")
         step += 1
 
     if not e2ee_status["credentials_available"]:

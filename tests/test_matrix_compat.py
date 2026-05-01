@@ -110,6 +110,8 @@ def test_detects_mindroom_without_vodozemac(monkeypatch):
     assert capabilities.encryption_available is False
     assert "vodozemac" in compat.format_e2ee_unavailable_message(capabilities)
     assert "python-olm" not in compat.format_e2ee_unavailable_message(capabilities)
+    assert "mindroom-nio[e2e]" in compat.format_e2ee_install_command(capabilities)
+    assert "alongside matrix-nio" in compat.format_e2ee_install_command(capabilities)
 
 
 def test_reports_multiple_known_provider_distributions(monkeypatch):
@@ -125,3 +127,8 @@ def test_reports_multiple_known_provider_distributions(monkeypatch):
     assert capabilities.both_known_providers_installed is True
     assert "matrix-nio=0.25.2" in capabilities.provider_version
     assert "mindroom-nio=0.25.2" in capabilities.provider_version
+    message = compat.format_e2ee_unavailable_message(capabilities)
+    install_command = compat.format_e2ee_install_command(capabilities)
+    assert "both installed" in message
+    assert "uninstall one nio namespace owner" in message
+    assert "Uninstall either matrix-nio or mindroom-nio first" in install_command

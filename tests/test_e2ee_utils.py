@@ -9,7 +9,8 @@ This module tests lines 115-122 and 172-182 of e2ee_utils.py:
 import os
 import shutil
 import tempfile
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -19,6 +20,24 @@ from mmrelay.e2ee_utils import (
     _check_credentials_available,
     get_e2ee_status,
 )
+
+
+def _matrix_capabilities(encryption_available: bool = True):
+    return SimpleNamespace(
+        encryption_available=encryption_available,
+        provider_distribution="matrix-nio",
+        provider_name="matrix-nio",
+        provider_version="0.25.2",
+        crypto_backend="olm",
+        install_hint="install matrix-nio[e2e] / python-olm",
+        recommended_e2ee_extra="matrix-nio[e2e]",
+        both_known_providers_installed=False,
+        olm_available=encryption_available,
+        vodozemac_available=False,
+        nio_crypto_available=True,
+        sqlite_store_available=encryption_available,
+        nio_crypto_encryption_enabled=None,
+    )
 
 
 @pytest.fixture
@@ -72,9 +91,10 @@ def test_credentials_found_in_legacy_location(
     _temp_dir, _config_path, _credentials_path, base_config = e2ee_test_config
 
     # Mock dependencies as installed
-    with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-        mock_import.side_effect = lambda _: MagicMock()
-
+    with patch(
+        "mmrelay.e2ee_utils.get_matrix_capabilities",
+        return_value=_matrix_capabilities(),
+    ):
         mock_deprecation_active.return_value = True
 
         # Mock paths_info with legacy sources
@@ -150,9 +170,10 @@ def test_credentials_not_found_in_legacy_locations(
     _temp_dir, _config_path, _credentials_path, base_config = e2ee_test_config
 
     # Mock dependencies as installed
-    with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-        mock_import.side_effect = lambda _: MagicMock()
-
+    with patch(
+        "mmrelay.e2ee_utils.get_matrix_capabilities",
+        return_value=_matrix_capabilities(),
+    ):
         mock_deprecation_active.return_value = True
 
         # Mock paths_info with legacy sources

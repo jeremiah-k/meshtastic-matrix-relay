@@ -20,6 +20,37 @@ from mmrelay.matrix_utils import (
 pytestmark = pytest.mark.asyncio
 
 
+def _matrix_capabilities(
+    *,
+    encryption_available: bool = True,
+    provider_distribution: str = "matrix-nio",
+    crypto_backend: str = "olm",
+    install_hint: str = "install matrix-nio[e2e] / python-olm",
+    recommended_e2ee_extra: str = "matrix-nio[e2e]",
+    both_known_providers_installed: bool = False,
+):
+    return SimpleNamespace(
+        encryption_available=encryption_available,
+        provider_distribution=provider_distribution,
+        provider_name=provider_distribution,
+        provider_version="0.25.2",
+        crypto_backend=crypto_backend,
+        install_hint=install_hint,
+        recommended_e2ee_extra=recommended_e2ee_extra,
+        both_known_providers_installed=both_known_providers_installed,
+    )
+
+
+@pytest.fixture(autouse=True)
+def matrix_capabilities_available(monkeypatch):
+    """Keep E2EE auth tests independent from the developer environment."""
+
+    monkeypatch.setattr(
+        "mmrelay.matrix.auth.get_matrix_capabilities",
+        lambda: _matrix_capabilities(),
+    )
+
+
 async def test_on_decryption_failure():
     """Test on_decryption_failure handles decryption failures with retry logic."""
 
@@ -494,21 +525,9 @@ async def test_connect_matrix_e2ee_store_path_from_config(monkeypatch):
         return_value=SimpleNamespace(displayname="Bot")
     )
 
-    def fake_import(name):
-        if name == "nio.crypto":
-            return SimpleNamespace(OlmDevice=True)
-        if name == "nio.store":
-            return SimpleNamespace(SqliteStore=True)
-        if name == "olm":
-            return MagicMock()
-        return MagicMock()
-
     monkeypatch.setattr("mmrelay.matrix_utils.sys.platform", "linux", raising=False)
     monkeypatch.setattr(
         "mmrelay.config.is_e2ee_enabled", lambda _cfg: True, raising=False
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.importlib.import_module", fake_import, raising=False
     )
     monkeypatch.setattr(
         "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
@@ -571,21 +590,9 @@ async def test_connect_matrix_e2ee_store_path_precedence_encryption(monkeypatch)
         return_value=SimpleNamespace(displayname="Bot")
     )
 
-    def fake_import(name):
-        if name == "nio.crypto":
-            return SimpleNamespace(OlmDevice=True)
-        if name == "nio.store":
-            return SimpleNamespace(SqliteStore=True)
-        if name == "olm":
-            return MagicMock()
-        return MagicMock()
-
     monkeypatch.setattr("mmrelay.matrix_utils.sys.platform", "linux", raising=False)
     monkeypatch.setattr(
         "mmrelay.config.is_e2ee_enabled", lambda _cfg: True, raising=False
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.importlib.import_module", fake_import, raising=False
     )
     monkeypatch.setattr(
         "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
@@ -650,21 +657,9 @@ async def test_connect_matrix_e2ee_store_path_uses_e2ee_section(monkeypatch):
         return_value=SimpleNamespace(displayname="Bot")
     )
 
-    def fake_import(name):
-        if name == "nio.crypto":
-            return SimpleNamespace(OlmDevice=True)
-        if name == "nio.store":
-            return SimpleNamespace(SqliteStore=True)
-        if name == "olm":
-            return MagicMock()
-        return MagicMock()
-
     monkeypatch.setattr("mmrelay.matrix_utils.sys.platform", "linux", raising=False)
     monkeypatch.setattr(
         "mmrelay.config.is_e2ee_enabled", lambda _cfg: True, raising=False
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.importlib.import_module", fake_import, raising=False
     )
     monkeypatch.setattr(
         "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
@@ -727,21 +722,9 @@ async def test_connect_matrix_e2ee_store_path_default(monkeypatch, tmp_path):
         return_value=SimpleNamespace(displayname="Bot")
     )
 
-    def fake_import(name):
-        if name == "nio.crypto":
-            return SimpleNamespace(OlmDevice=True)
-        if name == "nio.store":
-            return SimpleNamespace(SqliteStore=True)
-        if name == "olm":
-            return MagicMock()
-        return MagicMock()
-
     monkeypatch.setattr("mmrelay.matrix_utils.sys.platform", "linux", raising=False)
     monkeypatch.setattr(
         "mmrelay.config.is_e2ee_enabled", lambda _cfg: True, raising=False
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.importlib.import_module", fake_import, raising=False
     )
     monkeypatch.setattr(
         "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
@@ -880,30 +863,8 @@ async def test_connect_matrix_e2ee_store_missing_db_files_warns(
         "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
     }
 
-    mock_olm = MagicMock()
-    import importlib as _importlib
-
-    real_import_module = _importlib.import_module
-
-    def mock_import_side_effect(module_name, *args, **kwargs):
-        if module_name == "olm":
-            return mock_olm
-        if module_name == "nio.crypto":
-            mock_crypto = MagicMock()
-            mock_crypto.OlmDevice = MagicMock()
-            return mock_crypto
-        if module_name == "nio.store":
-            mock_store = MagicMock()
-            mock_store.SqliteStore = MagicMock()
-            return mock_store
-        return real_import_module(module_name, *args, **kwargs)
-
     with (
         patch("mmrelay.config.is_e2ee_enabled", return_value=True),
-        patch(
-            "mmrelay.matrix_utils.importlib.import_module",
-            side_effect=mock_import_side_effect,
-        ),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
         ),
@@ -967,31 +928,9 @@ async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch, tmp_path):
     )
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
 
-    mock_olm = MagicMock()
-    import importlib as _importlib
-
-    real_import_module = _importlib.import_module
-
-    def mock_import_side_effect(module_name, *args, **kwargs):
-        if module_name == "olm":
-            return mock_olm
-        if module_name == "nio.crypto":
-            mock_crypto = MagicMock()
-            mock_crypto.OlmDevice = MagicMock()
-            return mock_crypto
-        if module_name == "nio.store":
-            mock_store = MagicMock()
-            mock_store.SqliteStore = MagicMock()
-            return mock_store
-        return real_import_module(module_name, *args, **kwargs)
-
     sleep_mock = AsyncMock()
     with (
         patch("mmrelay.config.is_e2ee_enabled", return_value=True),
-        patch(
-            "mmrelay.matrix_utils.importlib.import_module",
-            side_effect=mock_import_side_effect,
-        ),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
         ),
@@ -1040,27 +979,16 @@ async def test_connect_matrix_e2ee_missing_nio_crypto():
         patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
         patch("mmrelay.matrix_utils.logger") as mock_logger,
         patch("mmrelay.matrix_utils._create_ssl_context"),
-        patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
+        patch(
+            "mmrelay.matrix.auth.get_matrix_capabilities",
+            return_value=_matrix_capabilities(encryption_available=False),
+        ),
         patch(
             "mmrelay.matrix_utils.async_load_credentials",
             new=AsyncMock(return_value=None),
         ),
         patch("mmrelay.matrix_utils.os.path.isfile", return_value=False),
     ):
-        # Mock importlib to simulate missing nio.crypto
-        def mock_import_side_effect(module_name):
-            if module_name == "olm":
-                return MagicMock()  # olm is available
-            elif module_name == "nio.crypto":
-                mock_crypto = MagicMock()
-                mock_crypto.OlmDevice = MagicMock()
-                # Remove OlmDevice attribute
-                del mock_crypto.OlmDevice
-                return mock_crypto
-            return MagicMock()
-
-        mock_import.side_effect = mock_import_side_effect
-
         # Mock AsyncClient instance
         mock_client_instance = MagicMock()
         mock_client_instance.rooms = {}
@@ -1102,31 +1030,16 @@ async def test_connect_matrix_e2ee_missing_sqlite_store():
         patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
         patch("mmrelay.matrix_utils.logger") as mock_logger,
         patch("mmrelay.matrix_utils._create_ssl_context"),
-        patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
+        patch(
+            "mmrelay.matrix.auth.get_matrix_capabilities",
+            return_value=_matrix_capabilities(encryption_available=False),
+        ),
         patch(
             "mmrelay.matrix_utils.async_load_credentials",
             new=AsyncMock(return_value=None),
         ),
         patch("mmrelay.matrix_utils.os.path.isfile", return_value=False),
     ):
-        # Mock importlib to simulate missing nio.store.SqliteStore
-        def mock_import_side_effect(module_name):
-            if module_name == "olm":
-                return MagicMock()  # olm is available
-            elif module_name == "nio.crypto":
-                mock_crypto = MagicMock()
-                mock_crypto.OlmDevice = MagicMock()
-                return mock_crypto
-            elif module_name == "nio.store":
-                mock_store = MagicMock()
-                mock_store.SqliteStore = MagicMock()
-                # Remove SqliteStore attribute
-                del mock_store.SqliteStore
-                return mock_store
-            return MagicMock()
-
-        mock_import.side_effect = mock_import_side_effect
-
         # Mock AsyncClient instance
         mock_client_instance = MagicMock()
         mock_client_instance.rooms = {}

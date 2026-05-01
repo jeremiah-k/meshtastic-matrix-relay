@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 from dataclasses import dataclass
 from importlib import metadata
 from typing import Literal
@@ -87,10 +88,19 @@ def _detect_provider() -> tuple[str, str, ProviderDistribution, bool]:
 def _e2ee_install_guidance(
     provider_distribution: ProviderDistribution,
     crypto_backend: CryptoBackend,
+    both_known_providers_installed: bool,
 ) -> tuple[str, str]:
+    if both_known_providers_installed:
+        return (
+            "one nio provider E2EE extra",
+            "matrix-nio and mindroom-nio are both installed; uninstall one nio namespace owner before enabling E2EE",
+        )
     if provider_distribution == "mindroom-nio" or crypto_backend == "vodozemac":
         extra = "mindroom-nio[e2e]"
-        return extra, f"install {extra} / vodozemac"
+        return (
+            extra,
+            f"install {extra} / vodozemac as a replacement provider, not alongside matrix-nio",
+        )
     if provider_distribution == "matrix-nio" or crypto_backend == "olm":
         extra = "matrix-nio[e2e]"
         return extra, f"install {extra} / python-olm"
@@ -159,7 +169,7 @@ def detect_matrix_capabilities() -> MatrixLibraryCapabilities:
 
     encryption_available = legacy_olm_ready or vodozemac_ready
     recommended_e2ee_extra, install_hint = _e2ee_install_guidance(
-        provider_distribution, crypto_backend
+        provider_distribution, crypto_backend, both_installed
     )
 
     supports_stop_sync_forever = bool(
@@ -170,11 +180,14 @@ def detect_matrix_capabilities() -> MatrixLibraryCapabilities:
         nio_api is not None
         and hasattr(getattr(nio_api, "Api", object), "update_receipt_marker")
     )
-    supports_authenticated_media = bool(
-        nio_api is not None
-        and "allow_remote"
-        in str(getattr(getattr(nio_api, "Api", object), "download", ""))
-    )
+    download = getattr(getattr(nio_api, "Api", object), "download", None)
+    try:
+        supports_authenticated_media = bool(
+            download is not None
+            and "allow_remote" in inspect.signature(download).parameters
+        )
+    except (TypeError, ValueError):
+        supports_authenticated_media = False
 
     return MatrixLibraryCapabilities(
         provider_name=provider_name,
@@ -226,3 +239,24 @@ def format_e2ee_unavailable_message(
         f"crypto_backend={detected.crypto_backend}"
     )
     return f"E2EE dependencies not installed ({detected.install_hint}; {details})"
+
+
+def format_e2ee_install_command(
+    capabilities: MatrixLibraryCapabilities | None = None,
+) -> str:
+    """Return actionable install guidance for the detected provider."""
+
+    detected = capabilities or get_matrix_capabilities()
+    if detected.both_known_providers_installed:
+        return (
+            "Uninstall either matrix-nio or mindroom-nio first; both provide the "
+            "nio namespace and should not be installed together."
+        )
+    if detected.provider_distribution == "mindroom-nio":
+        return (
+            "Install mindroom E2EE as a replacement provider: "
+            "pip install 'mindroom-nio[e2e]==0.25.2'. Do not install it alongside matrix-nio."
+        )
+    if detected.provider_distribution == "matrix-nio":
+        return "Install E2EE support: pipx install 'mmrelay[e2e]'"
+    return f"Install the active nio provider's E2EE extra ({detected.recommended_e2ee_extra})."

@@ -6,8 +6,9 @@ from typing import Any, Optional, cast
 
 import mmrelay.matrix_utils as facade
 from mmrelay.matrix.compat import (
-    detect_matrix_capabilities,
+    format_e2ee_install_command,
     format_e2ee_unavailable_message,
+    get_matrix_capabilities,
 )
 
 __all__ = [
@@ -65,14 +66,14 @@ async def _configure_e2ee(
                 )
                 e2ee_enabled = False
             else:
-                matrix_capabilities = detect_matrix_capabilities()
+                matrix_capabilities = get_matrix_capabilities()
                 if not matrix_capabilities.encryption_available:
                     facade.logger.error("Missing E2EE dependency")
                     facade.logger.error(
                         format_e2ee_unavailable_message(matrix_capabilities)
                     )
                     facade.logger.error(
-                        "Please reinstall with: pipx install 'mmrelay[e2e]'"
+                        format_e2ee_install_command(matrix_capabilities)
                     )
                     facade.logger.warning("E2EE will be disabled for this session.")
                     e2ee_enabled = False

@@ -1,4 +1,4 @@
-# Matrix Dual-Library Compatibility Plan
+# Matrix Dual-Library Compatibility
 
 ## Problem Statement
 
@@ -51,45 +51,59 @@ active provider may be capable of encrypting and decrypting messages.
   and rely on imported `nio` capabilities, not assumptions about ownership.
 - Preserve existing public MMRelay APIs and existing matrix-nio behavior.
 
-## Implementation Phases
+## Compatibility Boundary
 
-### Phase 1: Compatibility Module
+Matrix provider detection belongs in `mmrelay.matrix.compat`. That module owns:
 
-- Add `mmrelay.matrix.compat`.
-- Detect installed provider metadata with `importlib.metadata`.
-- Detect runtime crypto capability by importing optional modules only when
-  needed:
-  - `olm`
-  - `vodozemac`
-  - `nio.crypto`
-  - `nio.store`
-- Export a small immutable capabilities object and cache helpers for normal
-  runtime plus test isolation.
-- Provide a single formatting helper for E2EE-unavailable messages.
+- Provider metadata detection with `importlib.metadata`.
+- Optional crypto capability detection through lazy guarded imports:
+  `olm`, `vodozemac`, `nio.crypto`, and `nio.store`.
+- A small immutable capabilities object for runtime decisions, diagnostics, and
+  tests.
+- Provider-aware E2EE unavailable messages and install guidance.
+- Cache helpers so normal runtime checks are stable and tests can isolate
+  capability scenarios.
 
-### Phase 2: E2EE Detection Refactor
+Runtime code should consume this compatibility boundary instead of checking
+`olm`, `vodozemac`, `nio.crypto`, or package metadata directly.
 
-- Replace direct `olm` checks in `mmrelay.e2ee_utils` with
-  `detect_matrix_capabilities()`.
-- Keep status shape stable for callers.
-- Add provider-specific issue text.
+## E2EE Readiness Contract
 
-### Phase 3: Auth and Client Setup Updates
+E2EE readiness requires a usable crypto backend and a usable store:
 
-- Replace direct `olm` checks in `mmrelay.matrix.auth._configure_e2ee`.
-- Keep store path resolution and client construction unchanged.
-- Ensure logs report the detected provider/backend and correct install hint.
+- Legacy upstream mode: `python-olm`, `nio.crypto.OlmDevice`, and
+  `nio.store.SqliteStore`.
+- Mindroom mode: `vodozemac`, `nio.crypto.ENCRYPTION_ENABLED is True`, and
+  `nio.store.SqliteStore`.
 
-### Phase 4: Packaging Extras Cleanup
+The public E2EE status shape remains stable for callers. User-facing issues and
+fix instructions should be provider-aware:
 
-- Decide whether MMRelay keeps `matrix-nio` as the default dependency or moves
-  Matrix providers behind explicit extras.
-- Avoid extras that install both namespace owners into the same environment.
-- Document replacement install commands for users testing `mindroom-nio`.
+- `matrix-nio` missing crypto should mention `python-olm`,
+  `matrix-nio[e2e]`, or `mmrelay[e2e]`.
+- `mindroom-nio` missing crypto should mention `vodozemac` and
+  `mindroom-nio[e2e]`.
+- If both known providers are installed, the diagnostic should tell the user to
+  uninstall one `nio` namespace owner before enabling E2EE.
 
-### Phase 5: Runtime API Audit
+## Packaging Contract
 
-Audit all direct calls and imports against both providers:
+MMRelay keeps `matrix-nio` as the default Matrix provider. The `mmrelay[e2e]`
+extra remains upstream-compatible and installs `matrix-nio[e2e]`.
+
+Mindroom extras are explicit replacement-provider install targets:
+
+- `mindroom`
+- `mindroom-e2e`
+
+These extras must not be presented as safe to install alongside the default
+provider. User documentation and diagnostics should say that mindroom users must
+replace `matrix-nio` in their environment because both distributions provide
+the `nio` namespace.
+
+## Runtime API Surface
+
+The compatibility contract covers all MMRelay calls and imports against `nio`:
 
 - `AsyncClientConfig`
 - `AsyncClient`
@@ -108,11 +122,16 @@ Audit all direct calls and imports against both providers:
 Fragile imports, such as alternate `InviteMemberEvent` locations, should be
 centralized only if they become a recurring compatibility surface.
 
-### Phase 6: Tests and Documentation
+## Test Expectations
 
-- Add focused tests for capability detection across both provider families.
-- Add E2EE status and auth setup tests for correct install guidance.
-- Add durable docs modeled after the BLE dual-library compatibility contract.
+- Capability tests should patch internals of `mmrelay.matrix.compat` only.
+- Runtime E2EE tests should patch the compatibility boundary, such as
+  `mmrelay.matrix.auth.get_matrix_capabilities` or
+  `mmrelay.e2ee_utils.get_matrix_capabilities`.
+- Tests should not pretend to simulate missing crypto by patching old internal
+  import paths that no longer control E2EE readiness.
+- Coverage should include both provider families, missing crypto extras,
+  provider-aware messages, and the dual-provider namespace conflict.
 
 ## Risks
 
@@ -121,9 +140,8 @@ centralized only if they become a recurring compatibility surface.
   this case.
 - `matrix-nio` and `mindroom-nio` may both expose legacy names such as
   `OlmDevice` even when backed by different crypto libraries.
-- Some tests currently patch old import locations. Tests should move toward
-  patching the compatibility boundary instead of internal import mechanics.
-- Packaging changes can break existing install workflows if done too early.
+- Packaging changes can break existing install workflows if extras imply that
+  both namespace owners can coexist.
 
 ## Validation Checklist
 
@@ -137,10 +155,5 @@ centralized only if they become a recurring compatibility surface.
 
 ## Open Questions
 
-- Should MMRelay retain `matrix-nio` as the default install and make
-  `mindroom-nio` an explicit replacement extra, or should both providers move
-  behind extras?
-- Should `mmrelay[e2e]` continue to mean upstream `matrix-nio[e2e]`, with a
-  separate `mindroom-e2e` extra for the fork?
 - What exact `mindroom-nio` version should be pinned once the fork publishes a
   stable release for MMRelay consumption?
