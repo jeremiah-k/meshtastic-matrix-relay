@@ -66,7 +66,7 @@ def get_e2ee_status(
           - available (bool): Platform and dependencies allow E2EE.
           - configured (bool): Authentication/credentials are present.
           - platform_supported (bool): False when running on unsupported platforms (e.g., Windows/msys/cygwin).
-          - dependencies_installed (bool): True if required olm/nio components are importable.
+          - dependencies_installed (bool): True if the active Matrix provider's crypto backend is available.
           - credentials_available (bool): True if a Matrix `credentials.json` file was discovered in searched locations.
           - overall_status (str): One of "ready", "disabled", "unavailable", or "incomplete".
           - issues (List[str]): Human-readable issues that prevent full E2EE readiness.

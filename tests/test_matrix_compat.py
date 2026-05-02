@@ -75,14 +75,28 @@ def test_e2e_extra_points_to_mindroom():
 def test_no_extra_installs_both_providers_with_base():
     project = _read_pyproject_deps()
     base_deps = project.get("dependencies", [])
-    extras = project.get("optional-dependencies", {}).values()
+    extras = project.get("optional-dependencies", {})
 
-    for deps in list(extras) + [base_deps]:
-        has_matrix = any("matrix-nio" in dep for dep in deps)
-        has_mindroom = any("mindroom-nio" in dep for dep in deps)
+    # For every optional extra, evaluate combined dependencies as base_deps + extra_deps
+    for extra_name, extra_deps in extras.items():
+        combined = base_deps + extra_deps
+        has_matrix = any("matrix-nio" in dep for dep in combined)
+        has_mindroom = any("mindroom-nio" in dep for dep in combined)
         assert not (
             has_matrix and has_mindroom
-        ), f"deps {deps} contain both matrix-nio and mindroom-nio"
+        ), f"extra '{extra_name}' combined deps contain both matrix-nio and mindroom-nio"
+
+    # Also verify no non-e2e extra introduces Matrix provider deps
+    for name, deps in extras.items():
+        if name == "e2e":
+            continue
+        for dep in deps:
+            assert (
+                "matrix-nio" not in dep
+            ), f"extra {name} unexpectedly contains matrix-nio: {dep}"
+            assert (
+                "mindroom-nio" not in dep
+            ), f"extra {name} unexpectedly contains mindroom-nio: {dep}"
 
 
 def test_both_providers_installed_disables_e2ee_even_with_crypto(monkeypatch):

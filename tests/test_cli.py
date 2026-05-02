@@ -26,6 +26,7 @@ import sys
 import unittest
 import unittest.mock
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, mock_open, patch
 
 # Add repo root and src to path for imports
@@ -3024,10 +3025,8 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
 class TestProviderAwareE2EEGuidance(unittest.TestCase):
     """Test CLI guidance changes by provider."""
 
-    def _make_caps(self, **overrides) -> MatrixLibraryCapabilities:
+    def _make_caps(self, **overrides: Any) -> MatrixLibraryCapabilities:
         from dataclasses import replace
-
-        from mmrelay.matrix.compat import MatrixLibraryCapabilities
 
         baseline = MatrixLibraryCapabilities(
             provider_name="mindroom-nio",
