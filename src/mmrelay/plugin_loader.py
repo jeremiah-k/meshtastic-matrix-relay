@@ -2900,9 +2900,9 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
 
 
 def _should_ignore_plugin_file(filename: str) -> bool:
-    if filename.startswith("."):
-        return True
-    return any(fnmatch.fnmatch(filename, p) for p in PLUGIN_IGNORED_FILE_PATTERNS)
+    return filename.startswith(".") or any(
+        fnmatch.fnmatch(filename, pattern) for pattern in PLUGIN_IGNORED_FILE_PATTERNS
+    )
 
 
 def load_plugins_from_directory(
@@ -2914,6 +2914,8 @@ def load_plugins_from_directory(
     Discover and instantiate top-level Plugin classes from Python modules in a directory.
 
     Scans the given directory (optionally recursively) for .py modules, imports each module in an isolated namespace, and returns instantiated top-level `Plugin` objects found. On import failure due to a missing dependency, the function may attempt an auto-install retry for non-community plugins and refresh import paths before retrying. The function does not raise on individual plugin load failures; it returns only successfully instantiated plugins.
+
+    During plugin discovery, MMRelay ignores test/support files such as ``test_*.py``, ``*_test.py``, ``conftest.py``, ``__init__.py``, hidden Python files (starting with ``.``), and directories such as ``tests``, ``.tests``, ``__pycache__``, ``.git``, and ``.pytest_cache``.
 
     Parameters:
         directory (str): Path to the directory containing plugin Python files.
