@@ -16,8 +16,10 @@ Matrix.org considers it
 [safe for practical use](https://matrix.org/blog/2024/08/libolm-deprecation/)
 but recommends migrating to vodozemac.
 
-MMRelay currently relies on `matrix-nio`, which still depends on `libolm`.
-Migration work is in progress upstream.
+MMRelay now uses **mindroom-nio** as its default Matrix provider, which uses
+**vodozemac** (the Rust successor to libolm) for E2EE. The legacy
+`matrix-nio` provider with `python-olm` is still supported through manual
+replacement but is no longer the default.
 
 ## Index
 
@@ -150,11 +152,16 @@ session: you need to log in again and re-verify devices.
 pipx install 'mmrelay[e2e]'
 ```
 
+The `mmrelay[e2e]` extra installs **mindroom-nio[e2e]** which includes the
+**vodozemac** crypto backend (Rust-based, no native C dependencies beyond what
+pip wheels provide).
+
 ### Windows limitation
 
 **E2EE is not available on Windows** due to technical limitations with required
-cryptographic libraries (`python-olm` depends on native C libraries that are
-not straightforward to install there).
+cryptographic libraries. The default vodozemac backend and the legacy
+python-olm backend both depend on native libraries that are not straightforward
+to install on Windows.
 
 Windows users can still use MMRelay for regular (unencrypted) Matrix
 communication.
@@ -169,6 +176,13 @@ pipx install 'mmrelay[e2e]'
 # Or using pip
 pip install 'mmrelay[e2e]'
 ```
+
+This installs **mindroom-nio** with the **vodozemac** crypto backend as the
+default E2EE provider.
+
+> **Legacy matrix-nio users**: If you are manually using `matrix-nio` instead
+> of the default mindroom-nio, install `matrix-nio[e2e]` in a separate
+> environment. Do not install both providers together.
 
 ### 2. Enable E2EE in config
 
@@ -276,7 +290,7 @@ expected to show a red shield warning:
 This is expected because:
 
 - Messages **are encrypted** using Matrix E2EE (Olm/Megolm)
-- `matrix-nio` does not support interactive device verification
+- The nio library does not support interactive device verification
   (emoji/QR verification)
 - MMRelay devices cannot be cross-signed through the standard Matrix client
   verification flow
@@ -290,8 +304,9 @@ that as a real issue (usually configuration/version related) and troubleshoot.
 
 **Problem**: E2EE features do not work on Windows.
 
-**Explanation**: E2EE requires `python-olm`, which depends on native C
-libraries that are difficult to install on Windows.
+**Explanation**: E2EE requires native cryptographic libraries (vodozemac for
+the default mindroom-nio provider, or python-olm for legacy matrix-nio). Both
+have native dependencies that are difficult to install on Windows.
 
 **What to do**:
 
@@ -309,11 +324,23 @@ pipx install 'mmrelay[e2e]'
 pip install 'mmrelay[e2e]'
 ```
 
+This installs mindroom-nio with the vodozemac crypto backend.
+
 If running from a local checkout:
 
 ```bash
 pip install -e '.[e2e]'
 ```
+
+If you are using the legacy matrix-nio provider instead of the default
+mindroom-nio, install its E2EE extra separately:
+
+```bash
+pip install 'matrix-nio[e2e]==0.25.2'
+```
+
+> **Warning**: Do not install both mindroom-nio and matrix-nio in the same
+> environment. They both provide the `nio` namespace and will conflict.
 
 ### "Failed to decrypt event" in logs
 
@@ -359,9 +386,11 @@ E2EE support is backward compatible:
 
 ### Implementation
 
-- Uses `matrix-nio` with Olm/Megolm protocols
+- Uses **mindroom-nio** (default) with **vodozemac** crypto backend, or
+  **matrix-nio** (legacy) with **Olm/Megolm** protocols
 - Loads E2EE store before sync operations
 - Uses automatic key management with `ignore_unverified_devices=True`
+- Provider detection and capability reporting via `mmrelay.matrix.compat`
 
 ### Performance impact
 

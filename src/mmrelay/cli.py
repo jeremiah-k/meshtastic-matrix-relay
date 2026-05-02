@@ -535,9 +535,15 @@ def _validate_e2ee_dependencies() -> bool:
         print("✅ E2EE dependencies are installed")
         return True
 
+    from mmrelay.matrix.compat import (
+        format_e2ee_install_command,
+        get_matrix_capabilities,
+    )
+
+    caps = get_matrix_capabilities()
     print("❌ Error: E2EE dependencies not installed")
     print("   End-to-end encryption features require additional dependencies")
-    print("   Install E2EE support: pipx install 'mmrelay[e2e]'")
+    print(f"   Install E2EE support: {format_e2ee_install_command(caps)}")
     return False
 
 
@@ -817,8 +823,14 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
     # Check dependencies
     analysis["dependencies_available"] = _e2ee_dependencies_available()
     if not analysis["dependencies_available"]:
+        from mmrelay.matrix.compat import (
+            format_e2ee_install_command,
+            get_matrix_capabilities,
+        )
+
+        caps = get_matrix_capabilities()
         analysis["recommendations"].append(
-            "Install E2EE dependencies: pipx install 'mmrelay[e2e]'"
+            f"Install E2EE dependencies: {format_e2ee_install_command(caps)}"
         )
 
     # Check config setting
@@ -1056,8 +1068,14 @@ def _print_environment_summary() -> None:
         if _e2ee_dependencies_available():
             print("   E2EE Support: ✅ Available and installed")
         else:
+            from mmrelay.matrix.compat import (
+                format_e2ee_install_command,
+                get_matrix_capabilities,
+            )
+
+            caps = get_matrix_capabilities()
             print("   E2EE Support: ⚠️  Available but not installed")
-            print("   Install: pipx install 'mmrelay[e2e]'")
+            print(f"   Install: {format_e2ee_install_command(caps)}")
 
 
 def _is_valid_serial_port(port: str) -> bool:
@@ -2095,8 +2113,14 @@ def _print_system_health(paths_info: dict[str, Any]) -> None:
     elif _e2ee_dependencies_available():
         print("   ✅ E2EE crypto libraries available")
     else:
+        from mmrelay.matrix.compat import (
+            format_e2ee_install_command,
+            get_matrix_capabilities,
+        )
+
+        caps = get_matrix_capabilities()
         print("   ❌ Missing E2EE crypto libraries")
-        print("       Install with: pip install mmrelay[e2e]")
+        print(f"       Install with: {format_e2ee_install_command(caps)}")
 
     # Disk Space
     print("\n💾 Disk Space:")

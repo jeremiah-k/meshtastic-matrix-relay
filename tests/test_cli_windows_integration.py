@@ -304,10 +304,36 @@ class TestCLIE2EEValidation(unittest.TestCase):
     def test_e2ee_validation_improved_error_message(self, mock_print):
         """Test that E2EE validation shows improved error messages."""
         from mmrelay.cli import _validate_e2ee_dependencies
+        from mmrelay.matrix.compat import (
+            MatrixLibraryCapabilities,
+            reset_matrix_capabilities_cache,
+        )
 
-        # Mock import to fail
+        reset_matrix_capabilities_cache()
+        caps = MatrixLibraryCapabilities(
+            provider_name="mindroom-nio",
+            provider_version="0.25.2",
+            provider_distribution="mindroom-nio",
+            crypto_backend="vodozemac",
+            encryption_available=False,
+            store_available=True,
+            sqlite_store_available=True,
+            olm_available=False,
+            vodozemac_available=False,
+            nio_crypto_available=True,
+            nio_crypto_encryption_enabled=True,
+            nio_crypto_olm_device_available=False,
+            recommended_e2ee_extra="mindroom-nio[e2e]",
+            install_hint="install mindroom-nio[e2e] / vodozemac",
+            both_known_providers_installed=False,
+            supports_stop_sync_forever=True,
+            supports_thread_receipts=True,
+            supports_authenticated_media=True,
+        )
+
         with patch(
-            "builtins.__import__", side_effect=ImportError("No module named 'olm'")
+            "mmrelay.matrix.compat.detect_matrix_capabilities",
+            return_value=caps,
         ):
             result = _validate_e2ee_dependencies()
 

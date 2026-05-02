@@ -260,10 +260,7 @@ def format_e2ee_install_command(
             "nio namespace and should not be installed together."
         )
     if detected.provider_distribution == "mindroom-nio":
-        return (
-            "Install mindroom E2EE as a replacement provider: "
-            "pip install 'mindroom-nio[e2e]==0.25.2'. Do not install it alongside matrix-nio."
-        )
+        return "pipx install 'mmrelay[e2e]' (installs mindroom-nio[e2e] / vodozemac)"
     if detected.provider_distribution == "matrix-nio":
         return (
             "Install matrix-nio E2EE in a controlled replacement environment: "

@@ -3017,6 +3017,73 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
         mock_print.assert_any_call("   E2EE Support: ✅ Available and installed")
 
 
+class TestProviderAwareE2EEGuidance(unittest.TestCase):
+    """Test CLI guidance changes by provider."""
+
+    def _make_caps(self, **overrides):
+        from mmrelay.matrix.compat import (
+            MatrixLibraryCapabilities,
+            detect_matrix_capabilities,
+            reset_matrix_capabilities_cache,
+        )
+
+        reset_matrix_capabilities_cache()
+        base = detect_matrix_capabilities()
+        from dataclasses import replace
+
+        return replace(base, **overrides)
+
+    @patch("sys.platform", "linux")
+    @patch("builtins.print")
+    def test_mindroom_missing_crypto_prints_mmrelay_e2e(self, mock_print):
+        """Mindroom missing E2EE recommends mmrelay[e2e]."""
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        caps = self._make_caps(
+            provider_distribution="mindroom-nio",
+            encryption_available=False,
+        )
+        with patch("mmrelay.matrix.compat.get_matrix_capabilities", return_value=caps):
+            _validate_e2ee_dependencies()
+
+        printed = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
+        assert any("mmrelay[e2e]" in m for m in printed)
+
+    @patch("sys.platform", "linux")
+    @patch("builtins.print")
+    def test_matrix_nio_missing_crypto_no_mmrelay_e2e(self, mock_print):
+        """Matrix-nio missing E2EE does NOT recommend mmrelay[e2e]."""
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        caps = self._make_caps(
+            provider_distribution="matrix-nio",
+            encryption_available=False,
+        )
+        with patch("mmrelay.matrix.compat.get_matrix_capabilities", return_value=caps):
+            _validate_e2ee_dependencies()
+
+        printed = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
+        assert not any("mmrelay[e2e]" in m for m in printed)
+        assert any("matrix-nio[e2e]" in m for m in printed)
+
+    @patch("sys.platform", "linux")
+    @patch("builtins.print")
+    def test_both_providers_installed_recommends_uninstall(self, mock_print):
+        """Both providers installed recommends uninstalling one."""
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        caps = self._make_caps(
+            provider_distribution="unknown",
+            both_known_providers_installed=True,
+            encryption_available=False,
+        )
+        with patch("mmrelay.matrix.compat.get_matrix_capabilities", return_value=caps):
+            _validate_e2ee_dependencies()
+
+        printed = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
+        assert any("Uninstall" in m for m in printed)
+
+
 class TestValidateE2eeConfig(unittest.TestCase):
     """Test cases for _validate_e2ee_config function."""
 
