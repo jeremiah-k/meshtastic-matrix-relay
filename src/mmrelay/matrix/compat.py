@@ -185,6 +185,9 @@ def detect_matrix_capabilities() -> MatrixLibraryCapabilities:
         and sqlite_store_available
     )
 
+    crypto_backend: CryptoBackend = "unknown"
+    encryption_available = False
+
     if provider_distribution == "mindroom-nio":
         if vodozemac_ready:
             crypto_backend = "vodozemac"
