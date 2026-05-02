@@ -3042,12 +3042,15 @@ class TestProviderAwareE2EEGuidance(unittest.TestCase):
         caps = self._make_caps(
             provider_distribution="mindroom-nio",
             encryption_available=False,
+            both_known_providers_installed=False,
         )
         with patch("mmrelay.matrix.compat.get_matrix_capabilities", return_value=caps):
             _validate_e2ee_dependencies()
 
         printed = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
-        assert any("mmrelay[e2e]" in m for m in printed)
+        install_line = [m for m in printed if "Install E2EE support" in m]
+        assert len(install_line) == 1
+        assert "mmrelay[e2e]" in install_line[0]
 
     @patch("sys.platform", "linux")
     @patch("builtins.print")
@@ -3058,13 +3061,16 @@ class TestProviderAwareE2EEGuidance(unittest.TestCase):
         caps = self._make_caps(
             provider_distribution="matrix-nio",
             encryption_available=False,
+            both_known_providers_installed=False,
         )
         with patch("mmrelay.matrix.compat.get_matrix_capabilities", return_value=caps):
             _validate_e2ee_dependencies()
 
         printed = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
-        assert not any("mmrelay[e2e]" in m for m in printed)
-        assert any("matrix-nio[e2e]" in m for m in printed)
+        install_line = [m for m in printed if "Install E2EE support" in m]
+        assert len(install_line) == 1
+        assert "matrix-nio[e2e]" in install_line[0]
+        assert "pipx install 'mmrelay[e2e]'" not in install_line[0]
 
     @patch("sys.platform", "linux")
     @patch("builtins.print")
