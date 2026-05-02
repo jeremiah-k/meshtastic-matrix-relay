@@ -303,6 +303,11 @@ def format_e2ee_unavailable_message(
         f"version={detected.provider_version} "
         f"crypto_backend={detected.crypto_backend}"
     )
+    if detected.both_known_providers_installed:
+        return (
+            "E2EE is unavailable because matrix-nio and mindroom-nio are both "
+            f"installed ({details})"
+        )
     return f"E2EE dependencies not installed ({detected.install_hint}; {details})"
 
 
@@ -324,9 +329,14 @@ def format_e2ee_install_command(
             "editable: pip install -e '.[e2e]')"
         )
     if detected.provider_distribution == "matrix-nio":
+        version_pin = (
+            f"=={detected.provider_version}"
+            if detected.provider_version != _UNKNOWN_VERSION
+            else ""
+        )
         return (
             "Install matrix-nio E2EE in a controlled replacement environment: "
-            "pip install 'matrix-nio[e2e]==0.25.2'. "
+            f"pip install 'matrix-nio[e2e]{version_pin}'. "
             "Do not install mmrelay[e2e] (it uses mindroom-nio)."
         )
     return f"Install the active nio provider's E2EE extra ({detected.recommended_e2ee_extra})."

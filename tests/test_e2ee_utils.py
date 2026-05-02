@@ -525,14 +525,16 @@ class TestGetE2eeErrorMessage:
         """Missing dependencies should return deps message."""
         from mmrelay.e2ee_utils import get_e2ee_error_message
 
-        result = get_e2ee_error_message(
-            {
-                "overall_status": "incomplete",
-                "enabled": True,
-                "platform_supported": True,
-                "dependencies_installed": False,
-            }
-        )
+        caps = _matrix_capabilities(encryption_available=False)
+        with patch("mmrelay.e2ee_utils.get_matrix_capabilities", return_value=caps):
+            result = get_e2ee_error_message(
+                {
+                    "overall_status": "incomplete",
+                    "enabled": True,
+                    "platform_supported": True,
+                    "dependencies_installed": False,
+                }
+            )
         assert "dependencies" in result.lower()
 
     def test_missing_credentials(self):

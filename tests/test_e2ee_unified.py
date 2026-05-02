@@ -483,8 +483,10 @@ class TestE2EEErrorMessages(unittest.TestCase):
         self.assertEqual(instructions[0], MSG_E2EE_WINDOWS_UNSUPPORTED)
         self.assertEqual(instructions[1], MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL)
 
-    def test_get_e2ee_warning_messages(self):
+    @patch("mmrelay.e2ee_utils.get_matrix_capabilities")
+    def test_get_e2ee_warning_messages(self, mock_get_caps):
         """Test that get_e2ee_warning_messages returns expected warning messages."""
+        mock_get_caps.return_value = _make_capabilities(encryption_available=True)
         warnings = get_e2ee_warning_messages()
 
         # Verify it's a dictionary
