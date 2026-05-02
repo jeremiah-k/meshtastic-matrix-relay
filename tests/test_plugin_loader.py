@@ -325,20 +325,20 @@ class TestPluginLoader(BaseGitTest):
         plugin_content = """
 class Plugin:
     def __init__(self):
-        self.plugin_name = "test_plugin"
+        self.plugin_name = "sample_plugin"
         self.priority = 10
         
     def start(self):
         pass
 """
-        plugin_file = os.path.join(self.custom_dir, "test_plugin.py")
+        plugin_file = os.path.join(self.custom_dir, "sample_plugin.py")
         with open(plugin_file, "w") as f:
             f.write(plugin_content)
 
         plugins = load_plugins_from_directory(self.custom_dir)
 
         self.assertEqual(len(plugins), 1)
-        self.assertEqual(plugins[0].plugin_name, "test_plugin")
+        self.assertEqual(plugins[0].plugin_name, "sample_plugin")
         self.assertEqual(plugins[0].priority, 10)
 
         module_name = (

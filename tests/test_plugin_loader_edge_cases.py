@@ -23,6 +23,10 @@ from unittest.mock import MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.plugins import (
+    PLUGIN_IGNORED_DIR_NAMES,
+    PLUGIN_IGNORED_FILE_PATTERNS,
+)
 from mmrelay.plugin_loader import (
     _get_plugin_dirs,
     _get_plugin_root_dirs,
@@ -662,6 +666,115 @@ class Plugin:
                                     temp_dir, exist_ok=True
                                 )
                                 mock_logger.debug.assert_not_called()
+
+    def test_ignored_directory_names_skipped(self):
+        for dirname in PLUGIN_IGNORED_DIR_NAMES:
+            with (
+                self.subTest(dirname=dirname),
+                tempfile.TemporaryDirectory() as temp_dir,
+            ):
+                ignored_dir = os.path.join(temp_dir, dirname)
+                os.makedirs(ignored_dir)
+                plugin_file = os.path.join(ignored_dir, "my_plugin.py")
+                with open(plugin_file, "w") as f:
+                    f.write('class Plugin:\n    plugin_name = "should_not_load"\n')
+                plugins = load_plugins_from_directory(temp_dir, recursive=True)
+                self.assertEqual(
+                    plugins,
+                    [],
+                    f"Expected no plugins from ignored directory {dirname!r}",
+                )
+
+    def test_ignored_file_patterns_skipped(self):
+        for pattern in PLUGIN_IGNORED_FILE_PATTERNS:
+            with (
+                self.subTest(pattern=pattern),
+                tempfile.TemporaryDirectory() as temp_dir,
+            ):
+                filename = (
+                    pattern.replace("*", "something") if "*" in pattern else pattern
+                )
+                plugin_file = os.path.join(temp_dir, filename)
+                with open(plugin_file, "w") as f:
+                    f.write('class Plugin:\n    plugin_name = "should_not_load"\n')
+                plugins = load_plugins_from_directory(temp_dir)
+                self.assertEqual(
+                    plugins,
+                    [],
+                    f"Expected no plugins from ignored file {filename!r} (pattern {pattern!r})",
+                )
+
+    def test_hidden_files_skipped(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            hidden_file = os.path.join(temp_dir, ".hidden_plugin.py")
+            with open(hidden_file, "w") as f:
+                f.write('class Plugin:\n    plugin_name = "hidden"\n')
+            plugins = load_plugins_from_directory(temp_dir)
+            self.assertEqual(plugins, [])
+
+    def test_normal_plugins_load_alongside_ignored(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            good_file = os.path.join(temp_dir, "my_plugin.py")
+            with open(good_file, "w") as f:
+                f.write('class Plugin:\n    plugin_name = "good"\n')
+            test_file = os.path.join(temp_dir, "test_helper.py")
+            with open(test_file, "w") as f:
+                f.write('class Plugin:\n    plugin_name = "test"\n')
+            tests_dir = os.path.join(temp_dir, "tests")
+            os.makedirs(tests_dir)
+            nested = os.path.join(tests_dir, "nested_plugin.py")
+            with open(nested, "w") as f:
+                f.write('class Plugin:\n    plugin_name = "nested"\n')
+            plugins = load_plugins_from_directory(temp_dir, recursive=True)
+            self.assertEqual(len(plugins), 1)
+            self.assertEqual(plugins[0].plugin_name, "good")
+
+    def test_should_ignore_plugin_file_helper(self):
+        from mmrelay.plugin_loader import _should_ignore_plugin_file
+
+        for pattern in PLUGIN_IGNORED_FILE_PATTERNS:
+            with self.subTest(pattern=pattern):
+                if pattern.startswith("test_") or pattern.endswith("_test.py"):
+                    assert _should_ignore_plugin_file(
+                        pattern.replace("*", "foo")
+                    ), f"Should ignore {pattern.replace('*', 'foo')}"
+                else:
+                    assert _should_ignore_plugin_file(
+                        pattern
+                    ), f"Should ignore {pattern}"
+
+        assert _should_ignore_plugin_file(".hidden.py")
+        assert not _should_ignore_plugin_file("my_plugin.py")
+        assert not _should_ignore_plugin_file("weather.py")
+        assert not _should_ignore_plugin_file("hello_world.py")
+
+    def test_tests_dir_prefix_skipped(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tests_dir = os.path.join(temp_dir, ".tests")
+            os.makedirs(tests_dir)
+            plugin_file = os.path.join(tests_dir, "inner.py")
+            with open(plugin_file, "w") as f:
+                f.write('class Plugin:\n    plugin_name = "inner"\n')
+            plugins = load_plugins_from_directory(temp_dir, recursive=True)
+            self.assertEqual(plugins, [])
+
+    def test_conftest_skipped(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            conftest = os.path.join(temp_dir, "conftest.py")
+            with open(conftest, "w") as f:
+                f.write('class Plugin:\n    plugin_name = "conftest"\n')
+            plugins = load_plugins_from_directory(temp_dir)
+            self.assertEqual(plugins, [])
+
+    def test_nonrecursive_does_not_prune_top_level_dirs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tests_dir = os.path.join(temp_dir, "tests")
+            os.makedirs(tests_dir)
+            nested = os.path.join(tests_dir, "nested.py")
+            with open(nested, "w") as f:
+                f.write('class Plugin:\n    plugin_name = "nested"\n')
+            plugins = load_plugins_from_directory(temp_dir, recursive=False)
+            self.assertEqual(plugins, [])
 
 
 if __name__ == "__main__":

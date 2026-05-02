@@ -268,3 +268,22 @@ GIT_DEFAULT_BRANCH_SENTINEL: Final[str] = "default branch"
 PLUGIN_TYPE_CORE: Final[str] = "core"
 PLUGIN_TYPE_CUSTOM: Final[str] = "custom"
 PLUGIN_TYPE_COMMUNITY: Final[str] = "community"
+
+# Directory and file names ignored during plugin discovery.
+# Test/support files and hidden files are not imported as plugins.
+PLUGIN_IGNORED_DIR_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "tests",
+        ".tests",
+        "__pycache__",
+        ".git",
+        ".pytest_cache",
+    }
+)
+
+PLUGIN_IGNORED_FILE_PATTERNS: Final[tuple[str, ...]] = (
+    "test_*.py",
+    "*_test.py",
+    "conftest.py",
+    "__init__.py",
+)
