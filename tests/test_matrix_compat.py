@@ -1,4 +1,3 @@
-import re
 from types import SimpleNamespace
 
 import pytest

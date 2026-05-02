@@ -20,7 +20,6 @@
 # See docs/dev/TESTING_GUIDE.md for comprehensive async mocking patterns.
 # ruff: noqa: E402
 
-import builtins
 import json
 import os
 import sys
@@ -3026,7 +3025,6 @@ class TestProviderAwareE2EEGuidance(unittest.TestCase):
 
     def _make_caps(self, **overrides):
         from mmrelay.matrix.compat import (
-            MatrixLibraryCapabilities,
             detect_matrix_capabilities,
             reset_matrix_capabilities_cache,
         )

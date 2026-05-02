@@ -158,7 +158,7 @@ def detect_matrix_capabilities() -> MatrixLibraryCapabilities:
         crypto_backend: CryptoBackend = "unavailable"
         encryption_available = False
     elif vodozemac_ready:
-        crypto_backend: CryptoBackend = "vodozemac"
+        crypto_backend = "vodozemac"
         encryption_available = True
     elif legacy_olm_ready:
         crypto_backend = "olm"

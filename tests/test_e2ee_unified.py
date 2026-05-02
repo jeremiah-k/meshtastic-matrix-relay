@@ -12,11 +12,10 @@ import logging
 import os
 import sys
 import tempfile
-import types
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
