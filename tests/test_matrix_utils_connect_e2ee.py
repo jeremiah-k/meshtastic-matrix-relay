@@ -22,7 +22,7 @@ def _matrix_capabilities(
     install_hint: str = "install matrix-nio[e2e] / python-olm",
     recommended_e2ee_extra: str = "matrix-nio[e2e]",
     both_known_providers_installed: bool = False,
-):
+) -> SimpleNamespace:
     return SimpleNamespace(
         encryption_available=encryption_available,
         provider_distribution=provider_distribution,

@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.cli import generate_sample_config, main
 from mmrelay.constants.cli import EXIT_CODE_SUCCESS
+from mmrelay.matrix.compat import reset_matrix_capabilities_cache
 
 
 class TestCLIWindowsConsoleSetup(unittest.TestCase):
@@ -301,18 +302,14 @@ class TestCLIE2EEValidation(unittest.TestCase):
     """Test cases for E2EE dependency validation improvements."""
 
     def setUp(self):
-        from mmrelay.matrix.compat import reset_matrix_capabilities_cache
-
         reset_matrix_capabilities_cache()
 
     def tearDown(self):
-        from mmrelay.matrix.compat import reset_matrix_capabilities_cache
-
         reset_matrix_capabilities_cache()
 
     @patch("builtins.print")
     def test_e2ee_validation_improved_error_message(self, mock_print):
-        """Test that E2EE validation shows improved error messages."""
+        """Test that E2EE validation shows improved error messages with default mindroom-nio guidance."""
         from mmrelay.cli import _validate_e2ee_dependencies
         from mmrelay.matrix.compat import MatrixLibraryCapabilities
 

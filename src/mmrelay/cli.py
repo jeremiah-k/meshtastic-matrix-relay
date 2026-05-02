@@ -798,7 +798,7 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
     Returns:
         dict: Analysis summary with the following keys:
           - config_enabled (bool): True if E2EE/encryption is enabled in config.
-          - dependencies_available (bool): True if required E2EE packages are importable.
+          - dependencies_available (bool): True if the active Matrix provider's crypto backend is available.
           - credentials_available (bool): True if a usable credentials.json was found.
           - platform_supported (bool): False when the current platform does not support E2EE (e.g., Windows).
           - overall_status (str): One of "ready", "disabled", "not_supported", "incomplete", or "unknown".

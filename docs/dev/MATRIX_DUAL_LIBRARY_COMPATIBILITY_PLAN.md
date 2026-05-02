@@ -116,9 +116,12 @@ pip uninstall mindroom-nio
 pip install 'matrix-nio[e2e]==0.25.2'
 ```
 
-**mix matrix-nio and mindroom-nio in the same environment is always a
+**Mixing matrix-nio and mindroom-nio in the same environment is always a
 conflict.** The extra system cannot represent this cleanly; manual replacement
 is the only supported path.
+
+> **Note**: `docs/COMPATIBILITY.md` is the canonical compatibility and
+> deprecation inventory. This plan should stay aligned with it.
 
 ## Hard Warning: conflicting nio namespace
 

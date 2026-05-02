@@ -157,6 +157,32 @@ def detect_matrix_capabilities() -> MatrixLibraryCapabilities:
     if both_installed:
         crypto_backend: CryptoBackend = "unavailable"
         encryption_available = False
+    elif provider_distribution == "mindroom-nio":
+        if vodozemac_ready:
+            crypto_backend = "vodozemac"
+            encryption_available = True
+        elif vodozemac_available or nio_crypto_encryption_enabled is True:
+            crypto_backend = "vodozemac"
+            encryption_available = False
+        elif nio_crypto_available:
+            crypto_backend = "unavailable"
+            encryption_available = False
+        else:
+            crypto_backend = "unknown"
+            encryption_available = False
+    elif provider_distribution == "matrix-nio":
+        if legacy_olm_ready:
+            crypto_backend = "olm"
+            encryption_available = True
+        elif olm_available or nio_crypto_olm_device_available:
+            crypto_backend = "olm"
+            encryption_available = False
+        elif nio_crypto_available:
+            crypto_backend = "unavailable"
+            encryption_available = False
+        else:
+            crypto_backend = "unknown"
+            encryption_available = False
     elif vodozemac_ready:
         crypto_backend = "vodozemac"
         encryption_available = True

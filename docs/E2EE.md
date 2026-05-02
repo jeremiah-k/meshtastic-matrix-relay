@@ -180,9 +180,11 @@ pip install 'mmrelay[e2e]'
 This installs **mindroom-nio** with the **vodozemac** crypto backend as the
 default E2EE provider.
 
-> **Legacy matrix-nio users**: If you are manually using `matrix-nio` instead
-> of the default mindroom-nio, install `matrix-nio[e2e]` in a separate
-> environment. Do not install both providers together.
+> **Legacy matrix-nio users**: If you are manually replacing mindroom-nio with
+> `matrix-nio` (uninstall mindroom-nio first, then install matrix-nio), use
+> `pip install 'matrix-nio[e2e]==0.25.2'` instead. Do **not** install
+> `mmrelay[e2e]` — it pulls in mindroom-nio. Never install both providers in
+> the same Python environment.
 
 ### 2. Enable E2EE in config
 
@@ -324,7 +326,9 @@ pipx install 'mmrelay[e2e]'
 pip install 'mmrelay[e2e]'
 ```
 
-This installs mindroom-nio with the vodozemac crypto backend.
+This installs mindroom-nio with the vodozemac crypto backend. Vodozemac is
+Rust-based and distributed as precompiled wheels requiring no extra system
+libraries.
 
 If running from a local checkout:
 
@@ -333,7 +337,8 @@ pip install -e '.[e2e]'
 ```
 
 If you are using the legacy matrix-nio provider instead of the default
-mindroom-nio, install its E2EE extra separately:
+mindroom-nio (by manually uninstalling mindroom-nio and installing matrix-nio),
+install its E2EE extra separately:
 
 ```bash
 pip install 'matrix-nio[e2e]==0.25.2'
@@ -341,6 +346,8 @@ pip install 'matrix-nio[e2e]==0.25.2'
 
 > **Warning**: Do not install both mindroom-nio and matrix-nio in the same
 > environment. They both provide the `nio` namespace and will conflict.
+> Do **not** install `mmrelay[e2e]` when using legacy matrix-nio — it will
+> reinstall mindroom-nio.
 
 ### "Failed to decrypt event" in logs
 
@@ -386,8 +393,10 @@ E2EE support is backward compatible:
 
 ### Implementation
 
-- Uses **mindroom-nio** (default) with **vodozemac** crypto backend, or
-  **matrix-nio** (legacy) with **Olm/Megolm** protocols
+- Uses **mindroom-nio** (default) with the **vodozemac** crypto backend, or
+  **matrix-nio** (legacy) with the **python-olm/libolm** crypto backend.
+- Both providers use the Matrix **Olm/Megolm** encryption protocols; they differ
+  only in the underlying cryptographic library.
 - Loads E2EE store before sync operations
 - Uses automatic key management with `ignore_unverified_devices=True`
 - Provider detection and capability reporting via `mmrelay.matrix.compat`

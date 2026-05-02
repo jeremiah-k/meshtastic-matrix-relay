@@ -39,7 +39,7 @@ def _read_pyproject_deps():
         import tomli as tomllib
 
     pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
-    with open(pyproject_path, "rb") as f:
+    with pyproject_path.open("rb") as f:
         data = tomllib.load(f)
     return data.get("project", {})
 

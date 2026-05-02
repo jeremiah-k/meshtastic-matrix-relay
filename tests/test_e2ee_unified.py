@@ -45,7 +45,7 @@ except ImportError:
     IMPORTS_AVAILABLE = False
 
 
-def _make_capabilities(**overrides) -> MatrixLibraryCapabilities:
+def _make_capabilities(**overrides: object) -> MatrixLibraryCapabilities:
     """Build a capabilities instance from a deterministic baseline with selective overrides."""
 
     baseline = MatrixLibraryCapabilities(
@@ -537,6 +537,7 @@ class TestActualEncryptionVerification(unittest.TestCase):
         # Add handler to nio.crypto logger
         nio_crypto_logger = logging.getLogger("nio.crypto.log")
         test_handler = TestLogHandler()
+        previous_level = nio_crypto_logger.level
         nio_crypto_logger.addHandler(test_handler)
         nio_crypto_logger.setLevel(logging.INFO)
 
@@ -563,6 +564,7 @@ class TestActualEncryptionVerification(unittest.TestCase):
 
         finally:
             nio_crypto_logger.removeHandler(test_handler)
+            nio_crypto_logger.setLevel(previous_level)
 
     def test_encrypted_event_detection(self):
         """
