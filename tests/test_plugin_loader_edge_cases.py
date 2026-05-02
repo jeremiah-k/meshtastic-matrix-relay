@@ -685,13 +685,9 @@ class Plugin:
     def test_ignored_file_patterns_skipped(self):
         for pattern in PLUGIN_IGNORED_FILE_PATTERNS:
             with tempfile.TemporaryDirectory() as temp_dir:
-                if "*" in pattern:
-                    if pattern.startswith("test_"):
-                        filename = pattern.replace("*", "something")
-                    else:
-                        filename = pattern.replace("*", "something")
-                else:
-                    filename = pattern
+                filename = (
+                    pattern.replace("*", "something") if "*" in pattern else pattern
+                )
                 plugin_file = os.path.join(temp_dir, filename)
                 with open(plugin_file, "w") as f:
                     f.write('class Plugin:\n    plugin_name = "should_not_load"\n')
