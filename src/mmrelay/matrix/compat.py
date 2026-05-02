@@ -187,7 +187,11 @@ def detect_matrix_capabilities() -> MatrixLibraryCapabilities:
         nio_api is not None
         and hasattr(getattr(nio_api, "Api", object), "update_receipt_marker")
     )
-    download = getattr(getattr(nio_api, "Api", object), "download", None)
+    download = (
+        getattr(getattr(nio_api, "Api", object), "download", None)
+        if nio_api is not None
+        else None
+    )
     try:
         supports_authenticated_media = bool(
             download is not None
