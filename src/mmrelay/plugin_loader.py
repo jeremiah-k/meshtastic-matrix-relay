@@ -1,4 +1,5 @@
 # trunk-ignore-all(bandit)
+import fnmatch
 import hashlib
 import importlib
 import importlib.util
@@ -59,6 +60,8 @@ from mmrelay.constants.plugins import (
     PIP_INSTALL_TIMEOUT_SECONDS,
     PIP_SOURCE_FLAGS,
     PIPX_ENVIRONMENT_KEYS,
+    PLUGIN_IGNORED_DIR_NAMES,
+    PLUGIN_IGNORED_FILE_PATTERNS,
     PLUGIN_TYPE_COMMUNITY,
     PLUGIN_TYPE_CUSTOM,
     REF_NAME_PATTERN,
@@ -2896,6 +2899,12 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
     )
 
 
+def _should_ignore_plugin_file(filename: str) -> bool:
+    if filename.startswith("."):
+        return True
+    return any(fnmatch.fnmatch(filename, p) for p in PLUGIN_IGNORED_FILE_PATTERNS)
+
+
 def load_plugins_from_directory(
     directory: str,
     recursive: bool = False,
@@ -2918,9 +2927,12 @@ def load_plugins_from_directory(
     if os.path.isdir(directory):
         # Clean Python cache to ensure fresh code loading
         _clean_python_cache(directory)
-        for root, _dirs, files in os.walk(directory):
+        for root, dirs, files in os.walk(directory):
+            dirs[:] = [d for d in dirs if d not in PLUGIN_IGNORED_DIR_NAMES]
             for filename in files:
-                if filename.endswith(".py"):
+                if filename.endswith(".py") and not _should_ignore_plugin_file(
+                    filename
+                ):
                     plugin_path = os.path.join(root, filename)
                     module_name = (
                         "plugin_"
