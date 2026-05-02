@@ -1150,6 +1150,28 @@ class TestE2EEPrintFunctions(unittest.TestCase):
                 any("⚠️  E2EE is disabled in configuration" in call for call in calls)
             )
 
+    def test_print_e2ee_analysis_deps_not_installed(self):
+        """Test _print_e2ee_analysis with dependencies_available=False."""
+        from mmrelay.cli import _print_e2ee_analysis
+
+        analysis = {
+            "dependencies_available": False,
+            "credentials_available": False,
+            "platform_supported": True,
+            "config_enabled": False,
+            "overall_status": "incomplete",
+            "recommendations": ["Install E2EE dependencies"],
+        }
+
+        with patch("mmrelay.cli.print") as mock_print:
+            _print_e2ee_analysis(analysis)
+            mock_print.assert_called()
+            calls = [call.args[0] for call in mock_print.call_args_list]
+            self.assertTrue(
+                any("Dependencies: Not installed" in call for call in calls)
+            )
+            self.assertTrue(any("Authentication: Missing" in call for call in calls))
+
     @patch("sys.platform", "linux")
     def test_print_environment_summary_linux(self):
         """Test _print_environment_summary on Linux."""
