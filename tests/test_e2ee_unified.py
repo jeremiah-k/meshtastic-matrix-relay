@@ -12,10 +12,10 @@ import logging
 import os
 import sys
 import tempfile
-import types
 import unittest
+from dataclasses import replace
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -27,6 +27,7 @@ from mmrelay.constants.messages import (
     MSG_E2EE_WINDOWS_UNSUPPORTED,
     MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL,
 )
+from mmrelay.matrix.compat import MatrixLibraryCapabilities
 
 try:
     from mmrelay.e2ee_utils import (
@@ -42,6 +43,32 @@ try:
 except ImportError:
     # Imports not available; dependent tests will be skipped.
     IMPORTS_AVAILABLE = False
+
+
+def _make_capabilities(**overrides: object) -> MatrixLibraryCapabilities:
+    """Build a capabilities instance from a deterministic baseline with selective overrides."""
+
+    baseline = MatrixLibraryCapabilities(
+        provider_name="mindroom-nio",
+        provider_version="0.25.2",
+        provider_distribution="mindroom-nio",
+        crypto_backend="vodozemac",
+        encryption_available=True,
+        store_available=True,
+        sqlite_store_available=True,
+        olm_available=False,
+        vodozemac_available=True,
+        nio_crypto_available=True,
+        nio_crypto_encryption_enabled=True,
+        nio_crypto_olm_device_available=False,
+        recommended_e2ee_extra="mindroom-nio[e2e]",
+        install_hint="install mindroom-nio[e2e] / vodozemac",
+        both_known_providers_installed=False,
+        supports_stop_sync_forever=True,
+        supports_thread_receipts=True,
+        supports_authenticated_media=True,
+    )
+    return replace(baseline, **overrides)
 
 
 class MockRoom:
@@ -102,8 +129,9 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
     @patch("mmrelay.e2ee_utils.os.path.exists")
     def test_e2ee_ready_status(self, mock_exists):
         """Test E2EE ready status when everything is configured"""
-        with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-            mock_import.side_effect = lambda _: MagicMock()
+        mock_exists.return_value = True
+        caps = _make_capabilities(encryption_available=True)
+        with patch("mmrelay.e2ee_utils.get_matrix_capabilities", return_value=caps):
             status = get_e2ee_status(self.base_config, self.config_path)
 
             self.assertEqual(status["overall_status"], "ready")
@@ -114,12 +142,6 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
             self.assertTrue(status["dependencies_installed"])
             self.assertTrue(status["credentials_available"])
             self.assertEqual(len(status["issues"]), 0)
-            imported_modules = {call.args[0] for call in mock_import.call_args_list}
-            assert {
-                "olm",
-                "nio.crypto",
-                "nio.store",
-            }.issubset(imported_modules)
 
     @patch("sys.platform", "win32")
     def test_e2ee_unavailable_windows(self):
@@ -147,38 +169,18 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
     def test_e2ee_incomplete_missing_deps(self, mock_exists):
         """Test E2EE incomplete status when dependencies are missing"""
         mock_exists.return_value = True  # credentials.json exists
-
-        with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-
-            def import_side_effect(name):
-                """
-                Mock import side effect used in tests.
-
-                Simulates Python's import behavior for use with import mocking: if the requested module name is "olm" it raises ImportError to emulate the dependency being missing; for any other module name it returns a MagicMock instance that stands in for the imported module.
-
-                Parameters:
-                    name (str): Full module name passed to the import (e.g., "olm", "nio.crypto").
-
-                Returns:
-                    unittest.mock.MagicMock: A mock object representing the imported module when the module is not "olm".
-
-                Raises:
-                    ImportError: If `name` is exactly "olm".
-                """
-                if name == "olm":
-                    raise ImportError("No module named 'olm'")
-                return MagicMock()
-
-            mock_import.side_effect = import_side_effect
-
+        caps = _make_capabilities(encryption_available=False)
+        with patch("mmrelay.e2ee_utils.get_matrix_capabilities", return_value=caps):
             status = get_e2ee_status(self.base_config, self.config_path)
 
             self.assertEqual(status["overall_status"], "incomplete")
             self.assertFalse(status["dependencies_installed"])
-            self.assertIn(
-                "E2EE dependencies not installed (python-olm)", status["issues"]
+            self.assertTrue(
+                any(
+                    "E2EE dependencies not installed" in issue
+                    for issue in status["issues"]
+                )
             )
-            mock_import.assert_called_with("olm")
 
     @patch("sys.platform", "linux")
     @patch("mmrelay.e2ee_utils.os.path.exists")
@@ -186,23 +188,16 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
         """
         Verify get_e2ee_status reports "incomplete" when Matrix credentials are missing.
 
-        Mocks E2EE-related modules ("olm", "nio.crypto", "nio.store") so dependencies appear installed, simulates a missing credentials file, calls get_e2ee_status with the test configuration, and asserts that the overall status is "incomplete", credentials_available is False, and an issue about Matrix authentication not being configured is present.
+        Mocks capabilities so dependencies appear installed, simulates a missing credentials file, calls get_e2ee_status with the test configuration, and asserts that the overall status is "incomplete", credentials_available is False, and an issue about Matrix authentication not being configured is present.
         """
         mock_exists.return_value = False  # credentials.json doesn't exist
-
-        with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-            mock_import.side_effect = lambda _: MagicMock()
+        caps = _make_capabilities(encryption_available=True)
+        with patch("mmrelay.e2ee_utils.get_matrix_capabilities", return_value=caps):
             status = get_e2ee_status(self.base_config, self.config_path)
 
             self.assertEqual(status["overall_status"], "incomplete")
             self.assertFalse(status["credentials_available"])
             self.assertIn(MSG_E2EE_NO_AUTH, status["issues"])
-            imported_modules = {call.args[0] for call in mock_import.call_args_list}
-            assert {
-                "olm",
-                "nio.crypto",
-                "nio.store",
-            }.issubset(imported_modules)
 
     @patch("sys.platform", "linux")
     @patch("mmrelay.e2ee_utils.os.path.exists")
@@ -210,46 +205,12 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
         """Ensure nio dependencies are checked even in test environments."""
 
         mock_exists.return_value = True
-
-        # We no longer patch MMRELAY_TESTING here, effectively testing "default" behavior
-        with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-            # Mock successful imports for all required modules
-            mock_nio_crypto = MagicMock()
-            mock_nio_crypto.OlmDevice = MagicMock()
-            mock_nio_store = MagicMock()
-            mock_nio_store.SqliteStore = MagicMock()
-
-            def import_side_effect(name):
-                """
-                Provide a replacement for import_module that returns predefined mocks for specific module names.
-
-                Parameters:
-                    name (str): The fully qualified module name requested.
-
-                Returns:
-                    object: A mock object to stand in for the requested module:
-                      - a new MagicMock for "olm" and any unknown module name,
-                      - the value of `mock_nio_crypto` for "nio.crypto",
-                      - the value of `mock_nio_store` for "nio.store".
-                """
-                if name == "olm":
-                    return MagicMock()
-                if name == "nio.crypto":
-                    return mock_nio_crypto
-                if name == "nio.store":
-                    return mock_nio_store
-                return MagicMock()
-
-            mock_import.side_effect = import_side_effect
+        caps = _make_capabilities(encryption_available=True)
+        with patch("mmrelay.e2ee_utils.get_matrix_capabilities", return_value=caps):
             status = get_e2ee_status(self.base_config, self.config_path)
 
         self.assertTrue(status["dependencies_installed"])
         self.assertEqual(status["overall_status"], "ready")
-
-        # Verify that nio modules WERE imported/checked
-        mock_import.assert_any_call("olm")
-        mock_import.assert_any_call("nio.crypto")
-        mock_import.assert_any_call("nio.store")
 
     @patch("sys.platform", "linux")
     @patch("mmrelay.e2ee_utils.os.path.exists")
@@ -257,45 +218,15 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
         """
         Verify that E2EE dependency attribute checks succeed when required attributes are present.
 
-        Asserts that the status reports dependencies_installed and overall_status "ready", and that the expected modules ("olm", "nio.crypto", "nio.store") were attempted to be imported.
+        Asserts that the status reports dependencies_installed and overall_status "ready".
         """
         mock_exists.return_value = True
-
-        with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-            # Create mock modules with the required attributes
-            mock_olm = MagicMock()
-            mock_nio_crypto = MagicMock()
-            mock_nio_crypto.OlmDevice = MagicMock()
-            mock_nio_store = MagicMock()
-            mock_nio_store.SqliteStore = MagicMock()
-
-            def import_side_effect(name):
-                """
-                Provide a test-double module object corresponding to a requested import name.
-
-                Parameters:
-                    name (str): Module name being imported (e.g., "olm", "nio.crypto", "nio.store").
-
-                Returns:
-                    object: The corresponding mock module: `mock_olm` for "olm", `mock_nio_crypto` for "nio.crypto", `mock_nio_store` for "nio.store", or a new `MagicMock` for any other name.
-                """
-                if name == "olm":
-                    return mock_olm
-                elif name == "nio.crypto":
-                    return mock_nio_crypto
-                elif name == "nio.store":
-                    return mock_nio_store
-                return MagicMock()
-
-            mock_import.side_effect = import_side_effect
+        caps = _make_capabilities(encryption_available=True)
+        with patch("mmrelay.e2ee_utils.get_matrix_capabilities", return_value=caps):
             status = get_e2ee_status(self.base_config, self.config_path)
 
             self.assertTrue(status["dependencies_installed"])
             self.assertEqual(status["overall_status"], "ready")
-            # Verify all modules were imported
-            expected_imports = {"olm", "nio.crypto", "nio.store"}
-            actual_imports = {call.args[0] for call in mock_import.call_args_list}
-            self.assertTrue(expected_imports.issubset(actual_imports))
 
     @patch("sys.platform", "linux")
     @patch("mmrelay.e2ee_utils.os.path.exists")
@@ -303,46 +234,25 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
         """
         Verify that get_e2ee_status reports missing dependencies when nio.crypto.OlmDevice is absent.
 
-        Sets up mocked imports where the `nio.crypto` module lacks the `OlmDevice` attribute and asserts that
+        Sets up mocked capabilities where encryption is not available and asserts that
         the returned status marks dependencies as not installed, sets overall status to "incomplete", and
-        includes an issue mentioning `python-olm`.
+        includes an issue mentioning E2EE dependencies not installed.
 
         Parameters:
             mock_exists (unittest.mock.Mock): Patch for os.path.exists controlling presence of credentials file.
         """
         mock_exists.return_value = True
-
-        with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-            # Create simple namespace modules where nio.crypto lacks OlmDevice
-            mock_olm = types.SimpleNamespace()
-            mock_nio_crypto = types.SimpleNamespace()  # no OlmDevice attribute
-            mock_nio_store = types.SimpleNamespace(SqliteStore=MagicMock())
-
-            def import_side_effect(name):
-                """
-                Provide a test-double module object corresponding to a requested import name.
-
-                Parameters:
-                    name (str): Module name being imported (e.g., "olm", "nio.crypto", "nio.store").
-
-                Returns:
-                    object: The corresponding mock module: `mock_olm` for "olm", `mock_nio_crypto` for "nio.crypto", `mock_nio_store` for "nio.store", or a new `MagicMock` for any other name.
-                """
-                if name == "olm":
-                    return mock_olm
-                if name == "nio.crypto":
-                    return mock_nio_crypto
-                if name == "nio.store":
-                    return mock_nio_store
-                return MagicMock()
-
-            mock_import.side_effect = import_side_effect
+        caps = _make_capabilities(encryption_available=False)
+        with patch("mmrelay.e2ee_utils.get_matrix_capabilities", return_value=caps):
             status = get_e2ee_status(self.base_config, self.config_path)
 
             self.assertFalse(status["dependencies_installed"])
             self.assertEqual(status["overall_status"], "incomplete")
-            self.assertIn(
-                "E2EE dependencies not installed (python-olm)", status["issues"]
+            self.assertTrue(
+                any(
+                    "E2EE dependencies not installed" in issue
+                    for issue in status["issues"]
+                )
             )
 
     @patch("sys.platform", "linux")
@@ -350,38 +260,17 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
     def test_e2ee_hasattr_checks_missing_sqlitestore(self, mock_exists):
         """Test hasattr check failure when nio.store.SqliteStore is missing"""
         mock_exists.return_value = True
-
-        with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-            # Create mock modules where nio.store lacks SqliteStore
-            mock_olm = types.SimpleNamespace()
-            mock_nio_crypto = types.SimpleNamespace(OlmDevice=MagicMock())
-            mock_nio_store = types.SimpleNamespace()
-
-            def import_side_effect(name):
-                """
-                Return a test-double module object for a requested import name.
-
-                Parameters:
-                    name (str): Module name being imported (e.g., "olm", "nio.crypto", "nio.store").
-
-                Returns:
-                    object: A mock module corresponding to `name` (`mock_olm`, `mock_nio_crypto`, `mock_nio_store`), or a fresh `MagicMock` for any other module name.
-                """
-                if name == "olm":
-                    return mock_olm
-                if name == "nio.crypto":
-                    return mock_nio_crypto
-                if name == "nio.store":
-                    return mock_nio_store
-                return MagicMock()
-
-            mock_import.side_effect = import_side_effect
+        caps = _make_capabilities(encryption_available=False)
+        with patch("mmrelay.e2ee_utils.get_matrix_capabilities", return_value=caps):
             status = get_e2ee_status(self.base_config, self.config_path)
 
             self.assertFalse(status["dependencies_installed"])
             self.assertEqual(status["overall_status"], "incomplete")
-            self.assertIn(
-                "E2EE dependencies not installed (python-olm)", status["issues"]
+            self.assertTrue(
+                any(
+                    "E2EE dependencies not installed" in issue
+                    for issue in status["issues"]
+                )
             )
 
 
@@ -594,8 +483,10 @@ class TestE2EEErrorMessages(unittest.TestCase):
         self.assertEqual(instructions[0], MSG_E2EE_WINDOWS_UNSUPPORTED)
         self.assertEqual(instructions[1], MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL)
 
-    def test_get_e2ee_warning_messages(self):
+    @patch("mmrelay.e2ee_utils.get_matrix_capabilities")
+    def test_get_e2ee_warning_messages(self, mock_get_caps):
         """Test that get_e2ee_warning_messages returns expected warning messages."""
+        mock_get_caps.return_value = _make_capabilities(encryption_available=True)
         warnings = get_e2ee_warning_messages()
 
         # Verify it's a dictionary
@@ -663,6 +554,7 @@ class TestActualEncryptionVerification(unittest.TestCase):
         # Add handler to nio.crypto logger
         nio_crypto_logger = logging.getLogger("nio.crypto.log")
         test_handler = TestLogHandler()
+        previous_level = nio_crypto_logger.level
         nio_crypto_logger.addHandler(test_handler)
         nio_crypto_logger.setLevel(logging.INFO)
 
@@ -689,6 +581,7 @@ class TestActualEncryptionVerification(unittest.TestCase):
 
         finally:
             nio_crypto_logger.removeHandler(test_handler)
+            nio_crypto_logger.setLevel(previous_level)
 
     def test_encrypted_event_detection(self):
         """

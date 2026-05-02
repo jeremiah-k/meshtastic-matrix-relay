@@ -5,7 +5,6 @@ This module provides a unified approach to E2EE status detection, warning messag
 formatting across all components of the meshtastic-matrix-relay application.
 """
 
-import importlib
 import os
 import sys
 from typing import Any, Dict, List, Literal, Optional, TypedDict
@@ -14,8 +13,6 @@ from mmrelay.cli_utils import get_command
 from mmrelay.constants.app import (
     CREDENTIALS_FILENAME,
     MATRIX_DIRNAME,
-    PACKAGE_NAME_E2E,
-    PYTHON_OLM_PACKAGE,
     WINDOWS_PLATFORM,
 )
 from mmrelay.constants.config import CONFIG_SECTION_MATRIX
@@ -28,6 +25,11 @@ from mmrelay.constants.messages import (
     MSG_E2EE_WINDOWS_UNSUPPORTED_SHORT,
 )
 from mmrelay.log_utils import get_logger
+from mmrelay.matrix.compat import (
+    format_e2ee_install_command,
+    format_e2ee_unavailable_message,
+    get_matrix_capabilities,
+)
 from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
 
 logger = get_logger("E2EE")
@@ -64,7 +66,7 @@ def get_e2ee_status(
           - available (bool): Platform and dependencies allow E2EE.
           - configured (bool): Authentication/credentials are present.
           - platform_supported (bool): False when running on unsupported platforms (e.g., Windows/msys/cygwin).
-          - dependencies_installed (bool): True if required olm/nio components are importable.
+          - dependencies_installed (bool): True if the active Matrix provider's crypto backend is available.
           - credentials_available (bool): True if a Matrix `credentials.json` file was discovered in searched locations.
           - overall_status (str): One of "ready", "disabled", "unavailable", or "incomplete".
           - issues (List[str]): Human-readable issues that prevent full E2EE readiness.
@@ -86,26 +88,35 @@ def get_e2ee_status(
         status["issues"].append(MSG_E2EE_WINDOWS_UNSUPPORTED)
         logger.debug("E2EE platform check: Windows/msys/cygwin not supported")
 
-    # Check dependencies
-    try:
-        importlib.import_module("olm")
-
-        nio_crypto = importlib.import_module("nio.crypto")
-        if not hasattr(nio_crypto, "OlmDevice"):
-            raise ImportError("nio.crypto.OlmDevice is unavailable")
-
-        nio_store = importlib.import_module("nio.store")
-        if not hasattr(nio_store, "SqliteStore"):
-            raise ImportError("nio.store.SqliteStore is unavailable")
-
-        status["dependencies_installed"] = True
-        logger.debug("E2EE dependency check: olm and nio components available")
-    except ImportError:
+    # Check dependencies (skip on unsupported platforms — installing deps won't help)
+    if status["platform_supported"]:
+        matrix_capabilities = get_matrix_capabilities()
+        if matrix_capabilities.encryption_available:
+            status["dependencies_installed"] = True
+            logger.debug(
+                "E2EE dependency check: %s crypto available via %s",
+                matrix_capabilities.crypto_backend,
+                matrix_capabilities.provider_name,
+            )
+        else:
+            status["dependencies_installed"] = False
+            status["issues"].append(
+                format_e2ee_unavailable_message(matrix_capabilities)
+            )
+            logger.debug(
+                "E2EE dependency check failed: provider=%s version=%s backend=%s "
+                "olm=%s vodozemac=%s nio_crypto=%s sqlite_store=%s encryption_enabled=%s",
+                matrix_capabilities.provider_name,
+                matrix_capabilities.provider_version,
+                matrix_capabilities.crypto_backend,
+                matrix_capabilities.olm_available,
+                matrix_capabilities.vodozemac_available,
+                matrix_capabilities.nio_crypto_available,
+                matrix_capabilities.sqlite_store_available,
+                matrix_capabilities.nio_crypto_encryption_enabled,
+            )
+    else:
         status["dependencies_installed"] = False
-        status["issues"].append(
-            f"E2EE dependencies not installed ({PYTHON_OLM_PACKAGE})"
-        )
-        logger.debug("E2EE dependency check: missing olm or nio components")
 
     # Check configuration
     matrix_section = config.get(CONFIG_SECTION_MATRIX, {})
@@ -332,11 +343,12 @@ def get_e2ee_warning_messages() -> dict[str, str]:
             "unavailable", "disabled", "incomplete", "missing_deps", "missing_auth",
             and "missing_config".
     """
+    matrix_capabilities = get_matrix_capabilities()
     return {
         "unavailable": f"{MSG_E2EE_WINDOWS_UNSUPPORTED} - messages to encrypted rooms will be blocked",
         "disabled": f"{MSG_E2EE_DISABLED} - messages to encrypted rooms will be blocked",
         "incomplete": f"{_E2EE_INCOMPLETE_STATUS} - messages to encrypted rooms may be blocked",
-        "missing_deps": f"E2EE dependencies not installed - run: pipx install {PACKAGE_NAME_E2E}",
+        "missing_deps": format_e2ee_unavailable_message(matrix_capabilities),
         "missing_auth": f"{MSG_E2EE_NO_AUTH} - run: {get_command('auth_login')}",
         "missing_config": "E2EE not enabled in configuration - add 'e2ee: enabled: true' under matrix section",
     }
@@ -405,7 +417,7 @@ def get_e2ee_fix_instructions(e2ee_status: E2EEStatus) -> List[str]:
     step = 1
     if not e2ee_status["dependencies_installed"]:
         instructions.append(f"{step}. Install E2EE dependencies:")
-        instructions.append(f"   pipx install {PACKAGE_NAME_E2E}")
+        instructions.append(f"   {format_e2ee_install_command()}")
         step += 1
 
     if not e2ee_status["credentials_available"]:

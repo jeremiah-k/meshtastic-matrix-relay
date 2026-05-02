@@ -9,7 +9,7 @@ This module tests lines 115-122 and 172-182 of e2ee_utils.py:
 import os
 import shutil
 import tempfile
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -19,6 +19,32 @@ from mmrelay.e2ee_utils import (
     _check_credentials_available,
     get_e2ee_status,
 )
+from mmrelay.matrix.compat import MatrixLibraryCapabilities
+
+
+def _matrix_capabilities(
+    *, encryption_available: bool = True
+) -> MatrixLibraryCapabilities:
+    return MatrixLibraryCapabilities(
+        provider_name="matrix-nio",
+        provider_version="0.25.2",
+        provider_distribution="matrix-nio",
+        crypto_backend="olm" if encryption_available else "unavailable",
+        encryption_available=encryption_available,
+        store_available=encryption_available,
+        sqlite_store_available=encryption_available,
+        olm_available=encryption_available,
+        vodozemac_available=False,
+        nio_crypto_available=True,
+        nio_crypto_encryption_enabled=None,
+        nio_crypto_olm_device_available=encryption_available,
+        recommended_e2ee_extra="matrix-nio[e2e]",
+        install_hint="install matrix-nio[e2e] / python-olm",
+        both_known_providers_installed=False,
+        supports_stop_sync_forever=True,
+        supports_thread_receipts=False,
+        supports_authenticated_media=False,
+    )
 
 
 @pytest.fixture
@@ -72,9 +98,10 @@ def test_credentials_found_in_legacy_location(
     _temp_dir, _config_path, _credentials_path, base_config = e2ee_test_config
 
     # Mock dependencies as installed
-    with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-        mock_import.side_effect = lambda _: MagicMock()
-
+    with patch(
+        "mmrelay.e2ee_utils.get_matrix_capabilities",
+        return_value=_matrix_capabilities(),
+    ):
         mock_deprecation_active.return_value = True
 
         # Mock paths_info with legacy sources
@@ -150,9 +177,10 @@ def test_credentials_not_found_in_legacy_locations(
     _temp_dir, _config_path, _credentials_path, base_config = e2ee_test_config
 
     # Mock dependencies as installed
-    with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-        mock_import.side_effect = lambda _: MagicMock()
-
+    with patch(
+        "mmrelay.e2ee_utils.get_matrix_capabilities",
+        return_value=_matrix_capabilities(),
+    ):
         mock_deprecation_active.return_value = True
 
         # Mock paths_info with legacy sources
@@ -497,14 +525,16 @@ class TestGetE2eeErrorMessage:
         """Missing dependencies should return deps message."""
         from mmrelay.e2ee_utils import get_e2ee_error_message
 
-        result = get_e2ee_error_message(
-            {
-                "overall_status": "incomplete",
-                "enabled": True,
-                "platform_supported": True,
-                "dependencies_installed": False,
-            }
-        )
+        caps = _matrix_capabilities(encryption_available=False)
+        with patch("mmrelay.e2ee_utils.get_matrix_capabilities", return_value=caps):
+            result = get_e2ee_error_message(
+                {
+                    "overall_status": "incomplete",
+                    "enabled": True,
+                    "platform_supported": True,
+                    "dependencies_installed": False,
+                }
+            )
         assert "dependencies" in result.lower()
 
     def test_missing_credentials(self):

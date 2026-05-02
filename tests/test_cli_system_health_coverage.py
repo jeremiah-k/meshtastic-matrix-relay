@@ -98,5 +98,28 @@ class TestPrintSystemHealthDatabase(unittest.TestCase):
                 assert mock_print.called
 
 
+class TestPrintSystemHealthWindows(unittest.TestCase):
+    """Tests for _print_system_health Windows platform branch."""
+
+    def test_windows_platform_prints_not_supported(self):
+        """On Windows, _print_system_health should print 'Not supported on Windows'."""
+        db_path = Path(tempfile.gettempdir()) / "health_test.db"
+        paths_info = {
+            "home": tempfile.gettempdir(),
+            "database_dir": str(db_path.parent),
+        }
+
+        with (
+            patch("mmrelay.cli.sys.platform", "win32"),
+            patch("mmrelay.paths.get_database_path", return_value=db_path),
+            patch("mmrelay.cli._e2ee_dependencies_available", return_value=True),
+            patch("builtins.print") as mock_print,
+        ):
+            _print_system_health(paths_info)
+
+        printed = [str(c) for c in mock_print.call_args_list]
+        self.assertTrue(any("Not supported on Windows" in p for p in printed))
+
+
 if __name__ == "__main__":
     unittest.main()

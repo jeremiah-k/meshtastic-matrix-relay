@@ -14,6 +14,37 @@ from mmrelay.constants.app import CREDENTIALS_FILENAME
 from mmrelay.matrix_utils import connect_matrix
 
 
+def _matrix_capabilities(
+    *,
+    encryption_available: bool = True,
+    provider_distribution: str = "matrix-nio",
+    crypto_backend: str = "olm",
+    install_hint: str = "install matrix-nio[e2e] / python-olm",
+    recommended_e2ee_extra: str = "matrix-nio[e2e]",
+    both_known_providers_installed: bool = False,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        encryption_available=encryption_available,
+        provider_distribution=provider_distribution,
+        provider_name=provider_distribution,
+        provider_version="0.25.2",
+        crypto_backend=crypto_backend,
+        install_hint=install_hint,
+        recommended_e2ee_extra=recommended_e2ee_extra,
+        both_known_providers_installed=both_known_providers_installed,
+    )
+
+
+@pytest.fixture(autouse=True)
+def matrix_capabilities_available(monkeypatch):
+    """Keep E2EE connect tests independent from the developer environment."""
+
+    monkeypatch.setattr(
+        "mmrelay.matrix.auth.get_matrix_capabilities",
+        lambda: _matrix_capabilities(),
+    )
+
+
 @pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.os.makedirs")
 @patch("mmrelay.matrix_utils.os.listdir")
@@ -161,30 +192,6 @@ async def test_connect_matrix_uploads_keys_when_needed(monkeypatch):
         raising=False,
     )
 
-    def fake_import(name):
-        """Return a fake module-like object used to simulate imports of nio/olm modules in tests.
-
-        Parameters:
-            name (str): Module name being imported.
-
-        Returns:
-            object: A module-like object:
-              - For "nio.crypto": a SimpleNamespace with attribute `OlmDevice` set to True.
-              - For "nio.store": a SimpleNamespace with attribute `SqliteStore` set to True.
-              - For "olm": a MagicMock instance.
-              - For any other name: a MagicMock instance.
-        """
-        if name == "nio.crypto":
-            return SimpleNamespace(OlmDevice=True)
-        if name == "nio.store":
-            return SimpleNamespace(SqliteStore=True)
-        if name == "olm":
-            return MagicMock()
-        return MagicMock()
-
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.importlib.import_module", fake_import, raising=False
-    )
     monkeypatch.setattr(
         "mmrelay.matrix_utils.get_room_encryption_warnings",
         lambda *_args, **_kwargs: [],
@@ -419,18 +426,6 @@ async def test_connect_matrix_keys_upload_failure_logs(monkeypatch):
         return_value=SimpleNamespace(displayname="Bot")
     )
 
-    def fake_import(name):
-        if name == "nio.crypto":
-            return SimpleNamespace(OlmDevice=True)
-        if name == "nio.store":
-            return SimpleNamespace(SqliteStore=True)
-        if name == "olm":
-            return MagicMock()
-        return MagicMock()
-
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.importlib.import_module", fake_import, raising=False
-    )
     monkeypatch.setattr(
         "mmrelay.config.is_e2ee_enabled", lambda _cfg: True, raising=False
     )
@@ -512,7 +507,10 @@ class TestMatrixE2EEHasAttrChecks:
             patch("mmrelay.matrix_utils.matrix_client", None),
             patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.matrix_utils.logger"),
-            patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
+            patch(
+                "mmrelay.matrix.auth.get_matrix_capabilities",
+                return_value=_matrix_capabilities(),
+            ) as mock_capabilities,
         ):
             # Mock AsyncClient instance with proper async methods
             mock_client_instance = MagicMock()
@@ -527,43 +525,12 @@ class TestMatrixE2EEHasAttrChecks:
             mock_client_instance.keys_upload = AsyncMock()
             mock_async_client.return_value = mock_client_instance
 
-            # Create mock modules with required attributes
-            mock_olm = SimpleNamespace()
-            mock_nio_crypto = SimpleNamespace(OlmDevice=MagicMock())
-            mock_nio_store = SimpleNamespace(SqliteStore=MagicMock())
-
-            def import_side_effect(name):
-                """Return a mock module object for the specified import name to simulate E2EE dependencies in tests.
-
-                Parameters:
-                    name (str): Fully qualified module name ('olm', 'nio.crypto', or 'nio.store').
-
-                Returns:
-                    object: The mock module corresponding to the requested name.
-
-                Raises:
-                    ImportError: If the requested name is not a supported mock module.
-                """
-                if name == "olm":
-                    return mock_olm
-                elif name == "nio.crypto":
-                    return mock_nio_crypto
-                elif name == "nio.store":
-                    return mock_nio_store
-                else:
-                    # For any other import, raise ImportError to simulate missing dependency
-                    raise ImportError(f"No module named '{name}'")
-
-            mock_import.side_effect = import_side_effect
-
             # Run the async function
             await connect_matrix(e2ee_config)
 
             # Verify client was created and E2EE dependencies were checked
             mock_async_client.assert_called_once()
-            expected_imports = {"olm", "nio.crypto", "nio.store"}
-            actual_imports = {call.args[0] for call in mock_import.call_args_list}
-            assert expected_imports.issubset(actual_imports)
+            mock_capabilities.assert_called()
 
     async def test_connect_matrix_hasattr_checks_missing_olmdevice(self, e2ee_config):
         """Test hasattr check failure when nio.crypto.OlmDevice is missing"""
@@ -571,7 +538,10 @@ class TestMatrixE2EEHasAttrChecks:
             patch("mmrelay.matrix_utils.matrix_client", None),
             patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.matrix_utils.logger") as mock_logger,
-            patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
+            patch(
+                "mmrelay.matrix.auth.get_matrix_capabilities",
+                return_value=_matrix_capabilities(encryption_available=False),
+            ),
         ):
             # Mock AsyncClient instance with proper async methods
             mock_client_instance = MagicMock()
@@ -585,43 +555,15 @@ class TestMatrixE2EEHasAttrChecks:
             )
             mock_async_client.return_value = mock_client_instance
 
-            # Create mock modules where nio.crypto lacks OlmDevice
-            mock_olm = SimpleNamespace()
-            mock_nio_crypto = SimpleNamespace()
-            # Simulate missing OlmDevice attribute to exercise hasattr failure
-            mock_nio_store = SimpleNamespace(SqliteStore=MagicMock())
-
-            def import_side_effect(name):
-                """Return a mock module object for the specified import name to simulate E2EE dependencies in tests.
-
-                Parameters:
-                    name (str): Fully qualified module name ('olm', 'nio.crypto', or 'nio.store').
-
-                Returns:
-                    object: The mock module corresponding to the requested name.
-
-                Raises:
-                    ImportError: If the requested name is not a supported mock module.
-                """
-                if name == "olm":
-                    return mock_olm
-                elif name == "nio.crypto":
-                    return mock_nio_crypto
-                elif name == "nio.store":
-                    return mock_nio_store
-                else:
-                    # For any other import, raise ImportError to simulate missing dependency
-                    raise ImportError(f"No module named '{name}'")
-
-            mock_import.side_effect = import_side_effect
-
             # Run the async function
             await connect_matrix(e2ee_config)
 
             # Verify ImportError was logged and E2EE was disabled
-            mock_logger.exception.assert_called_with("Missing E2EE dependency")
-            mock_logger.error.assert_called_with(
-                "Please reinstall with: pipx install 'mmrelay[e2e]'"
+            mock_logger.error.assert_any_call("Missing E2EE dependency")
+            mock_logger.error.assert_any_call(
+                "Install matrix-nio E2EE in a controlled replacement environment: "
+                "pip install 'matrix-nio[e2e]==0.25.2'. "
+                "Do not install mmrelay[e2e] (it uses mindroom-nio)."
             )
             mock_logger.warning.assert_called_with(
                 "E2EE will be disabled for this session."
@@ -633,7 +575,10 @@ class TestMatrixE2EEHasAttrChecks:
             patch("mmrelay.matrix_utils.matrix_client", None),
             patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.matrix_utils.logger") as mock_logger,
-            patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
+            patch(
+                "mmrelay.matrix.auth.get_matrix_capabilities",
+                return_value=_matrix_capabilities(encryption_available=False),
+            ),
         ):
             # Mock AsyncClient instance with proper async methods
             mock_client_instance = MagicMock()
@@ -647,43 +592,15 @@ class TestMatrixE2EEHasAttrChecks:
             )
             mock_async_client.return_value = mock_client_instance
 
-            # Create mock modules where nio.store lacks SqliteStore
-            mock_olm = SimpleNamespace()
-            mock_nio_crypto = SimpleNamespace(OlmDevice=MagicMock())
-            # Simulate missing SqliteStore attribute to exercise hasattr failure
-            mock_nio_store = SimpleNamespace()
-
-            def import_side_effect(name):
-                """Provide a mock module for simulating E2EE dependencies during tests.
-
-                Parameters:
-                    name (str): Fully qualified module name to mock (e.g., 'olm', 'nio.crypto', or 'nio.store').
-
-                Returns:
-                    object: The mock module corresponding to the requested name.
-
-                Raises:
-                    ImportError: If the requested name is not a supported mock module.
-                """
-                if name == "olm":
-                    return mock_olm
-                elif name == "nio.crypto":
-                    return mock_nio_crypto
-                elif name == "nio.store":
-                    return mock_nio_store
-                else:
-                    # For any other import, raise ImportError to simulate missing dependency
-                    raise ImportError(f"No module named '{name}'")
-
-            mock_import.side_effect = import_side_effect
-
             # Run the async function
             await connect_matrix(e2ee_config)
 
             # Verify ImportError was logged and E2EE was disabled
-            mock_logger.exception.assert_called_with("Missing E2EE dependency")
-            mock_logger.error.assert_called_with(
-                "Please reinstall with: pipx install 'mmrelay[e2e]'"
+            mock_logger.error.assert_any_call("Missing E2EE dependency")
+            mock_logger.error.assert_any_call(
+                "Install matrix-nio E2EE in a controlled replacement environment: "
+                "pip install 'matrix-nio[e2e]==0.25.2'. "
+                "Do not install mmrelay[e2e] (it uses mindroom-nio)."
             )
             mock_logger.warning.assert_called_with(
                 "E2EE will be disabled for this session."

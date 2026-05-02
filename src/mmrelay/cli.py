@@ -501,29 +501,18 @@ def print_version() -> None:
 
 def _e2ee_dependencies_available() -> bool:
     """
-    Check whether required E2EE runtime dependencies are importable.
+    Check whether Matrix E2EE dependencies are available using the compat boundary.
 
-    Checks for the presence of the `olm` package and the `OlmDevice` and `SqliteStore`
-    symbols in the `nio.crypto` and `nio.store` modules respectively.
+    Delegates to the compatibility layer which detects the active Matrix nio
+    provider and its crypto backend (vodozemac for mindroom-nio, python-olm
+    for matrix-nio).
 
     Returns:
-        True if all required dependencies and symbols are importable, False otherwise.
+        True if the active provider's E2EE is ready, False otherwise.
     """
-    try:
-        # import_module raises ImportError on failure; no None checks needed.
-        importlib.import_module("olm")
+    from mmrelay.matrix.compat import get_matrix_capabilities
 
-        nio_crypto = importlib.import_module("nio.crypto")
-        if not hasattr(nio_crypto, "OlmDevice"):
-            raise ImportError("nio.crypto.OlmDevice is unavailable")
-
-        nio_store = importlib.import_module("nio.store")
-        if not hasattr(nio_store, "SqliteStore"):
-            raise ImportError("nio.store.SqliteStore is unavailable")
-
-        return True
-    except ImportError:
-        return False
+    return get_matrix_capabilities().encryption_available
 
 
 def _validate_e2ee_dependencies() -> bool:
@@ -537,7 +526,7 @@ def _validate_e2ee_dependencies() -> bool:
     """
     if sys.platform == WINDOWS_PLATFORM:
         print("❌ Error: E2EE is not supported on Windows")
-        print("   Reason: python-olm library requires native C libraries")
+        print("   Reason: E2EE crypto requires native C libraries")
         print("   Solution: Use Linux or macOS for E2EE support")
         return False
 
@@ -546,9 +535,15 @@ def _validate_e2ee_dependencies() -> bool:
         print("✅ E2EE dependencies are installed")
         return True
 
+    from mmrelay.matrix.compat import (
+        format_e2ee_install_command,
+        get_matrix_capabilities,
+    )
+
+    caps = get_matrix_capabilities()
     print("❌ Error: E2EE dependencies not installed")
     print("   End-to-end encryption features require additional dependencies")
-    print("   Install E2EE support: pipx install 'mmrelay[e2e]'")
+    print(f"   Install E2EE support: {format_e2ee_install_command(caps)}")
     return False
 
 
@@ -803,7 +798,7 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
     Returns:
         dict: Analysis summary with the following keys:
           - config_enabled (bool): True if E2EE/encryption is enabled in config.
-          - dependencies_available (bool): True if required E2EE packages are importable.
+          - dependencies_available (bool): True if the active Matrix provider's crypto backend is available.
           - credentials_available (bool): True if a usable credentials.json was found.
           - platform_supported (bool): False when the current platform does not support E2EE (e.g., Windows).
           - overall_status (str): One of "ready", "disabled", "not_supported", "incomplete", or "unknown".
@@ -824,13 +819,19 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
         analysis["recommendations"].append(
             "E2EE is not supported on Windows. Use Linux/macOS for E2EE support."
         )
+    else:
+        # Check dependencies only on supported platforms
+        analysis["dependencies_available"] = _e2ee_dependencies_available()
+        if not analysis["dependencies_available"]:
+            from mmrelay.matrix.compat import (
+                format_e2ee_install_command,
+                get_matrix_capabilities,
+            )
 
-    # Check dependencies
-    analysis["dependencies_available"] = _e2ee_dependencies_available()
-    if not analysis["dependencies_available"]:
-        analysis["recommendations"].append(
-            "Install E2EE dependencies: pipx install 'mmrelay[e2e]'"
-        )
+            caps = get_matrix_capabilities()
+            analysis["recommendations"].append(
+                f"Install E2EE dependencies: {format_e2ee_install_command(caps)}"
+            )
 
     # Check config setting
     matrix_section = config.get("matrix", {})
@@ -975,7 +976,7 @@ def _print_e2ee_analysis(analysis: dict[str, Any]) -> None:
 
     Parameters:
         analysis (dict[str, Any]): Mapping describing E2EE status with these keys:
-            - dependencies_available (bool): True if required E2EE dependencies (e.g., python-olm) are present.
+            - dependencies_available (bool): True if required E2EE dependencies (e.g., active provider crypto backend) are present.
             - credentials_available (bool): True if a usable credentials.json was found.
             - platform_supported (bool): True if the current platform supports E2EE (Windows is considered unsupported).
             - config_enabled (bool): True if E2EE is enabled in the application's configuration.
@@ -990,9 +991,9 @@ def _print_e2ee_analysis(analysis: dict[str, Any]) -> None:
 
     # Dependencies
     if analysis["dependencies_available"]:
-        print("   ✅ Dependencies: Installed (python-olm available)")
+        print("   ✅ Dependencies: Installed")
     else:
-        print("   ❌ Dependencies: Missing (python-olm not installed)")
+        print("   ❌ Dependencies: Not installed")
 
     # Credentials
     if analysis["credentials_available"]:
@@ -1067,8 +1068,14 @@ def _print_environment_summary() -> None:
         if _e2ee_dependencies_available():
             print("   E2EE Support: ✅ Available and installed")
         else:
+            from mmrelay.matrix.compat import (
+                format_e2ee_install_command,
+                get_matrix_capabilities,
+            )
+
+            caps = get_matrix_capabilities()
             print("   E2EE Support: ⚠️  Available but not installed")
-            print("   Install: pipx install 'mmrelay[e2e]'")
+            print(f"   Install: {format_e2ee_install_command(caps)}")
 
 
 def _is_valid_serial_port(port: str) -> bool:
@@ -2104,10 +2111,16 @@ def _print_system_health(paths_info: dict[str, Any]) -> None:
     if sys.platform == WINDOWS_PLATFORM:
         print("   ⚠️  Not supported on Windows")
     elif _e2ee_dependencies_available():
-        print("   ✅ python-olm and nio crypto available")
+        print("   ✅ E2EE crypto libraries available")
     else:
-        print("   ❌ Missing python-olm or nio crypto libraries")
-        print("       Install with: pip install mmrelay[e2e]")
+        from mmrelay.matrix.compat import (
+            format_e2ee_install_command,
+            get_matrix_capabilities,
+        )
+
+        caps = get_matrix_capabilities()
+        print("   ❌ Missing E2EE crypto libraries")
+        print(f"       Install with: {format_e2ee_install_command(caps)}")
 
     # Disk Space
     print("\n💾 Disk Space:")

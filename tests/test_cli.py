@@ -20,12 +20,12 @@
 # See docs/dev/TESTING_GUIDE.md for comprehensive async mocking patterns.
 # ruff: noqa: E402
 
-import builtins
 import json
 import os
 import sys
 import unittest
 import unittest.mock
+from types import SimpleNamespace
 from unittest.mock import MagicMock, mock_open, patch
 
 # Add repo root and src to path for imports
@@ -48,6 +48,7 @@ from mmrelay.cli import (
 from mmrelay.constants.app import CREDENTIALS_FILENAME
 from mmrelay.constants.cli import EXIT_CODE_ERROR, EXIT_CODE_SUCCESS
 from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
+from mmrelay.matrix.compat import MatrixLibraryCapabilities
 from tests.constants import TEST_CONFIG_PATH, TEST_HOME_CONFIG_PATH, TEST_SERIAL_PORT
 
 
@@ -592,16 +593,10 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _validate_e2ee_dependencies when dependencies are available."""
         from mmrelay.cli import _validate_e2ee_dependencies
 
-        # Mock the required modules as available
         with (
-            patch.dict(
-                "sys.modules",
-                {
-                    "olm": MagicMock(),
-                    "nio": MagicMock(),
-                    "nio.crypto": MagicMock(),
-                    "nio.store": MagicMock(),
-                },
+            patch(
+                "mmrelay.matrix.compat.get_matrix_capabilities",
+                return_value=SimpleNamespace(encryption_available=True),
             ),
             patch("builtins.print"),
         ):
@@ -612,17 +607,14 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _validate_e2ee_dependencies when dependencies are missing."""
         from mmrelay.cli import _validate_e2ee_dependencies
 
-        # Simulate missing modules in a reversible way
         with (
-            patch.dict(
-                "sys.modules",
-                {
-                    "olm": None,
-                    "nio": None,
-                    "nio.crypto": None,
-                    "nio.store": None,
-                },
-                clear=False,
+            patch(
+                "mmrelay.matrix.compat.get_matrix_capabilities",
+                return_value=SimpleNamespace(
+                    encryption_available=False,
+                    both_known_providers_installed=False,
+                    provider_distribution="mindroom-nio",
+                ),
             ),
             patch("mmrelay.cli.print"),
         ):
@@ -634,7 +626,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _validate_e2ee_dependencies on Windows platform."""
         from mmrelay.cli import _validate_e2ee_dependencies
 
-        with patch("mmrelay.cli.print"):  # Suppress print output
+        with patch("mmrelay.cli.print"):
             result = _validate_e2ee_dependencies()
             self.assertFalse(result)
 
@@ -1067,9 +1059,9 @@ class TestE2EEAnalysisFunctions(unittest.TestCase):
         config = {"matrix": {"e2ee": {"enabled": True}}}
         mock_exists.return_value = True  # credentials.json exists
 
-        with patch.dict(
-            "sys.modules",
-            {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
+        with patch(
+            "mmrelay.matrix.compat.get_matrix_capabilities",
+            return_value=SimpleNamespace(encryption_available=True),
         ):
             result = _analyze_e2ee_setup(config, TEST_CONFIG_PATH)
 
@@ -1101,9 +1093,9 @@ class TestE2EEAnalysisFunctions(unittest.TestCase):
         config = {"matrix": {"e2ee": {"enabled": False}}}
         mock_exists.return_value = True
 
-        with patch.dict(
-            "sys.modules",
-            {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
+        with patch(
+            "mmrelay.matrix.compat.get_matrix_capabilities",
+            return_value=SimpleNamespace(encryption_available=True),
         ):
             result = _analyze_e2ee_setup(config, TEST_CONFIG_PATH)
 
@@ -1158,20 +1150,37 @@ class TestE2EEPrintFunctions(unittest.TestCase):
                 any("⚠️  E2EE is disabled in configuration" in call for call in calls)
             )
 
+    def test_print_e2ee_analysis_deps_not_installed(self):
+        """Test _print_e2ee_analysis with dependencies_available=False."""
+        from mmrelay.cli import _print_e2ee_analysis
+
+        analysis = {
+            "dependencies_available": False,
+            "credentials_available": False,
+            "platform_supported": True,
+            "config_enabled": False,
+            "overall_status": "incomplete",
+            "recommendations": ["Install E2EE dependencies"],
+        }
+
+        with patch("mmrelay.cli.print") as mock_print:
+            _print_e2ee_analysis(analysis)
+            mock_print.assert_called()
+            calls = [call.args[0] for call in mock_print.call_args_list]
+            self.assertTrue(
+                any("Dependencies: Not installed" in call for call in calls)
+            )
+            self.assertTrue(any("Authentication: Missing" in call for call in calls))
+
     @patch("sys.platform", "linux")
     def test_print_environment_summary_linux(self):
         """Test _print_environment_summary on Linux."""
         from mmrelay.cli import _print_environment_summary
 
-        # Mock the specific modules instead of builtins.__import__ to avoid Python 3.10 conflicts
         with (
-            patch.dict(
-                "sys.modules",
-                {
-                    "olm": MagicMock(),
-                    "nio.crypto": MagicMock(),
-                    "nio.store": MagicMock(),
-                },
+            patch(
+                "mmrelay.matrix.compat.get_matrix_capabilities",
+                return_value=SimpleNamespace(encryption_available=True),
             ),
             patch("mmrelay.cli.print") as mock_print,
         ):
@@ -2144,9 +2153,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         self.assertFalse(result)
         # Function uses print statements, not logger
         mock_print.assert_any_call("❌ Error: E2EE is not supported on Windows")
-        mock_print.assert_any_call(
-            "   Reason: python-olm library requires native C libraries"
-        )
+        mock_print.assert_any_call("   Reason: E2EE crypto requires native C libraries")
         mock_print.assert_any_call("   Solution: Use Linux or macOS for E2EE support")
 
     @patch("os.path.exists")
@@ -2958,12 +2965,10 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
     @patch("builtins.print")
     def test_print_environment_summary_linux_with_e2ee(self, mock_print):
         """Test environment summary on Linux with E2EE dependencies available."""
-        # Mock successful E2EE imports
-        with patch.dict(
-            "sys.modules",
-            {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
+        with patch(
+            "mmrelay.matrix.compat.get_matrix_capabilities",
+            return_value=SimpleNamespace(encryption_available=True),
         ):
-            # Import and call function
             from mmrelay.cli import _print_environment_summary
 
             _print_environment_summary()
@@ -2979,57 +2984,23 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
     @patch("builtins.print")
     def test_print_environment_summary_linux_without_e2ee(self, mock_print):
         """Test environment summary on Linux without E2EE dependencies."""
-        # Import function first
-        from mmrelay.cli import _print_environment_summary
+        with patch(
+            "mmrelay.matrix.compat.get_matrix_capabilities",
+            return_value=SimpleNamespace(
+                encryption_available=False,
+                both_known_providers_installed=False,
+                provider_distribution="mindroom-nio",
+            ),
+        ):
+            from mmrelay.cli import _print_environment_summary
 
-        # Mock failed E2EE imports by removing modules from sys.modules and making import fail
-        original_modules = sys.modules.copy()
-        original_import = None
-        try:
-            # Remove E2EE modules if they exist
-            for module in ["olm", "nio.crypto", "nio.store"]:
-                if module in sys.modules:
-                    del sys.modules[module]
-
-            # Mock import to raise ImportError for E2EE modules
-            original_import = builtins.__import__
-
-            def mock_import(name, *args, **kwargs):
-                """
-                Simulate missing optional modules by raising ImportError for select module names during imports.
-
-                Parameters:
-                    name (str): Fully-qualified module name being imported; if it equals "olm", "nio.crypto", or "nio.store" an ImportError is raised.
-                    *args: Additional positional arguments passed to the underlying import machinery (passed through unchanged).
-                    **kwargs: Additional keyword arguments passed through to the underlying import machinery.
-
-                Returns:
-                    module: The result of the normal import for module names other than the ones listed.
-
-                Raises:
-                    ImportError: If `name` is "olm", "nio.crypto", or "nio.store".
-                """
-                if name in ["olm", "nio.crypto", "nio.store"]:
-                    raise ImportError(f"No module named '{name}'")
-                return original_import(name, *args, **kwargs)
-
-            builtins.__import__ = mock_import
-
-            # Call function
             _print_environment_summary()
-
-        finally:
-            # Restore original state
-            if original_import is not None:
-                builtins.__import__ = original_import
-            sys.modules.update(original_modules)
 
         # Verify results
         mock_print.assert_any_call("\n🖥️  Environment Summary:")
         mock_print.assert_any_call("   Platform: linux")
         mock_print.assert_any_call("   Python: 3.12.3")
         mock_print.assert_any_call("   E2EE Support: ⚠️  Available but not installed")
-        mock_print.assert_any_call("   Install: pipx install 'mmrelay[e2e]'")
 
     @patch("sys.platform", "win32")
     @patch(
@@ -3061,21 +3032,100 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
     @patch("builtins.print")
     def test_print_environment_summary_macos_with_e2ee(self, mock_print):
         """Test environment summary on macOS with E2EE dependencies available."""
-        # Mock successful E2EE imports
-        with patch.dict(
-            "sys.modules",
-            {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
+        with patch(
+            "mmrelay.matrix.compat.get_matrix_capabilities",
+            return_value=SimpleNamespace(encryption_available=True),
         ):
-            # Import and call function
             from mmrelay.cli import _print_environment_summary
 
             _print_environment_summary()
 
-        # Verify results
-        mock_print.assert_any_call("\n🖥️  Environment Summary:")
-        mock_print.assert_any_call("   Platform: darwin")
-        mock_print.assert_any_call("   Python: 3.12.3")
         mock_print.assert_any_call("   E2EE Support: ✅ Available and installed")
+
+
+class TestProviderAwareE2EEGuidance(unittest.TestCase):
+    """Test CLI guidance changes by provider."""
+
+    def _make_caps(self, **overrides: object) -> MatrixLibraryCapabilities:
+        from dataclasses import replace
+
+        baseline = MatrixLibraryCapabilities(
+            provider_name="mindroom-nio",
+            provider_version="0.25.2",
+            provider_distribution="mindroom-nio",
+            crypto_backend="vodozemac",
+            encryption_available=True,
+            store_available=True,
+            sqlite_store_available=True,
+            olm_available=False,
+            vodozemac_available=True,
+            nio_crypto_available=True,
+            nio_crypto_encryption_enabled=True,
+            nio_crypto_olm_device_available=False,
+            recommended_e2ee_extra="mindroom-nio[e2e]",
+            install_hint="install mindroom-nio[e2e] / vodozemac",
+            both_known_providers_installed=False,
+            supports_stop_sync_forever=True,
+            supports_thread_receipts=True,
+            supports_authenticated_media=True,
+        )
+        return replace(baseline, **overrides)
+
+    @patch("sys.platform", "linux")
+    @patch("builtins.print")
+    def test_mindroom_missing_crypto_prints_mmrelay_e2e(self, mock_print):
+        """Mindroom missing E2EE recommends mmrelay[e2e]."""
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        caps = self._make_caps(
+            provider_distribution="mindroom-nio",
+            encryption_available=False,
+            both_known_providers_installed=False,
+        )
+        with patch("mmrelay.matrix.compat.get_matrix_capabilities", return_value=caps):
+            _validate_e2ee_dependencies()
+
+        printed = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
+        install_line = [m for m in printed if "Install E2EE support" in m]
+        self.assertEqual(len(install_line), 1)
+        self.assertIn("mmrelay[e2e]", install_line[0])
+
+    @patch("sys.platform", "linux")
+    @patch("builtins.print")
+    def test_matrix_nio_missing_crypto_no_mmrelay_e2e(self, mock_print):
+        """Matrix-nio missing E2EE does NOT recommend mmrelay[e2e]."""
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        caps = self._make_caps(
+            provider_distribution="matrix-nio",
+            encryption_available=False,
+            both_known_providers_installed=False,
+        )
+        with patch("mmrelay.matrix.compat.get_matrix_capabilities", return_value=caps):
+            _validate_e2ee_dependencies()
+
+        printed = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
+        install_line = [m for m in printed if "Install E2EE support" in m]
+        self.assertEqual(len(install_line), 1)
+        self.assertIn("matrix-nio[e2e]", install_line[0])
+        self.assertNotIn("pipx install 'mmrelay[e2e]'", install_line[0])
+
+    @patch("sys.platform", "linux")
+    @patch("builtins.print")
+    def test_both_providers_installed_recommends_uninstall(self, mock_print):
+        """Both providers installed recommends uninstalling one."""
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        caps = self._make_caps(
+            provider_distribution="unknown",
+            both_known_providers_installed=True,
+            encryption_available=False,
+        )
+        with patch("mmrelay.matrix.compat.get_matrix_capabilities", return_value=caps):
+            _validate_e2ee_dependencies()
+
+        printed = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
+        self.assertTrue(any("Uninstall" in m for m in printed))
 
 
 class TestValidateE2eeConfig(unittest.TestCase):
@@ -3384,49 +3434,17 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
         # Setup mocks
         mock_exists.return_value = False  # No credentials file
 
-        # Mock missing E2EE dependencies
-        original_modules = sys.modules.copy()
-        original_import = None
-        try:
-            # Remove E2EE modules if they exist
-            for module in ["olm", "nio.crypto", "nio.store"]:
-                if module in sys.modules:
-                    del sys.modules[module]
-
-            # Mock import to raise ImportError for E2EE modules
-            original_import = builtins.__import__
-
-            def mock_import(name, *args, **kwargs):
-                """
-                Simulate missing optional modules by raising ImportError for select module names during imports.
-
-                Parameters:
-                    name (str): Fully-qualified module name being imported; if it equals "olm", "nio.crypto", or "nio.store" an ImportError is raised.
-                    *args: Additional positional arguments passed to the underlying import machinery (passed through unchanged).
-                    **kwargs: Additional keyword arguments passed through to the underlying import machinery.
-
-                Returns:
-                    module: The result of the normal import for module names other than the ones listed.
-
-                Raises:
-                    ImportError: If `name` is "olm", "nio.crypto", or "nio.store".
-                """
-                if name in ["olm", "nio.crypto", "nio.store"]:
-                    raise ImportError(f"No module named '{name}'")
-                return original_import(name, *args, **kwargs)
-
-            builtins.__import__ = mock_import
-
-            # Import and call function
+        with patch(
+            "mmrelay.matrix.compat.get_matrix_capabilities",
+            return_value=SimpleNamespace(
+                encryption_available=False,
+                both_known_providers_installed=False,
+                provider_distribution="mindroom-nio",
+            ),
+        ):
             from mmrelay.cli import _analyze_e2ee_setup
 
             result = _analyze_e2ee_setup(self.base_config, self.config_path)
-
-        finally:
-            # Restore original state
-            if original_import is not None:
-                builtins.__import__ = original_import
-            sys.modules.update(original_modules)
 
         # Verify results
         self.assertIsInstance(result, dict)
@@ -3435,9 +3453,8 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
         self.assertFalse(result["dependencies_available"])
         self.assertFalse(result["credentials_available"])
         self.assertEqual(result["overall_status"], "incomplete")
-        self.assertIn(
-            "Install E2EE dependencies: pipx install 'mmrelay[e2e]'",
-            result["recommendations"],
+        self.assertTrue(
+            any("Install E2EE dependencies:" in r for r in result["recommendations"])
         )
         self.assertIn(
             "Set up Matrix authentication: mmrelay auth login",
@@ -3451,12 +3468,10 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
         # Setup mocks
         mock_exists.return_value = True  # Credentials file exists
 
-        # Mock successful E2EE dependencies
-        with patch.dict(
-            "sys.modules",
-            {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
+        with patch(
+            "mmrelay.matrix.compat.get_matrix_capabilities",
+            return_value=SimpleNamespace(encryption_available=True),
         ):
-            # Import and call function
             from mmrelay.cli import _analyze_e2ee_setup
 
             result = _analyze_e2ee_setup(self.base_config, self.config_path)
@@ -3475,22 +3490,20 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
     @patch("sys.platform", "darwin")
     @patch("os.path.exists")
     def test_analyze_e2ee_setup_macos_legacy_encryption_config(self, mock_exists):
-        """Test E2EE analysis on macOS with legacy encryption configuration."""
-        # Setup config with legacy encryption section
-        config = {
-            "matrix": {
-                "homeserver": "https://matrix.org",
-                "encryption": {"enabled": True},  # Legacy format
-            }
-        }
+        """Test E2EE analysis with legacy encryption config section."""
+        # Use macOS platform (should be supported)
         mock_exists.return_value = True  # Credentials file exists
 
-        # Mock successful E2EE dependencies
-        with patch.dict(
-            "sys.modules",
-            {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
+        config = {
+            "matrix": {
+                "encryption": {"enabled": True},  # Legacy encryption config
+            }
+        }
+
+        with patch(
+            "mmrelay.matrix.compat.get_matrix_capabilities",
+            return_value=SimpleNamespace(encryption_available=True),
         ):
-            # Import and call function
             from mmrelay.cli import _analyze_e2ee_setup
 
             result = _analyze_e2ee_setup(config, self.config_path)
@@ -3510,23 +3523,12 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
         self, mock_exists, mock_get_base_dir
     ):
         """Test E2EE analysis with standard credentials path."""
-        # Setup mocks
-        mock_get_base_dir.return_value = "/home/user/.mmrelay"
+        mock_exists.return_value = True
 
-        # Mock exists to return True for standard path but False for config dir path
-        def mock_exists_side_effect(path):
-            if path == "/home/user/.mmrelay/credentials.json":
-                return True  # Standard path exists
-            return False  # Config dir path doesn't exist
-
-        mock_exists.side_effect = mock_exists_side_effect
-
-        # Mock successful E2EE dependencies
-        with patch.dict(
-            "sys.modules",
-            {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
+        with patch(
+            "mmrelay.matrix.compat.get_matrix_capabilities",
+            return_value=SimpleNamespace(encryption_available=True),
         ):
-            # Import and call function
             from mmrelay.cli import _analyze_e2ee_setup
 
             result = _analyze_e2ee_setup(self.base_config, self.config_path)

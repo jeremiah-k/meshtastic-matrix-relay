@@ -1,11 +1,15 @@
 import asyncio
-import importlib
 import os
 import ssl
 import sys
 from typing import Any, Optional, cast
 
 import mmrelay.matrix_utils as facade
+from mmrelay.matrix.compat import (
+    format_e2ee_install_command,
+    format_e2ee_unavailable_message,
+    get_matrix_capabilities,
+)
 
 __all__ = [
     "_configure_e2ee",
@@ -55,67 +59,65 @@ async def _configure_e2ee(
                     "E2EE is not supported on Windows due to library limitations."
                 )
                 facade.logger.error(
-                    "The python-olm library requires native C libraries that are difficult to install on Windows."
+                    "Matrix E2EE crypto backends require native libraries that are difficult to install on Windows."
                 )
                 facade.logger.error(
                     "Please disable E2EE in your configuration or use a Linux/macOS system for E2EE support."
                 )
                 e2ee_enabled = False
             else:
-                try:
-                    importlib.import_module("olm")
+                matrix_capabilities = get_matrix_capabilities()
+                if not matrix_capabilities.encryption_available:
+                    facade.logger.error("Missing E2EE dependency")
+                    facade.logger.error(
+                        format_e2ee_unavailable_message(matrix_capabilities)
+                    )
+                    facade.logger.error(
+                        format_e2ee_install_command(matrix_capabilities)
+                    )
+                    facade.logger.warning("E2EE will be disabled for this session.")
+                    e2ee_enabled = False
+                else:
+                    facade.logger.debug(
+                        "E2EE dependencies available: provider=%s version=%s backend=%s",
+                        matrix_capabilities.provider_name,
+                        matrix_capabilities.provider_version,
+                        matrix_capabilities.crypto_backend,
+                    )
+                    facade.logger.info("End-to-End Encryption (E2EE) is enabled")
+
+                if e2ee_enabled:
+                    store_override = None
+                    if isinstance(matrix_section, dict):
+                        encryption_section = matrix_section.get("encryption")
+                        e2ee_section = matrix_section.get("e2ee")
+                        if isinstance(e2ee_section, dict):
+                            store_override = e2ee_section.get("store_path")
+                        if not store_override and isinstance(encryption_section, dict):
+                            store_override = encryption_section.get("store_path")
+
+                    if isinstance(store_override, str) and store_override:
+                        e2ee_store_path = os.path.expanduser(store_override)
+                    else:
+                        e2ee_store_path = str(
+                            await asyncio.to_thread(facade.get_e2ee_store_dir)
+                        )
 
                     try:
-                        nio_crypto = importlib.import_module("nio.crypto")
-                        if not hasattr(nio_crypto, "OlmDevice"):
-                            raise ImportError("nio.crypto.OlmDevice is unavailable")
-
-                        nio_store = importlib.import_module("nio.store")
-                        if not hasattr(nio_store, "SqliteStore"):
-                            raise ImportError("nio.store.SqliteStore is unavailable")
-
-                        facade.logger.debug("All E2EE dependencies are available")
-                    except ImportError:
-                        facade.logger.exception("Missing E2EE dependency")
-                        facade.logger.error(
-                            "Please reinstall with: pipx install 'mmrelay[e2e]'"
+                        await asyncio.to_thread(
+                            os.makedirs, e2ee_store_path, exist_ok=True
                         )
-                        facade.logger.warning("E2EE will be disabled for this session.")
+                    except OSError as e:
+                        facade.logger.error(
+                            "Could not create E2EE store directory %s: %s; disabling E2EE for this session.",
+                            e2ee_store_path,
+                            e,
+                        )
                         e2ee_enabled = False
-                    else:
-                        facade.logger.info("End-to-End Encryption (E2EE) is enabled")
+                        e2ee_store_path = None
 
-                    if e2ee_enabled:
-                        store_override = None
-                        if isinstance(matrix_section, dict):
-                            encryption_section = matrix_section.get("encryption")
-                            e2ee_section = matrix_section.get("e2ee")
-                            if isinstance(encryption_section, dict):
-                                store_override = encryption_section.get("store_path")
-                            if not store_override and isinstance(e2ee_section, dict):
-                                store_override = e2ee_section.get("store_path")
-
-                        if isinstance(store_override, str) and store_override:
-                            e2ee_store_path = os.path.expanduser(store_override)
-                        else:
-                            e2ee_store_path = str(
-                                await asyncio.to_thread(facade.get_e2ee_store_dir)
-                            )
-
+                    if e2ee_enabled and e2ee_store_path:
                         try:
-                            await asyncio.to_thread(
-                                os.makedirs, e2ee_store_path, exist_ok=True
-                            )
-                        except OSError as e:
-                            facade.logger.error(
-                                "Could not create E2EE store directory %s: %s; disabling E2EE for this session.",
-                                e2ee_store_path,
-                                e,
-                            )
-                            e2ee_enabled = False
-                            e2ee_store_path = None
-
-                        if e2ee_enabled and e2ee_store_path:
                             store_exists = await asyncio.to_thread(
                                 os.path.exists, e2ee_store_path
                             )
@@ -137,20 +139,19 @@ async def _configure_e2ee(
                             facade.logger.debug(
                                 f"Using E2EE store path: {e2ee_store_path}"
                             )
+                        except OSError as exc:
+                            facade.logger.error(
+                                "Could not inspect E2EE store at %s: %s",
+                                e2ee_store_path,
+                                exc,
+                            )
+                            e2ee_enabled = False
+                            e2ee_store_path = None
 
-                            if not e2ee_device_id:
-                                facade.logger.debug(
-                                    "No device_id in credentials; will retrieve from store/whoami later if available"
-                                )
-                except ImportError:
-                    facade.logger.warning(
-                        "E2EE is enabled in config but python-olm is not installed."
-                    )
-                    facade.logger.warning(
-                        "Install E2EE extras: pip install 'mmrelay[e2e]' "
-                        "(or from source: pip install -e '.[e2e]')."
-                    )
-                    e2ee_enabled = False
+                        if not e2ee_device_id:
+                            facade.logger.debug(
+                                "No device_id in credentials; will retrieve from store/whoami later if available"
+                            )
     except (KeyError, TypeError) as exc:
         facade.logger.warning(f"Failed to determine E2EE status from config: {exc}")
         facade.logger.debug("E2EE configuration error details", exc_info=True)
