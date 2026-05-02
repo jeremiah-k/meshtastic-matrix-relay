@@ -1311,7 +1311,7 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
             return_value=(
-                "meshtastic_id",
+                12345,
                 TEST_ROOM_ID,
                 "original_text",
                 "test_mesh",
@@ -1336,6 +1336,7 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
         mock_queue_message.assert_called_once()
         queued_kwargs = mock_queue_message.call_args.kwargs
         assert queued_kwargs["description"].startswith("Local reaction")
+        assert queued_kwargs["reply_id"] == 12345
         assert "reacted" in queued_kwargs["text"]
 
 
@@ -1923,7 +1924,7 @@ async def test_on_room_message_local_reaction_queue_failure_logs(
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
-            return_value=("mesh_id", mock_room.room_id, "text", "meshnet"),
+            return_value=(12345, mock_room.room_id, "text", "meshnet"),
         ),
         patch(
             "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",

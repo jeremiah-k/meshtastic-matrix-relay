@@ -1816,6 +1816,7 @@ class TestBasePlugin(unittest.TestCase):
                 call_kwargs["content"]["m.relates_to"]["event_id"], "$event_id"
             )
             self.assertEqual(call_kwargs["content"]["m.relates_to"]["key"], "✅")
+            self.assertTrue(call_kwargs["content"]["mmrelay_suppress"])
 
         asyncio.run(run_test())
 

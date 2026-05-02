@@ -791,7 +791,8 @@ class BasePlugin(ABC):
                 "rel_type": "m.annotation",
                 "event_id": event_id,
                 "key": emoji,
-            }
+            },
+            "mmrelay_suppress": True,
         }
         try:
             await matrix_client.room_send(

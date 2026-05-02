@@ -424,11 +424,23 @@ async def on_room_message(
                 return
 
             (
-                _meshtastic_id,
+                meshtastic_id_raw,
                 _matrix_room_id,
                 meshtastic_text_db,
                 _meshtastic_meshnet_db,
             ) = orig
+
+            if isinstance(meshtastic_id_raw, int):
+                meshtastic_reply_id = meshtastic_id_raw
+            elif isinstance(meshtastic_id_raw, str) and meshtastic_id_raw.isdigit():
+                meshtastic_reply_id = int(meshtastic_id_raw)
+            else:
+                facade.logger.warning(
+                    "Message map meshtastic_id %r is not numeric; sending reaction as regular message",
+                    meshtastic_id_raw,
+                )
+                meshtastic_reply_id = None
+
             full_display_name = await facade.get_user_display_name(room, event)
 
             prefix = facade.get_meshtastic_prefix(facade.config, full_display_name)
@@ -462,18 +474,34 @@ async def on_room_message(
                 facade.DEFAULT_BROADCAST_ENABLED,
                 required=False,
             ):
-                meshtastic_logger.info(
-                    f"Relaying reaction from {full_display_name} to radio broadcast"
-                )
-                facade.logger.debug(
-                    f"Sending reaction to Meshtastic with meshnet={local_meshnet_name}: {reaction_message}"
-                )
-                success = facade.queue_message(
-                    meshtastic_interface.sendText,
-                    text=reaction_message,
-                    channelIndex=meshtastic_channel,
-                    description=f"Local reaction from {full_display_name}",
-                )
+                if meshtastic_reply_id is not None:
+                    meshtastic_logger.info(
+                        f"Relaying reaction from {full_display_name} to radio broadcast as reply"
+                    )
+                    facade.logger.debug(
+                        f"Sending reaction reply to Meshtastic message {meshtastic_reply_id}: {reaction_message}"
+                    )
+                    success = facade.queue_message(
+                        facade.send_text_reply,
+                        meshtastic_interface,
+                        text=reaction_message,
+                        reply_id=meshtastic_reply_id,
+                        channelIndex=meshtastic_channel,
+                        description=f"Local reaction from {full_display_name} (reply to {meshtastic_reply_id})",
+                    )
+                else:
+                    meshtastic_logger.info(
+                        f"Relaying reaction from {full_display_name} to radio broadcast"
+                    )
+                    facade.logger.debug(
+                        f"Sending reaction to Meshtastic with meshnet={local_meshnet_name}: {reaction_message}"
+                    )
+                    success = facade.queue_message(
+                        meshtastic_interface.sendText,
+                        text=reaction_message,
+                        channelIndex=meshtastic_channel,
+                        description=f"Local reaction from {full_display_name}",
+                    )
 
                 if success:
                     facade.logger.debug(
