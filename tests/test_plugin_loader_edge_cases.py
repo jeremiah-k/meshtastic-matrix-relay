@@ -669,7 +669,10 @@ class Plugin:
 
     def test_ignored_directory_names_skipped(self):
         for dirname in PLUGIN_IGNORED_DIR_NAMES:
-            with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                self.subTest(dirname=dirname),
+                tempfile.TemporaryDirectory() as temp_dir,
+            ):
                 ignored_dir = os.path.join(temp_dir, dirname)
                 os.makedirs(ignored_dir)
                 plugin_file = os.path.join(ignored_dir, "my_plugin.py")
@@ -684,7 +687,10 @@ class Plugin:
 
     def test_ignored_file_patterns_skipped(self):
         for pattern in PLUGIN_IGNORED_FILE_PATTERNS:
-            with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                self.subTest(pattern=pattern),
+                tempfile.TemporaryDirectory() as temp_dir,
+            ):
                 filename = (
                     pattern.replace("*", "something") if "*" in pattern else pattern
                 )
@@ -727,16 +733,15 @@ class Plugin:
         from mmrelay.plugin_loader import _should_ignore_plugin_file
 
         for pattern in PLUGIN_IGNORED_FILE_PATTERNS:
-            if pattern.startswith("test_"):
-                assert _should_ignore_plugin_file(
-                    pattern.replace("*", "foo")
-                ), f"Should ignore {pattern.replace('*', 'foo')}"
-            elif pattern.endswith("_test.py"):
-                assert _should_ignore_plugin_file(
-                    pattern.replace("*", "foo")
-                ), f"Should ignore {pattern.replace('*', 'foo')}"
-            else:
-                assert _should_ignore_plugin_file(pattern), f"Should ignore {pattern}"
+            with self.subTest(pattern=pattern):
+                if pattern.startswith("test_") or pattern.endswith("_test.py"):
+                    assert _should_ignore_plugin_file(
+                        pattern.replace("*", "foo")
+                    ), f"Should ignore {pattern.replace('*', 'foo')}"
+                else:
+                    assert _should_ignore_plugin_file(
+                        pattern
+                    ), f"Should ignore {pattern}"
 
         assert _should_ignore_plugin_file(".hidden.py")
         assert not _should_ignore_plugin_file("my_plugin.py")

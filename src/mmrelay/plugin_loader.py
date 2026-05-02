@@ -2930,7 +2930,11 @@ def load_plugins_from_directory(
         # Clean Python cache to ensure fresh code loading
         _clean_python_cache(directory)
         for root, dirs, files in os.walk(directory):
-            dirs[:] = [d for d in dirs if d not in PLUGIN_IGNORED_DIR_NAMES]
+            dirs[:] = [
+                d
+                for d in dirs
+                if d not in PLUGIN_IGNORED_DIR_NAMES and not d.startswith(".")
+            ]
             for filename in files:
                 if filename.endswith(".py") and not _should_ignore_plugin_file(
                     filename
