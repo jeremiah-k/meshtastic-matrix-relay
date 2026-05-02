@@ -432,8 +432,15 @@ async def on_room_message(
 
             if isinstance(meshtastic_id_raw, int):
                 meshtastic_reply_id = meshtastic_id_raw
-            elif isinstance(meshtastic_id_raw, str) and meshtastic_id_raw.isdigit():
-                meshtastic_reply_id = int(meshtastic_id_raw)
+            elif isinstance(meshtastic_id_raw, str):
+                try:
+                    meshtastic_reply_id = int(meshtastic_id_raw, 0)
+                except ValueError:
+                    facade.logger.warning(
+                        "Message map meshtastic_id %r is not numeric; sending reaction as regular message",
+                        meshtastic_id_raw,
+                    )
+                    meshtastic_reply_id = None
             else:
                 facade.logger.warning(
                     "Message map meshtastic_id %r is not numeric; sending reaction as regular message",
@@ -483,7 +490,7 @@ async def on_room_message(
                     )
                     success = facade.queue_message(
                         facade.send_text_reply,
-                        meshtastic_interface,
+                        interface=meshtastic_interface,
                         text=reaction_message,
                         reply_id=meshtastic_reply_id,
                         channelIndex=meshtastic_channel,
