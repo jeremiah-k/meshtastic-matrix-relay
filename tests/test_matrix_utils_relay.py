@@ -1293,9 +1293,8 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
             """
             Invoke a callable synchronously and return its result.
 
-            _executor: Ignored; present for API compatibility.
-            func: Callable to invoke.
-            *args: Positional arguments forwarded to `func`.
+            _executor is accepted for API compatibility but ignored.
+            func is the callable to invoke; any positional args are forwarded to it.
 
             Returns:
                 The value returned by `func(*args)`.
@@ -1311,7 +1310,7 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
             return_value=(
-                12345,
+                "12345",
                 TEST_ROOM_ID,
                 "original_text",
                 "test_mesh",
@@ -1334,10 +1333,99 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
         await on_room_message(mock_room, mock_event)
 
         mock_queue_message.assert_called_once()
+        queued_args = mock_queue_message.call_args.args
         queued_kwargs = mock_queue_message.call_args.kwargs
         assert queued_kwargs["description"].startswith("Local reaction")
         assert queued_kwargs["reply_id"] == 12345
         assert "reacted" in queued_kwargs["text"]
+        assert queued_args[0].__name__ == "send_text_reply"
+
+
+async def test_on_room_message_reaction_non_numeric_meshtastic_id(
+    mock_room, test_config
+):
+    """Non-numeric mapped meshtastic_id should send as normal message, not reply."""
+    from nio import ReactionEvent
+
+    class MockReactionEvent(ReactionEvent):
+        def __init__(self, source, sender, server_timestamp):
+            self.source = source
+            self.sender = sender
+            self.server_timestamp = server_timestamp
+
+    mock_event = MockReactionEvent(
+        source={
+            "content": {
+                "m.relates_to": {
+                    "event_id": "original_event_id",
+                    "key": "👍",
+                    "rel_type": "m.annotation",
+                }
+            }
+        },
+        sender="@user:matrix.org",
+        server_timestamp=1234567890,
+    )
+
+    test_config["meshtastic"]["message_interactions"]["reactions"] = True
+
+    real_loop = asyncio.get_running_loop()
+
+    class DummyLoop:
+        def __init__(self, loop):
+            self._loop = loop
+
+        def is_running(self):
+            return True
+
+        def create_task(self, coro):
+            return self._loop.create_task(coro)
+
+        async def run_in_executor(self, _executor, func, *args):
+            return func(*args)
+
+    dummy_queue = MagicMock()
+    dummy_queue.get_queue_size.return_value = 0
+    mock_meshtastic = MagicMock()
+
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch("mmrelay.matrix_utils.get_user_display_name", return_value="MockUser"),
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+            return_value=(
+                "mesh_id",
+                TEST_ROOM_ID,
+                "original_text",
+                "test_mesh",
+            ),
+        ),
+        patch(
+            "mmrelay.matrix_utils.asyncio.get_running_loop",
+            return_value=DummyLoop(real_loop),
+        ),
+        patch("mmrelay.matrix_utils.get_message_queue", return_value=dummy_queue),
+        patch(
+            "mmrelay.matrix_utils.queue_message", return_value=True
+        ) as mock_queue_message,
+        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=mock_meshtastic),
+        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        await on_room_message(mock_room, mock_event)
+
+        mock_queue_message.assert_called_once()
+        queued_args = mock_queue_message.call_args.args
+        queued_kwargs = mock_queue_message.call_args.kwargs
+        assert "reacted" in queued_kwargs["text"]
+        assert "reply_id" not in queued_kwargs
+        assert queued_args[0] is mock_meshtastic.sendText
+    assert any(
+        "is not numeric" in call.args[0] for call in mock_logger.warning.call_args_list
+    )
 
 
 @patch("mmrelay.matrix_utils.connect_meshtastic")

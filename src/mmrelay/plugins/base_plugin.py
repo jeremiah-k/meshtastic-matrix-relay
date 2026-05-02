@@ -33,6 +33,7 @@ from mmrelay.constants.database import (
     DEFAULT_TEXT_TRUNCATION_LENGTH,
 )
 from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
+from mmrelay.constants.formats import MATRIX_SUPPRESS_KEY
 from mmrelay.constants.plugins import (
     DEFAULT_PLUGIN_PRIORITY,
     PLUGIN_TYPE_COMMUNITY,
@@ -792,7 +793,7 @@ class BasePlugin(ABC):
                 "event_id": event_id,
                 "key": emoji,
             },
-            "mmrelay_suppress": True,
+            MATRIX_SUPPRESS_KEY: True,
         }
         try:
             await matrix_client.room_send(

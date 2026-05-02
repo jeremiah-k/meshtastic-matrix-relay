@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay.constants.config import CONFIG_KEY_REQUIRE_BOT_MENTION
 from mmrelay.constants.database import DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE
 from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
+from mmrelay.constants.formats import MATRIX_SUPPRESS_KEY
 from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
 from mmrelay.constants.plugins import DEFAULT_PLUGIN_PRIORITY
 from mmrelay.plugins.base_plugin import BasePlugin
@@ -1816,7 +1817,7 @@ class TestBasePlugin(unittest.TestCase):
                 call_kwargs["content"]["m.relates_to"]["event_id"], "$event_id"
             )
             self.assertEqual(call_kwargs["content"]["m.relates_to"]["key"], "✅")
-            self.assertTrue(call_kwargs["content"]["mmrelay_suppress"])
+            self.assertTrue(call_kwargs["content"][MATRIX_SUPPRESS_KEY])
 
         asyncio.run(run_test())
 
