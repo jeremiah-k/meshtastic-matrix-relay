@@ -116,7 +116,7 @@ def test_detects_mindroom_without_vodozemac(monkeypatch):
     assert "mindroom" in message
     assert "python-olm" not in message
     assert "mindroom-nio[e2e]" in compat.format_e2ee_install_command(capabilities)
-    assert "alongside matrix-nio" in compat.format_e2ee_install_command(capabilities)
+    assert "mmrelay[e2e]" in compat.format_e2ee_install_command(capabilities)
 
 
 def test_reports_multiple_known_provider_distributions(monkeypatch):

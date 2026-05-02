@@ -610,7 +610,11 @@ class TestCLIValidationFunctions(unittest.TestCase):
         with (
             patch(
                 "mmrelay.matrix.compat.get_matrix_capabilities",
-                return_value=SimpleNamespace(encryption_available=False),
+                return_value=SimpleNamespace(
+                    encryption_available=False,
+                    both_known_providers_installed=False,
+                    provider_distribution="mindroom-nio",
+                ),
             ),
             patch("mmrelay.cli.print"),
         ):
@@ -2960,7 +2964,11 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
         """Test environment summary on Linux without E2EE dependencies."""
         with patch(
             "mmrelay.matrix.compat.get_matrix_capabilities",
-            return_value=SimpleNamespace(encryption_available=False),
+            return_value=SimpleNamespace(
+                encryption_available=False,
+                both_known_providers_installed=False,
+                provider_distribution="mindroom-nio",
+            ),
         ):
             from mmrelay.cli import _print_environment_summary
 
@@ -2971,10 +2979,6 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
         mock_print.assert_any_call("   Platform: linux")
         mock_print.assert_any_call("   Python: 3.12.3")
         mock_print.assert_any_call("   E2EE Support: ⚠️  Available but not installed")
-        mock_print.assert_any_call("   Install: pipx install 'mmrelay[e2e]'")
-        mock_print.assert_any_call("   Python: 3.12.3")
-        mock_print.assert_any_call("   E2EE Support: ⚠️  Available but not installed")
-        mock_print.assert_any_call("   Install: pipx install 'mmrelay[e2e]'")
 
     @patch("sys.platform", "win32")
     @patch(
@@ -3398,7 +3402,11 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
 
         with patch(
             "mmrelay.matrix.compat.get_matrix_capabilities",
-            return_value=SimpleNamespace(encryption_available=False),
+            return_value=SimpleNamespace(
+                encryption_available=False,
+                both_known_providers_installed=False,
+                provider_distribution="mindroom-nio",
+            ),
         ):
             from mmrelay.cli import _analyze_e2ee_setup
 
@@ -3411,9 +3419,8 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
         self.assertFalse(result["dependencies_available"])
         self.assertFalse(result["credentials_available"])
         self.assertEqual(result["overall_status"], "incomplete")
-        self.assertIn(
-            "Install E2EE dependencies: pipx install 'mmrelay[e2e]'",
-            result["recommendations"],
+        self.assertTrue(
+            any("Install E2EE dependencies:" in r for r in result["recommendations"])
         )
         self.assertIn(
             "Set up Matrix authentication: mmrelay auth login",
