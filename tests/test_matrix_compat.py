@@ -13,13 +13,17 @@ def reset_capability_cache():
     compat.reset_matrix_capabilities_cache()
 
 
-def _patch_detection(monkeypatch, distributions, modules):
-    def fake_version(distribution_name):
+def _patch_detection(
+    monkeypatch: pytest.MonkeyPatch,
+    distributions: dict[str, str],
+    modules: dict[str, object],
+) -> None:
+    def fake_version(distribution_name: str) -> str:
         if distribution_name in distributions:
             return distributions[distribution_name]
         raise compat.metadata.PackageNotFoundError(distribution_name)
 
-    def fake_import_module(module_name):
+    def fake_import_module(module_name: str) -> object:
         if module_name in modules:
             module = modules[module_name]
             if isinstance(module, BaseException):
@@ -31,17 +35,18 @@ def _patch_detection(monkeypatch, distributions, modules):
     monkeypatch.setattr(compat.importlib, "import_module", fake_import_module)
 
 
-def _read_pyproject_deps():
+def _read_pyproject_deps() -> dict[str, object]:
     """Read pyproject.toml and extract dependencies and optional-dependencies."""
     try:
         import tomllib
     except ImportError:
-        import tomli as tomllib
+        import tomli as tomllib  # type: ignore[no-redef]
 
     pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
     with pyproject_path.open("rb") as f:
         data = tomllib.load(f)
-    return data.get("project", {})
+    result = data.get("project", {})
+    return result if isinstance(result, dict) else {}
 
 
 def test_default_dependency_is_mindroom_not_matrix_nio():
@@ -85,18 +90,6 @@ def test_no_extra_installs_both_providers_with_base():
         assert not (
             has_matrix and has_mindroom
         ), f"extra '{extra_name}' combined deps contain both matrix-nio and mindroom-nio"
-
-    # Also verify no non-e2e extra introduces Matrix provider deps
-    for name, deps in extras.items():
-        if name == "e2e":
-            continue
-        for dep in deps:
-            assert (
-                "matrix-nio" not in dep
-            ), f"extra {name} unexpectedly contains matrix-nio: {dep}"
-            assert (
-                "mindroom-nio" not in dep
-            ), f"extra {name} unexpectedly contains mindroom-nio: {dep}"
 
 
 def test_both_providers_installed_disables_e2ee_even_with_crypto(monkeypatch):

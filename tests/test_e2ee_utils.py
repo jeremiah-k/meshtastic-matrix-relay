@@ -9,7 +9,6 @@ This module tests lines 115-122 and 172-182 of e2ee_utils.py:
 import os
 import shutil
 import tempfile
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -20,23 +19,31 @@ from mmrelay.e2ee_utils import (
     _check_credentials_available,
     get_e2ee_status,
 )
+from mmrelay.matrix.compat import MatrixLibraryCapabilities
 
 
-def _matrix_capabilities(*, encryption_available: bool = True) -> SimpleNamespace:
-    return SimpleNamespace(
-        encryption_available=encryption_available,
-        provider_distribution="matrix-nio",
+def _matrix_capabilities(
+    *, encryption_available: bool = True
+) -> MatrixLibraryCapabilities:
+    return MatrixLibraryCapabilities(
         provider_name="matrix-nio",
         provider_version="0.25.2",
-        crypto_backend="olm",
-        install_hint="install matrix-nio[e2e] / python-olm",
-        recommended_e2ee_extra="matrix-nio[e2e]",
-        both_known_providers_installed=False,
+        provider_distribution="matrix-nio",
+        crypto_backend="olm" if encryption_available else "unavailable",
+        encryption_available=encryption_available,
+        store_available=encryption_available,
+        sqlite_store_available=encryption_available,
         olm_available=encryption_available,
         vodozemac_available=False,
         nio_crypto_available=True,
-        sqlite_store_available=encryption_available,
         nio_crypto_encryption_enabled=None,
+        nio_crypto_olm_device_available=encryption_available,
+        recommended_e2ee_extra="matrix-nio[e2e]",
+        install_hint="install matrix-nio[e2e] / python-olm",
+        both_known_providers_installed=False,
+        supports_stop_sync_forever=True,
+        supports_thread_receipts=False,
+        supports_authenticated_media=False,
     )
 
 

@@ -18,8 +18,8 @@ but recommends migrating to vodozemac.
 
 MMRelay now uses **mindroom-nio** as its default Matrix provider, which uses
 **vodozemac** (the Rust successor to libolm) for E2EE. The legacy
-`matrix-nio` provider with `python-olm` is still supported through manual
-replacement but is no longer the default.
+`matrix-nio` provider with `python-olm` is still supported by manually
+installing matrix-nio instead of mindroom-nio but is no longer the default.
 
 ## Index
 
@@ -153,8 +153,8 @@ pipx install 'mmrelay[e2e]'
 ```
 
 The `mmrelay[e2e]` extra installs **mindroom-nio[e2e]** which includes the
-**vodozemac** crypto backend (Rust-based, no native C dependencies beyond what
-pip wheels provide).
+**vodozemac** crypto backend (Rust-based, distributed as precompiled wheels
+requiring no additional system libraries).
 
 ### Windows limitation
 

@@ -26,7 +26,6 @@ import sys
 import unittest
 import unittest.mock
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import MagicMock, mock_open, patch
 
 # Add repo root and src to path for imports
@@ -3025,7 +3024,7 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
 class TestProviderAwareE2EEGuidance(unittest.TestCase):
     """Test CLI guidance changes by provider."""
 
-    def _make_caps(self, **overrides: Any) -> MatrixLibraryCapabilities:
+    def _make_caps(self, **overrides: object) -> MatrixLibraryCapabilities:
         from dataclasses import replace
 
         baseline = MatrixLibraryCapabilities(
@@ -3066,8 +3065,8 @@ class TestProviderAwareE2EEGuidance(unittest.TestCase):
 
         printed = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
         install_line = [m for m in printed if "Install E2EE support" in m]
-        assert len(install_line) == 1
-        assert "mmrelay[e2e]" in install_line[0]
+        self.assertEqual(len(install_line), 1)
+        self.assertIn("mmrelay[e2e]", install_line[0])
 
     @patch("sys.platform", "linux")
     @patch("builtins.print")
@@ -3085,9 +3084,9 @@ class TestProviderAwareE2EEGuidance(unittest.TestCase):
 
         printed = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
         install_line = [m for m in printed if "Install E2EE support" in m]
-        assert len(install_line) == 1
-        assert "matrix-nio[e2e]" in install_line[0]
-        assert "pipx install 'mmrelay[e2e]'" not in install_line[0]
+        self.assertEqual(len(install_line), 1)
+        self.assertIn("matrix-nio[e2e]", install_line[0])
+        self.assertNotIn("pipx install 'mmrelay[e2e]'", install_line[0])
 
     @patch("sys.platform", "linux")
     @patch("builtins.print")
@@ -3104,7 +3103,7 @@ class TestProviderAwareE2EEGuidance(unittest.TestCase):
             _validate_e2ee_dependencies()
 
         printed = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
-        assert any("Uninstall" in m for m in printed)
+        self.assertTrue(any("Uninstall" in m for m in printed))
 
 
 class TestValidateE2eeConfig(unittest.TestCase):

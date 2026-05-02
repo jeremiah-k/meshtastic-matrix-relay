@@ -110,12 +110,43 @@ def _e2ee_install_guidance(
     )
 
 
+def _build_conflict_capabilities(
+    provider_name: str,
+    provider_version: str,
+) -> MatrixLibraryCapabilities:
+    """Return a deterministic conflict capabilities object when both providers are installed."""
+    extra, hint = _e2ee_install_guidance("unknown", "unavailable", True)
+    return MatrixLibraryCapabilities(
+        provider_name=provider_name,
+        provider_version=provider_version,
+        provider_distribution="unknown",
+        crypto_backend="unavailable",
+        encryption_available=False,
+        store_available=False,
+        sqlite_store_available=False,
+        olm_available=False,
+        vodozemac_available=False,
+        nio_crypto_available=False,
+        nio_crypto_encryption_enabled=None,
+        nio_crypto_olm_device_available=False,
+        recommended_e2ee_extra=extra,
+        install_hint=hint,
+        both_known_providers_installed=True,
+        supports_stop_sync_forever=False,
+        supports_thread_receipts=False,
+        supports_authenticated_media=False,
+    )
+
+
 def detect_matrix_capabilities() -> MatrixLibraryCapabilities:
     """Detect Matrix nio provider and optional E2EE capabilities."""
 
     provider_name, provider_version, provider_distribution, both_installed = (
         _detect_provider()
     )
+
+    if both_installed:
+        return _build_conflict_capabilities(provider_name, provider_version)
 
     olm_available = _module_available("olm")
     vodozemac_available = _module_available("vodozemac")
@@ -154,10 +185,7 @@ def detect_matrix_capabilities() -> MatrixLibraryCapabilities:
         and sqlite_store_available
     )
 
-    if both_installed:
-        crypto_backend: CryptoBackend = "unavailable"
-        encryption_available = False
-    elif provider_distribution == "mindroom-nio":
+    if provider_distribution == "mindroom-nio":
         if vodozemac_ready:
             crypto_backend = "vodozemac"
             encryption_available = True
@@ -290,7 +318,11 @@ def format_e2ee_install_command(
             "nio namespace and should not be installed together."
         )
     if detected.provider_distribution == "mindroom-nio":
-        return "pipx install 'mmrelay[e2e]' (installs mindroom-nio[e2e] / vodozemac)"
+        return (
+            "Install mmrelay[e2e] using the installer appropriate for this environment "
+            "(pipx: pipx install 'mmrelay[e2e]', pip/venv: pip install 'mmrelay[e2e]', "
+            "editable: pip install -e '.[e2e]')"
+        )
     if detected.provider_distribution == "matrix-nio":
         return (
             "Install matrix-nio E2EE in a controlled replacement environment: "

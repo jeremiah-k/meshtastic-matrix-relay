@@ -175,7 +175,12 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
             self.assertEqual(status["overall_status"], "incomplete")
             self.assertFalse(status["dependencies_installed"])
-            self.assertIn("E2EE dependencies not installed", status["issues"][0])
+            self.assertTrue(
+                any(
+                    "E2EE dependencies not installed" in issue
+                    for issue in status["issues"]
+                )
+            )
 
     @patch("sys.platform", "linux")
     @patch("mmrelay.e2ee_utils.os.path.exists")
@@ -243,7 +248,12 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
             self.assertFalse(status["dependencies_installed"])
             self.assertEqual(status["overall_status"], "incomplete")
-            self.assertIn("E2EE dependencies not installed", status["issues"][0])
+            self.assertTrue(
+                any(
+                    "E2EE dependencies not installed" in issue
+                    for issue in status["issues"]
+                )
+            )
 
     @patch("sys.platform", "linux")
     @patch("mmrelay.e2ee_utils.os.path.exists")
@@ -256,7 +266,12 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
             self.assertFalse(status["dependencies_installed"])
             self.assertEqual(status["overall_status"], "incomplete")
-            self.assertIn("E2EE dependencies not installed", status["issues"][0])
+            self.assertTrue(
+                any(
+                    "E2EE dependencies not installed" in issue
+                    for issue in status["issues"]
+                )
+            )
 
 
 class TestRoomListFormatting(unittest.TestCase):

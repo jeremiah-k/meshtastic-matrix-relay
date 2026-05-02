@@ -117,25 +117,36 @@ async def _configure_e2ee(
                         e2ee_store_path = None
 
                     if e2ee_enabled and e2ee_store_path:
-                        store_exists = await asyncio.to_thread(
-                            os.path.exists, e2ee_store_path
-                        )
-                        store_files = (
-                            await asyncio.to_thread(os.listdir, e2ee_store_path)
-                            if store_exists
-                            else []
-                        )
-                        db_files = [f for f in store_files if f.endswith(".db")]
-                        if db_files:
-                            facade.logger.debug(
-                                f"Found existing E2EE store files: {', '.join(db_files)}"
+                        try:
+                            store_exists = await asyncio.to_thread(
+                                os.path.exists, e2ee_store_path
                             )
-                        else:
-                            facade.logger.info(
-                                "No existing E2EE store files found; this is expected for first-time setup and encryption will initialize on first use."
+                            store_files = (
+                                await asyncio.to_thread(os.listdir, e2ee_store_path)
+                                if store_exists
+                                else []
                             )
+                            db_files = [f for f in store_files if f.endswith(".db")]
+                            if db_files:
+                                facade.logger.debug(
+                                    f"Found existing E2EE store files: {', '.join(db_files)}"
+                                )
+                            else:
+                                facade.logger.info(
+                                    "No existing E2EE store files found; this is expected for first-time setup and encryption will initialize on first use."
+                                )
 
-                        facade.logger.debug(f"Using E2EE store path: {e2ee_store_path}")
+                            facade.logger.debug(
+                                f"Using E2EE store path: {e2ee_store_path}"
+                            )
+                        except OSError as exc:
+                            facade.logger.error(
+                                "Could not inspect E2EE store at %s: %s",
+                                e2ee_store_path,
+                                exc,
+                            )
+                            e2ee_enabled = False
+                            e2ee_store_path = None
 
                         if not e2ee_device_id:
                             facade.logger.debug(
