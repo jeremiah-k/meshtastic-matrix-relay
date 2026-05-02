@@ -103,9 +103,6 @@ class TestPrintSystemHealthWindows(unittest.TestCase):
 
     def test_windows_platform_prints_not_supported(self):
         """On Windows, _print_system_health should print 'Not supported on Windows'."""
-        import tempfile
-        from pathlib import Path
-
         db_path = Path(tempfile.gettempdir()) / "health_test.db"
         paths_info = {
             "home": tempfile.gettempdir(),

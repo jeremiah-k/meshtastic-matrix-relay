@@ -1223,8 +1223,9 @@ async def test_connect_matrix_e2ee_makedirs_oserror_disables(
         ),
         patch("mmrelay.matrix_utils.matrix_client", None),
     ):
-        await connect_matrix(test_config)
+        result = await connect_matrix(test_config)
 
+    assert result == mock_client_instance
     assert any(
         "Could not create E2EE store directory" in call.args[0]
         for call in mock_logger.error.call_args_list
@@ -1284,8 +1285,9 @@ async def test_connect_matrix_e2ee_store_inspection_oserror_disables(
         ),
         patch("mmrelay.matrix_utils.matrix_client", None),
     ):
-        await connect_matrix(test_config)
+        result = await connect_matrix(test_config)
 
+    assert result == mock_client_instance
     assert any(
         "Could not inspect E2EE store" in call.args[0]
         for call in mock_logger.error.call_args_list
@@ -1362,6 +1364,7 @@ async def test_connect_matrix_e2ee_config_keyerror_handler(
     mock_logger,
     mock_async_client,
     mock_ssl_context,
+    _mock_makedirs,
 ):
     """KeyError in config processing should log warning and disable E2EE."""
     mock_ssl_context.return_value = MagicMock()
@@ -1405,8 +1408,9 @@ async def test_connect_matrix_e2ee_config_keyerror_handler(
         ),
         patch("mmrelay.matrix_utils.matrix_client", None),
     ):
-        await connect_matrix(test_config)
+        result = await connect_matrix(test_config)
 
+    assert result == mock_client_instance
     assert any(
         "Failed to determine E2EE status from config" in call.args[0]
         for call in mock_logger.warning.call_args_list

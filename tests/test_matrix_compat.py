@@ -15,12 +15,13 @@ def reset_capability_cache():
 
 def _patch_detection(
     monkeypatch: pytest.MonkeyPatch,
-    distributions: dict[str, str],
+    distributions: dict[str, str | None],
     modules: dict[str, object],
 ) -> None:
     def fake_version(distribution_name: str) -> str:
-        if distribution_name in distributions:
-            return distributions[distribution_name]
+        version = distributions.get(distribution_name)
+        if version is not None:
+            return version
         raise compat.metadata.PackageNotFoundError(distribution_name)
 
     def fake_import_module(module_name: str) -> object:
@@ -166,12 +167,16 @@ def test_detect_provider_nio_fallback(monkeypatch):
 
 def test_detect_provider_unavailable(monkeypatch):
     """When no nio module or distribution is found, provider should be 'unavailable'."""
-    monkeypatch.setattr(compat.metadata, "version", lambda _: None)
-    monkeypatch.setattr(
-        compat.importlib,
-        "import_module",
-        lambda _: (_ for _ in ()).throw(ImportError("no module")),
-    )
+    from typing import NoReturn
+
+    def raise_not_found(name: str) -> NoReturn:
+        raise compat.metadata.PackageNotFoundError(name)
+
+    def raise_import_error(name: str) -> NoReturn:
+        raise ImportError(f"No module named {name!r}")
+
+    monkeypatch.setattr(compat.metadata, "version", raise_not_found)
+    monkeypatch.setattr(compat.importlib, "import_module", raise_import_error)
 
     caps = compat.detect_matrix_capabilities()
     assert caps.provider_name == "unavailable"
