@@ -27,11 +27,7 @@ from mmrelay.constants.messages import (
     MSG_E2EE_WINDOWS_UNSUPPORTED,
     MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL,
 )
-from mmrelay.matrix.compat import (
-    MatrixLibraryCapabilities,
-    detect_matrix_capabilities,
-    reset_matrix_capabilities_cache,
-)
+from mmrelay.matrix.compat import MatrixLibraryCapabilities
 
 try:
     from mmrelay.e2ee_utils import (
@@ -50,10 +46,29 @@ except ImportError:
 
 
 def _make_capabilities(**overrides) -> MatrixLibraryCapabilities:
-    """Build a capabilities instance from real detection with selective overrides."""
-    reset_matrix_capabilities_cache()
-    base = detect_matrix_capabilities()
-    return replace(base, **overrides)
+    """Build a capabilities instance from a deterministic baseline with selective overrides."""
+
+    baseline = MatrixLibraryCapabilities(
+        provider_name="mindroom-nio",
+        provider_version="0.25.2",
+        provider_distribution="mindroom-nio",
+        crypto_backend="vodozemac",
+        encryption_available=True,
+        store_available=True,
+        sqlite_store_available=True,
+        olm_available=False,
+        vodozemac_available=True,
+        nio_crypto_available=True,
+        nio_crypto_encryption_enabled=True,
+        nio_crypto_olm_device_available=False,
+        recommended_e2ee_extra="mindroom-nio[e2e]",
+        install_hint="install mindroom-nio[e2e] / vodozemac",
+        both_known_providers_installed=False,
+        supports_stop_sync_forever=True,
+        supports_thread_receipts=True,
+        supports_authenticated_media=True,
+    )
+    return replace(baseline, **overrides)
 
 
 class MockRoom:

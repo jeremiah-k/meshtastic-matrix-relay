@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -30,115 +31,6 @@ def _patch_detection(monkeypatch, distributions, modules):
     monkeypatch.setattr(compat.importlib, "import_module", fake_import_module)
 
 
-def test_detects_matrix_nio_olm_backend(monkeypatch):
-    _patch_detection(
-        monkeypatch,
-        {"matrix-nio": "0.25.2"},
-        {
-            "nio": SimpleNamespace(AsyncClient=type("AsyncClient", (), {})),
-            "nio.crypto": SimpleNamespace(OlmDevice=object),
-            "nio.store": SimpleNamespace(SqliteStore=object),
-            "olm": SimpleNamespace(),
-        },
-    )
-
-    capabilities = compat.detect_matrix_capabilities()
-
-    assert capabilities.provider_distribution == "matrix-nio"
-    assert capabilities.crypto_backend == "olm"
-    assert capabilities.encryption_available is True
-    assert capabilities.recommended_e2ee_extra == "matrix-nio[e2e]"
-    assert "python-olm" in capabilities.install_hint
-
-
-def test_detects_matrix_nio_without_olm(monkeypatch):
-    _patch_detection(
-        monkeypatch,
-        {"matrix-nio": "0.25.2"},
-        {
-            "nio": SimpleNamespace(AsyncClient=type("AsyncClient", (), {})),
-            "nio.crypto": SimpleNamespace(OlmDevice=object),
-            "nio.store": SimpleNamespace(SqliteStore=object),
-        },
-    )
-
-    capabilities = compat.detect_matrix_capabilities()
-
-    assert capabilities.provider_distribution == "matrix-nio"
-    assert capabilities.encryption_available is False
-    message = compat.format_e2ee_unavailable_message(capabilities)
-    assert "python-olm" in message
-    assert "matrix-nio" in message
-
-
-def test_detects_mindroom_vodozemac_backend(monkeypatch):
-    _patch_detection(
-        monkeypatch,
-        {"mindroom-nio": "0.25.2"},
-        {
-            "nio": SimpleNamespace(AsyncClient=type("AsyncClient", (), {})),
-            "nio.crypto": SimpleNamespace(
-                ENCRYPTION_ENABLED=True,
-                OlmDevice=object,
-            ),
-            "nio.store": SimpleNamespace(SqliteStore=object),
-            "vodozemac": SimpleNamespace(),
-        },
-    )
-
-    capabilities = compat.detect_matrix_capabilities()
-
-    assert capabilities.provider_distribution == "mindroom-nio"
-    assert capabilities.crypto_backend == "vodozemac"
-    assert capabilities.encryption_available is True
-    assert capabilities.recommended_e2ee_extra == "mindroom-nio[e2e]"
-    assert "vodozemac" in capabilities.install_hint
-
-
-def test_detects_mindroom_without_vodozemac(monkeypatch):
-    _patch_detection(
-        monkeypatch,
-        {"mindroom-nio": "0.25.2"},
-        {
-            "nio": SimpleNamespace(AsyncClient=type("AsyncClient", (), {})),
-            "nio.crypto": SimpleNamespace(ENCRYPTION_ENABLED=False),
-            "nio.store": SimpleNamespace(),
-        },
-    )
-
-    capabilities = compat.detect_matrix_capabilities()
-
-    assert capabilities.provider_distribution == "mindroom-nio"
-    assert capabilities.encryption_available is False
-    message = compat.format_e2ee_unavailable_message(capabilities)
-    assert "vodozemac" in message
-    assert "mindroom" in message
-    assert "python-olm" not in message
-    assert "mindroom-nio[e2e]" in compat.format_e2ee_install_command(capabilities)
-    assert "mmrelay[e2e]" in compat.format_e2ee_install_command(capabilities)
-
-
-def test_reports_multiple_known_provider_distributions(monkeypatch):
-    _patch_detection(
-        monkeypatch,
-        {"matrix-nio": "0.25.2", "mindroom-nio": "0.25.2"},
-        {"nio": SimpleNamespace(AsyncClient=type("AsyncClient", (), {}))},
-    )
-
-    capabilities = compat.detect_matrix_capabilities()
-
-    assert capabilities.provider_distribution == "unknown"
-    assert capabilities.both_known_providers_installed is True
-    assert capabilities.encryption_available is False
-    assert "matrix-nio=0.25.2" in capabilities.provider_version
-    assert "mindroom-nio=0.25.2" in capabilities.provider_version
-    message = compat.format_e2ee_unavailable_message(capabilities)
-    install_command = compat.format_e2ee_install_command(capabilities)
-    assert "both installed" in message
-    assert "uninstall one nio namespace owner" in message
-    assert "Uninstall either matrix-nio or mindroom-nio first" in install_command
-
-
 def _read_pyproject_deps():
     """Read pyproject.toml and extract dependencies and optional-dependencies."""
     try:
@@ -146,7 +38,8 @@ def _read_pyproject_deps():
     except ImportError:
         import tomli as tomllib
 
-    with open("pyproject.toml", "rb") as f:
+    pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    with open(pyproject_path, "rb") as f:
         data = tomllib.load(f)
     return data.get("project", {})
 

@@ -28,7 +28,7 @@ def _matrix_capabilities(
     install_hint: str = "install matrix-nio[e2e] / python-olm",
     recommended_e2ee_extra: str = "matrix-nio[e2e]",
     both_known_providers_installed: bool = False,
-):
+) -> SimpleNamespace:
     return SimpleNamespace(
         encryption_available=encryption_available,
         provider_distribution=provider_distribution,
@@ -580,8 +580,8 @@ async def test_connect_matrix_e2ee_store_path_from_config(monkeypatch):
     assert client_calls[0]["store_path"] == store_path
 
 
-async def test_connect_matrix_e2ee_store_path_precedence_encryption(monkeypatch):
-    """Encryption store_path should take precedence over e2ee store_path."""
+async def test_connect_matrix_e2ee_store_path_precedence_e2ee(monkeypatch):
+    """e2ee store_path should take precedence over encryption store_path."""
     mock_client = MagicMock()
     mock_client.rooms = {}
     mock_client.sync = AsyncMock(return_value=SimpleNamespace())
@@ -644,7 +644,7 @@ async def test_connect_matrix_e2ee_store_path_precedence_encryption(monkeypatch)
         await connect_matrix(config)
 
     assert client_calls
-    assert client_calls[0]["store_path"] == encryption_path
+    assert client_calls[0]["store_path"] == e2ee_path
 
 
 async def test_connect_matrix_e2ee_store_path_uses_e2ee_section(monkeypatch):

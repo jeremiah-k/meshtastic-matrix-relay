@@ -300,16 +300,22 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
 class TestCLIE2EEValidation(unittest.TestCase):
     """Test cases for E2EE dependency validation improvements."""
 
+    def setUp(self):
+        from mmrelay.matrix.compat import reset_matrix_capabilities_cache
+
+        reset_matrix_capabilities_cache()
+
+    def tearDown(self):
+        from mmrelay.matrix.compat import reset_matrix_capabilities_cache
+
+        reset_matrix_capabilities_cache()
+
     @patch("builtins.print")
     def test_e2ee_validation_improved_error_message(self, mock_print):
         """Test that E2EE validation shows improved error messages."""
         from mmrelay.cli import _validate_e2ee_dependencies
-        from mmrelay.matrix.compat import (
-            MatrixLibraryCapabilities,
-            reset_matrix_capabilities_cache,
-        )
+        from mmrelay.matrix.compat import MatrixLibraryCapabilities
 
-        reset_matrix_capabilities_cache()
         caps = MatrixLibraryCapabilities(
             provider_name="mindroom-nio",
             provider_version="0.25.2",

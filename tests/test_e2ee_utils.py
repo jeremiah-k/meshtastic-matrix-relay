@@ -22,7 +22,7 @@ from mmrelay.e2ee_utils import (
 )
 
 
-def _matrix_capabilities(encryption_available: bool = True):
+def _matrix_capabilities(*, encryption_available: bool = True) -> SimpleNamespace:
     return SimpleNamespace(
         encryption_available=encryption_available,
         provider_distribution="matrix-nio",

@@ -819,19 +819,19 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
         analysis["recommendations"].append(
             "E2EE is not supported on Windows. Use Linux/macOS for E2EE support."
         )
+    else:
+        # Check dependencies only on supported platforms
+        analysis["dependencies_available"] = _e2ee_dependencies_available()
+        if not analysis["dependencies_available"]:
+            from mmrelay.matrix.compat import (
+                format_e2ee_install_command,
+                get_matrix_capabilities,
+            )
 
-    # Check dependencies
-    analysis["dependencies_available"] = _e2ee_dependencies_available()
-    if not analysis["dependencies_available"]:
-        from mmrelay.matrix.compat import (
-            format_e2ee_install_command,
-            get_matrix_capabilities,
-        )
-
-        caps = get_matrix_capabilities()
-        analysis["recommendations"].append(
-            f"Install E2EE dependencies: {format_e2ee_install_command(caps)}"
-        )
+            caps = get_matrix_capabilities()
+            analysis["recommendations"].append(
+                f"Install E2EE dependencies: {format_e2ee_install_command(caps)}"
+            )
 
     # Check config setting
     matrix_section = config.get("matrix", {})
@@ -976,7 +976,7 @@ def _print_e2ee_analysis(analysis: dict[str, Any]) -> None:
 
     Parameters:
         analysis (dict[str, Any]): Mapping describing E2EE status with these keys:
-            - dependencies_available (bool): True if required E2EE dependencies (e.g., python-olm) are present.
+            - dependencies_available (bool): True if required E2EE dependencies (e.g., active provider crypto backend) are present.
             - credentials_available (bool): True if a usable credentials.json was found.
             - platform_supported (bool): True if the current platform supports E2EE (Windows is considered unsupported).
             - config_enabled (bool): True if E2EE is enabled in the application's configuration.

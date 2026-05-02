@@ -91,10 +91,10 @@ async def _configure_e2ee(
                     if isinstance(matrix_section, dict):
                         encryption_section = matrix_section.get("encryption")
                         e2ee_section = matrix_section.get("e2ee")
-                        if isinstance(encryption_section, dict):
-                            store_override = encryption_section.get("store_path")
-                        if not store_override and isinstance(e2ee_section, dict):
+                        if isinstance(e2ee_section, dict):
                             store_override = e2ee_section.get("store_path")
+                        if not store_override and isinstance(encryption_section, dict):
+                            store_override = encryption_section.get("store_path")
 
                     if isinstance(store_override, str) and store_override:
                         e2ee_store_path = os.path.expanduser(store_override)

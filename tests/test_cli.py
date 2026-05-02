@@ -48,6 +48,7 @@ from mmrelay.cli import (
 from mmrelay.constants.app import CREDENTIALS_FILENAME
 from mmrelay.constants.cli import EXIT_CODE_ERROR, EXIT_CODE_SUCCESS
 from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
+from mmrelay.matrix.compat import MatrixLibraryCapabilities
 from tests.constants import TEST_CONFIG_PATH, TEST_HOME_CONFIG_PATH, TEST_SERIAL_PORT
 
 
@@ -3023,17 +3024,32 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
 class TestProviderAwareE2EEGuidance(unittest.TestCase):
     """Test CLI guidance changes by provider."""
 
-    def _make_caps(self, **overrides):
-        from mmrelay.matrix.compat import (
-            detect_matrix_capabilities,
-            reset_matrix_capabilities_cache,
-        )
-
-        reset_matrix_capabilities_cache()
-        base = detect_matrix_capabilities()
+    def _make_caps(self, **overrides) -> MatrixLibraryCapabilities:
         from dataclasses import replace
 
-        return replace(base, **overrides)
+        from mmrelay.matrix.compat import MatrixLibraryCapabilities
+
+        baseline = MatrixLibraryCapabilities(
+            provider_name="mindroom-nio",
+            provider_version="0.25.2",
+            provider_distribution="mindroom-nio",
+            crypto_backend="vodozemac",
+            encryption_available=True,
+            store_available=True,
+            sqlite_store_available=True,
+            olm_available=False,
+            vodozemac_available=True,
+            nio_crypto_available=True,
+            nio_crypto_encryption_enabled=True,
+            nio_crypto_olm_device_available=False,
+            recommended_e2ee_extra="mindroom-nio[e2e]",
+            install_hint="install mindroom-nio[e2e] / vodozemac",
+            both_known_providers_installed=False,
+            supports_stop_sync_forever=True,
+            supports_thread_receipts=True,
+            supports_authenticated_media=True,
+        )
+        return replace(baseline, **overrides)
 
     @patch("sys.platform", "linux")
     @patch("builtins.print")
