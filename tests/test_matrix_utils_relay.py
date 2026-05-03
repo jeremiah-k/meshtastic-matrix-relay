@@ -1,7 +1,9 @@
 import asyncio
 import contextlib
+from collections.abc import Callable, Coroutine
+from concurrent.futures import Executor
 from types import SimpleNamespace
-from typing import Any
+from typing import TypeVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import nio
@@ -31,6 +33,8 @@ from tests.constants import (
     TEST_ROOM_ID,
     TEST_USER_ID,
 )
+
+T = TypeVar("T")
 
 pytestmark = pytest.mark.asyncio
 
@@ -1259,10 +1263,14 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
         def is_running(self) -> bool:
             return True
 
-        def create_task(self, coro: Any) -> asyncio.Task[Any]:
+        def create_task(
+            self, coro: Coroutine[object, object, object]
+        ) -> asyncio.Task[object]:
             return self._loop.create_task(coro)
 
-        async def run_in_executor(self, _executor: Any, func: Any, *args: Any) -> Any:
+        async def run_in_executor(
+            self, _executor: Executor | None, func: Callable[..., T], *args: object
+        ) -> T:
             return func(*args)
 
     dummy_queue = MagicMock()
@@ -1342,10 +1350,14 @@ async def test_on_room_message_reaction_non_numeric_meshtastic_id(
         def is_running(self) -> bool:
             return True
 
-        def create_task(self, coro: Any) -> asyncio.Task[Any]:
+        def create_task(
+            self, coro: Coroutine[object, object, object]
+        ) -> asyncio.Task[object]:
             return self._loop.create_task(coro)
 
-        async def run_in_executor(self, _executor: Any, func: Any, *args: Any) -> Any:
+        async def run_in_executor(
+            self, _executor: Executor | None, func: Callable[..., T], *args: object
+        ) -> T:
             return func(*args)
 
     dummy_queue = MagicMock()
