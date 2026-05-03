@@ -64,8 +64,8 @@ When E2EE is enabled:
 
 ### What this means
 
-- On the **Matrix side**, messages are encrypted using the Olm/Megolm protocol
-  (backed by vodozemac) between MMRelay and other Matrix clients in the room.
+- On the **Matrix side**, messages are encrypted using the Matrix Olm/Megolm
+  protocol between MMRelay and other Matrix clients in the room.
 - MMRelay behaves like a normal Matrix client in encrypted rooms: it stores
   keys, requests keys when needed, and decrypts/encrypts messages as needed.
 
@@ -300,7 +300,7 @@ expected to show a red shield warning:
 
 This is expected because:
 
-- Messages **are encrypted** using Matrix E2EE (Olm/Megolm via vodozemac)
+- Messages **are encrypted** using Matrix E2EE (Olm/Megolm)
 - The nio library does not support interactive device verification
   (emoji/QR verification)
 - MMRelay devices cannot be cross-signed through the standard Matrix client
