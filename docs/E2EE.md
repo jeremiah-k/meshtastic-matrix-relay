@@ -9,21 +9,36 @@ Encryption (E2EE).
 > rooms** (like any other Matrix client), not that messages stay end-to-end
 > encrypted across the entire Meshtastic <-> Matrix path.
 
-## Libolm deprecation status
+## E2EE provider
 
-The Olm/Megolm encryption library (`libolm`) was deprecated in July 2024.
-Matrix.org considers it
-[safe for practical use](https://matrix.org/blog/2024/08/libolm-deprecation/)
-but recommends migrating to vodozemac.
+MMRelay uses [**mindroom-nio**](https://github.com/mindroom-ai/mindroom-nio) as
+its Matrix SDK with **vodozemac** (a Rust cryptographic library) for E2EE. Vodozemac is the successor to the deprecated
+libolm and is distributed as precompiled wheels for Linux and macOS — no
+additional system libraries are needed on supported platforms.
 
-MMRelay now uses **mindroom-nio** as its default Matrix provider, which uses
-**vodozemac** (the Rust successor to libolm) for E2EE. The legacy
-`matrix-nio` provider with `python-olm` is still supported by manually
-installing matrix-nio instead of mindroom-nio but is no longer the default.
+The legacy `matrix-nio` provider (with `python-olm`) is still technically
+usable if you manually replace mindroom-nio, but upstream matrix-nio is mostly
+inactive and mindroom-nio is recommended for all deployments.
+
+### Legacy matrix-nio provider
+
+mindroom-nio is the default and recommended provider. Legacy matrix-nio
+remains supported only by manually replacing mindroom-nio.
+
+**Do not install both providers in the same Python environment.** They both
+provide the `nio` namespace and will conflict. Do not use `mmrelay[e2e]` for
+legacy matrix-nio, because the `e2e` extra always installs mindroom-nio.
+
+To switch to the legacy provider:
+
+```bash
+pip uninstall mindroom-nio
+pip install 'matrix-nio[e2e]==0.25.2'
+```
 
 ## Index
 
-- [Libolm deprecation status](#libolm-deprecation-status)
+- [E2EE provider](#e2ee-provider)
 - [What E2EE means in MMRelay](#what-e2ee-means-in-mmrelay)
 - [How MMRelay handles encrypted rooms](#how-mmrelay-handles-encrypted-rooms)
 - [Security considerations](#security-considerations)
@@ -49,8 +64,8 @@ When E2EE is enabled:
 
 ### What this means
 
-- On the **Matrix side**, messages are protected using Matrix E2EE
-  (Olm/Megolm) between MMRelay and other Matrix clients in the room.
+- On the **Matrix side**, messages are encrypted using the Matrix Olm/Megolm
+  protocol between MMRelay and other Matrix clients in the room.
 - MMRelay behaves like a normal Matrix client in encrypted rooms: it stores
   keys, requests keys when needed, and decrypts/encrypts messages as needed.
 
@@ -154,14 +169,14 @@ pipx install 'mmrelay[e2e]'
 
 The `mmrelay[e2e]` extra installs **mindroom-nio[e2e]** which includes the
 **vodozemac** crypto backend (Rust-based, distributed as precompiled wheels
-requiring no additional system libraries).
+for Linux and macOS — no additional system libraries needed on supported
+platforms).
 
 ### Windows limitation
 
 **E2EE is not available on Windows** due to technical limitations with required
-cryptographic libraries. The default vodozemac backend and the legacy
-python-olm backend both depend on native libraries that are not straightforward
-to install on Windows.
+cryptographic libraries. Vodozemac and the legacy python-olm backend both
+depend on native libraries that are not straightforward to install on Windows.
 
 Windows users can still use MMRelay for regular (unencrypted) Matrix
 communication.
@@ -179,12 +194,6 @@ pip install 'mmrelay[e2e]'
 
 This installs **mindroom-nio** with the **vodozemac** crypto backend as the
 default E2EE provider.
-
-> **Legacy matrix-nio users**: If you are manually replacing mindroom-nio with
-> `matrix-nio` (uninstall mindroom-nio first, then install matrix-nio), use
-> `pip install 'matrix-nio[e2e]==0.25.2'` instead. Do **not** install
-> `mmrelay[e2e]` — it pulls in mindroom-nio. Never install both providers in
-> the same Python environment.
 
 ### 2. Enable E2EE in config
 
@@ -307,8 +316,8 @@ that as a real issue (usually configuration/version related) and troubleshoot.
 **Problem**: E2EE features do not work on Windows.
 
 **Explanation**: E2EE requires native cryptographic libraries (vodozemac for
-the default mindroom-nio provider, or python-olm for legacy matrix-nio). Both
-have native dependencies that are difficult to install on Windows.
+mindroom-nio). Both vodozemac and the legacy python-olm have native
+dependencies that are difficult to install on Windows.
 
 **What to do**:
 
@@ -327,8 +336,7 @@ pip install 'mmrelay[e2e]'
 ```
 
 This installs mindroom-nio with the vodozemac crypto backend. Vodozemac is
-Rust-based and distributed as precompiled wheels requiring no extra system
-libraries.
+distributed as precompiled Rust wheels requiring no extra system libraries.
 
 If running from a local checkout:
 
@@ -336,18 +344,8 @@ If running from a local checkout:
 pip install -e '.[e2e]'
 ```
 
-If you are using the legacy matrix-nio provider instead of the default
-mindroom-nio (by manually uninstalling mindroom-nio and installing matrix-nio),
-install its E2EE extra separately:
-
-```bash
-pip install 'matrix-nio[e2e]==0.25.2'
-```
-
 > **Warning**: Do not install both mindroom-nio and matrix-nio in the same
 > environment. They both provide the `nio` namespace and will conflict.
-> Do **not** install `mmrelay[e2e]` when using legacy matrix-nio — it will
-> reinstall mindroom-nio.
 
 ### "Failed to decrypt event" in logs
 
@@ -385,7 +383,7 @@ INFO Matrix: Initial sync completed. Found X rooms.
 
 E2EE support is backward compatible:
 
-- Existing setups continue to work
+- Existing setups generally continue to work. Manual cleanup is only expected if an in-place Python environment still has both matrix-nio and mindroom-nio installed
 - Mixed encrypted/unencrypted room setups are supported
 - E2EE remains optional via `e2ee.enabled: false`
 
@@ -393,10 +391,11 @@ E2EE support is backward compatible:
 
 ### Implementation
 
-- Uses **mindroom-nio** (default) with the **vodozemac** crypto backend, or
-  **matrix-nio** (legacy) with the **python-olm/libolm** crypto backend.
-- Both providers use the Matrix **Olm/Megolm** encryption protocols; they differ
-  only in the underlying cryptographic library.
+- Uses **mindroom-nio** with the **vodozemac** crypto backend (the legacy
+  matrix-nio / python-olm stack is also technically supported, but upstream
+  matrix-nio is mostly inactive).
+- Both providers implement the same Matrix **Olm/Megolm** encryption protocols;
+  they differ only in the underlying cryptographic library.
 - Loads E2EE store before sync operations
 - Uses automatic key management with `ignore_unverified_devices=True`
 - Provider detection and capability reporting via `mmrelay.matrix.compat`

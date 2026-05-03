@@ -20,7 +20,7 @@ A powerful and easy-to-use relay between Meshtastic devices and Matrix chat room
 - Supports encrypted Matrix rooms 🔐 (Matrix E2EE)
 - Unified directory structure 📁 (New in v1.3)
 
-> **Encryption note**: MMRelay supports encrypted Matrix rooms (Matrix E2EE). For details on how this works and its security implications, see the [E2EE Setup Guide](docs/E2EE.md).
+> **Encryption note (v1.3.7)**: MMRelay now uses [**mindroom-nio**](https://github.com/mindroom-ai/mindroom-nio) with **vodozemac** for Matrix E2EE. Most users, including Docker deployments and clean pipx/PyPI installs, should not need to do anything special. If you maintain a developer venv/editable install or an older in-place upgraded Python environment, verify that matrix-nio is not still installed alongside mindroom-nio. See the [E2EE Setup Guide](docs/E2EE.md) and the [v1.3 Migration Guide](docs/MIGRATION_1.3.md).
 >
 > **Improved BLE stability (v1.3.3)**: The Meshtastic Python library has been replaced with [mtjk](https://github.com/jeremiah-k/mtjk), a fork with BLE reliability improvements (auto-reconnection, state management, notification recovery) along with thread-safety and connection handling fixes. Changes may be upstreamed selectively once they've been battle-tested here. See the [Refactor Program](https://github.com/jeremiah-k/mtjk/blob/develop/REFACTOR_PROGRAM.md) for scope and rationale.
 
