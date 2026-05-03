@@ -17,8 +17,24 @@ libolm and is distributed as precompiled wheels — no additional system
 libraries are needed.
 
 The legacy `matrix-nio` provider (with `python-olm`) is still technically
-usable if you manually replace mindroom-nio, but matrix-nio is effectively
-unmaintained at this point and mindroom-nio is recommended for all deployments.
+usable if you manually replace mindroom-nio, but upstream matrix-nio is mostly
+inactive and mindroom-nio is recommended for all deployments.
+
+### Legacy matrix-nio provider
+
+mindroom-nio is the default and recommended provider. Legacy matrix-nio
+remains supported only by manually replacing mindroom-nio.
+
+**Do not install both providers in the same Python environment.** They both
+provide the `nio` namespace and will conflict. Do not use `mmrelay[e2e]` for
+legacy matrix-nio, because the `e2e` extra always installs mindroom-nio.
+
+To switch to the legacy provider:
+
+```bash
+pip uninstall mindroom-nio
+pip install 'matrix-nio[e2e]==0.25.2'
+```
 
 ## Index
 
