@@ -13,8 +13,8 @@ Encryption (E2EE).
 
 MMRelay uses [**mindroom-nio**](https://github.com/mindroom-ai/mindroom-nio) as
 its Matrix SDK with **vodozemac** (a Rust cryptographic library) for E2EE. Vodozemac is the successor to the deprecated
-libolm and is distributed as precompiled wheels — no additional system
-libraries are needed.
+libolm and is distributed as precompiled wheels for Linux and macOS — no
+additional system libraries are needed on supported platforms.
 
 The legacy `matrix-nio` provider (with `python-olm`) is still technically
 usable if you manually replace mindroom-nio, but upstream matrix-nio is mostly
@@ -169,7 +169,8 @@ pipx install 'mmrelay[e2e]'
 
 The `mmrelay[e2e]` extra installs **mindroom-nio[e2e]** which includes the
 **vodozemac** crypto backend (Rust-based, distributed as precompiled wheels
-requiring no additional system libraries).
+for Linux and macOS — no additional system libraries needed on supported
+platforms).
 
 ### Windows limitation
 
