@@ -4,41 +4,6 @@ This guide helps you upgrade from any legacy layout to the v1.3 unified HOME mod
 
 ## What Changed in 1.3
 
-### Matrix Provider Change: mindroom-nio Now Default
-
-MMRelay v1.3 defaults to **mindroom-nio** (a maintained fork of matrix-nio with
-vodozemac support) as the Matrix SDK provider. The legacy **matrix-nio** provider
-is still supported by manually uninstalling mindroom-nio and installing matrix-nio,
-but is no longer the default.
-
-**Provider cleanup note for in-place Python environments:**
-
-Docker images pick up the new dependency set when rebuilt or pulled. Fresh
-pipx/PyPI installs use mindroom-nio with no extra steps. The main conflict
-risk is **in-place upgraded Python environments** — developer venv/editable
-installs and pipx environments upgraded in place where old `matrix-nio` was
-previously installed.
-
-Having **both** `matrix-nio` and `mindroom-nio` in the same environment
-disables E2EE by design — the relay will report that E2EE is unavailable.
-
-If `mmrelay doctor` reports a dual-provider conflict:
-
-```bash
-pip uninstall matrix-nio
-```
-
-Or, if using pipx:
-
-```bash
-pipx runpip mmrelay uninstall matrix-nio
-```
-
-After cleanup, run `mmrelay doctor` again to verify E2EE readiness.
-See [docs/E2EE.md](E2EE.md) for full provider guidance and troubleshooting.
-
-### Unified HOME Model
-
 MMRelay now uses a single MMRELAY_HOME root for all runtime state:
 
 > **Deprecation Note**: Legacy credential/location fallback is supported until v1.4; warnings will be emitted until you migrate. Plan to migrate before upgrading to v1.4.
