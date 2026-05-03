@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import nio
@@ -23,6 +24,7 @@ from mmrelay.matrix_utils import (
     bot_command,
     matrix_relay,
     on_room_message,
+    send_text_reply,
 )
 from tests.constants import (
     TEST_BOT_USER_ID,
@@ -1227,15 +1229,7 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
     from nio import ReactionEvent
 
     class MockReactionEvent(ReactionEvent):
-        def __init__(self, source, sender, server_timestamp):
-            """
-            Create a wrapper for a Matrix event that stores its raw payload, sender MXID, and server timestamp.
-
-            Parameters:
-                source (dict): Raw Matrix event JSON payload as received from the client/server.
-                sender (str): Sender Matrix user ID (MXID), e.g. "@alice:example.org".
-                server_timestamp (int | float): Server timestamp in milliseconds since the UNIX epoch.
-            """
+        def __init__(self, source: dict, sender: str, server_timestamp: int) -> None:
             self.source = source
             self.sender = sender
             self.server_timestamp = server_timestamp
@@ -1259,46 +1253,16 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
     real_loop = asyncio.get_running_loop()
 
     class DummyLoop:
-        def __init__(self, loop):
-            """
-            Create an instance bound to the given asyncio event loop.
-
-            Parameters:
-                loop (asyncio.AbstractEventLoop): Event loop used to schedule and run the instance's asynchronous tasks.
-            """
+        def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
             self._loop = loop
 
-        def is_running(self):
-            """
-            Indicates whether the component is running.
-
-            Returns:
-                `True` since this implementation always reports the component as running.
-            """
+        def is_running(self) -> bool:
             return True
 
-        def create_task(self, coro):
-            """
-            Schedule an awaitable on this instance's event loop and return the created Task.
-
-            Parameters:
-                coro: An awaitable or coroutine to schedule on this object's event loop.
-
-            Returns:
-                asyncio.Task: The Task object wrapping the scheduled coroutine.
-            """
+        def create_task(self, coro: Any) -> asyncio.Task[Any]:
             return self._loop.create_task(coro)
 
-        async def run_in_executor(self, _executor, func, *args):
-            """
-            Invoke a callable synchronously and return its result.
-
-            _executor is accepted for API compatibility but ignored.
-            func is the callable to invoke; any positional args are forwarded to it.
-
-            Returns:
-                The value returned by `func(*args)`.
-            """
+        async def run_in_executor(self, _executor: Any, func: Any, *args: Any) -> Any:
             return func(*args)
 
     dummy_queue = MagicMock()
@@ -1338,7 +1302,7 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
         assert queued_kwargs["description"].startswith("Local reaction")
         assert queued_kwargs["reply_id"] == 12345
         assert "reacted" in queued_kwargs["text"]
-        assert queued_args[0].__name__ == "send_text_reply"
+        assert queued_args[0] is send_text_reply
 
 
 async def test_on_room_message_reaction_non_numeric_meshtastic_id(
@@ -1348,7 +1312,7 @@ async def test_on_room_message_reaction_non_numeric_meshtastic_id(
     from nio import ReactionEvent
 
     class MockReactionEvent(ReactionEvent):
-        def __init__(self, source, sender, server_timestamp):
+        def __init__(self, source: dict, sender: str, server_timestamp: int) -> None:
             self.source = source
             self.sender = sender
             self.server_timestamp = server_timestamp
@@ -1372,16 +1336,16 @@ async def test_on_room_message_reaction_non_numeric_meshtastic_id(
     real_loop = asyncio.get_running_loop()
 
     class DummyLoop:
-        def __init__(self, loop):
+        def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
             self._loop = loop
 
-        def is_running(self):
+        def is_running(self) -> bool:
             return True
 
-        def create_task(self, coro):
+        def create_task(self, coro: Any) -> asyncio.Task[Any]:
             return self._loop.create_task(coro)
 
-        async def run_in_executor(self, _executor, func, *args):
+        async def run_in_executor(self, _executor: Any, func: Any, *args: Any) -> Any:
             return func(*args)
 
     dummy_queue = MagicMock()
@@ -2012,7 +1976,7 @@ async def test_on_room_message_local_reaction_queue_failure_logs(
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
-            return_value=(12345, mock_room.room_id, "text", "meshnet"),
+            return_value=("12345", mock_room.room_id, "text", "meshnet"),
         ),
         patch(
             "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",

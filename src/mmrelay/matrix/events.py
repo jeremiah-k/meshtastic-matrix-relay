@@ -30,6 +30,7 @@ except ImportError:
 from nio.events.room_events import RoomMemberEvent
 
 import mmrelay.matrix_utils as facade
+from mmrelay.constants.formats import MATRIX_SUPPRESS_KEY
 
 __all__ = [
     "on_decryption_failure",
@@ -313,7 +314,7 @@ async def on_room_message(
     shortname = event.source["content"].get("meshtastic_shortname", None)
     meshnet_name = event.source["content"].get("meshtastic_meshnet")
     meshtastic_replyId = event.source["content"].get("meshtastic_replyId")
-    suppress = event.source["content"].get("mmrelay_suppress")
+    suppress = event.source["content"].get(MATRIX_SUPPRESS_KEY)
 
     text = ""
 
@@ -432,19 +433,18 @@ async def on_room_message(
 
             if isinstance(meshtastic_id_raw, int):
                 meshtastic_reply_id = meshtastic_id_raw
+            elif isinstance(meshtastic_id_raw, str) and meshtastic_id_raw.isdigit():
+                meshtastic_reply_id = int(meshtastic_id_raw)
             elif isinstance(meshtastic_id_raw, str):
-                try:
-                    meshtastic_reply_id = int(meshtastic_id_raw, 0)
-                except ValueError:
-                    facade.logger.warning(
-                        "Message map meshtastic_id %r is not numeric; sending reaction as regular message",
-                        meshtastic_id_raw,
-                    )
-                    meshtastic_reply_id = None
-            else:
                 facade.logger.warning(
                     "Message map meshtastic_id %r is not numeric; sending reaction as regular message",
                     meshtastic_id_raw,
+                )
+                meshtastic_reply_id = None
+            else:
+                facade.logger.warning(
+                    "Message map meshtastic_id has unexpected type %s; sending reaction as regular message",
+                    type(meshtastic_id_raw).__name__,
                 )
                 meshtastic_reply_id = None
 
