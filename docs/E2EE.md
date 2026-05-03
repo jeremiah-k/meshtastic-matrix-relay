@@ -382,7 +382,7 @@ INFO Matrix: Initial sync completed. Found X rooms.
 
 E2EE support is backward compatible:
 
-- Existing setups continue to work
+- Existing setups generally continue to work, but upgraded environments may need to uninstall old matrix-nio packages so they do not conflict with mindroom-nio
 - Mixed encrypted/unencrypted room setups are supported
 - E2EE remains optional via `e2ee.enabled: false`
 
@@ -391,7 +391,8 @@ E2EE support is backward compatible:
 ### Implementation
 
 - Uses **mindroom-nio** with the **vodozemac** crypto backend (the legacy
-  matrix-nio / python-olm stack is also technically supported but unmaintained).
+  matrix-nio / python-olm stack is also technically supported, but upstream
+  matrix-nio is mostly inactive).
 - Both providers implement the same Matrix **Olm/Megolm** encryption protocols;
   they differ only in the underlying cryptographic library.
 - Loads E2EE store before sync operations
