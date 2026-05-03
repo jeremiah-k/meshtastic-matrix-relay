@@ -382,7 +382,7 @@ INFO Matrix: Initial sync completed. Found X rooms.
 
 E2EE support is backward compatible:
 
-- Existing setups generally continue to work, but upgraded environments may need to uninstall old matrix-nio packages so they do not conflict with mindroom-nio
+- Existing setups generally continue to work. Manual cleanup is only expected if an in-place Python environment still has both matrix-nio and mindroom-nio installed
 - Mixed encrypted/unencrypted room setups are supported
 - E2EE remains optional via `e2ee.enabled: false`
 

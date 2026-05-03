@@ -11,14 +11,18 @@ vodozemac support) as the Matrix SDK provider. The legacy **matrix-nio** provide
 is still supported by manually uninstalling mindroom-nio and installing matrix-nio,
 but is no longer the default.
 
-**Critical upgrade note for encrypted deployments:**
+**Provider cleanup note for in-place Python environments:**
 
-A `pip install --upgrade mmrelay` may leave the old `matrix-nio` package installed
-alongside the new `mindroom-nio` dependency. Having **both** installed disables
-E2EE by design — the relay will report that E2EE is unavailable until one provider
-is removed.
+Docker images pick up the new dependency set when rebuilt or pulled. Fresh
+pipx/PyPI installs use mindroom-nio with no extra steps. The main conflict
+risk is **in-place upgraded Python environments** — developer venv/editable
+installs and pipx environments upgraded in place where old `matrix-nio` was
+previously installed.
 
-**Before upgrading** an E2EE-enabled deployment, uninstall the old provider:
+Having **both** `matrix-nio` and `mindroom-nio` in the same environment
+disables E2EE by design — the relay will report that E2EE is unavailable.
+
+If `mmrelay doctor` reports a dual-provider conflict:
 
 ```bash
 pip uninstall matrix-nio
@@ -30,7 +34,7 @@ Or, if using pipx:
 pipx runpip mmrelay uninstall matrix-nio
 ```
 
-After upgrading, run `mmrelay doctor` to verify E2EE readiness.
+After cleanup, run `mmrelay doctor` again to verify E2EE readiness.
 See [docs/E2EE.md](E2EE.md) for full provider guidance and troubleshooting.
 
 ### Unified HOME Model
