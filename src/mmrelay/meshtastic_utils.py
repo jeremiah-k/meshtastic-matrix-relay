@@ -153,7 +153,7 @@ sanitize_address = None
 try:
     _ble_interface_module = importlib.import_module("meshtastic.ble_interface")
 except Exception:  # noqa: BLE001 - optional mtjk capabilities vary by install
-    _ble_interface_module = None
+    _ble_interface_module = None  # type: ignore[assignment]
 if _ble_interface_module is not None:
     MeshtasticBLEError = getattr(_ble_interface_module, "MeshtasticBLEError", None)
     BLEDiscoveryError = getattr(_ble_interface_module, "BLEDiscoveryError", None)
