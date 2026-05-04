@@ -6,11 +6,12 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404 - tests assert subprocess error handling
 import sys
 import tempfile
 import threading
 import unittest
+from typing import Any, Optional
 from unittest.mock import ANY, MagicMock, call, patch
 
 import mmrelay.plugin_loader as pl
@@ -19,8 +20,6 @@ from mmrelay.plugin_loader import (
     _clone_new_repo_to_branch_or_tag,
     _collect_requirements,
     _install_requirements_for_repo,
-    _is_repo_url_allowed,
-    _run,
     _update_existing_repo_to_branch_or_tag,
     _validate_clone_inputs,
     clear_plugin_jobs,
@@ -452,7 +451,7 @@ class TestDependencyInstallation(BaseGitTest):
         site_packages = os.path.join(prefix, "lib", "python3.12", "site-packages")
         os.makedirs(site_packages)
 
-        def fake_get_path(name, scheme, **_kwargs):
+        def fake_get_path(name: str, scheme: str, **_kwargs: Any) -> Optional[str]:
             if name == "purelib" and scheme == "posix_prefix":
                 return site_packages
             return None
@@ -473,7 +472,7 @@ class TestDependencyInstallation(BaseGitTest):
         site_packages = os.path.join(prefix, "Lib", "site-packages")
         os.makedirs(site_packages)
 
-        def fake_get_path(name, scheme, **_kwargs):
+        def fake_get_path(name: str, scheme: str, **_kwargs: Any) -> Optional[str]:
             if name == "purelib" and scheme == "nt":
                 return site_packages
             return None
@@ -706,7 +705,7 @@ class TestDependencyInstallation(BaseGitTest):
 
         staged_targets: list[str] = []
 
-        def fake_run(cmd, **_kwargs):
+        def fake_run(cmd: Any, **_kwargs: Any) -> None:
             staged_target = cmd[cmd.index("--target") + 1]
             staged_targets.append(staged_target)
             os.makedirs(os.path.join(staged_target, "requests"))
@@ -758,7 +757,7 @@ class TestDependencyInstallation(BaseGitTest):
 
         staged_targets: list[str] = []
 
-        def fake_run(cmd, **_kwargs):
+        def fake_run(cmd: Any, **_kwargs: Any) -> None:
             staged_target = cmd[cmd.index("--target") + 1]
             staged_targets.append(staged_target)
             staged_namespace = os.path.join(staged_target, "zope", "proxy")
@@ -802,7 +801,7 @@ class TestDependencyInstallation(BaseGitTest):
 
         staged_targets: list[str] = []
 
-        def fake_run(cmd, **_kwargs):
+        def fake_run(cmd: Any, **_kwargs: Any) -> None:
             staged_target = cmd[cmd.index("--target") + 1]
             staged_targets.append(staged_target)
             staged_ns = os.path.join(staged_target, "google", "ads")
@@ -843,7 +842,7 @@ class TestDependencyInstallation(BaseGitTest):
 
         staged_targets: list[str] = []
 
-        def fake_run(cmd, **_kwargs):
+        def fake_run(cmd: Any, **_kwargs: Any) -> None:
             staged_target = cmd[cmd.index("--target") + 1]
             staged_targets.append(staged_target)
             staged_ns = os.path.join(staged_target, "zope", "proxy")
@@ -884,7 +883,7 @@ class TestDependencyInstallation(BaseGitTest):
 
         staged_targets: list[str] = []
 
-        def fake_run(cmd, **_kwargs):
+        def fake_run(cmd: Any, **_kwargs: Any) -> None:
             staged_target = cmd[cmd.index("--target") + 1]
             staged_targets.append(staged_target)
             os.makedirs(os.path.join(staged_target, "requests"))
@@ -934,7 +933,7 @@ class TestDependencyInstallation(BaseGitTest):
 
         staged_targets: list[str] = []
 
-        def fake_run(cmd, **_kwargs):
+        def fake_run(cmd: Any, **_kwargs: Any) -> None:
             staged_target = cmd[cmd.index("--target") + 1]
             staged_targets.append(staged_target)
             os.makedirs(os.path.join(staged_target, "requests"))
@@ -1258,12 +1257,11 @@ class TestDependencyInstallation(BaseGitTest):
 
     def test_start_global_scheduler_runs_pending_once(self):
         """scheduler_loop should call schedule.run_pending when available."""
-        import threading
 
         run_event = threading.Event()
 
         class FakeSchedule:
-            def __bool__(self):
+            def __bool__(self) -> bool:
                 """
                 Make the object always evaluate as truthy.
 
@@ -1272,7 +1270,7 @@ class TestDependencyInstallation(BaseGitTest):
                 """
                 return True
 
-            def run_pending(self):
+            def run_pending(self) -> None:
                 """
                 Signal the scheduler to execute pending jobs now and request the global scheduler thread to stop.
 
@@ -1282,13 +1280,12 @@ class TestDependencyInstallation(BaseGitTest):
                 if pl._global_scheduler_stop_event:
                     pl._global_scheduler_stop_event.set()
 
-            def clear(self):
+            def clear(self) -> None:
                 """
                 Remove all scheduled jobs associated with this plugin.
 
                 This method clears any entries the global scheduler has registered for the plugin instance so no future scheduled tasks for this plugin will run.
                 """
-                pass
 
         original_schedule = pl.schedule
         pl.schedule = FakeSchedule()

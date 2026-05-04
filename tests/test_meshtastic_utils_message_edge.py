@@ -20,6 +20,7 @@ from typing import Any
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from meshtastic import BROADCAST_NUM
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.network import (
@@ -292,8 +293,8 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         """
         packet = {
             "from": TEST_PACKET_FROM_ID,
-            "to": 987654321,
-            "decoded": {"text": "", "portnum": TEXT_MESSAGE_APP},  # Empty text
+            "to": TEST_PACKET_FROM_ID,
+            "decoded": {"text": "", "portnum": TEXT_MESSAGE_APP},
             "channel": 0,
             "id": TEST_PACKET_ID,
             "rxTime": TEST_PACKET_RX_TIME,
@@ -1025,6 +1026,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             patch("mmrelay.meshtastic_utils.time.time", return_value=100_100.0),
             patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_005.0),
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+            patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
         ):
             on_meshtastic_message(packet, mock_interface)
 
@@ -1036,6 +1038,8 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         )
         # Skew should be calibrated
         assert mu._relay_rx_time_clock_skew_secs == pytest.approx(50.0)
+        # Bootstrap packet should be consumed (not relayed)
+        mock_submit_coro.assert_not_called()
 
     def test_on_meshtastic_message_packets_continue_after_drain_window_expires(self):
         """After drain window expires, processing continues and submits for relay."""
@@ -1048,7 +1052,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         mu._relay_startup_drain_complete_event.clear()
         packet = {
             "from": TEST_PACKET_FROM_ID,
-            "to": TEST_PACKET_FROM_ID,
+            "to": BROADCAST_NUM,
             "decoded": {"text": "post-drain packet", "portnum": TEXT_MESSAGE_APP},
             "channel": 0,
             "id": TEST_PACKET_ID,
@@ -1056,12 +1060,16 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         }
         mock_interface = MagicMock()
         mock_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
+        relay_coro = object()
+        mock_matrix_relay = Mock(return_value=relay_coro)
 
         with (
             patch("mmrelay.meshtastic_utils.config", self.mock_config),
             patch("mmrelay.meshtastic_utils.time.time", return_value=100_100.0),
             patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_005.0),
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+            patch("mmrelay.matrix_utils.matrix_relay", new=mock_matrix_relay),
+            patch("mmrelay.meshtastic_utils._fire_and_forget") as mock_fire_and_forget,
         ):
             on_meshtastic_message(packet, mock_interface)
 
@@ -1069,6 +1077,9 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         assert mu._relay_startup_drain_complete_event.is_set() is True
         log_calls = [str(c) for c in mock_logger.debug.call_args_list]
         assert any("Startup drain window has ended" in c for c in log_calls)
+        # Post-drain packet should have been submitted for Matrix relay.
+        mock_matrix_relay.assert_called_once()
+        mock_fire_and_forget.assert_called_once_with(relay_coro, loop=mu.event_loop)
 
     def test_on_meshtastic_message_expired_drain_uses_timer_for_end_log(self):
         """

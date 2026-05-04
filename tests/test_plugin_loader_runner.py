@@ -2,9 +2,11 @@
 
 # Decomposed from test_plugin_loader.py
 
-import subprocess
+import subprocess  # nosec B404 - tests exercise command runner failures
 import unittest
 from unittest.mock import patch
+
+import pytest
 
 from mmrelay.plugin_loader import _run
 
@@ -25,44 +27,48 @@ class TestCommandRunner(unittest.TestCase):
     def test_run_raises_after_max_attempts(self):
         with patch("subprocess.run") as mock_subprocess:
             mock_subprocess.side_effect = subprocess.CalledProcessError(1, ["git"])
-            with self.assertRaises(subprocess.CalledProcessError):
+            with pytest.raises(subprocess.CalledProcessError):
                 _run(["git"], retry_attempts=2, retry_delay=0)
             self.assertEqual(mock_subprocess.call_count, 2)
 
     def test_run_type_error_not_list(self):
         """Test _run raises TypeError for non-list command."""
-        with self.assertRaises(TypeError) as cm:
+        with pytest.raises(TypeError) as excinfo:
             _run("git status")  # type: ignore[arg-type]
-        self.assertIn("cmd must be a list of str", str(cm.exception))
+        self.assertIn("cmd must be a list of str", str(excinfo.value))
 
     def test_run_value_error_empty_list(self):
         """Test _run raises ValueError for empty command list."""
-        with self.assertRaises(ValueError) as cm:
+        with pytest.raises(ValueError) as excinfo:
             _run([])
-        self.assertIn("Command list cannot be empty", str(cm.exception))
+        self.assertIn("Command list cannot be empty", str(excinfo.value))
 
     def test_run_type_error_non_string_args(self):
         """Test _run raises TypeError for non-string arguments."""
-        with self.assertRaises(TypeError) as cm:
+        with pytest.raises(TypeError) as excinfo:
             _run(["git", 123])  # type: ignore[list-item]
-        self.assertIn("all command arguments must be strings", str(cm.exception))
+        self.assertIn("all command arguments must be strings", str(excinfo.value))
 
     def test_run_value_error_shell_true(self):
         """Test _run raises ValueError for shell=True."""
-        with self.assertRaises(ValueError) as cm:
+        with pytest.raises(ValueError) as excinfo:
             shell_flag = True
             _run(["git", "status"], shell=shell_flag)  # nosec B604
-        self.assertIn("shell=True is not allowed in _run", str(cm.exception))
+        self.assertIn("shell=True is not allowed in _run", str(excinfo.value))
 
     def test_run_value_error_empty_args(self):
         """Test _run raises ValueError for empty/whitespace arguments."""
-        with self.assertRaises(ValueError) as cm:
+        with pytest.raises(ValueError) as excinfo:
             _run(["git", ""])
-        self.assertIn("command arguments cannot be empty/whitespace", str(cm.exception))
+        self.assertIn(
+            "command arguments cannot be empty/whitespace", str(excinfo.value)
+        )
 
-        with self.assertRaises(ValueError) as cm:
+        with pytest.raises(ValueError) as excinfo:
             _run(["git", "   "])
-        self.assertIn("command arguments cannot be empty/whitespace", str(cm.exception))
+        self.assertIn(
+            "command arguments cannot be empty/whitespace", str(excinfo.value)
+        )
 
     def test_run_sets_text_default(self):
         """Test _run sets text=True by default."""

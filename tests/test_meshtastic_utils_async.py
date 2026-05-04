@@ -16,11 +16,14 @@ import threading
 import unittest
 from collections.abc import Callable
 from typing import Any
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tests.conftest import cleanup_ble_future_state
+# Capture the real _submit_coro before any test patches are applied.
+import mmrelay.meshtastic_utils as _mu_real
+
+_REAL_SUBMIT_CORO = _mu_real._submit_coro
 
 TEST_PACKET_RX_TIME = 1234567890
 
@@ -123,60 +126,6 @@ def stable_relay_start_time(monkeypatch):
     monkeypatch.setattr("mmrelay.meshtastic_utils.RELAY_START_TIME", 0, raising=False)
 
 
-class _FakeEvent:
-    """Threading.Event test double for metadata redirect behavior."""
-
-    def is_set(self) -> bool:
-        """
-        Always reports the fake event as set.
-
-        Returns:
-            bool: `True`, indicating the event is considered set.
-        """
-        return True
-
-    def set(self) -> None:
-        """
-        Mark the event as set so subsequent is_set() calls return True.
-
-        Mimics threading.Event.set behavior for the test double.
-        """
-        return None
-
-    def clear(self) -> None:
-        """
-        No-op placeholder for clearing the object's internal state.
-
-        This method currently performs no action and exists to be overridden or implemented to reset the instance's state.
-        """
-        return None
-
-
-def _reset_ble_inflight_state(module: Any) -> None:
-    """
-    Reset shared BLE in-flight tracking globals for test isolation.
-    """
-    cleanup_ble_future_state(module)
-
-
-def _make_timeout_future() -> Mock:
-    """
-    Create a mock future that simulates a timeout.
-
-    Returns a Mock configured with:
-    - result() raises FuturesTimeoutError
-    - done() returns False
-    - cancel() returns True
-    """
-    from concurrent.futures import TimeoutError as FuturesTimeoutError
-
-    future = Mock()
-    future.result = Mock(side_effect=FuturesTimeoutError())
-    future.done.return_value = False
-    future.cancel = Mock(return_value=True)
-    return future
-
-
 class TestCoroutineSubmission(unittest.TestCase):
     """Test cases for coroutine submission functionality."""
 
@@ -266,7 +215,7 @@ class TestAsyncHelperUtilities(unittest.TestCase):
 
         fake_task = self._ExceptionTask(raise_exc=asyncio.CancelledError())
 
-        def _submit(coro, loop=None) -> Any:
+        def _submit(coro, **_kwargs: Any) -> Any:
             coro.close()
             return fake_task
 
@@ -289,7 +238,7 @@ class TestAsyncHelperUtilities(unittest.TestCase):
 
         fake_task = self._ExceptionTask(raise_exc=RuntimeError("boom"))
 
-        def _submit(coro, loop=None) -> Any:
+        def _submit(coro, **_kwargs: Any) -> Any:
             coro.close()
             return fake_task
 
@@ -312,7 +261,7 @@ class TestAsyncHelperUtilities(unittest.TestCase):
 
         fake_task = self._ExceptionTask(return_exc=ValueError("Task failed"))
 
-        def _submit(coro, loop=None) -> Any:
+        def _submit(coro, **_kwargs: Any) -> Any:
             coro.close()
             return fake_task
 
@@ -339,7 +288,7 @@ class TestAsyncHelperUtilities(unittest.TestCase):
 
         fake_task = self._ExceptionTask(return_exc=asyncio.CancelledError())
 
-        def _submit(coro, loop=None) -> Any:
+        def _submit(coro, **_kwargs: Any) -> Any:
             coro.close()
             return fake_task
 
@@ -374,9 +323,12 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
     def setUp(self):
         """
-        Prepare test fixture by disabling the module-level asyncio event loop mock and capturing the real `_submit_coro`.
+        Disable the module-level asyncio event loop mock and capture the real `_submit_coro`.
 
-        This saves the current `mmrelay.meshtastic_utils.event_loop` and `_submit_coro` into instance attributes so they can be restored later, sets `event_loop` to None to ensure tests run against the real asyncio behavior, and reloads the `mmrelay.meshtastic_utils` source to obtain the original (unmocked) `_submit_coro` implementation for direct testing.
+        Saves the current `mmrelay.meshtastic_utils.event_loop` into an instance
+        attribute so it can be restored later, sets `event_loop` to None to ensure
+        tests run against the real asyncio behavior, and uses the module-level
+        captured `_REAL_SUBMIT_CORO` for direct testing.
         """
         import mmrelay.meshtastic_utils as mu
 
@@ -386,24 +338,11 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         # Reset module state for clean testing
         mu.event_loop = None
 
-        # Store the mocked function so we can restore it
-        self.mocked_submit_coro = mu._submit_coro
+        # Store the saved original _submit_coro (captured at module import time)
+        self.saved_submit_coro = mu._submit_coro
 
-        # Get the source module without the mock
-        import importlib
-        import importlib.util
-
-        # Get the source module without the mock
-        spec = importlib.util.find_spec("mmrelay.meshtastic_utils")
-        assert spec is not None
-        source_module = importlib.util.module_from_spec(spec)
-
-        # Execute the module to get the original function
-        assert spec.loader is not None
-        spec.loader.exec_module(source_module)
-
-        # Get the original _submit_coro function
-        self.original_submit_coro = source_module._submit_coro
+        # Use the real implementation captured before any patches
+        self.original_submit_coro = _REAL_SUBMIT_CORO
 
     def tearDown(self):
         """
@@ -411,15 +350,15 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
         Restores the module-level event_loop and _submit_coro attributes to the
         original values captured in setUp (self.original_event_loop and
-        self.mocked_submit_coro). This ensures other tests are not affected by the
+        self.saved_submit_coro). This ensures other tests are not affected by the
         test-specific event loop or submit coroutine replacement.
         """
         import mmrelay.meshtastic_utils as mu
 
         # Restore original event_loop state
         mu.event_loop = self.original_event_loop
-        # Restore the mock
-        mu._submit_coro = self.mocked_submit_coro
+        # Restore the saved original
+        mu._submit_coro = self.saved_submit_coro
 
     def test_submit_coro_with_no_event_loop_no_running_loop(self):
         """Test _submit_coro with no event loop and no running loop - uses a temporary loop."""

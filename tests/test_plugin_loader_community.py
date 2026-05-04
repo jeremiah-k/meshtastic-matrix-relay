@@ -2,18 +2,17 @@
 
 # Decomposed from test_plugin_loader.py
 
-import importlib
 import os
-import subprocess
+import subprocess  # nosec B404 - tests mock subprocess behavior
 import sys
 import tempfile
 import time
 import unittest
 from types import ModuleType
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import mmrelay.plugin_loader as pl
-from mmrelay.plugin_loader import _SYS_MODULES_LOCK, _exec_plugin_module, _run
+from mmrelay.plugin_loader import _SYS_MODULES_LOCK, _exec_plugin_module
 
 # Used by ExecPluginModuleThreadSafety tests
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -211,7 +210,7 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
 
         # Create a minimal loader class that doesn't reference __file__
         class MinimalLoader:
-            def exec_module(self, module):
+            def exec_module(self, module: ModuleType) -> None:
                 module.__dict__.setdefault("__builtins__", __builtins__)
                 assert (
                     sys.modules.get(module.__name__) is module
@@ -312,7 +311,7 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
         sys.modules.pop(mod_name, None)
 
         class FailingLoader:
-            def exec_module(self, module):
+            def exec_module(self, _module: ModuleType) -> None:
                 raise RuntimeError("deliberate failure")
 
         spec = importlib.machinery.ModuleSpec(mod_name, loader=None)
@@ -337,7 +336,7 @@ class TestExecPluginModuleThreadSafety(unittest.TestCase):
         sys.modules[mod_name] = previous
 
         class FailingLoader:
-            def exec_module(self, module):
+            def exec_module(self, _module: ModuleType) -> None:
                 raise RuntimeError("deliberate failure")
 
         spec = importlib.machinery.ModuleSpec(mod_name, loader=None)

@@ -17,11 +17,11 @@ Decomposed the two largest test files into domain-specific modules:
 | `test_plugin_loader.py`    | 7,076 | 8 domain files + `_plugin_loader_helpers.py` | 290   |
 | `test_meshtastic_utils.py` | 5,797 | 9 domain files                               | 189   |
 
-**Note**: The 15 `test_meshtastic_utils_*` satellite files (coverage gaps, edge cases) are kept as separate files for now. Absorbing them into the domain files caused cross-test state pollution (63 failures) due to conflicting `autouse` fixtures. This is deferred to future work.
+**Note**: The 14 `test_meshtastic_utils_*` satellite files (coverage gaps, edge cases) are kept as separate files for now. Absorbing them into the domain files caused cross-test state pollution (63 failures) due to conflicting `autouse` fixtures. This is deferred to future work.
 
 ### Phase 2 (Future): Absorb Satellite Files
 
-Fold the 15 `test_meshtastic_utils_*` satellite files into their corresponding domain files. Requires resolving fixture conflicts — likely by consolidating all reset fixtures into `conftest.py` as a single comprehensive fixture.
+Fold the 14 `test_meshtastic_utils_*` satellite files into their corresponding domain files. Requires resolving fixture conflicts — likely by consolidating all reset fixtures into `conftest.py` as a single comprehensive fixture.
 
 ### Phase 3 (Future): Remaining Tasks
 
@@ -122,7 +122,7 @@ Three files mix `unittest.TestCase` with pytest-specific features, which is frag
 
 11 `_coverage.py` and 8 `_edge_cases.py` files exist as scattered supplements:
 
-**Meshtastic utils satellite files (15 files):**
+**Meshtastic utils satellite files (14 files):**
 
 - `test_meshtastic_utils_coverage.py` (2,160 lines, 116 tests) - Largest supplement
 - `test_meshtastic_utils_edge_cases.py` (1,434 lines, 44 tests)
@@ -179,7 +179,7 @@ This is already handled by `conftest.py:12-14`, so the per-file inserts are redu
 
 1. ~~**Decompose `test_plugin_loader.py`** (7,076 → ~8 files)~~ ✅ Phase 1 Complete
 2. ~~**Decompose `test_meshtastic_utils.py`** (5,797 → ~9 files)~~ ✅ Phase 1 Complete (satellite absorption deferred to Phase 2)
-3. **Absorb meshtastic satellite files** — Fold 15 satellite files into 9 domain files (Phase 2)
+3. **Absorb meshtastic satellite files** — Fold 14 satellite files into 9 domain files (Phase 2)
 4. **Fix TestCase + pytest mix** in remaining files — Addresses fragility
 5. **Clean up conftest.py** — Extract subsystems into separate modules
 6. **Triage dead/skipped tests** — Clean up orphaned code

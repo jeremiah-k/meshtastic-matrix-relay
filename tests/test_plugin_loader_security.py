@@ -27,6 +27,7 @@ class TestPluginSecurityGuards(BaseGitTest):
         """
         Cleans up temporary test directories and resources created for Git-related tests.
         """
+        self.pl.config = self.original_config
         super().tearDown()
 
     def test_repo_url_allowed_https_known_host(self):
