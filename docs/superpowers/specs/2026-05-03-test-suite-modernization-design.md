@@ -55,7 +55,7 @@ Four files account for 21,076 lines (20% of the entire test suite):
 
 | File                       | Lines | Tests | Lines/Test |
 | -------------------------- | ----- | ----- | ---------- |
-| `test_plugin_loader.py`    | 7,076 | 257   | 27.5       |
+| `test_plugin_loader.py`    | 7,076 | 290   | 24.4       |
 | `test_meshtastic_utils.py` | 5,797 | 189   | 30.7       |
 | `test_main.py`             | 4,557 | 79    | 57.7       |
 | `test_cli.py`              | 3,546 | 164   | 21.6       |

@@ -122,6 +122,7 @@ def reset_meshtastic_relay_state(monkeypatch):
     yield
 
     _cancel_startup_drain_timer()
+    created_timers.clear()
 
 
 @pytest.fixture
@@ -1003,7 +1004,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         )
 
     def test_on_meshtastic_message_consumes_bootstrap_outside_drain(self):
-        """Outside drain window, a post-start rxTime that calibrates skew should not be consumed."""
+        """Outside drain window, a post-start rxTime that calibrates skew should be consumed (calibrated but not relayed)."""
         import mmrelay.meshtastic_utils as mu
 
         mu.RELAY_START_TIME = 100_000.0

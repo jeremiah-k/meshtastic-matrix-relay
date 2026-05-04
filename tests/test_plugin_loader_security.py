@@ -8,7 +8,11 @@ from unittest.mock import patch
 
 import mmrelay.plugin_loader as pl
 from mmrelay.constants.plugins import DEFAULT_ALLOWED_COMMUNITY_HOSTS
-from mmrelay.plugin_loader import _filter_risky_requirements, _is_repo_url_allowed
+from mmrelay.plugin_loader import (
+    _filter_risky_requirements,
+    _is_repo_url_allowed,
+    _redact_url,
+)
 from tests._plugin_loader_helpers import BaseGitTest
 
 
@@ -274,12 +278,13 @@ class TestURLValidation(unittest.TestCase):
     def test_repo_url_rejected_for_unsupported_scheme(self, mock_logger):
         """Test that unsupported schemes are rejected."""
         self.pl.config = {}
-        result = _is_repo_url_allowed("ftp://github.com/user/repo.git")
+        repo_url = "ftp://github.com/user/repo.git"
+        result = _is_repo_url_allowed(repo_url)
         self.assertFalse(result)
         mock_logger.error.assert_called_with(
             "Unsupported repository scheme '%s' for %s",
             "ftp",
-            "ftp://github.com/user/repo.git",
+            _redact_url(repo_url),
         )
 
     @patch("mmrelay.plugin_loader.logger")

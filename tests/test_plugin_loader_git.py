@@ -9,6 +9,8 @@ import tempfile
 from types import ModuleType
 from unittest.mock import call, patch
 
+import pytest
+
 import mmrelay.plugin_loader as pl
 from mmrelay.constants.plugins import DEFAULT_BRANCHES, GIT_CHECKOUT_CMD
 from mmrelay.plugin_loader import (
@@ -69,7 +71,7 @@ class TestGitOperations(BaseGitTest):
         """Test _raise_install_error logs and raises exception."""
         from mmrelay.plugin_loader import _raise_install_error
 
-        with self.assertRaises(subprocess.CalledProcessError):
+        with pytest.raises(subprocess.CalledProcessError):
             _raise_install_error("test-package")
 
         mock_logger.warning.assert_called_once_with(
