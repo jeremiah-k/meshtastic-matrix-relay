@@ -3,7 +3,7 @@ import os
 from types import SimpleNamespace
 from typing import Any
 
-from nio import RoomSendError, UploadError, UploadResponse
+from nio import AsyncClient, RoomSendError, UploadError, UploadResponse
 from PIL import Image
 
 import mmrelay.matrix_utils as facade
@@ -39,7 +39,7 @@ class ImageUploadError(RuntimeError):
 
 
 async def upload_image(
-    client: facade.AsyncClient, image: Image.Image, filename: str
+    client: AsyncClient, image: Image.Image, filename: str
 ) -> UploadResponse | UploadError | SimpleNamespace:
     """
     Upload an image to the Matrix content repository and return the upload result.
@@ -87,7 +87,7 @@ async def upload_image(
 
 
 async def send_room_image(
-    client: facade.AsyncClient,
+    client: AsyncClient,
     room_id: str,
     upload_response: UploadResponse | UploadError | SimpleNamespace | None,
     filename: str = "image.png",
@@ -142,7 +142,7 @@ async def send_room_image(
 
 
 async def send_image(
-    client: facade.AsyncClient,
+    client: AsyncClient,
     room_id: str,
     image: Image.Image,
     filename: str = "image.png",

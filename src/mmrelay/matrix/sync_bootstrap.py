@@ -12,6 +12,7 @@ from typing import Any, Optional, cast
 from urllib.parse import urlparse
 
 from nio import (
+    AsyncClient,
     AsyncClientConfig,
     SyncError,
 )
@@ -48,7 +49,7 @@ _NIO_PATCH_LOCK = asyncio.Lock()
 
 
 async def _perform_initial_sync(
-    client: facade.AsyncClient, matrix_homeserver: str
+    client: AsyncClient, matrix_homeserver: str
 ) -> Any | None:
     """
     Perform the initial Matrix sync and tolerate common homeserver quirks.
@@ -270,7 +271,7 @@ async def _perform_initial_sync(
 
 
 async def _post_sync_setup(
-    client: facade.AsyncClient,
+    client: AsyncClient,
     sync_response: Any | None,
     config_data: dict[str, Any],
     matrix_rooms: Any,
@@ -396,7 +397,7 @@ async def _post_sync_setup(
 
 async def connect_matrix(
     passed_config: dict[str, Any] | None = None,
-) -> facade.AsyncClient | None:
+) -> AsyncClient | None:
     """
     Create and initialize a Matrix AsyncClient using available credentials, optional end-to-end encryption, and an initial sync so the client has populated room state.
 
@@ -1113,9 +1114,7 @@ async def login_matrix_bot(
         return False
 
 
-async def join_matrix_room(
-    matrix_client: facade.AsyncClient, room_id_or_alias: str
-) -> None:
+async def join_matrix_room(matrix_client: AsyncClient, room_id_or_alias: str) -> None:
     """
     Join the bot to a Matrix room identified by a room ID or room alias.
 

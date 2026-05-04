@@ -233,7 +233,7 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
         return False
 
     try:
-        return facade.asyncio.run(_scan())
+        return bool(facade.asyncio.run(_scan()))
     except (
         facade.BleakError,
         facade.BleakDBusError,

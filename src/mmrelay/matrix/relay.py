@@ -8,7 +8,7 @@ import asyncio
 import html
 import re
 import secrets
-from typing import Any
+from typing import Any, cast
 
 from nio import RoomSendError
 
@@ -35,7 +35,7 @@ async def _get_e2ee_error_message() -> str:
         facade.get_e2ee_status, facade.config or {}, facade.config_module.config_path
     )
 
-    return facade.get_e2ee_error_message(dict(e2ee_status))
+    return cast(str, facade.get_e2ee_error_message(dict(e2ee_status)))
 
 
 def _retry_backoff_delay(
@@ -54,7 +54,7 @@ def _retry_backoff_delay(
     Returns:
         float: Delay in seconds to wait before the next retry; equals base_delay * 2**attempt_index capped at max_delay.
     """
-    return min(base_delay * (2**attempt_index), max_delay)
+    return min(base_delay * (2.0**attempt_index), max_delay)
 
 
 async def _send_matrix_message_with_retry(
