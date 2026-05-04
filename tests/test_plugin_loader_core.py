@@ -157,7 +157,7 @@ class Plugin:
     def __init__(self):
         self.plugin_name = "sample_plugin"
         self.priority = 10
-        
+
     def start(self):
         pass
 """

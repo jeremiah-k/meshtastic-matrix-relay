@@ -6,7 +6,33 @@ Date: 2026-05-03
 
 The MMRelay test suite has grown organically to 138 test files totaling ~106,426 lines and ~4,086 test functions. This document catalogs the structural issues and prescribes a modernization plan.
 
-## Current State
+## Implementation Phases
+
+### Phase 1 (Complete): Decompose Monolithic Files
+
+Decomposed the two largest test files into domain-specific modules:
+
+| Original File              | Lines | Result                                       | Tests |
+| -------------------------- | ----- | -------------------------------------------- | ----- |
+| `test_plugin_loader.py`    | 7,076 | 8 domain files + `_plugin_loader_helpers.py` | 290   |
+| `test_meshtastic_utils.py` | 5,797 | 9 domain files                               | 189   |
+
+**Note**: The 15 `test_meshtastic_utils_*` satellite files (coverage gaps, edge cases) are kept as separate files for now. Absorbing them into the domain files caused cross-test state pollution (63 failures) due to conflicting `autouse` fixtures. This is deferred to future work.
+
+### Phase 2 (Future): Absorb Satellite Files
+
+Fold the 15 `test_meshtastic_utils_*` satellite files into their corresponding domain files. Requires resolving fixture conflicts — likely by consolidating all reset fixtures into `conftest.py` as a single comprehensive fixture.
+
+### Phase 3 (Future): Remaining Tasks
+
+- Fix TestCase + pytest mix in `test_main.py` and `test_db_runtime_security.py`
+- Clean up `conftest.py` — extract subsystems into separate modules
+- Triage dead/skipped tests
+- Remove redundant `sys.path` boilerplate
+
+---
+
+## Current State (Pre-Phase 1 Baseline)
 
 | Metric                                     | Value                          |
 | ------------------------------------------ | ------------------------------ |
@@ -51,21 +77,23 @@ Split into 8 domain files:
 | `test_plugin_loader_cache.py`     | Python cache cleaning, namespace detection                                       | ~16        | `TestCleanPythonCache`, `TestIsNamespacePackageDirectory`                               |
 | `test_plugin_loader_community.py` | Community plugin security, state files, compare URLs, thread safety, exec module | ~18        | `TestCommunityPluginSecurityHelpers`, `TestExecPluginModuleThreadSafety`                |
 
-### Proposed decomposition: `test_meshtastic_utils.py` (5,797 lines)
+### Decomposition: `test_meshtastic_utils.py` (5,797 lines) — Phase 1
 
-Split into 10 domain files, folding in all 15 `test_meshtastic_utils_*` satellite files:
+Split into 9 domain files. Satellite file absorption is deferred to Phase 2.
 
-| File                                  | Content                                                                                     | Est. tests | Source classes + satellite files to absorb                                                                                                                                                                                                                                                                                                    |
-| ------------------------------------- | ------------------------------------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `test_meshtastic_utils_messages.py`   | `on_meshtastic_message`, `send_text_reply`, reactions, replies, portnums                    | ~100+      | `TestMeshtasticUtils` (messages), `TestMessageProcessingEdgeCases`, `TestTextReplyFunctionality`; absorb `test_meshtastic_utils_message_paths.py`                                                                                                                                                                                             |
-| `test_meshtastic_utils_connect.py`    | `connect_meshtastic`, serial/TCP/BLE connect, reconnect flag, startup drain, callback setup | ~100+      | `TestMeshtasticUtils` (connect), `TestConnectMeshtasticEdgeCases`, `TestReconnectingFlagLogic`; absorb `test_meshtastic_utils_connect_paths.py`, `test_meshtastic_utils_callback_lifecycle.py`, `test_meshtastic_utils_client_cleanup_coverage.py`, `test_meshtastic_utils_probe_coverage.py`, `test_meshtastic_utils_skew_drain_coverage.py` |
-| `test_meshtastic_utils_reconnect.py`  | Reconnect function, backoff, cancellation                                                   | ~12        | Standalone reconnect tests; absorb `test_meshtastic_utils_reconnect.py`, `test_meshtastic_utils_reconnect_paths.py`, `test_meshtastic_utils_reconnect_bootstrap_coverage.py`                                                                                                                                                                  |
-| `test_meshtastic_utils_disconnect.py` | `on_lost_meshtastic_connection`, BLE disconnect, event guards                               | ~20        | `TestConnectionLossHandling`; absorb `test_meshtastic_utils_event_guards_coverage.py`                                                                                                                                                                                                                                                         |
-| `test_meshtastic_utils_metadata.py`   | `_get_device_metadata`, `_get_portnum_name`, `_get_packet_details`, node name refresh       | ~45        | `TestGetDeviceMetadata`, `TestGetPortnumName`, `TestGetPacketDetails`; absorb `test_meshtastic_utils_node_name_refresh.py`                                                                                                                                                                                                                    |
-| `test_meshtastic_utils_ble.py`        | BLE-specific helpers, scan, discovery, exception classes                                    | ~35        | `TestBleHelperFunctions`, `TestBLEExceptionHandling`, `TestUncoveredMeshtasticUtilsPaths` (BLE portions)                                                                                                                                                                                                                                      |
-| `test_meshtastic_utils_async.py`      | `_submit_coro`, `fire_and_forget`, `_make_awaitable`                                        | ~28        | `TestCoroutineSubmission`, `TestAsyncHelperUtilities`, `TestSubmitCoroActualImplementation`; absorb `test_meshtastic_utils_async_helpers.py`                                                                                                                                                                                                  |
-| `test_meshtastic_utils_health.py`     | `check_connection`, health probes                                                           | ~25        | Absorb `test_meshtastic_utils_health.py` and health-related parts of coverage files                                                                                                                                                                                                                                                           |
-| `test_meshtastic_utils_service.py`    | `is_running_as_service`, `serial_port_exists`                                               | ~9         | `TestServiceDetection`, `TestSerialPortDetection`                                                                                                                                                                                                                                                                                             |
+| File                                     | Content                                                                                     | Tests | Source classes                                                                                   |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------ |
+| `test_meshtastic_utils_messages.py`      | `on_meshtastic_message`, `send_text_reply`, reactions, replies, portnums                    | 39    | `TestMeshtasticUtils` (messages), `TestMessageProcessingEdgeCases`, `TestTextReplyFunctionality` |
+| `test_meshtastic_utils_connect.py`       | `connect_meshtastic`, serial/TCP/BLE connect, reconnect flag, startup drain, callback setup | 15+   | `TestMeshtasticUtils` (connect), `TestConnectMeshtasticEdgeCases`, `TestReconnectingFlagLogic`   |
+| `test_meshtastic_utils_disconnect.py`    | `on_lost_meshtastic_connection`, BLE disconnect                                             | 10    | `TestConnectionLossHandling`                                                                     |
+| `test_meshtastic_utils_metadata.py`      | `_get_device_metadata`, `_get_portnum_name`, `_get_packet_details`                          | 29    | `TestGetDeviceMetadata`, `TestGetPortnumName`, `TestGetPacketDetails`                            |
+| `test_meshtastic_utils_ble.py`           | BLE-specific helpers, scan, discovery, exception classes                                    | 6     | `TestBleHelperFunctions`, `TestBLEExceptionHandling`                                             |
+| `test_meshtastic_utils_async.py`         | `_submit_coro`, `fire_and_forget`, `_make_awaitable`                                        | 16    | `TestCoroutineSubmission`, `TestAsyncHelperUtilities`, `TestSubmitCoroActualImplementation`      |
+| `test_meshtastic_utils_service.py`       | `is_running_as_service`, `serial_port_exists`                                               | 9     | `TestServiceDetection`, `TestSerialPortDetection`                                                |
+| `test_meshtastic_utils_message_edge.py`  | Message processing edge cases                                                               | 33    | `TestMessageProcessingEdgeCases` (edge portions)                                                 |
+| `test_meshtastic_utils_connect_paths.py` | Connection path edge cases, reconnect                                                       | 26    | Reconnect and connection path tests                                                              |
+
+**Satellite files retained** (15 files, ~11,000 lines, 308 tests): `test_meshtastic_utils_coverage.py`, `test_meshtastic_utils_edge_cases.py`, `test_meshtastic_utils_connect_paths.py` (original), `test_meshtastic_utils_message_paths.py`, `test_meshtastic_utils_callback_lifecycle.py`, `test_meshtastic_utils_client_cleanup_coverage.py`, `test_meshtastic_utils_event_guards_coverage.py`, `test_meshtastic_utils_health.py`, `test_meshtastic_utils_node_name_refresh.py`, `test_meshtastic_utils_probe_coverage.py`, `test_meshtastic_utils_reconnect_bootstrap_coverage.py`, `test_meshtastic_utils_reconnect_paths.py`, `test_meshtastic_utils_reconnect.py`, `test_meshtastic_utils_skew_drain_coverage.py`, `test_meshtastic_utils_async_helpers.py`. See Phase 2 for absorption plan.
 
 ## Issue #2: TestCase + Pytest Incompatibility
 
@@ -149,14 +177,24 @@ This is already handled by `conftest.py:12-14`, so the per-file inserts are redu
 
 ## Implementation Order
 
-1. **Decompose `test_plugin_loader.py`** (7,076 → ~8 files) - Largest single file, most impact
-2. **Decompose `test_meshtastic_utils.py`** (5,797 → ~9 files, absorbing 15 satellite files) - Folds in fragmentation
-3. **Fix TestCase + pytest mix** in remaining files - Addresses fragility
-4. **Clean up conftest.py** - Extract subsystems into separate modules
-5. **Triage dead/skipped tests** - Clean up orphaned code
-6. **Remove sys.path boilerplate** - Clean redundant imports
+1. ~~**Decompose `test_plugin_loader.py`** (7,076 → ~8 files)~~ ✅ Phase 1 Complete
+2. ~~**Decompose `test_meshtastic_utils.py`** (5,797 → ~9 files)~~ ✅ Phase 1 Complete (satellite absorption deferred to Phase 2)
+3. **Absorb meshtastic satellite files** — Fold 15 satellite files into 9 domain files (Phase 2)
+4. **Fix TestCase + pytest mix** in remaining files — Addresses fragility
+5. **Clean up conftest.py** — Extract subsystems into separate modules
+6. **Triage dead/skipped tests** — Clean up orphaned code
+7. **Remove sys.path boilerplate** — Clean redundant imports
 
 ## Success Criteria
+
+### Phase 1 (Current)
+
+- `test_plugin_loader.py` decomposed into 8 domain files + helpers
+- `test_meshtastic_utils.py` decomposed into 9 domain files
+- All tests pass with same coverage
+- No warnings or errors in test output
+
+### Full Modernization (Future)
 
 - All files < 2,000 lines
 - No files mixing `unittest.TestCase` with pytest features
