@@ -3,23 +3,16 @@
 # Decomposed from test_plugin_loader.py
 
 import os
-import shutil
-import subprocess
+import subprocess  # nosec B404
 import sys
 import tempfile
-import unittest
 from types import ModuleType
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import call, patch
 
 import mmrelay.plugin_loader as pl
 from mmrelay.constants.plugins import DEFAULT_BRANCHES, GIT_CHECKOUT_CMD
 from mmrelay.plugin_loader import (
-    _clone_new_repo_to_branch_or_tag,
-    _is_repo_url_allowed,
-    _run,
-    _update_existing_repo_to_branch_or_tag,
     clone_or_update_repo,
-    load_plugins,
     load_plugins_from_directory,
 )
 from tests._plugin_loader_helpers import TEST_GIT_TIMEOUT, BaseGitTest
@@ -59,16 +52,17 @@ class TestGitOperations(BaseGitTest):
         self.assertIn("env", call_args[1])
         self.assertEqual(call_args[1]["env"]["GIT_TERMINAL_PROMPT"], "0")
 
-    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader._run")
     def test_run_git_with_custom_settings(self, mock_run):
-        """Test _run_git accepts custom settings."""
+        """Test _run_git forwards custom settings to _run."""
         from mmrelay.plugin_loader import _run_git
 
         _run_git(["git", "clone"], timeout=300, retry_attempts=5)
 
-        mock_run.assert_called_once_with(
-            ["git", "clone"], timeout=300, retry_attempts=5
-        )
+        call_args = mock_run.call_args
+        self.assertEqual(call_args[0][0], ["git", "clone"])
+        self.assertEqual(call_args[1]["timeout"], 300)
+        self.assertEqual(call_args[1]["retry_attempts"], 5)
 
     @patch("mmrelay.plugin_loader.logger")
     def test_raise_install_error(self, mock_logger):

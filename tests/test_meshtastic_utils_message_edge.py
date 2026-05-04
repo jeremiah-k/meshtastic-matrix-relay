@@ -10,55 +10,26 @@ Tests the Meshtastic client functionality including:
 - Error handling and reconnection logic
 """
 
-import asyncio
 import contextlib
 import inspect
-import os
-import sys
 import threading
 import unittest
-from collections.abc import Callable, Generator
-from concurrent.futures import TimeoutError as ConcurrentTimeoutError
-from types import SimpleNamespace
-from typing import Any, NoReturn
-from unittest.mock import ANY, AsyncMock, MagicMock, Mock, mock_open, patch
+from collections.abc import Callable
+from concurrent.futures import Future
+from typing import Any
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from meshtastic import BROADCAST_NUM
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.network import (
-    BLE_CONNECT_TIMEOUT_SECS,
-    BLE_DISCONNECT_SETTLE_SECS,
-    BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
-    CONNECTION_TYPE_BLE,
     CONNECTION_TYPE_SERIAL,
-    CONNECTION_TYPE_TCP,
-    DEFAULT_MESHTASTIC_TIMEOUT,
-    DEFAULT_TCP_PORT,
-    MAX_TIMEOUT_RETRIES_INFINITE,
-    METADATA_WATCHDOG_SECS,
-    STALE_DISCONNECT_TIMEOUT_SECS,
-    STARTUP_PACKET_DRAIN_SECS,
 )
 from mmrelay.meshtastic_utils import (
-    _get_device_metadata,
-    _get_packet_details,
-    _get_portnum_name,
-    _resolve_plugin_timeout,
-    check_connection,
-    connect_meshtastic,
-    is_running_as_service,
-    on_lost_meshtastic_connection,
     on_meshtastic_message,
-    reconnect,
-    send_text_reply,
-    serial_port_exists,
 )
 from tests.conftest import cleanup_ble_future_state
 from tests.constants import (
-    TEST_BLE_MAC,
-    TEST_NODE_NUM,
     TEST_PACKET_FROM_ID,
     TEST_PACKET_ID,
 )
@@ -218,6 +189,38 @@ def _make_timeout_future() -> Mock:
     return future
 
 
+def _done_future(coro, *args, **kwargs):
+    """Close coroutine if applicable and return a completed Future."""
+    if inspect.iscoroutine(coro):
+        coro.close()
+    f = Future()
+    f.set_result(None)
+    return f
+
+
+class _FakeTimer:
+    """Threading.Timer test double for startup-drain expiry timer tests."""
+
+    def __init__(self, interval: float, callback: Callable[[], None]) -> None:
+        self.interval: float = interval
+        self._callback: Callable[[], None] = callback
+        self.daemon: bool = False
+        self.cancelled: bool = False
+        created_timers.append(self)
+
+    def start(self) -> None:
+        return None
+
+    def cancel(self) -> None:
+        self.cancelled = True
+
+    def fire(self) -> None:
+        self._callback()
+
+
+created_timers: list[_FakeTimer] = []
+
+
 @pytest.mark.usefixtures("stable_relay_start_time")
 class TestMessageProcessingEdgeCases(unittest.TestCase):
     """Test cases for edge cases in message processing."""
@@ -257,27 +260,6 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             # No 'decoded' field
         }
 
-        import inspect
-        from concurrent.futures import Future
-
-        def _done_future(coro, *args, **kwargs):
-            # Close the coroutine if it's a coroutine to prevent "never awaited" warnings
-            """
-            Close `coro` if it is a coroutine to avoid "coroutine was never awaited" warnings and return a completed Future.
-
-            Parameters:
-                coro: The object to inspect; if it is a coroutine it will be closed.
-                *args, **kwargs: Ignored.
-
-            Returns:
-                asyncio.Future: A Future already resolved with the value `None`.
-            """
-            if inspect.iscoroutine(coro):
-                coro.close()
-            f = Future()
-            f.set_result(None)
-            return f
-
         with (
             patch("mmrelay.meshtastic_utils.config", self.mock_config),
             patch(
@@ -316,27 +298,6 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             "id": TEST_PACKET_ID,
             "rxTime": TEST_PACKET_RX_TIME,
         }
-
-        import inspect
-        from concurrent.futures import Future
-
-        def _done_future(coro, *args, **kwargs):
-            # Close the coroutine if it's a coroutine to prevent "never awaited" warnings
-            """
-            Close `coro` if it is a coroutine to avoid "coroutine was never awaited" warnings and return a completed Future.
-
-            Parameters:
-                coro: The object to inspect; if it is a coroutine it will be closed.
-                *args, **kwargs: Ignored.
-
-            Returns:
-                asyncio.Future: A Future already resolved with the value `None`.
-            """
-            if inspect.iscoroutine(coro):
-                coro.close()
-            f = Future()
-            f.set_result(None)
-            return f
 
         with (
             patch("mmrelay.meshtastic_utils.config", self.mock_config),
@@ -636,24 +597,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
         mu._relay_startup_drain_deadline_monotonic_secs = 1_010.0
         mu._relay_startup_drain_complete_event.clear()
-        created_timers = []
-
-        class _FakeTimer:
-            def __init__(self, interval: float, callback: Callable[[], None]) -> None:
-                self.interval: float = interval
-                self._callback: Callable[[], None] = callback
-                self.daemon: bool = False
-                self.cancelled: bool = False
-                created_timers.append(self)
-
-            def start(self) -> None:
-                return None
-
-            def cancel(self) -> None:
-                self.cancelled = True
-
-            def fire(self) -> None:
-                self._callback()
+        created_timers.clear()
 
         with (
             patch("mmrelay.meshtastic.events.threading.Timer", new=_FakeTimer),
@@ -680,24 +624,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
         mu._relay_startup_drain_deadline_monotonic_secs = 1_010.0
         mu._relay_startup_drain_complete_event.clear()
-        created_timers = []
-
-        class _FakeTimer:
-            def __init__(self, interval: float, callback: Callable[[], None]) -> None:
-                self.interval: float = interval
-                self._callback: Callable[[], None] = callback
-                self.daemon: bool = False
-                self.cancelled: bool = False
-                created_timers.append(self)
-
-            def start(self) -> None:
-                return None
-
-            def cancel(self) -> None:
-                self.cancelled = True
-
-            def fire(self) -> None:
-                self._callback()
+        created_timers.clear()
 
         with (
             patch("mmrelay.meshtastic.events.threading.Timer", new=_FakeTimer),
@@ -723,23 +650,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
         mu._relay_startup_drain_deadline_monotonic_secs = 1_010.0
         mu._relay_startup_drain_complete_event.clear()
-        created_timers = []
-
-        class _FakeTimer:
-            def __init__(self, interval: float, callback: Callable[[], None]) -> None:
-                self.interval: float = interval
-                self._callback: Callable[[], None] = callback
-                self.daemon: bool = False
-                created_timers.append(self)
-
-            def start(self) -> None:
-                return None
-
-            def cancel(self) -> None:
-                return None
-
-            def fire(self) -> None:
-                self._callback()
+        created_timers.clear()
 
         with (
             patch("mmrelay.meshtastic.events.threading.Timer", new=_FakeTimer),

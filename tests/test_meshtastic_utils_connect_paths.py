@@ -13,54 +13,30 @@ Tests the Meshtastic client functionality including:
 import asyncio
 import contextlib
 import inspect
-import os
 import sys
 import threading
 import unittest
-from collections.abc import Callable, Generator
-from concurrent.futures import TimeoutError as ConcurrentTimeoutError
-from types import SimpleNamespace
+from collections.abc import Generator
 from typing import Any, NoReturn
-from unittest.mock import ANY, AsyncMock, MagicMock, Mock, mock_open, patch
+from unittest.mock import ANY, Mock, patch
 
 import pytest
-from meshtastic import BROADCAST_NUM
 
-from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.network import (
     BLE_CONNECT_TIMEOUT_SECS,
     BLE_DISCONNECT_SETTLE_SECS,
-    BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
     CONNECTION_TYPE_BLE,
-    CONNECTION_TYPE_SERIAL,
-    CONNECTION_TYPE_TCP,
-    DEFAULT_MESHTASTIC_TIMEOUT,
-    DEFAULT_TCP_PORT,
     MAX_TIMEOUT_RETRIES_INFINITE,
     METADATA_WATCHDOG_SECS,
     STALE_DISCONNECT_TIMEOUT_SECS,
-    STARTUP_PACKET_DRAIN_SECS,
 )
 from mmrelay.meshtastic_utils import (
     _get_device_metadata,
-    _get_packet_details,
-    _get_portnum_name,
-    _resolve_plugin_timeout,
-    check_connection,
     connect_meshtastic,
-    is_running_as_service,
-    on_lost_meshtastic_connection,
-    on_meshtastic_message,
-    reconnect,
-    send_text_reply,
-    serial_port_exists,
 )
 from tests.conftest import cleanup_ble_future_state
 from tests.constants import (
     TEST_BLE_MAC,
-    TEST_NODE_NUM,
-    TEST_PACKET_FROM_ID,
-    TEST_PACKET_ID,
 )
 
 TEST_PACKET_RX_TIME = 1234567890
@@ -227,8 +203,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         """Test _get_device_metadata when getMetadata() times out."""
         from concurrent.futures import TimeoutError as FuturesTimeoutError
 
-        from mmrelay.meshtastic_utils import _get_device_metadata
-
         mock_client = Mock()
         mock_client.localNode.getMetadata = Mock()
 
@@ -243,8 +217,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         timeout_future = Mock()
         timeout_future.done.return_value = False
         timeout_future.add_done_callback = Mock()
-
-        import sys
 
         orig_stdout = sys.stdout
 
@@ -303,8 +275,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         """Test _get_device_metadata restores stdio when timeout happens mid-redirect."""
         import threading
         from concurrent.futures import TimeoutError as FuturesTimeoutError
-
-        from mmrelay.meshtastic_utils import _get_device_metadata
 
         mock_client = Mock()
         mock_client.localNode.getMetadata = Mock()
@@ -840,7 +810,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         self, _mock_sleep, mock_logger
     ):
         """Test connect_meshtastic handles BLEInterface creation timeout."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
 
         config = {
             "meshtastic": {
@@ -918,7 +887,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         self, mock_logger
     ):
         """Auto-reconnect constructor path should include BLE connect-timeout slack."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
 
         config = {
             "meshtastic": {
@@ -991,7 +959,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         self, mock_logger
     ):
         """BLEInterface signature introspection failures should not abort creation path."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
 
         config = {
             "meshtastic": {
@@ -1048,7 +1015,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         self,
     ):
         """Signature fallback should not re-enable explicit connect() via hasattr checks."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
 
         config = {
             "meshtastic": {
@@ -1155,7 +1121,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         self, mock_logger
     ):
         """Late BLE worker errors during shutdown should avoid exception-level logs."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
 
         config = {
             "meshtastic": {
@@ -1216,7 +1181,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
     ):
         """Test connect_meshtastic closes existing BLE interfaces explicitly."""
         import mmrelay.meshtastic_utils as mu
-        from mmrelay.meshtastic_utils import connect_meshtastic
 
         mock_iface = Mock()
         mu.meshtastic_client = mock_iface
@@ -1233,7 +1197,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.logger")
     def test_connect_meshtastic_ble_connect_timeout(self, mock_logger):
         """Test connect_meshtastic handles BLE connect() timeout."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
 
         config = {
             "meshtastic": {
@@ -1325,7 +1288,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
     def test_connect_meshtastic_does_not_scan_after_ble_errors_auto_reconnect(self):
         """Explicit BLE-address retries should not trigger discovery scans."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
 
         config = {
             "meshtastic": {
@@ -1413,7 +1375,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         self,
     ):
         """Compatibility-mode retries for explicit BLE address should stay direct-only."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
 
         config = {
             "meshtastic": {

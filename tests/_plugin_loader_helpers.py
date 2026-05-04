@@ -2,44 +2,8 @@
 
 import os
 import shutil
-import subprocess
-import sys
 import tempfile
 import unittest
-from types import ModuleType
-from unittest.mock import MagicMock
-
-import mmrelay.plugin_loader as pl
-from mmrelay.constants.plugins import (
-    DEFAULT_ALLOWED_COMMUNITY_HOSTS,
-    DEFAULT_BRANCHES,
-    GIT_CHECKOUT_CMD,
-)
-from mmrelay.plugin_loader import (
-    _SYS_MODULES_LOCK,
-    _clean_python_cache,
-    _clone_new_repo_to_branch_or_tag,
-    _collect_requirements,
-    _exec_plugin_module,
-    _filter_risky_requirements,
-    _install_requirements_for_repo,
-    _is_repo_url_allowed,
-    _run,
-    _temp_sys_path,
-    _update_existing_repo_to_branch_or_tag,
-    _validate_clone_inputs,
-    clear_plugin_jobs,
-    clone_or_update_repo,
-    get_community_plugin_dirs,
-    get_custom_plugin_dirs,
-    load_plugins,
-    load_plugins_from_directory,
-    schedule_job,
-    shutdown_plugins,
-    start_global_scheduler,
-    stop_global_scheduler,
-)
-from tests.constants import TEST_GIT_TIMEOUT
 
 
 class MockPlugin:

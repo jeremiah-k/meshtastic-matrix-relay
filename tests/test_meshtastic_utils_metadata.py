@@ -12,56 +12,27 @@ Tests the Meshtastic client functionality including:
 
 import asyncio
 import contextlib
-import inspect
-import os
-import sys
 import threading
 import unittest
-from collections.abc import Callable, Generator
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from types import SimpleNamespace
-from typing import Any, NoReturn
-from unittest.mock import ANY, AsyncMock, MagicMock, Mock, mock_open, patch
+from typing import Any
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from meshtastic import BROADCAST_NUM
 
-from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.network import (
-    BLE_CONNECT_TIMEOUT_SECS,
-    BLE_DISCONNECT_SETTLE_SECS,
-    BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
-    CONNECTION_TYPE_BLE,
-    CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
-    DEFAULT_MESHTASTIC_TIMEOUT,
-    DEFAULT_TCP_PORT,
-    MAX_TIMEOUT_RETRIES_INFINITE,
     METADATA_WATCHDOG_SECS,
-    STALE_DISCONNECT_TIMEOUT_SECS,
-    STARTUP_PACKET_DRAIN_SECS,
 )
 from mmrelay.meshtastic_utils import (
     _get_device_metadata,
-    _get_packet_details,
-    _get_portnum_name,
     _resolve_plugin_timeout,
     check_connection,
     connect_meshtastic,
-    is_running_as_service,
-    on_lost_meshtastic_connection,
-    on_meshtastic_message,
     reconnect,
-    send_text_reply,
-    serial_port_exists,
 )
 from tests.conftest import cleanup_ble_future_state
-from tests.constants import (
-    TEST_BLE_MAC,
-    TEST_NODE_NUM,
-    TEST_PACKET_FROM_ID,
-    TEST_PACKET_ID,
-)
 
 TEST_PACKET_RX_TIME = 1234567890
 
@@ -339,7 +310,7 @@ class TestGetDeviceMetadata(unittest.TestCase):
         mock_client.localNode.getMetadata.side_effect = Exception("Device error")
         mock_client.localNode.iface.metadata = None
 
-        with self.assertRaisesRegex(Exception, "Device error"):
+        with pytest.raises(Exception, match="Device error"):
             _get_device_metadata(
                 mock_client,
                 force_refresh=True,
@@ -502,7 +473,7 @@ class TestGetDeviceMetadata(unittest.TestCase):
                 "mmrelay.meshtastic_utils._reset_metadata_executor_for_stale_probe"
             ) as mock_reset,
         ):
-            with self.assertRaisesRegex(RuntimeError, "executor closed"):
+            with pytest.raises(RuntimeError, match="executor closed"):
                 mu._submit_metadata_probe(probe)
 
         mock_reset.assert_called_once()
@@ -527,7 +498,7 @@ class TestGetDeviceMetadata(unittest.TestCase):
             mu._metadata_future = None
             mu._metadata_future_started_at = None
             try:
-                with self.assertRaises(mu.MetadataExecutorDegradedError):
+                with pytest.raises(mu.MetadataExecutorDegradedError):
                     mu._submit_metadata_probe(probe)
             finally:
                 mu._metadata_executor_degraded = original_degraded
@@ -583,7 +554,7 @@ class TestGetDeviceMetadata(unittest.TestCase):
         mock_client = MagicMock()
         mock_client.localNode.getMetadata.side_effect = ValueError("backend failure")
 
-        with self.assertRaisesRegex(ValueError, "backend failure"):
+        with pytest.raises(ValueError, match="backend failure"):
             _get_device_metadata(
                 mock_client,
                 force_refresh=True,
@@ -783,7 +754,6 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.logger")
     def test_connect_meshtastic_close_existing_connection_error(self, mock_logger):
         """Test connect_meshtastic handles error when closing existing connection."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
 
         # Create a mock existing client that raises error on close
         mock_existing_client = Mock()
@@ -792,31 +762,34 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
         # Set up the global meshtastic_client to have an existing client
         import mmrelay.meshtastic_utils
 
+        _orig_client = mmrelay.meshtastic_utils.meshtastic_client
         mmrelay.meshtastic_utils.meshtastic_client = mock_existing_client
+        try:
+            config = {
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "localhost:4403",
+                },
+                "matrix_rooms": {},
+            }
 
-        config = {
-            "meshtastic": {
-                "connection_type": CONNECTION_TYPE_TCP,
-                "host": "localhost:4403",
-            },
-            "matrix_rooms": {},
-        }
+            # Mock interface creation to avoid actual connection
+            with patch("meshtastic.tcp_interface.TCPInterface") as mock_tcp:
+                mock_interface = Mock()
+                mock_interface.getMyNodeInfo.return_value = {"num": 123}
+                mock_tcp.return_value = mock_interface
 
-        # Mock interface creation to avoid actual connection
-        with patch("meshtastic.tcp_interface.TCPInterface") as mock_tcp:
-            mock_interface = Mock()
-            mock_interface.getMyNodeInfo.return_value = {"num": 123}
-            mock_tcp.return_value = mock_interface
+                connect_meshtastic(config, force_connect=True)
 
-            connect_meshtastic(config, force_connect=True)
-
-            # Should log warning about close error but continue
-            assert mock_logger.warning.called
-            args = mock_logger.warning.call_args
-            assert args[0][0] == "Error closing previous connection: %s"
-            assert isinstance(args[0][1], Exception)
-            assert str(args[0][1]) == "Close error"
-            assert args[1].get("exc_info") is True
+                # Should log warning about close error but continue
+                assert mock_logger.warning.called
+                args = mock_logger.warning.call_args
+                assert args[0][0] == "Error closing previous connection: %s"
+                assert isinstance(args[0][1], Exception)
+                assert str(args[0][1]) == "Close error"
+                assert args[1].get("exc_info") is True
+        finally:
+            mmrelay.meshtastic_utils.meshtastic_client = _orig_client
 
     @patch("mmrelay.meshtastic_utils.reconnecting", True)
     @patch(
@@ -824,9 +797,6 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
     )  # Set to True to exit immediately
     def test_reconnect_function_basic(self):
         """Test reconnect function basic functionality."""
-        import asyncio
-
-        from mmrelay.meshtastic_utils import reconnect
 
         # Mock the connect_meshtastic function
         with patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect:
@@ -850,9 +820,6 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.config", None)
     def test_check_connection_uncovered_paths(self, mock_logger):
         """Test check_connection function with missing config."""
-        import asyncio
-
-        from mmrelay.meshtastic_utils import check_connection
 
         # Run the async function with no config
         loop = asyncio.new_event_loop()

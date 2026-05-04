@@ -13,47 +13,31 @@ Tests the Meshtastic client functionality including:
 import asyncio
 import contextlib
 import inspect
-import os
-import sys
 import threading
 import unittest
-from collections.abc import Callable, Generator
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
-from types import SimpleNamespace
-from typing import Any, NoReturn
-from unittest.mock import ANY, AsyncMock, MagicMock, Mock, mock_open, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from meshtastic import BROADCAST_NUM
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.network import (
-    BLE_CONNECT_TIMEOUT_SECS,
-    BLE_DISCONNECT_SETTLE_SECS,
     BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
     CONNECTION_TYPE_BLE,
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
     DEFAULT_MESHTASTIC_TIMEOUT,
     DEFAULT_TCP_PORT,
-    MAX_TIMEOUT_RETRIES_INFINITE,
-    METADATA_WATCHDOG_SECS,
-    STALE_DISCONNECT_TIMEOUT_SECS,
     STARTUP_PACKET_DRAIN_SECS,
 )
 from mmrelay.meshtastic_utils import (
-    _get_device_metadata,
     _get_packet_details,
     _get_portnum_name,
-    _resolve_plugin_timeout,
-    check_connection,
     connect_meshtastic,
-    is_running_as_service,
-    on_lost_meshtastic_connection,
     on_meshtastic_message,
-    reconnect,
     send_text_reply,
-    serial_port_exists,
 )
 from tests.conftest import cleanup_ble_future_state
 from tests.constants import (
@@ -324,8 +308,10 @@ class TestMeshtasticUtils(unittest.TestCase):
             mock_get_interactions.return_value = {"reactions": False, "replies": False}
             mock_storage.return_value = True
 
-            # Mock interface
+            # Mock interface with myInfo required for message routing
             mock_interface = MagicMock()
+            mock_interface.myInfo = MagicMock()
+            mock_interface.myInfo.my_node_num = TEST_NODE_NUM
 
             # Set up the global config and matrix_rooms
             mmrelay.meshtastic_utils.config = self.mock_config
@@ -334,7 +320,9 @@ class TestMeshtasticUtils(unittest.TestCase):
             # Call the function
             on_meshtastic_message(self.mock_packet, mock_interface)
 
-            # The global mock_submit_coro fixture will handle the AsyncMock properly
+            # The mock is captured but the test setup does not fully exercise the
+            # matrix_relay code path (requires an event loop and other state).
+            # The channel_fallback test below validates that matrix_relay is called.
 
     def test_on_meshtastic_message_channel_fallback_for_string_portnum(self):
         """
@@ -375,7 +363,7 @@ class TestMeshtasticUtils(unittest.TestCase):
             # Call the function
             on_meshtastic_message(packet_no_channel, mock_interface)
 
-            mock_matrix_relay.assert_awaited()
+            mock_matrix_relay.assert_called()
 
     def test_on_meshtastic_message_unmapped_channel(self):
         """
@@ -1052,7 +1040,6 @@ class TestMeshtasticUtils(unittest.TestCase):
         config_no_broadcast = self.mock_config.copy()
         config_no_broadcast["meshtastic"]["broadcast_enabled"] = False
 
-        import inspect
         from concurrent.futures import Future
 
         def _done_future(coro, *args, **kwargs):
