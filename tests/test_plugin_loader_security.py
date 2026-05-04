@@ -304,15 +304,13 @@ class TestURLValidation(unittest.TestCase):
             "/local/path",
         )
 
-    @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_empty_string(self, mock_logger):
+    def test_repo_url_empty_string(self):
         """Test empty URL handling."""
         self.pl.config = {}
         result = _is_repo_url_allowed("")
         self.assertFalse(result)
 
-    @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_whitespace_only(self, mock_logger):
+    def test_repo_url_whitespace_only(self):
         """Test whitespace-only URL handling."""
         self.pl.config = {}
         result = _is_repo_url_allowed("   ")

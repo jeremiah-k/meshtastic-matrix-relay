@@ -16,7 +16,7 @@ import threading
 import unittest
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -212,7 +212,7 @@ class TestConnectionLossHandling(unittest.TestCase):
                     loop.run_until_complete(asyncio.sleep(0))
 
     @patch("mmrelay.meshtastic_utils.logger")
-    @patch("mmrelay.meshtastic_utils.reconnect", new_callable=AsyncMock)
+    @patch("mmrelay.meshtastic_utils.reconnect")
     def test_on_lost_meshtastic_connection_normal(self, mock_reconnect, mock_logger):
         """
         Verifies that losing a Meshtastic connection triggers error logging and schedules a reconnection attempt when not already reconnecting or shutting down.

@@ -299,7 +299,9 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         with (
             patch("mmrelay.meshtastic_utils.io.StringIO", return_value=output_capture),
-            patch("threading.Event", return_value=redirect_active),
+            patch(
+                "mmrelay.meshtastic_utils.threading.Event", return_value=redirect_active
+            ),
             patch("mmrelay.meshtastic_utils._metadata_executor", mock_executor),
             patch("mmrelay.meshtastic_utils.sys.stdout", output_capture),
         ):

@@ -126,7 +126,6 @@ Three files mix `unittest.TestCase` with pytest-specific features, which is frag
 
 - `test_meshtastic_utils_coverage.py` (2,160 lines, 116 tests) - Largest supplement
 - `test_meshtastic_utils_edge_cases.py` (1,434 lines, 44 tests)
-- `test_meshtastic_utils_connect_paths.py` (1,793 lines, 46 tests)
 - `test_meshtastic_utils_message_paths.py` (1,046 lines, 50 tests)
 - Plus 11 more smaller files
 

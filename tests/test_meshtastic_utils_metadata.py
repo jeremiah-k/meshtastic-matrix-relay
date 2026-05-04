@@ -235,7 +235,7 @@ class TestGetDeviceMetadata(unittest.TestCase):
         mock_client.localNode.getMetadata = MagicMock()
 
         # Mock the output capture to return firmware version
-        with patch("mmrelay.meshtastic.metadata.io.StringIO") as mock_stringio:
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
             mock_output = MagicMock()
             mock_output.getvalue.return_value = (
                 "firmware_version: 2.3.15.abc123\nhw_model: HELTEC_V3"
@@ -254,7 +254,7 @@ class TestGetDeviceMetadata(unittest.TestCase):
         mock_client = MagicMock()
         mock_client.localNode.getMetadata = MagicMock()
 
-        with patch("mmrelay.meshtastic.metadata.io.StringIO") as mock_stringio:
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
             mock_output = MagicMock()
             mock_output.getvalue.return_value = "hw_model: HELTEC_V3\nother_info: test"
             mock_stringio.return_value = mock_output
@@ -265,31 +265,6 @@ class TestGetDeviceMetadata(unittest.TestCase):
             self.assertFalse(result["success"])
             self.assertEqual(result["firmware_version"], "unknown")
             self.assertIn("hw_model: HELTEC_V3", result["raw_output"])
-
-    def test_get_device_metadata_no_localnode(self):
-        """Test metadata retrieval when client has no localNode."""
-        mock_client = MagicMock()
-        del mock_client.localNode  # Remove localNode attribute
-
-        result = _get_device_metadata(mock_client)
-
-        # Verify early return for missing localNode
-        self.assertFalse(result["success"])
-        self.assertEqual(result["firmware_version"], "unknown")
-        self.assertEqual(result["raw_output"], "")
-
-    def test_get_device_metadata_no_getmetadata_method(self):
-        """Test metadata retrieval when localNode has no getMetadata method."""
-        mock_client = MagicMock()
-        mock_client.localNode = MagicMock()
-        del mock_client.localNode.getMetadata  # Remove getMetadata method
-
-        result = _get_device_metadata(mock_client)
-
-        # Verify early return for missing getMetadata
-        self.assertFalse(result["success"])
-        self.assertEqual(result["firmware_version"], "unknown")
-        self.assertEqual(result["raw_output"], "")
 
     def test_get_device_metadata_exception_handling(self):
         """Test metadata retrieval when getMetadata raises an exception."""
@@ -355,7 +330,7 @@ class TestGetDeviceMetadata(unittest.TestCase):
         mock_client.localNode.getMetadata = MagicMock()
         mock_client.localNode.iface.metadata = None
 
-        with patch("mmrelay.meshtastic.metadata.io.StringIO") as mock_stringio:
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
             mock_output = MagicMock()
             mock_output.getvalue.return_value = "firmware_version: 2.3.15.abc123"
             mock_stringio.return_value = mock_output

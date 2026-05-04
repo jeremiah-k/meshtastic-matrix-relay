@@ -100,5 +100,5 @@ class BaseGitTest(unittest.TestCase):
 
         Removes the temporary plugins directory used by the test and delegates further teardown to the superclass.
         """
-        super().tearDown()
         shutil.rmtree(self.temp_plugins_dir, ignore_errors=True)
+        super().tearDown()

@@ -241,7 +241,7 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         self.assertIsNone(result)
 
     @patch("mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface")
-    @patch("time.sleep")  # Speed up any retry logic
+    @patch("mmrelay.meshtastic_utils.time.sleep")
     @patch(
         "mmrelay.meshtastic_utils.INFINITE_RETRIES", 1
     )  # Limit retries to prevent infinite loop

@@ -15,7 +15,7 @@ class TestCommandRunner(unittest.TestCase):
     """Verify helper command execution behavior."""
 
     def test_run_retries_on_failure(self):
-        with patch("subprocess.run") as mock_subprocess:
+        with patch("mmrelay.plugin_loader.subprocess.run") as mock_subprocess:
             mock_subprocess.side_effect = [
                 subprocess.CalledProcessError(1, ["git", "status"]),
                 subprocess.CompletedProcess(args=["git", "status"], returncode=0),
@@ -25,7 +25,7 @@ class TestCommandRunner(unittest.TestCase):
             self.assertEqual(mock_subprocess.call_count, 2)
 
     def test_run_raises_after_max_attempts(self):
-        with patch("subprocess.run") as mock_subprocess:
+        with patch("mmrelay.plugin_loader.subprocess.run") as mock_subprocess:
             mock_subprocess.side_effect = subprocess.CalledProcessError(1, ["git"])
             with pytest.raises(subprocess.CalledProcessError):
                 _run(["git"], retry_attempts=2, retry_delay=0)
@@ -72,7 +72,7 @@ class TestCommandRunner(unittest.TestCase):
 
     def test_run_sets_text_default(self):
         """Test _run sets text=True by default."""
-        with patch("subprocess.run") as mock_subprocess:
+        with patch("mmrelay.plugin_loader.subprocess.run") as mock_subprocess:
             mock_subprocess.return_value = subprocess.CompletedProcess(
                 args=["echo", "test"], returncode=0, stdout="test"
             )
@@ -83,7 +83,7 @@ class TestCommandRunner(unittest.TestCase):
 
     def test_run_preserves_text_setting(self):
         """Test _run preserves existing text setting."""
-        with patch("subprocess.run") as mock_subprocess:
+        with patch("mmrelay.plugin_loader.subprocess.run") as mock_subprocess:
             mock_subprocess.return_value = subprocess.CompletedProcess(
                 args=["echo", "test"], returncode=0, stdout=b"test"
             )
