@@ -6,7 +6,7 @@ import ssl
 import sys
 from typing import Any, Optional, cast
 
-from nio import AsyncClient, AsyncClientConfig
+from nio import AsyncClient
 
 import mmrelay.matrix_utils as facade
 from mmrelay.matrix.compat import (

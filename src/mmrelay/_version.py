@@ -19,7 +19,7 @@ _PROJECT_VERSION_RE: Final[re.Pattern[str]] = re.compile(
 try:
     import tomllib  # type: ignore[import-not-found]  # Python 3.11+
 except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback path
-    tomllib = None
+    tomllib = None  # pyright: ignore[reportAssignmentType]
 
 
 def _version_from_metadata() -> str | None:

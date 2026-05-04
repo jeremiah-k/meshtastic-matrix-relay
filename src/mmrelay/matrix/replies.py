@@ -212,8 +212,8 @@ async def send_reply_to_meshtastic(
         reply_message (str): Meshtastic-ready text payload to send.
         full_display_name (str): Sender display name used in queue descriptions and logs.
         room_config (dict): Room-specific configuration; must include "meshtastic_channel" (integer channel index).
-        room (facade.MatrixRoom): Matrix room object; room.room_id is used in mapping metadata.
-        event (facade.RoomMessageText | facade.RoomMessageNotice | facade.ReactionEvent | facade.RoomMessageEmote): Matrix event object; event.event_id is used in mapping metadata.
+        room (MatrixRoom): Matrix room object; room.room_id is used in mapping metadata.
+        event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): Matrix event object; event.event_id is used in mapping metadata.
         text (str): Original Matrix message text used when building mapping metadata.
         storage_enabled (bool): If True, create and attach a message-mapping record for correlation of future replies/reactions.
         local_meshnet_name (str): Local meshnet name to include in mapping metadata when present.
