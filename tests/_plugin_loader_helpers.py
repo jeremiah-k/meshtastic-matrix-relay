@@ -9,8 +9,6 @@ import unittest
 from types import ModuleType
 from unittest.mock import MagicMock
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
 import mmrelay.plugin_loader as pl
 from mmrelay.constants.plugins import (
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,

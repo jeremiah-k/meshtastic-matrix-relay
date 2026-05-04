@@ -26,9 +26,6 @@ from unittest.mock import ANY, AsyncMock, MagicMock, Mock, mock_open, patch
 import pytest
 from meshtastic import BROADCAST_NUM
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.network import (
     BLE_CONNECT_TIMEOUT_SECS,
