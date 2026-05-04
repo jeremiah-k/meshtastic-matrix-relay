@@ -304,18 +304,20 @@ class TestGitOperations(BaseGitTest):
     def test_clone_or_update_repo_checkout_and_pull_tag(self, mock_run_git):
         """Test that clone_or_update_repo handles checkout and pull for a tag."""
 
-        def mock_run_git_side_effect(*args, **_kwargs):
+        def mock_run_git_side_effect(
+            *_args: object, **_kwargs: object
+        ) -> subprocess.CompletedProcess[str] | None:
             """
             Simulate git subprocess responses for tests, returning success for common commands and a commit-containing result for `rev-parse`.
 
             Parameters:
-                *args: Positional arguments forwarded from the mocked runner; the first positional argument is expected to be the git command (string or sequence) inspected by this helper.
+                *_args: Positional arguments forwarded from the mocked runner; the first positional argument is expected to be the git command (string or sequence) inspected by this helper.
                 **_kwargs: Ignored keyword arguments forwarded by the mock.
 
             Returns:
                 None for successful commands such as `fetch`, `checkout`, and `pull`; otherwise an object whose `stdout` is a string commit hash for `rev-parse` invocations.
             """
-            cmd = args[0]
+            cmd = _args[0]
             if "fetch" in cmd:
                 return None  # fetch succeeds
             elif "rev-parse" in cmd and "HEAD" in cmd:
@@ -466,7 +468,9 @@ class TestGitOperations(BaseGitTest):
         """Final checkout failure after fetch should hit the outer error handler."""
         checkout_calls = 0
 
-        def _side_effect(cmd, *args, **kwargs):
+        def _side_effect(
+            cmd: list[str], *_args: object, **_kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
             nonlocal checkout_calls
             if cmd[-2:] == ["rev-parse", "HEAD"]:
                 return subprocess.CompletedProcess(cmd, 0, stdout="head\n", stderr="")
@@ -499,7 +503,9 @@ class TestGitOperations(BaseGitTest):
     ):
         """Tag fetch should fall back to explicit refspec when direct and --tags fail."""
 
-        def _side_effect(cmd, *args, **kwargs):
+        def _side_effect(
+            cmd: list[str], *_args: object, **_kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
             if cmd == [
                 "git",
                 "-C",
@@ -577,7 +583,9 @@ class TestGitOperations(BaseGitTest):
     ):
         """Tag update should short-circuit when HEAD already matches tag commit."""
 
-        def _side_effect(cmd, *args, **kwargs):
+        def _side_effect(
+            cmd: list[str], *_args: object, **_kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
             if cmd[-2:] == ["fetch", "origin"]:
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
             if cmd[-2:] == ["rev-parse", "HEAD"]:
@@ -630,7 +638,9 @@ class TestGitOperations(BaseGitTest):
     ):
         """When tag differs from HEAD, update flow should call tag fetch/checkout helper."""
 
-        def _side_effect(cmd, *args, **kwargs):
+        def _side_effect(
+            cmd: list[str], *_args: object, **_kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
             if cmd[-2:] == ["fetch", "origin"]:
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
             if cmd[-2:] == ["rev-parse", "HEAD"]:
@@ -682,7 +692,9 @@ class TestGitOperations(BaseGitTest):
         """Tag clones should return early when cloned HEAD already equals tag commit."""
         with patch("mmrelay.plugin_loader.os.path.isdir", return_value=False):
 
-            def _side_effect(cmd, *args, **kwargs):
+            def _side_effect(
+                cmd: list[str], *_args: object, **_kwargs: object
+            ) -> subprocess.CompletedProcess[str]:
                 if cmd[:3] == ["git", "clone", "--filter=blob:none"]:
                     return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
                 if cmd[-2:] == ["rev-parse", "HEAD"]:
@@ -778,7 +790,9 @@ class TestGitOperations(BaseGitTest):
             os.environ.pop(var, None)
         os.environ["PIPX_HOME"] = os.path.join(self.temp_plugins_dir, "pipx-home")
 
-        def _run_side_effect(cmd, *args, **kwargs):
+        def _run_side_effect(
+            cmd: list[str], *_args: object, **_kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
             sys.modules["missingdep_pipx"] = ModuleType("missingdep_pipx")
             return subprocess.CompletedProcess(args=cmd, returncode=0)
 
@@ -830,7 +844,9 @@ class TestGitOperations(BaseGitTest):
         for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS", "VIRTUAL_ENV"):
             os.environ.pop(var, None)
 
-        def _run_side_effect(cmd, *args, **kwargs):
+        def _run_side_effect(
+            cmd: list[str], *_args: object, **_kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
             sys.modules["missingdep_pip"] = ModuleType("missingdep_pip")
             return subprocess.CompletedProcess(args=cmd, returncode=0)
 

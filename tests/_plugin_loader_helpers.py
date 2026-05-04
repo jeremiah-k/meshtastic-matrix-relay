@@ -4,6 +4,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from typing import Any, Optional
 
 # Re-exported for decomposed test modules (isort would otherwise drop this)
 from tests.constants import TEST_GIT_TIMEOUT  # noqa: F401
@@ -12,7 +13,11 @@ from tests.constants import TEST_GIT_TIMEOUT  # noqa: F401
 class MockPlugin:
     """Mock plugin class for testing."""
 
-    def __init__(self, name="test_plugin", priority=10):
+    plugin_name: str
+    priority: int
+    started: bool
+
+    def __init__(self, name: str = "test_plugin", priority: int = 10) -> None:
         """
         Initialize a mock plugin with a specified name and priority.
 
@@ -24,21 +29,26 @@ class MockPlugin:
         self.priority = priority
         self.started = False
 
-    def start(self):
+    def start(self) -> None:
         """
         Marks the mock plugin as started by setting the `started` flag to True.
         """
         self.started = True
 
-    def stop(self):
+    def stop(self) -> None:
         """
         Marks the mock plugin as stopped by setting the `started` flag to False.
         """
         self.started = False
 
     async def handle_meshtastic_message(
-        self, packet, interface, longname, shortname, meshnet_name
-    ):
+        self,
+        packet: Any,
+        interface: Any,
+        longname: str,
+        shortname: str,
+        meshnet_name: Optional[str],
+    ) -> None:
         """
         Mock handler for Meshtastic messages used in tests; performs no action to suppress warnings.
 
@@ -51,7 +61,9 @@ class MockPlugin:
         """
         pass
 
-    async def handle_room_message(self, room, event, full_message):
+    async def handle_room_message(
+        self, room: Any, event: Any, full_message: str
+    ) -> None:
         """
         Handle an incoming room message event for the mock plugin used in tests.
 
@@ -68,7 +80,10 @@ class MockPlugin:
 class BaseGitTest(unittest.TestCase):
     """Base class for tests that need temporary Git repository directories."""
 
-    def setUp(self):
+    temp_plugins_dir: str
+    temp_repo_path: str
+
+    def setUp(self) -> None:
         """
         Prepare temporary directories for plugin tests.
 
@@ -79,7 +94,7 @@ class BaseGitTest(unittest.TestCase):
         self.temp_plugins_dir = tempfile.mkdtemp()
         self.temp_repo_path = os.path.join(self.temp_plugins_dir, "repo")
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         """
         Cleans up test resources created in setUp.
 

@@ -244,6 +244,7 @@ def _fire_and_forget(
 
     task = facade._submit_coro(coro, loop=loop)
     if task is None:
+        coro.close()
         return
 
     def _handle_exception(t: asyncio.Future[Any] | Future[Any]) -> None:

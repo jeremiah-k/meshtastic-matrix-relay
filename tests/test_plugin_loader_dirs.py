@@ -2,11 +2,8 @@
 
 # Decomposed from test_plugin_loader.py
 
-import os
 import unittest
 from unittest.mock import patch
-
-import mmrelay.plugin_loader as pl
 
 
 class TestPluginDirectories(unittest.TestCase):
@@ -15,12 +12,14 @@ class TestPluginDirectories(unittest.TestCase):
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_legacy_dirs")
     @patch("mmrelay.plugin_loader.get_app_path")
+    @patch("mmrelay.plugin_loader.paths_module.get_plugins_dir", side_effect=TypeError)
     @patch("os.path.isdir")
     @patch("os.makedirs")
     def test_get_plugin_dirs_user_dir_success(
         self,
         mock_makedirs,
         mock_isdir,
+        mock_get_plugins_dir,
         mock_get_app_path,
         mock_get_legacy_dirs,
         mock_get_home_dir,
@@ -44,6 +43,7 @@ class TestPluginDirectories(unittest.TestCase):
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_legacy_dirs")
     @patch("mmrelay.plugin_loader.get_app_path")
+    @patch("mmrelay.plugin_loader.paths_module.get_plugins_dir", side_effect=TypeError)
     @patch("os.path.isdir")
     @patch("mmrelay.plugin_loader.logger")
     @patch("os.makedirs")
@@ -52,6 +52,7 @@ class TestPluginDirectories(unittest.TestCase):
         mock_makedirs,
         mock_logger,
         mock_isdir,
+        mock_get_plugins_dir,
         mock_get_app_path,
         mock_get_legacy_dirs,
         mock_get_home_dir,
@@ -75,6 +76,7 @@ class TestPluginDirectories(unittest.TestCase):
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_legacy_dirs")
     @patch("mmrelay.plugin_loader.get_app_path")
+    @patch("mmrelay.plugin_loader.paths_module.get_plugins_dir", side_effect=TypeError)
     @patch("os.path.isdir")
     @patch("mmrelay.plugin_loader.logger")
     @patch("os.makedirs")
@@ -83,6 +85,7 @@ class TestPluginDirectories(unittest.TestCase):
         mock_makedirs,
         mock_logger,
         mock_isdir,
+        mock_get_plugins_dir,
         mock_get_app_path,
         mock_get_legacy_dirs,
         mock_get_home_dir,
@@ -108,12 +111,14 @@ class TestPluginDirectories(unittest.TestCase):
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_legacy_dirs")
     @patch("mmrelay.plugin_loader.get_app_path")
+    @patch("mmrelay.plugin_loader.paths_module.get_plugins_dir", side_effect=TypeError)
     @patch("os.path.isdir")
     @patch("os.makedirs")
     def test_get_plugin_dirs_existing_local_dir_is_included(
         self,
         mock_makedirs,
         mock_isdir,
+        mock_get_plugins_dir,
         mock_get_app_path,
         mock_get_legacy_dirs,
         mock_get_home_dir,

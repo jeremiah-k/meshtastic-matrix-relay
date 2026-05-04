@@ -235,7 +235,7 @@ class TestGetDeviceMetadata(unittest.TestCase):
         mock_client.localNode.getMetadata = MagicMock()
 
         # Mock the output capture to return firmware version
-        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
+        with patch("mmrelay.meshtastic.metadata.io.StringIO") as mock_stringio:
             mock_output = MagicMock()
             mock_output.getvalue.return_value = (
                 "firmware_version: 2.3.15.abc123\nhw_model: HELTEC_V3"
@@ -254,7 +254,7 @@ class TestGetDeviceMetadata(unittest.TestCase):
         mock_client = MagicMock()
         mock_client.localNode.getMetadata = MagicMock()
 
-        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
+        with patch("mmrelay.meshtastic.metadata.io.StringIO") as mock_stringio:
             mock_output = MagicMock()
             mock_output.getvalue.return_value = "hw_model: HELTEC_V3\nother_info: test"
             mock_stringio.return_value = mock_output
@@ -355,15 +355,17 @@ class TestGetDeviceMetadata(unittest.TestCase):
         mock_client.localNode.getMetadata = MagicMock()
         mock_client.localNode.iface.metadata = None
 
-        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
+        with patch("mmrelay.meshtastic.metadata.io.StringIO") as mock_stringio:
             mock_output = MagicMock()
-            mock_output.getvalue.return_value = "firmware_version: unknown"
+            mock_output.getvalue.return_value = "firmware_version: 2.3.15.abc123"
             mock_stringio.return_value = mock_output
+            mock_client.localNode.getMetadata.side_effect = Exception("Metadata error")
 
-            result = _get_device_metadata(mock_client, force_refresh=True)
+            result = _get_device_metadata(mock_client)
 
-        self.assertFalse(result["success"])
-        self.assertEqual(result["firmware_version"], "unknown")
+            # Verify failure on exception
+            self.assertFalse(result["success"])
+            self.assertEqual(result["firmware_version"], "unknown")
 
     def test_get_device_metadata_normalizes_refreshed_firmware(self):
         """Refreshed firmware fallback should normalize values before success assignment."""

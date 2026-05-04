@@ -232,7 +232,8 @@ class TestConnectionLossHandling(unittest.TestCase):
         self.assertIn("Lost connection", error_call)
         self.assertIn("test_source", error_call)
 
-        # The global mock_submit_coro fixture will handle the AsyncMock properly
+        # Verify reconnect was actually scheduled
+        mock_reconnect.assert_called()
 
     @patch("mmrelay.meshtastic_utils.logger")
     def test_on_lost_meshtastic_connection_interface_none(self, mock_logger):
