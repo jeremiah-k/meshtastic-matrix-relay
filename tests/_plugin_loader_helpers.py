@@ -5,6 +5,9 @@ import shutil
 import tempfile
 import unittest
 
+# Re-exported for decomposed test modules (isort would otherwise drop this)
+from tests.constants import TEST_GIT_TIMEOUT  # noqa: F401
+
 
 class MockPlugin:
     """Mock plugin class for testing."""
