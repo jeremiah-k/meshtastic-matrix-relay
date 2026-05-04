@@ -475,9 +475,7 @@ from mmrelay.meshtastic.subscriptions import (
 )
 
 
-
 atexit.register(shutdown_shared_executors)
-
 
 if __name__ == "__main__":
     # If running this standalone (normally the main.py does the loop), just try connecting and run forever.

@@ -34,7 +34,7 @@ async def _configure_e2ee(
 
     Parameters:
         config_data (dict[str, Any]): Full application configuration used to detect whether E2EE is enabled.
-        matrix_section (Any): Matrix-specific configuration subsection; when a dict, its "encryption" or "e2ee" keys may provide a `store_path` override.
+        matrix_section (Any): Matrix-specific configuration subsection; when a dict, "e2ee" key is preferred with its `store_path`, and "encryption" key is used as legacy fallback.
         e2ee_device_id (Optional[str]): Device ID restored from credentials, if any; used to decide whether a device id must be retrieved later.
 
     Returns:
