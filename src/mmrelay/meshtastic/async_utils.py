@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import asyncio
 import contextlib
 import inspect
 import logging
@@ -139,7 +142,7 @@ def _coerce_bool(value: Any, default: bool, setting_name: str) -> bool:
 
 def _submit_coro(
     coro: Any,
-    loop: facade.asyncio.AbstractEventLoop | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
 ) -> Future[Any] | None:
     """
     Schedule a coroutine or awaitable on an available asyncio event loop and return a Future for its result.
@@ -227,16 +230,16 @@ def _submit_coro(
 
 
 def _fire_and_forget(
-    coro: Coroutine[Any, Any, Any], loop: facade.asyncio.AbstractEventLoop | None = None
+    coro: Coroutine[Any, Any, Any], loop: asyncio.AbstractEventLoop | None = None
 ) -> None:
     """
     Schedule a coroutine to run in the background and log any non-cancellation exceptions.
 
-    If `coro` is not a coroutine or scheduling fails, the function returns without side effects. The scheduled task will have a done callback that logs exceptions (except `asyncio.CancelledError`).
+    If `coro` is not a coroutine or scheduling fails, the function returns without side effects. The scheduled task will have a done callback that logs exceptions (except `facade.asyncio.CancelledError`).
 
     Parameters:
         coro (Coroutine[Any, Any, Any]): The coroutine to execute.
-        loop (asyncio.AbstractEventLoop | None): Optional event loop to use; if omitted the module-default loop is used.
+        loop (facade.asyncio.AbstractEventLoop | None): Optional event loop to use; if omitted the module-default loop is used.
     """
     if not inspect.iscoroutine(coro):
         return
@@ -245,7 +248,7 @@ def _fire_and_forget(
     if task is None:
         return
 
-    def _handle_exception(t: facade.asyncio.Future[Any] | Future[Any]) -> None:
+    def _handle_exception(t: asyncio.Future[Any] | Future[Any]) -> None:
         """
         Log non-cancellation exceptions raised by a fire-and-forget task.
 
@@ -256,7 +259,7 @@ def _fire_and_forget(
         debug level.
 
         Parameters:
-            t (asyncio.Future | concurrent.futures.Future): Task or future to inspect.
+            t (facade.asyncio.Future | concurrent.futures.Future): Task or future to inspect.
         """
         try:
             if (exc := t.exception()) and not isinstance(
@@ -274,7 +277,7 @@ def _fire_and_forget(
 
 
 def _make_awaitable(
-    future: Any, loop: facade.asyncio.AbstractEventLoop | None = None
+    future: Any, loop: asyncio.AbstractEventLoop | None = None
 ) -> Awaitable[Any] | Any:
     """
     Convert a future-like object into an awaitable, optionally binding it to a given event loop.
@@ -492,7 +495,7 @@ def _run_blocking_with_timeout(
 def _wait_for_result(
     result_future: Any,
     timeout: float,
-    loop: facade.asyncio.AbstractEventLoop | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
 ) -> Any:
     """
     Wait for and return the resolved value of a future-like or awaitable object, enforcing a timeout.
@@ -500,13 +503,13 @@ def _wait_for_result(
     Parameters:
         result_future (Any): A concurrent.futures.Future, asyncio Future/Task, awaitable, or object exposing a callable `result(timeout)` method. If None, the function returns False.
         timeout (float): Maximum seconds to wait for the result.
-        loop (asyncio.AbstractEventLoop | None): Optional event loop to use; if omitted, the function will use a running loop or create a temporary loop as needed.
+        loop (facade.asyncio.AbstractEventLoop | None): Optional event loop to use; if omitted, the function will use a running loop or create a temporary loop as needed.
 
     Returns:
         Any: The value produced by the resolved future or awaitable. Returns `False` when `result_future` is `None` or when the function refuses to block the currently running event loop and instead schedules the awaitable to run in the background. Callers should handle False as a "could not wait" signal rather than a failed result.
 
     Raises:
-        asyncio.TimeoutError: If awaiting an asyncio awaitable times out.
+        facade.asyncio.TimeoutError: If awaiting an asyncio awaitable times out.
         concurrent.futures.TimeoutError: If a concurrent.futures.Future times out.
         Exception: Any exception raised by the resolved future/awaitable is propagated.
     """
@@ -539,7 +542,7 @@ def _wait_for_result(
             The result returned by the awaitable.
 
         Raises:
-            asyncio.TimeoutError: If the awaitable does not complete before the timeout expires.
+            facade.asyncio.TimeoutError: If the awaitable does not complete before the timeout expires.
         """
         return await facade.asyncio.wait_for(awaitable, timeout=timeout)
 

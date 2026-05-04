@@ -1,5 +1,5 @@
 import re
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
 import mmrelay.matrix_utils as facade
@@ -203,7 +203,7 @@ def _get_msgs_to_keep_config(config_override: dict[str, Any] | None = None) -> i
     msgs_to_keep = msg_map_config.get("msgs_to_keep", DEFAULT_MSGS_TO_KEEP)
     if isinstance(msgs_to_keep, bool) or not isinstance(msgs_to_keep, int):
         return DEFAULT_MSGS_TO_KEEP
-    return msgs_to_keep
+    return cast(int, msgs_to_keep)
 
 
 def _get_detailed_matrix_error_message(matrix_response: Any) -> str:

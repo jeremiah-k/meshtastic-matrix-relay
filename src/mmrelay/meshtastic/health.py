@@ -527,7 +527,7 @@ def _probe_device_connection(
     raise facade._missing_probe_wait_error()
 
 
-def requires_continuous_health_monitor(config: dict) -> bool:
+def requires_continuous_health_monitor(config: dict[str, Any]) -> bool:
     """
     Return True when periodic health monitoring should run for the given config.
 

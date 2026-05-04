@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import math
 from concurrent.futures import TimeoutError as FuturesTimeoutError
@@ -57,7 +58,7 @@ def _resolve_plugin_result(
     handler_result: Any,
     plugin: Any,
     plugin_timeout: float,
-    loop: facade.asyncio.AbstractEventLoop,
+    loop: asyncio.AbstractEventLoop,
 ) -> bool:
     """
     Resolve a plugin handler result to a boolean, handling async timeouts and bad awaitables.
@@ -77,7 +78,7 @@ def _resolve_plugin_result(
         return False
     try:
         return bool(facade._wait_for_result(result_future, plugin_timeout, loop=loop))
-    except (facade.asyncio.TimeoutError, FuturesTimeoutError) as exc:
+    except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
         facade.logger.warning(
             "Plugin %s did not respond within %ss: %s",
             plugin.plugin_name,
@@ -93,7 +94,7 @@ def _run_meshtastic_plugins(
     formatted_message: str | None,
     longname: str | None,
     meshnet_name: str | None,
-    loop: facade.asyncio.AbstractEventLoop,
+    loop: asyncio.AbstractEventLoop,
     cfg: dict[str, Any] | None,
     use_keyword_args: bool = False,
     log_with_portnum: bool = False,

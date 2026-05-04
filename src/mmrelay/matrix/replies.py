@@ -1,7 +1,14 @@
 import asyncio
 from typing import Any, cast
 
-from nio import AsyncClient
+from nio import (
+    AsyncClient,
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 
 import mmrelay.matrix_utils as facade
 
@@ -52,13 +59,8 @@ def strip_quoted_lines(text: str) -> str:
 
 
 async def get_user_display_name(
-    room: facade.MatrixRoom,
-    event: (
-        facade.RoomMessageText
-        | facade.RoomMessageNotice
-        | facade.ReactionEvent
-        | facade.RoomMessageEmote
-    ),
+    room: MatrixRoom,
+    event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
 ) -> str:
     """
     Get the display name for an event sender, preferring a room-specific name.
@@ -193,13 +195,8 @@ async def send_reply_to_meshtastic(
     reply_message: str,
     full_display_name: str,
     room_config: dict[str, Any],
-    room: facade.MatrixRoom,
-    event: (
-        facade.RoomMessageText
-        | facade.RoomMessageNotice
-        | facade.ReactionEvent
-        | facade.RoomMessageEmote
-    ),
+    room: MatrixRoom,
+    event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
     text: str,
     storage_enabled: bool,
     local_meshnet_name: str,
@@ -317,13 +314,8 @@ async def send_reply_to_meshtastic(
 
 
 async def handle_matrix_reply(
-    room: facade.MatrixRoom,
-    event: (
-        facade.RoomMessageText
-        | facade.RoomMessageNotice
-        | facade.ReactionEvent
-        | facade.RoomMessageEmote
-    ),
+    room: MatrixRoom,
+    event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
     reply_to_event_id: str,
     text: str,
     room_config: dict[str, Any],

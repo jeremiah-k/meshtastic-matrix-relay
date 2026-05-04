@@ -229,7 +229,9 @@ class Plugin(BasePlugin):
             )
             return None
 
-    def _format_current_marine(self, data: dict, units: str = "metric") -> str | None:
+    def _format_current_marine(
+        self, data: dict[str, Any], units: str = "metric"
+    ) -> str | None:
         """Format current marine API response into a single-line string."""
         current = data.get("current", {})
         wave_height = current.get("wave_height")
@@ -248,7 +250,9 @@ class Plugin(BasePlugin):
 
         return result
 
-    def _format_daily_marine(self, data: dict, units: str = "metric") -> str | None:
+    def _format_daily_marine(
+        self, data: dict[str, Any], units: str = "metric"
+    ) -> str | None:
         """Format daily marine API response into a multi-day single-line string."""
         daily = data.get("daily", {})
         heights = daily.get("wave_height_max") or []
@@ -284,7 +288,11 @@ class Plugin(BasePlugin):
         return self._trim_to_max_bytes("🌊 Waves " + " | ".join(day_parts))
 
     def _format_hourly_marine(
-        self, data: dict, base_index: int, offsets: list[int], units: str = "metric"
+        self,
+        data: dict[str, Any],
+        base_index: int,
+        offsets: list[int],
+        units: str = "metric",
     ) -> str | None:
         """Format hourly marine API response into a multi-slot single-line string."""
         hourly = data.get("hourly", {})
@@ -1126,7 +1134,7 @@ class Plugin(BasePlugin):
                 url,
                 params={
                     "name": query,
-                    "count": GEOCODING_RESULT_COUNT,
+                    "count": str(GEOCODING_RESULT_COUNT),
                     "format": "json",
                 },
                 timeout=WEATHER_API_TIMEOUT_SECONDS,

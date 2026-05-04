@@ -933,7 +933,9 @@ def _requirements_install_target() -> RequirementsInstallTarget:
             ),
         )
 
-    user_site_paths = [os.path.abspath(path) for path in user_site]  # type: ignore[assignment]
+    user_site_paths = [
+        os.path.abspath(path) for path in user_site
+    ]  # pyright: ignore[reportAssignmentType]
     marker_dir = next(
         (path for path in user_site_paths if _is_writable_directory(path)), None
     )
