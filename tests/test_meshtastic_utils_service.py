@@ -10,6 +10,7 @@ Tests the Meshtastic client functionality including:
 - Error handling and reconnection logic
 """
 
+import asyncio
 import contextlib
 import os
 import threading
@@ -19,6 +20,7 @@ from unittest.mock import MagicMock, Mock, mock_open, patch
 
 import pytest
 
+import mmrelay.meshtastic_utils as mu
 from mmrelay.meshtastic_utils import (
     is_running_as_service,
     serial_port_exists,
@@ -317,3 +319,293 @@ class TestSerialPortDetection(unittest.TestCase):
 
         result = serial_port_exists("/dev/ttyUSB0")
         self.assertFalse(result)
+
+
+class TestCoercionFunctions:
+    """Test coercion utility functions."""
+
+    def test_coerce_int_id_with_valid_int(self):
+        """Test _coerce_int_id with valid integer."""
+        from mmrelay.meshtastic_utils import _coerce_int_id
+
+        assert _coerce_int_id(123) == 123
+
+    def test_coerce_int_id_with_string(self):
+        """Test _coerce_int_id with string number."""
+        from mmrelay.meshtastic_utils import _coerce_int_id
+
+        assert _coerce_int_id("456") == 456
+
+    def test_coerce_int_id_with_invalid_string(self):
+        """Test _coerce_int_id with non-numeric string."""
+        from mmrelay.meshtastic_utils import _coerce_int_id
+
+        assert _coerce_int_id("not-a-number") is None
+
+    def test_coerce_int_id_with_none(self):
+        """Test _coerce_int_id with None."""
+        from mmrelay.meshtastic_utils import _coerce_int_id
+
+        assert _coerce_int_id(None) is None
+
+    def test_coerce_positive_float_with_valid(self):
+        """Test _coerce_positive_float with valid positive float."""
+        from mmrelay.meshtastic_utils import _coerce_positive_float
+
+        assert _coerce_positive_float(5.5, 1.0, "test") == 5.5
+
+    def test_coerce_positive_float_with_zero(self):
+        """Test _coerce_positive_float with zero (invalid)."""
+        from mmrelay.meshtastic_utils import _coerce_positive_float
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            result = _coerce_positive_float(0, 2.0, "test_setting")
+            assert result == 2.0
+            mock_logger.warning.assert_called_once()
+
+    def test_coerce_positive_float_with_negative(self):
+        """Test _coerce_positive_float with negative (invalid)."""
+        from mmrelay.meshtastic_utils import _coerce_positive_float
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            result = _coerce_positive_float(-5.0, 3.0, "test_setting")
+            assert result == 3.0
+            mock_logger.warning.assert_called_once()
+
+    def test_coerce_positive_float_with_invalid_type(self):
+        """Test _coerce_positive_float with invalid type."""
+        from mmrelay.meshtastic_utils import _coerce_positive_float
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            result = _coerce_positive_float("not-a-number", 4.0, "test_setting")
+            assert result == 4.0
+            mock_logger.warning.assert_called_once()
+
+
+class TestCoerceBoolEdgeCases:
+    """Test _coerce_bool edge cases."""
+
+    def test_coerce_bool_with_true_bool(self):
+        """Test _coerce_bool with True boolean."""
+        from mmrelay.meshtastic_utils import _coerce_bool
+
+        result = _coerce_bool(True, False, "test_setting")
+        assert result is True
+
+    def test_coerce_bool_with_false_bool(self):
+        """Test _coerce_bool with False boolean."""
+        from mmrelay.meshtastic_utils import _coerce_bool
+
+        result = _coerce_bool(False, True, "test_setting")
+        assert result is False
+
+    def test_coerce_bool_with_positive_int(self):
+        """Test _coerce_bool with positive integer."""
+        from mmrelay.meshtastic_utils import _coerce_bool
+
+        result = _coerce_bool(1, False, "test_setting")
+        assert result is True
+
+    def test_coerce_bool_with_zero_int(self):
+        """Test _coerce_bool with zero integer."""
+        from mmrelay.meshtastic_utils import _coerce_bool
+
+        result = _coerce_bool(0, True, "test_setting")
+        assert result is False
+
+    def test_coerce_bool_with_positive_float(self):
+        """Test _coerce_bool with positive float."""
+        from mmrelay.meshtastic_utils import _coerce_bool
+
+        result = _coerce_bool(1.5, False, "test_setting")
+        assert result is True
+
+    def test_coerce_bool_with_zero_float(self):
+        """Test _coerce_bool with zero float."""
+        from mmrelay.meshtastic_utils import _coerce_bool
+
+        result = _coerce_bool(0.0, True, "test_setting")
+        assert result is False
+
+    def test_coerce_bool_with_whitespace_string(self):
+        """Test _coerce_bool with whitespace-only string defaults to False."""
+        from mmrelay.meshtastic_utils import _coerce_bool
+
+        result = _coerce_bool("   ", True, "test_setting")
+        assert result is False
+
+    def test_coerce_bool_with_empty_string(self):
+        """Test _coerce_bool with empty string returns False."""
+        from mmrelay.meshtastic_utils import _coerce_bool
+
+        result = _coerce_bool("", True, "test_setting")
+        assert result is False
+
+    def test_coerce_bool_with_invalid_type(self):
+        """Test _coerce_bool with invalid type logs warning and returns default."""
+        from mmrelay.meshtastic_utils import _coerce_bool
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            result = _coerce_bool(["list"], True, "test_setting")
+            assert result is True
+            mock_logger.warning.assert_called_once()
+
+
+class TestSnapshotNodeNameRowsNonDict:
+    """Test _snapshot_node_name_rows handling non-dict raw_node and raw_user."""
+
+    def test_snapshot_node_name_rows_non_dict_raw_node(self):
+        """Test when raw_node is not a dict, nodes_snapshot gets {"user": None}."""
+        mock_client = Mock()
+        mock_client.nodes = {
+            "12345": "not_a_dict",
+            "67890": None,
+        }
+
+        with patch("mmrelay.meshtastic_utils.meshtastic_client", mock_client):
+            result, client_missing = mu._snapshot_node_name_rows()
+
+            assert client_missing is False
+            assert result is not None
+            assert result["12345"] == {"user": None}
+            assert result["67890"] == {"user": None}
+
+    def test_snapshot_node_name_rows_non_dict_raw_user(self):
+        """Test when raw_user is not a dict, nodes_snapshot gets {"user": {"id": None}}."""
+        mock_client = Mock()
+        mock_client.nodes = {
+            "12345": {"user": "user_string_not_dict"},
+            "67890": {"user": None},
+        }
+
+        with patch("mmrelay.meshtastic_utils.meshtastic_client", mock_client):
+            result, client_missing = mu._snapshot_node_name_rows()
+
+            assert client_missing is False
+            assert result is not None
+            assert result["12345"] == {"user": {"id": None}}
+            assert result["67890"] == {"user": {"id": None}}
+
+
+class TestRefreshNodeNameTablesInvalidInterval:
+    """Test refresh_node_name_tables invalid interval handling."""
+
+    @pytest.mark.asyncio
+    async def test_refresh_node_name_tables_boolean_interval(self):
+        """Test with boolean interval raises TypeError, defaults to configured interval."""
+        mu.config = {"meshtastic": {}}
+
+        with patch(
+            "mmrelay.meshtastic.node_refresh.get_nodedb_refresh_interval_seconds",
+            return_value=60.0,
+        ):
+            with patch(
+                "mmrelay.meshtastic.node_refresh.asyncio.to_thread"
+            ) as mock_to_thread:
+                mock_to_thread.return_value = (None, True)
+                with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+                    shutdown_event = asyncio.Event()
+
+                    async def run_with_shutdown():
+                        await asyncio.sleep(0.01)
+                        shutdown_event.set()
+
+                    shutdown_task = asyncio.create_task(run_with_shutdown())
+                    try:
+                        await mu.refresh_node_name_tables(
+                            shutdown_event,
+                            refresh_interval_seconds=True,
+                        )
+                    finally:
+                        shutdown_task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await shutdown_task
+
+                    warning_calls = [
+                        str(call) for call in mock_logger.warning.call_args_list
+                    ]
+                    assert any(
+                        "Invalid NodeDB name-cache refresh interval override" in call
+                        for call in warning_calls
+                    )
+                    assert any("60.0" in call for call in warning_calls)
+
+    @pytest.mark.asyncio
+    async def test_refresh_node_name_tables_nan_interval(self):
+        """Test with nan interval raises ValueError, defaults to configured interval."""
+        mu.config = {"meshtastic": {}}
+
+        with patch(
+            "mmrelay.meshtastic.node_refresh.get_nodedb_refresh_interval_seconds",
+            return_value=120.0,
+        ):
+            with patch(
+                "mmrelay.meshtastic.node_refresh.asyncio.to_thread"
+            ) as mock_to_thread:
+                mock_to_thread.return_value = (None, True)
+                with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+                    shutdown_event = asyncio.Event()
+
+                    async def run_with_shutdown():
+                        await asyncio.sleep(0.01)
+                        shutdown_event.set()
+
+                    shutdown_task = asyncio.create_task(run_with_shutdown())
+                    try:
+                        await mu.refresh_node_name_tables(
+                            shutdown_event,
+                            refresh_interval_seconds=float("nan"),
+                        )
+                    finally:
+                        shutdown_task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await shutdown_task
+
+                    warning_calls = [
+                        str(call) for call in mock_logger.warning.call_args_list
+                    ]
+                    assert any(
+                        "Invalid NodeDB name-cache refresh interval override" in call
+                        for call in warning_calls
+                    )
+                    assert any("120.0" in call for call in warning_calls)
+
+    @pytest.mark.asyncio
+    async def test_refresh_node_name_tables_inf_interval(self):
+        """Test with inf interval raises ValueError, defaults to configured interval."""
+        mu.config = {"meshtastic": {}}
+
+        with patch(
+            "mmrelay.meshtastic.node_refresh.get_nodedb_refresh_interval_seconds",
+            return_value=90.0,
+        ):
+            with patch(
+                "mmrelay.meshtastic.node_refresh.asyncio.to_thread"
+            ) as mock_to_thread:
+                mock_to_thread.return_value = (None, True)
+                with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+                    shutdown_event = asyncio.Event()
+
+                    async def run_with_shutdown():
+                        await asyncio.sleep(0.01)
+                        shutdown_event.set()
+
+                    shutdown_task = asyncio.create_task(run_with_shutdown())
+                    try:
+                        await mu.refresh_node_name_tables(
+                            shutdown_event,
+                            refresh_interval_seconds=float("inf"),
+                        )
+                    finally:
+                        shutdown_task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await shutdown_task
+
+                    warning_calls = [
+                        str(call) for call in mock_logger.warning.call_args_list
+                    ]
+                    assert any(
+                        "Invalid NodeDB name-cache refresh interval override" in call
+                        for call in warning_calls
+                    )
+                    assert any("90.0" in call for call in warning_calls)

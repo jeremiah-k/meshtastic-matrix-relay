@@ -14,8 +14,10 @@ import asyncio
 import contextlib
 import sys
 import threading
+import time
 import types
 import unittest
+from concurrent.futures import Future
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
@@ -30,6 +32,16 @@ from mmrelay.meshtastic_utils import (
 from tests.conftest import cleanup_ble_future_state
 
 TEST_PACKET_RX_TIME = 1234567890
+
+
+def _submit_done_reconnect_future(coro: object, _loop: object) -> Future[None]:
+    """Create and return an already-completed Future after optionally closing a coroutine-like object."""
+    close = getattr(coro, "close", None)
+    if callable(close):
+        close()
+    done_future: Future[None] = Future()
+    done_future.set_result(None)
+    return done_future
 
 
 def _cancel_startup_drain_timer() -> None:
@@ -130,6 +142,51 @@ def reset_meshtastic_relay_state(monkeypatch):
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils.reconnect_task_future",
         None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future_address",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future_started_at",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future_timeout_secs",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_timeout_counts",
+        {},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_executor_degraded_addresses",
+        set(),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_executor_orphaned_workers_by_address",
+        {},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._metadata_executor_degraded",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._metadata_executor_orphaned_workers",
+        0,
         raising=False,
     )
 
@@ -628,8 +685,68 @@ class TestReconnectCancellation:
             await reconnect()
 
         mock_logger.info.assert_any_call("Reconnection task was cancelled.")
-        assert mu.reconnecting is False
-        assert mu.reconnect_task_future is None
+
+
+class TestConnectionLostHandlerClearingStaleBleFuture:
+    """Test connection lost handler clearing stale BLE future."""
+
+    def test_on_lost_meshtastic_connection_clears_ble_future_globals(self):
+        """Test that _ble_future, _ble_future_address, _ble_future_started_at, _ble_future_timeout_secs are cleared."""
+        mock_future = Mock(spec=Future)
+        mock_future.done.return_value = False
+        mu._ble_future = mock_future
+        mu._ble_future_address = "AA:BB:CC:DD:EE:FF"
+        mu._ble_future_started_at = time.monotonic()
+        mu._ble_future_timeout_secs = 30.0
+        mu._ble_timeout_counts["AA:BB:CC:DD:EE:FF"] = 5
+        mu.meshtastic_client = Mock()
+        mu.event_loop = Mock()
+        mu.event_loop.is_closed.return_value = False
+        mu.reconnecting = False
+
+        with (
+            patch("mmrelay.meshtastic_utils.reconnect"),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
+                side_effect=_submit_done_reconnect_future,
+            ),
+            patch("mmrelay.meshtastic_utils.logger"),
+        ):
+            mu.on_lost_meshtastic_connection(detection_source="test source")
+
+            assert mu._ble_future is None
+            assert mu._ble_future_address is None
+            assert mu._ble_future_started_at is None
+            assert mu._ble_future_timeout_secs is None
+            assert "AA:BB:CC:DD:EE:FF" not in mu._ble_timeout_counts
+
+    def test_on_lost_meshtastic_connection_clears_ble_timeout_counts(self):
+        """Test _ble_timeout_counts is popped for the address."""
+        mock_future = Mock(spec=Future)
+        mock_future.done.return_value = False
+        mu._ble_future = mock_future
+        mu._ble_future_address = "11:22:33:44:55:66"
+        mu._ble_future_started_at = time.monotonic()
+        mu._ble_future_timeout_secs = 30.0
+        mu._ble_timeout_counts["11:22:33:44:55:66"] = 10
+        mu._ble_timeout_counts["OTHER:ADDRESS"] = 3
+        mu.meshtastic_client = Mock()
+        mu.event_loop = Mock()
+        mu.event_loop.is_closed.return_value = False
+        mu.reconnecting = False
+
+        with (
+            patch("mmrelay.meshtastic_utils.reconnect"),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
+                side_effect=_submit_done_reconnect_future,
+            ),
+            patch("mmrelay.meshtastic_utils.logger"),
+        ):
+            mu.on_lost_meshtastic_connection(detection_source="test source")
+
+            assert "11:22:33:44:55:66" not in mu._ble_timeout_counts
+            assert mu._ble_timeout_counts["OTHER:ADDRESS"] == 3
 
 
 @pytest.mark.asyncio

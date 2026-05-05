@@ -13,14 +13,23 @@ Tests the Meshtastic client functionality including:
 import contextlib
 import sys
 import threading
+import time
 import unittest
+from concurrent.futures import Future, ThreadPoolExecutor
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
 
+import mmrelay.meshtastic_utils as mu
+from mmrelay.constants.network import (
+    CONFIG_KEY_BLE_ADDRESS,
+    CONFIG_KEY_CONNECTION_TYPE,
+    CONNECTION_TYPE_BLE,
+)
 from tests.conftest import cleanup_ble_future_state
+from tests.constants import TEST_BLE_MAC
 
 TEST_PACKET_RX_TIME = 1234567890
 
@@ -103,6 +112,91 @@ def reset_meshtastic_relay_state(monkeypatch):
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._health_probe_request_deadlines",
         {},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.config",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.meshtastic_client",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.meshtastic_iface",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.shutting_down",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.reconnecting",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future_address",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future_started_at",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future_timeout_secs",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_timeout_counts",
+        {},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_executor",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_executor_degraded_addresses",
+        set(),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_executor_orphaned_workers_by_address",
+        {},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._metadata_executor_degraded",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._metadata_executor_orphaned_workers",
+        0,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.event_loop",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.matrix_rooms",
+        [],
         raising=False,
     )
 
@@ -337,3 +431,481 @@ class TestBLEExceptionHandling(unittest.TestCase):
 
         with self.assertRaises(mu.BleakError):
             raise error2
+
+
+class TestClearBleFuture:
+    """Test _clear_ble_future clearing all related globals."""
+
+    def test_clear_ble_future_clears_all_globals(self):
+        """Test that when done_future matches _ble_future, all related globals are cleared."""
+        mock_future = Mock(spec=Future)
+        mu._ble_future = mock_future
+        mu._ble_future_address = TEST_BLE_MAC
+        mu._ble_future_started_at = time.monotonic()
+        mu._ble_future_timeout_secs = 30.0
+        mu._ble_timeout_counts[TEST_BLE_MAC] = 5
+
+        mu._clear_ble_future(mock_future)
+
+        assert mu._ble_future is None
+        assert mu._ble_future_address is None
+        assert mu._ble_future_started_at is None
+        assert mu._ble_future_timeout_secs is None
+        assert TEST_BLE_MAC not in mu._ble_timeout_counts
+
+    def test_clear_ble_future_no_match_does_not_clear(self):
+        """Test that _clear_ble_future does not clear when future doesn't match."""
+        mock_future1 = Mock(spec=Future)
+        mock_future2 = Mock(spec=Future)
+        mu._ble_future = mock_future1
+        mu._ble_future_address = TEST_BLE_MAC
+        mu._ble_future_started_at = time.monotonic()
+        mu._ble_future_timeout_secs = 30.0
+        mu._ble_timeout_counts[TEST_BLE_MAC] = 5
+
+        mu._clear_ble_future(mock_future2)
+
+        assert mu._ble_future is mock_future1
+        assert mu._ble_future_address == TEST_BLE_MAC
+        assert mu._ble_future_started_at is not None
+        assert mu._ble_future_timeout_secs == 30.0
+        assert mu._ble_timeout_counts.get(TEST_BLE_MAC) == 5
+
+
+class TestEnsureBleWorkerAvailableStaleWorker:
+    """Test _ensure_ble_worker_available stale worker detection."""
+
+    def test_ensure_ble_worker_stale_detection(self):
+        """Test when elapsed >= stale_after, logs warning and calls _maybe_reset_ble_executor."""
+        mock_future = Mock(spec=Future)
+        mock_future.done.return_value = False
+        mu._ble_future = mock_future
+        mu._ble_future_address = TEST_BLE_MAC
+        mu._ble_future_started_at = time.monotonic() - 100
+        mu._ble_future_timeout_secs = 30.0
+
+        def _simulate_reset(*_args, **_kwargs):
+            mu._ble_future = None
+            mu._ble_future_address = None
+            mu._ble_future_started_at = None
+            mu._ble_future_timeout_secs = None
+
+        with patch(
+            "mmrelay.meshtastic_utils._maybe_reset_ble_executor",
+            side_effect=_simulate_reset,
+        ) as mock_reset:
+            with patch("mmrelay.meshtastic_utils._record_ble_timeout", return_value=5):
+                with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+                    with patch(
+                        "mmrelay.meshtastic_utils._ble_future_stale_grace_secs", 10.0
+                    ):
+                        with patch(
+                            "mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 3
+                        ):
+                            mu._ensure_ble_worker_available(
+                                TEST_BLE_MAC, operation="test"
+                            )
+
+                            warning_calls = [
+                                str(call) for call in mock_logger.warning.call_args_list
+                            ]
+                            assert any("stale" in call for call in warning_calls)
+                            mock_reset.assert_called_once()
+
+    def test_ensure_ble_worker_busy_raises_timeout(self):
+        """Test when worker is busy (future not done), raises TimeoutError."""
+        mock_future = Mock(spec=Future)
+        mock_future.done.return_value = False
+        mu._ble_future = mock_future
+        mu._ble_future_address = TEST_BLE_MAC
+        mu._ble_future_started_at = time.monotonic()
+        mu._ble_future_timeout_secs = 30.0
+
+        with patch("mmrelay.meshtastic_utils._ble_future_stale_grace_secs", 1000.0):
+            with pytest.raises(TimeoutError, match="already in progress"):
+                mu._ensure_ble_worker_available(TEST_BLE_MAC, operation="test")
+
+
+class TestMaybeResetBleExecutor:
+    """Test _maybe_reset_ble_executor threshold and cleanup."""
+
+    def test_maybe_reset_ble_executor_below_threshold(self):
+        """Test when timeout_count < threshold, returns early without reset."""
+        mu._ble_executor = Mock(spec=ThreadPoolExecutor)
+        mu._ble_executor._shutdown = False
+
+        with patch("mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 10):
+            mu._maybe_reset_ble_executor(TEST_BLE_MAC, timeout_count=3)
+
+            mu._ble_executor.shutdown.assert_not_called()
+
+    def test_maybe_reset_ble_executor_shutdown_executor(self):
+        """Test when _ble_executor is not None and not shutdown, calls shutdown."""
+        mock_executor = Mock(spec=ThreadPoolExecutor)
+        mock_executor._shutdown = False
+        mu._ble_executor = mock_executor
+        mu._ble_future = None
+        mu._ble_future_address = None
+
+        with patch("mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 3):
+            mu._maybe_reset_ble_executor(TEST_BLE_MAC, timeout_count=5)
+
+            mock_executor.shutdown.assert_called_once_with(
+                wait=False, cancel_futures=True
+            )
+            assert mu._ble_executor is not mock_executor
+
+    def test_maybe_reset_ble_executor_handles_type_error(self):
+        """Test handling TypeError during shutdown (older Python compatibility)."""
+        mock_executor = Mock(spec=ThreadPoolExecutor)
+        mock_executor._shutdown = False
+        mock_executor.shutdown.side_effect = [TypeError("cancel_futures"), None]
+        mu._ble_executor = mock_executor
+        mu._ble_future = None
+        mu._ble_future_address = None
+
+        with patch("mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 3):
+            mu._maybe_reset_ble_executor(TEST_BLE_MAC, timeout_count=5)
+
+            assert mock_executor.shutdown.call_count == 2
+            assert mu._ble_executor is not mock_executor
+
+
+class TestBleInterfaceCreationShuttingDown:
+    """Test BLE interface creation shutting_down check."""
+
+    def test_connect_meshtastic_returns_none_when_shutting_down(self):
+        """Test when shutting_down is True, connect_meshtastic returns None."""
+        mu.shutting_down = True
+        mu.config = {
+            "meshtastic": {
+                CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_BLE,
+                CONFIG_KEY_BLE_ADDRESS: TEST_BLE_MAC,
+            }
+        }
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            result = mu.connect_meshtastic()
+
+            assert result is None
+            debug_calls = [str(call) for call in mock_logger.debug.call_args_list]
+            assert any("shutdown" in call.lower() for call in debug_calls)
+
+    def test_ble_interface_creation_calls_ensure_ble_worker(self):
+        """Test _ensure_ble_worker_available is called with correct parameters during BLE connect."""
+        mu.shutting_down = False
+        mu.reconnecting = False
+        mu.meshtastic_client = None
+        mu.config = {
+            "meshtastic": {
+                CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_BLE,
+                CONFIG_KEY_BLE_ADDRESS: TEST_BLE_MAC,
+                "retries": 1,
+            }
+        }
+
+        with patch(
+            "mmrelay.meshtastic_utils._ensure_ble_worker_available"
+        ) as mock_ensure:
+            mock_ensure.return_value = None
+            with patch("mmrelay.meshtastic_utils._get_ble_executor") as mock_get_exec:
+                mock_executor = Mock(spec=ThreadPoolExecutor)
+                mock_get_exec.return_value = mock_executor
+                mock_future = Mock(spec=Future)
+                mock_future.done.return_value = False
+                mock_future.result.return_value = None
+                mock_executor.submit.return_value = mock_future
+
+                with patch(
+                    "mmrelay.meshtastic_utils._ble_interface_create_timeout_secs", 30.0
+                ):
+                    with patch("mmrelay.meshtastic_utils.BLE_AVAILABLE", True):
+                        with patch(
+                            "mmrelay.meshtastic_utils._ble_future_stale_grace_secs",
+                            1000.0,
+                        ):
+                            with patch(
+                                "mmrelay.meshtastic_utils._ble_timeout_reset_threshold",
+                                3,
+                            ):
+                                with patch(
+                                    "mmrelay.meshtastic_utils._ble_future_watchdog_secs",
+                                    60.0,
+                                ):
+                                    with patch("mmrelay.meshtastic_utils.meshtastic"):
+                                        mu.connect_meshtastic()
+
+                                        mock_ensure.assert_any_call(
+                                            TEST_BLE_MAC,
+                                            operation="interface creation",
+                                        )
+
+
+class TestBleConnectShuttingDown:
+    """Test BLE connect() shutting_down and busy worker checks."""
+
+    def test_ensure_ble_worker_available_called_for_connect(self):
+        """Test _ensure_ble_worker_available is called with 'connect' operation during BLE connect phase."""
+        mu.shutting_down = False
+        mu.reconnecting = False
+        mu.meshtastic_client = None
+        mu.config = {
+            "meshtastic": {
+                CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_BLE,
+                CONFIG_KEY_BLE_ADDRESS: TEST_BLE_MAC,
+            }
+        }
+
+        ensure_operations: list[str] = []
+
+        def mock_ensure(address, *, operation):
+            ensure_operations.append(operation)
+            return None
+
+        mock_interface = Mock()
+        mock_interface.auto_reconnect = True
+        mock_interface.connect = Mock()
+        mock_interface.getMyNodeInfo = Mock(return_value={"user": {"id": "!abc123"}})
+        mock_bleak_client = Mock()
+        mock_bleak_client.address = TEST_BLE_MAC
+        mock_client = Mock()
+        mock_client.bleak_client = mock_bleak_client
+        mock_interface.client = mock_client
+
+        with patch(
+            "mmrelay.meshtastic_utils._ensure_ble_worker_available",
+            side_effect=mock_ensure,
+        ):
+            with patch("mmrelay.meshtastic_utils._get_ble_executor") as mock_get_exec:
+                mock_executor = Mock(spec=ThreadPoolExecutor)
+                mock_get_exec.return_value = mock_executor
+
+                call_count = [0]
+
+                def create_mock_future(*_args, **_kwargs):
+                    mock_future = Mock(spec=Future)
+                    mock_future.done.return_value = True
+                    mock_future.result.return_value = mock_interface
+                    call_count[0] += 1
+                    return mock_future
+
+                mock_executor.submit.side_effect = create_mock_future
+
+                with patch(
+                    "mmrelay.meshtastic_utils._ble_interface_create_timeout_secs", 30.0
+                ):
+                    with patch("mmrelay.meshtastic_utils.BLE_AVAILABLE", True):
+                        with patch(
+                            "mmrelay.meshtastic_utils._ble_future_stale_grace_secs",
+                            1000.0,
+                        ):
+                            with patch(
+                                "mmrelay.meshtastic_utils._ble_timeout_reset_threshold",
+                                3,
+                            ):
+                                with patch(
+                                    "mmrelay.meshtastic_utils._ble_future_watchdog_secs",
+                                    60.0,
+                                ):
+                                    with patch("mmrelay.meshtastic_utils.meshtastic"):
+                                        with patch(
+                                            "mmrelay.meshtastic_utils._sanitize_ble_address",
+                                            return_value=TEST_BLE_MAC,
+                                        ):
+                                            mu.connect_meshtastic()
+
+                                            assert (
+                                                "interface creation"
+                                                in ensure_operations
+                                            )
+                                            assert "connect" in ensure_operations
+
+    def test_ble_connect_busy_worker_raises_timeout(self):
+        """Test when BLE worker is busy during connect phase, raises TimeoutError."""
+        mock_future = Mock(spec=Future)
+        mock_future.done.return_value = False
+        mu._ble_future = mock_future
+        mu._ble_future_started_at = time.monotonic()
+        mu._ble_future_timeout_secs = 30.0
+
+        with patch("mmrelay.meshtastic_utils._ble_future_stale_grace_secs", 1000.0):
+            with patch("mmrelay.meshtastic_utils.logger"):
+                with pytest.raises(TimeoutError, match="already in progress"):
+                    mu._ensure_ble_worker_available(TEST_BLE_MAC, operation="connect")
+
+
+class TestBleInterfaceImport:
+    """Test meshtastic.ble_interface import paths."""
+
+    def test_import_failure_sets_none(self):
+        """Test that ImportError during ble_interface import sets module to None."""
+        import importlib
+        import sys
+
+        import mmrelay.meshtastic_utils as mu_module
+
+        original_ble_interface = sys.modules.get("meshtastic.ble_interface")
+        saved = {
+            attr: getattr(mu_module, attr, None)
+            for attr in [
+                "config",
+                "logger",
+                "meshtastic_client",
+                "meshtastic_iface",
+                "event_loop",
+                "reconnecting",
+                "shutting_down",
+            ]
+        }
+
+        try:
+            real_import_module = importlib.import_module
+
+            def _raising_import(name, package=None):
+                if name == "meshtastic.ble_interface":
+                    raise ImportError("no ble interface")
+                return real_import_module(name, package)
+
+            with patch.object(importlib, "import_module", side_effect=_raising_import):
+                importlib.reload(mu_module)
+
+            assert mu_module._ble_interface_module is None
+            assert mu_module.MeshtasticBLEError is None
+        finally:
+            if original_ble_interface is not None:
+                sys.modules["meshtastic.ble_interface"] = original_ble_interface
+            importlib.reload(mu_module)
+            for attr, value in saved.items():
+                setattr(mu_module, attr, value)
+
+            assert mu._metadata_executor_degraded is False
+            assert mu._metadata_executor_orphaned_workers == 0
+
+    def test_gating_module_import_exception_sets_none(self):
+        """Test that a non-ModuleNotFoundError during gating import sets module to None."""
+        import importlib
+
+        import mmrelay.meshtastic_utils as mu_module
+        from mmrelay.constants.network import (
+            MESHTASTIC_BLE_GATING_MODULE_PATH,
+        )
+
+        saved = {
+            attr: getattr(mu_module, attr, None)
+            for attr in [
+                "config",
+                "logger",
+                "meshtastic_client",
+                "meshtastic_iface",
+                "event_loop",
+                "reconnecting",
+                "shutting_down",
+            ]
+        }
+
+        try:
+            real_import_module = importlib.import_module
+
+            def _raising_import(name, package=None):
+                if name == MESHTASTIC_BLE_GATING_MODULE_PATH:
+                    raise RuntimeError("gating boom")
+                return real_import_module(name, package)
+
+            with patch.object(importlib, "import_module", side_effect=_raising_import):
+                importlib.reload(mu_module)
+
+            assert mu_module._ble_gating_module is None
+        finally:
+            importlib.reload(mu_module)
+            for attr, value in saved.items():
+                setattr(mu_module, attr, value)
+
+    def test_gating_module_import_success_sets_callable(self):
+        """Test successful gating import sets _ble_gate_reset_callable."""
+        import importlib
+        import types
+
+        import mmrelay.meshtastic_utils as mu_module
+        from mmrelay.constants.network import (
+            MESHTASTIC_BLE_GATE_RESET_FUNC,
+            MESHTASTIC_BLE_GATING_MODULE_PATH,
+        )
+
+        saved = {
+            attr: getattr(mu_module, attr, None)
+            for attr in [
+                "config",
+                "logger",
+                "meshtastic_client",
+                "meshtastic_iface",
+                "event_loop",
+                "reconnecting",
+                "shutting_down",
+            ]
+        }
+
+        fake_module = types.ModuleType(MESHTASTIC_BLE_GATING_MODULE_PATH)
+        setattr(fake_module, MESHTASTIC_BLE_GATE_RESET_FUNC, lambda: None)
+
+        try:
+            real_import_module = importlib.import_module
+
+            def _fake_import(name, package=None):
+                if name == MESHTASTIC_BLE_GATING_MODULE_PATH:
+                    return fake_module
+                return real_import_module(name, package)
+
+            with patch.object(importlib, "import_module", side_effect=_fake_import):
+                importlib.reload(mu_module)
+
+            assert mu_module._ble_gating_module is fake_module
+            assert mu_module._ble_gate_reset_callable is not None
+        finally:
+            importlib.reload(mu_module)
+            for attr, value in saved.items():
+                setattr(mu_module, attr, value)
+
+    def test_gating_module_import_success_non_callable(self):
+        """Test successful gating import with non-callable reset func."""
+        import importlib
+        import types
+
+        import mmrelay.meshtastic_utils as mu_module
+        from mmrelay.constants.network import (
+            MESHTASTIC_BLE_GATE_RESET_FUNC,
+            MESHTASTIC_BLE_GATING_MODULE_PATH,
+        )
+
+        saved = {
+            attr: getattr(mu_module, attr, None)
+            for attr in [
+                "config",
+                "logger",
+                "meshtastic_client",
+                "meshtastic_iface",
+                "event_loop",
+                "reconnecting",
+                "shutting_down",
+            ]
+        }
+
+        fake_module = types.ModuleType(MESHTASTIC_BLE_GATING_MODULE_PATH)
+        setattr(fake_module, MESHTASTIC_BLE_GATE_RESET_FUNC, "not_callable")
+
+        try:
+            real_import_module = importlib.import_module
+
+            def _fake_import(name, package=None):
+                if name == MESHTASTIC_BLE_GATING_MODULE_PATH:
+                    return fake_module
+                return real_import_module(name, package)
+
+            with patch.object(importlib, "import_module", side_effect=_fake_import):
+                importlib.reload(mu_module)
+
+            assert mu_module._ble_gating_module is fake_module
+            assert mu_module._ble_gate_reset_callable is None
+        finally:
+            importlib.reload(mu_module)
+            for attr, value in saved.items():
+                setattr(mu_module, attr, value)

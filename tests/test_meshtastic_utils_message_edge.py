@@ -10,9 +10,11 @@ Tests the Meshtastic client functionality including:
 - Error handling and reconnection logic
 """
 
+import asyncio
 import contextlib
 import inspect
 import threading
+import time
 import unittest
 from collections.abc import Callable
 from concurrent.futures import Future
@@ -25,7 +27,9 @@ from meshtastic import BROADCAST_NUM
 import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.network import (
+    CONFIG_KEY_CONNECTION_TYPE,
     CONNECTION_TYPE_SERIAL,
+    CONNECTION_TYPE_TCP,
 )
 from mmrelay.meshtastic_utils import (
     on_lost_meshtastic_connection,
@@ -138,6 +142,31 @@ def reset_meshtastic_relay_state(monkeypatch):
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._health_probe_request_deadlines",
         {},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.config",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.matrix_rooms",
+        [],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.meshtastic_iface",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._meshtastic_last_direct_node_id",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._startup_packet_drain_applied",
+        False,
         raising=False,
     )
 
@@ -1381,3 +1410,250 @@ class TestOnMeshtasticMessageNoActiveClient:
             "Inconsistent relay state: active_client is None but active_client_id=" in c
             for c in error_calls
         )
+
+
+class TestMessageHandlerEdgeCases:
+    """Test edge cases in message handler and check_connection."""
+
+    def test_on_meshtastic_message_invalid_rx_time(self):
+        """Test message handler with invalid rxTime."""
+        packet = {
+            "rxTime": "not-a-number",
+            "decoded": {"text": "test"},
+            "channel": 0,
+            "to": 4294967295,
+        }
+
+        mock_interface = Mock()
+        mock_interface.myInfo = Mock()
+        mock_interface.myInfo.my_node_num = 12345
+
+        mu.config = {"meshtastic": {"meshnet_name": "test"}}
+        mu.matrix_rooms = []
+
+        mu.on_meshtastic_message(packet, mock_interface)
+
+    def test_check_connection_non_dict_health_config(self):
+        """Test check_connection with non-dict health_check config exits early via requires_continuous_health_monitor."""
+        mu.config = {
+            "meshtastic": {
+                CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_TCP,
+                "health_check": "invalid",
+            }
+        }
+        mu.meshtastic_client = None
+        mu.shutting_down = True
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            asyncio.run(mu.check_connection())
+
+            mock_logger.warning.assert_not_called()
+            mock_logger.info.assert_called()
+            call_args = mock_logger.info.call_args[0]
+            assert "disabled" in call_args[0]
+
+    def test_check_connection_probe_submission_fails(self):
+        """Test check_connection when probe submission raises RuntimeError."""
+        mu.config = {
+            "meshtastic": {
+                CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_TCP,
+                "health_check": {"enabled": True, "initial_delay": 0},
+            }
+        }
+        mu.meshtastic_client = Mock()
+        mu.reconnecting = False
+        mu.shutting_down = False
+
+        async def run_test():
+            sleep_count = [0]
+
+            async def sleep_side_effect(delay):
+                sleep_count[0] += 1
+                if sleep_count[0] >= 2:
+                    mu.shutting_down = True
+
+            with patch(
+                "mmrelay.meshtastic_utils._submit_metadata_probe"
+            ) as mock_submit:
+                mock_submit.side_effect = RuntimeError("Executor closed")
+
+                with patch(
+                    "mmrelay.meshtastic_utils.asyncio.sleep",
+                    side_effect=sleep_side_effect,
+                ):
+                    await mu.check_connection()
+
+                    assert mock_submit.call_count >= 1
+
+        asyncio.run(run_test())
+
+    def test_check_connection_probe_future_none(self):
+        """Test check_connection when probe submission returns None."""
+        mu.config = {
+            "meshtastic": {
+                CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_TCP,
+                "health_check": {"enabled": True, "initial_delay": 0},
+            }
+        }
+        mu.meshtastic_client = Mock()
+        mu.reconnecting = False
+        mu.shutting_down = False
+
+        async def run_test():
+            sleep_count = [0]
+
+            async def sleep_side_effect(delay):
+                sleep_count[0] += 1
+                if sleep_count[0] >= 2:
+                    mu.shutting_down = True
+
+            with patch(
+                "mmrelay.meshtastic_utils._submit_metadata_probe"
+            ) as mock_submit:
+                mock_submit.return_value = None
+
+                with patch(
+                    "mmrelay.meshtastic_utils.asyncio.sleep",
+                    side_effect=sleep_side_effect,
+                ):
+                    await mu.check_connection()
+
+                    assert mock_submit.call_count >= 1
+
+        asyncio.run(run_test())
+
+    def test_check_connection_probe_fails_not_reconnecting(self):
+        """Test check_connection when probe fails and not reconnecting."""
+        mu.config = {
+            "meshtastic": {
+                CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_TCP,
+                "health_check": {"enabled": True, "initial_delay": 0},
+            }
+        }
+        mu.meshtastic_client = Mock()
+        mu.reconnecting = False
+        mu.shutting_down = False
+
+        async def run_test():
+            sleep_count = [0]
+
+            async def sleep_side_effect(delay):
+                sleep_count[0] += 1
+                if sleep_count[0] >= 2:
+                    mu.shutting_down = True
+
+            mock_future = Mock(spec=Future)
+            mock_future.done.return_value = True
+
+            with patch(
+                "mmrelay.meshtastic_utils._submit_metadata_probe"
+            ) as mock_submit:
+                mock_submit.return_value = mock_future
+
+                with patch(
+                    "mmrelay.meshtastic_utils.asyncio.sleep",
+                    side_effect=sleep_side_effect,
+                ):
+                    with patch(
+                        "mmrelay.meshtastic_utils.asyncio.wait_for"
+                    ) as mock_wait:
+                        mock_wait.side_effect = Exception("Connection lost")
+
+                        with patch(
+                            "mmrelay.meshtastic_utils.on_lost_meshtastic_connection"
+                        ) as mock_lost:
+                            await mu.check_connection()
+
+                            mock_lost.assert_called_once()
+
+        asyncio.run(run_test())
+
+    def test_check_connection_probe_fails_already_reconnecting(self):
+        """Test check_connection when probe fails but already reconnecting."""
+        mu.config = {
+            "meshtastic": {
+                CONFIG_KEY_CONNECTION_TYPE: CONNECTION_TYPE_TCP,
+                "health_check": {"enabled": True, "initial_delay": 0},
+            }
+        }
+        mu.meshtastic_client = Mock()
+        mu.reconnecting = True
+        mu.shutting_down = False
+
+        async def run_test():
+            sleep_count = [0]
+
+            async def sleep_side_effect(delay):
+                sleep_count[0] += 1
+                if sleep_count[0] >= 2:
+                    mu.shutting_down = True
+
+            mock_future = Mock(spec=Future)
+            mock_future.done.return_value = True
+
+            with patch(
+                "mmrelay.meshtastic_utils._submit_metadata_probe"
+            ) as mock_submit:
+                mock_submit.return_value = mock_future
+
+                with patch(
+                    "mmrelay.meshtastic_utils.asyncio.sleep",
+                    side_effect=sleep_side_effect,
+                ):
+                    with patch(
+                        "mmrelay.meshtastic_utils.asyncio.wait_for"
+                    ) as mock_wait:
+                        mock_wait.side_effect = Exception("Connection lost")
+
+                        with patch(
+                            "mmrelay.meshtastic_utils.on_lost_meshtastic_connection"
+                        ) as mock_lost:
+                            with patch(
+                                "mmrelay.meshtastic_utils.logger"
+                            ) as mock_logger:
+                                await mu.check_connection()
+
+                                mock_lost.assert_not_called()
+                                assert any(
+                                    "debug" in str(call)
+                                    for call in mock_logger.method_calls
+                                )
+
+        asyncio.run(run_test())
+
+
+class TestOnMeshtasticMessageOldPacketFiltering:
+    """Test old message filtering in on_meshtastic_message."""
+
+    def test_on_meshtastic_message_filters_old_packets(self):
+        """Test that packets with rx_time < RELAY_START_TIME are filtered out."""
+        import mmrelay.meshtastic_utils as mu_module
+
+        mu_module.RELAY_START_TIME = time.time()
+        mu_module._relay_rx_time_clock_skew_secs = None
+
+        old_packet = {
+            "from": 12345,
+            "to": 4294967295,
+            "decoded": {"text": "old message", "portnum": "TEXT_MESSAGE_APP"},
+            "channel": 0,
+            "id": 12345,
+            "rxTime": mu_module.RELAY_START_TIME - 100,
+        }
+
+        mock_interface = Mock()
+        mock_interface.myInfo = Mock()
+        mock_interface.myInfo.my_node_num = 12345
+
+        mu_module.config = {"meshtastic": {"meshnet_name": "test"}}
+        mu_module.matrix_rooms = []
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            mu_module.on_meshtastic_message(old_packet, mock_interface)
+
+            log_calls = [str(call).lower() for call in mock_logger.debug.call_args_list]
+            assert any(
+                ("ignore" in call or "ignoring" in call)
+                and ("old" in call or "stale" in call or "filtered" in call)
+                for call in log_calls
+            )

@@ -1737,3 +1737,157 @@ async def test_refresh_node_name_tables_handles_sync_exceptions(caplog) -> None:
         "Failed to refresh name-cache tables from NodeDB snapshot" in record.message
         for record in caplog.records
     )
+
+
+class TestFirmwareVersionExtraction:
+    """Test firmware version extraction from device metadata."""
+
+    def test_normalize_firmware_version_with_bytes(self):
+        """Test normalizing firmware version from bytes."""
+        result = mu._normalize_firmware_version(b"2.1.5")
+        assert result == "2.1.5"
+
+    def test_normalize_firmware_version_with_string(self):
+        """Test normalizing firmware version from string."""
+        result = mu._normalize_firmware_version("  2.1.6  ")
+        assert result == "2.1.6"
+
+    def test_normalize_firmware_version_with_unknown(self):
+        """Test normalizing firmware version with 'unknown' value."""
+        result = mu._normalize_firmware_version("unknown")
+        assert result is None
+
+    def test_normalize_firmware_version_with_empty(self):
+        """Test normalizing firmware version with empty string."""
+        result = mu._normalize_firmware_version("")
+        assert result is None
+
+    def test_normalize_firmware_version_with_non_string(self):
+        """Test normalizing firmware version with non-string type."""
+        result = mu._normalize_firmware_version(123)
+        assert result is None
+
+    def test_extract_firmware_version_from_metadata_dict(self):
+        """Test extracting firmware version from dict metadata."""
+        metadata = {"firmware_version": "2.2.0"}
+        result = mu._extract_firmware_version_from_metadata(metadata)
+        assert result == "2.2.0"
+
+    def test_extract_firmware_version_from_metadata_dict_camel_case(self):
+        """Test extracting firmware version with camelCase key."""
+        metadata = {"firmwareVersion": "2.2.1"}
+        result = mu._extract_firmware_version_from_metadata(metadata)
+        assert result == "2.2.1"
+
+    def test_extract_firmware_version_from_metadata_object(self):
+        """Test extracting firmware version from object metadata."""
+        metadata = Mock()
+        metadata.firmware_version = "2.3.0"
+
+        result = mu._extract_firmware_version_from_metadata(metadata)
+        assert result == "2.3.0"
+
+    def test_extract_firmware_version_from_metadata_object_camel_case(self):
+        """Test extracting firmware version from object with camelCase."""
+        metadata = Mock(spec=[])
+        metadata.firmwareVersion = "2.3.1"
+
+        result = mu._extract_firmware_version_from_metadata(metadata)
+        assert result == "2.3.1"
+
+    def test_extract_firmware_version_from_metadata_none(self):
+        """Test extracting firmware version from None metadata."""
+        result = mu._extract_firmware_version_from_metadata(None)
+        assert result is None
+
+    def test_get_device_metadata_no_local_node(self):
+        """Test _get_device_metadata when client has no localNode."""
+        client = Mock()
+        client.localNode = None
+
+        result = mu._get_device_metadata(client)
+
+        assert result["firmware_version"] == "unknown"
+        assert result["success"] is False
+
+    def test_get_device_metadata_no_get_metadata_method(self):
+        """Test _get_device_metadata when localNode has no getMetadata."""
+        client = Mock()
+        client.localNode = Mock(spec=[])
+
+        result = mu._get_device_metadata(client)
+
+        assert result["firmware_version"] == "unknown"
+        assert result["success"] is False
+
+    def test_get_device_metadata_raises_on_error(self):
+        """Test _get_device_metadata raises error when requested."""
+        client = Mock()
+        client.localNode = None
+
+        with pytest.raises(RuntimeError, match="no localNode.getMetadata"):
+            mu._get_device_metadata(client, raise_on_error=True)
+
+    def test_get_device_metadata_runtime_error_submission(self):
+        """Test _get_device_metadata handles RuntimeError during submission."""
+        client = Mock()
+        client.localNode = Mock()
+        client.localNode.getMetadata = Mock()
+        client.localNode.metadata = None
+        client.metadata = None
+
+        with patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit:
+            mock_submit.side_effect = RuntimeError("Executor shutting down")
+
+            result = mu._get_device_metadata(client)
+
+            assert result["firmware_version"] == "unknown"
+            assert result["success"] is False
+
+    def test_get_device_metadata_runtime_error_raises(self):
+        """Test _get_device_metadata re-raises RuntimeError when requested."""
+        client = Mock()
+        client.localNode = Mock()
+        client.localNode.getMetadata = Mock()
+        client.localNode.metadata = None
+        client.metadata = None
+
+        with patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit:
+            mock_submit.side_effect = RuntimeError("Executor shutting down")
+
+            with pytest.raises(RuntimeError, match="Executor shutting down"):
+                mu._get_device_metadata(client, raise_on_error=True)
+
+    def test_get_device_metadata_future_none(self):
+        """Test _get_device_metadata when probe submission returns None."""
+        client = Mock()
+        client.localNode = Mock()
+        client.localNode.getMetadata = Mock()
+        client.localNode.metadata = None
+        client.metadata = None
+
+        with patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit:
+            mock_submit.return_value = None
+
+            result = mu._get_device_metadata(client)
+
+            assert result["firmware_version"] == "unknown"
+            assert result["success"] is False
+
+    def test_get_device_metadata_timeout_with_raise(self):
+        """Test _get_device_metadata handles timeout with raise_on_error."""
+        client = Mock()
+        client.localNode = Mock()
+        client.localNode.getMetadata = Mock()
+        client.localNode.metadata = None
+        client.metadata = None
+
+        mock_future = Mock(spec=Future)
+        mock_future.result.side_effect = TimeoutError("Timeout")
+        mock_future.done.return_value = True
+
+        with patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit:
+            mock_submit.return_value = mock_future
+
+            with pytest.raises(TimeoutError):
+                mu._get_device_metadata(client, raise_on_error=True)
