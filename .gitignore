@@ -19,6 +19,7 @@ src/mmrelay.egg-info/
 .opencode/
 .codex
 .commandcode/
+.sisyphus/
 coderabbit_actionable_items.md
 
 # Build and test outputs
