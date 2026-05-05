@@ -1431,5 +1431,5 @@ def _make_plugin_routing(name, handled=False):
     """Create a MagicMock plugin for routing tests."""
     plugin = MagicMock()
     plugin.plugin_name = name
-    plugin.handle_meshtastic_message = Mock(return_value=handled)
+    plugin.handle_meshtastic_message = AsyncMock(return_value=handled)
     return plugin
