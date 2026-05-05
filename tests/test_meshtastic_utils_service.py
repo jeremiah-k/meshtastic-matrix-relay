@@ -111,6 +111,31 @@ def reset_meshtastic_relay_state(monkeypatch):
         raising=False,
     )
 
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.shutting_down",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.reconnecting",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.config",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.meshtastic_client",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.meshtastic_iface",
+        None,
+        raising=False,
+    )
     yield
 
     _cancel_startup_drain_timer()
