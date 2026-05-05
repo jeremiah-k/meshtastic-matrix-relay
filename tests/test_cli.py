@@ -28,12 +28,6 @@ import unittest.mock
 from types import SimpleNamespace
 from unittest.mock import MagicMock, mock_open, patch
 
-# Add repo root and src to path for imports
-repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if repo_root not in sys.path:
-    sys.path.insert(0, repo_root)
-sys.path.insert(0, os.path.join(repo_root, "src"))
-
 from mmrelay.cli import (
     check_config,
     generate_sample_config,
@@ -50,6 +44,8 @@ from mmrelay.constants.cli import EXIT_CODE_ERROR, EXIT_CODE_SUCCESS
 from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 from mmrelay.matrix.compat import MatrixLibraryCapabilities
 from tests.constants import TEST_CONFIG_PATH, TEST_HOME_CONFIG_PATH, TEST_SERIAL_PORT
+
+# sys.path setup handled by conftest.py
 
 
 class TestCLI(unittest.TestCase):
