@@ -155,7 +155,15 @@ def _cancel_and_join_timer_like(timer_obj: Any, *, timeout: float = 0.2) -> None
 
 # Now that mocks are in place, we can import the application code
 import mmrelay.meshtastic_utils as mu  # noqa: E402
-from tests.constants import TEST_BOT_USER_ID, TEST_ROOM_ID, TEST_USER_ID  # noqa: E402
+from mmrelay.constants.network import CONNECTION_TYPE_SERIAL  # noqa: E402
+from tests.constants import (  # noqa: E402
+    TEST_BOT_USER_ID,
+    TEST_MATRIX_HOMESERVER,
+    TEST_ROOM_ID,
+    TEST_ROOM_ID_1,
+    TEST_ROOM_ID_2,
+    TEST_USER_ID,
+)
 
 # Store references to prevent accidental mocking
 _BUILTIN_MODULES = {
@@ -232,6 +240,28 @@ def reset_plugin_loader_cache():
     pl._reset_caches_for_tests()
     yield
     pl._reset_caches_for_tests()
+
+
+@pytest.fixture
+def mock_config():
+    """Default mock configuration used by TestMain tests."""
+    return {
+        "matrix": {
+            "homeserver": TEST_MATRIX_HOMESERVER,
+            "access_token": "test_token",
+            "bot_user_id": TEST_BOT_USER_ID,
+        },
+        "matrix_rooms": [
+            {"id": TEST_ROOM_ID_1, "meshtastic_channel": 0},
+            {"id": TEST_ROOM_ID_2, "meshtastic_channel": 1},
+        ],
+        "meshtastic": {
+            "connection_type": CONNECTION_TYPE_SERIAL,
+            "serial_port": "/dev/ttyUSB0",
+            "message_delay": 2.0,
+        },
+        "database": {"msg_map": {"wipe_on_restart": False}},
+    }
 
 
 @pytest.fixture(autouse=True)
