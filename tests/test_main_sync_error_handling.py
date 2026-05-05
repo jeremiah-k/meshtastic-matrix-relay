@@ -17,8 +17,10 @@ from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
 from mmrelay.main import main
 from tests._test_main_helpers import (
     _async_noop,
-    _make_patched_get_running_loop,
+)
+from tests.helpers import (
     inline_to_thread,
+    make_patched_get_running_loop,
 )
 
 __all__ = [
@@ -93,7 +95,7 @@ def test_sync_timeout_logs_warning_and_retries():
             patch("mmrelay.main.stop_message_queue"),
             patch(
                 "mmrelay.main.asyncio.get_running_loop",
-                side_effect=_make_patched_get_running_loop(),
+                side_effect=make_patched_get_running_loop(),
             ),
             patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.matrix_logger") as mock_logger,
@@ -180,7 +182,7 @@ def test_sync_client_error_logs_warning_and_retries():
             patch("mmrelay.main.stop_message_queue"),
             patch(
                 "mmrelay.main.asyncio.get_running_loop",
-                side_effect=_make_patched_get_running_loop(),
+                side_effect=make_patched_get_running_loop(),
             ),
             patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.matrix_logger") as mock_logger,
@@ -267,7 +269,7 @@ def test_sync_connection_error_logs_exception():
             patch("mmrelay.main.stop_message_queue"),
             patch(
                 "mmrelay.main.asyncio.get_running_loop",
-                side_effect=_make_patched_get_running_loop(),
+                side_effect=make_patched_get_running_loop(),
             ),
             patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.matrix_logger") as mock_logger,

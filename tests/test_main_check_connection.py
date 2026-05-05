@@ -20,14 +20,16 @@ from tests._test_main_helpers import (
     _async_noop,
     _close_coro_if_possible,
     _ImmediateEvent,
-    _make_patched_get_running_loop,
     _OnePassEvent,
     _reset_all_mmrelay_globals,
     _sync_forever_blocks,
     _TaskSpy,
-    inline_to_thread,
 )
 from tests.constants import TEST_MATRIX_HOMESERVER, TEST_ROOM_ID_1
+from tests.helpers import (
+    inline_to_thread,
+    make_patched_get_running_loop,
+)
 
 __all__ = [
     "test_supervisor_runs_refresh_before_shutdown_signal",
@@ -78,7 +80,7 @@ def test_supervisor_runs_refresh_before_shutdown_signal():
         patch("mmrelay.main.asyncio.Event", return_value=shutdown_event),
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch(
@@ -580,7 +582,7 @@ def test_exception_during_ensure_processor_started_raised():
         patch("mmrelay.main.stop_message_queue"),
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.asyncio.Event", return_value=_OnePassEvent()),

@@ -17,9 +17,11 @@ from mmrelay.main import main
 from tests._test_main_helpers import (
     _async_noop,
     _ImmediateEvent,
-    _make_patched_get_running_loop,
     _OnePassEvent,
+)
+from tests.helpers import (
     inline_to_thread,
+    make_patched_get_running_loop,
 )
 
 __all__ = [
@@ -121,7 +123,7 @@ def test_startup_rollback_cancels_check_connection_task(
     with (
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
@@ -165,7 +167,7 @@ def test_startup_rollback_removes_ready_file(
     with (
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
@@ -204,7 +206,7 @@ def test_startup_rollback_shutdowns_plugins_when_loaded(
     with (
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
@@ -243,7 +245,7 @@ def test_startup_rollback_stops_message_queue_when_started(
     with (
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
@@ -295,7 +297,7 @@ def test_startup_rollback_cleans_reconnect_state_and_callbacks(
         with (
             patch(
                 "mmrelay.main.asyncio.get_running_loop",
-                side_effect=_make_patched_get_running_loop(),
+                side_effect=make_patched_get_running_loop(),
             ),
             patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
@@ -375,7 +377,7 @@ def test_startup_rollback_closes_matrix_client(
     with (
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.asyncio.Event", return_value=shutdown_event),
@@ -423,7 +425,7 @@ def test_startup_rollback_closes_meshtastic_client(
         with (
             patch(
                 "mmrelay.main.asyncio.get_running_loop",
-                side_effect=_make_patched_get_running_loop(),
+                side_effect=make_patched_get_running_loop(),
             ),
             patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),

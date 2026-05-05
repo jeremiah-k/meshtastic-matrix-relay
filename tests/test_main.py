@@ -30,10 +30,12 @@ from mmrelay.constants.config import DEFAULT_NODEDB_REFRESH_INTERVAL
 from mmrelay.main import main
 from tests._test_main_helpers import (
     _AutoSetAfterWaitEvent,
-    _make_patched_get_running_loop,
     _OnePassEvent,
     _reset_all_mmrelay_globals,
+)
+from tests.helpers import (
     inline_to_thread,
+    make_patched_get_running_loop,
 )
 
 
@@ -85,7 +87,7 @@ def test_main_basic_flow(
     with (
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.asyncio.Event", return_value=shutdown_event),
@@ -200,7 +202,7 @@ def test_main_publishes_ready_after_sync_start_and_drain_completion(
     with (
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.asyncio.Event", return_value=shutdown_event),
@@ -310,7 +312,7 @@ def test_main_sync_failure_before_drain_does_not_publish_ready(
     with (
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.asyncio.Event", return_value=shutdown_event),
@@ -388,7 +390,7 @@ def test_main_none_startup_drain_event_is_safe_noop(
     with (
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.asyncio.Event", return_value=shutdown_event),
@@ -625,7 +627,7 @@ def test_main_database_wipe_config(
     with (
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.asyncio.Event", return_value=shutdown_event),
@@ -695,7 +697,7 @@ def test_main_database_wipe_preferred_false_wins_over_legacy_true(
     with (
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.asyncio.Event", return_value=shutdown_event),

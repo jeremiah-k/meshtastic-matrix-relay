@@ -18,7 +18,6 @@ from tests._test_main_helpers import (
     _async_noop,
     _ImmediateEvent,
     _make_async_return,
-    _make_patched_get_running_loop,
 )
 from tests.constants import (
     TEST_BOT_USER_ID,
@@ -28,6 +27,7 @@ from tests.constants import (
 )
 from tests.helpers import (
     inline_to_thread,
+    make_patched_get_running_loop,
     reset_meshtastic_utils_globals,
 )
 
@@ -177,7 +177,7 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
                 patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
                 patch(
                     "mmrelay.main.asyncio.get_running_loop",
-                    side_effect=_make_patched_get_running_loop(),
+                    side_effect=make_patched_get_running_loop(),
                 ),
                 patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
                 patch(
@@ -268,7 +268,7 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
                 patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
                 patch(
                     "mmrelay.main.asyncio.get_running_loop",
-                    side_effect=_make_patched_get_running_loop(),
+                    side_effect=make_patched_get_running_loop(),
                 ),
                 patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
                 patch(
@@ -397,7 +397,7 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
                 patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
                 patch(
                     "mmrelay.main.asyncio.get_running_loop",
-                    side_effect=_make_patched_get_running_loop(),
+                    side_effect=make_patched_get_running_loop(),
                 ),
                 patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
                 patch(

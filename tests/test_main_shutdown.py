@@ -27,12 +27,14 @@ from tests._test_main_helpers import (
     _ImmediateEvent,
     _make_async_raise,
     _make_async_return,
-    _make_patched_get_running_loop,
     _reset_all_mmrelay_globals,
     _thread_backed_to_thread,
-    inline_to_thread,
 )
 from tests.constants import TEST_MATRIX_HOMESERVER, TEST_ROOM_ID_1
+from tests.helpers import (
+    inline_to_thread,
+    make_patched_get_running_loop,
+)
 
 __all__ = [
     "test_main_meshtastic_connection_failure",
@@ -79,7 +81,7 @@ def test_main_meshtastic_connection_failure(
     with (
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch(
             "mmrelay.main.asyncio.to_thread",
@@ -124,7 +126,7 @@ def test_main_matrix_connection_failure(
     with (
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch(
             "mmrelay.main.asyncio.to_thread",
@@ -167,7 +169,7 @@ def test_main_closes_meshtastic_client_on_shutdown(
     with (
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
@@ -237,7 +239,7 @@ def test_main_shutdown_disconnects_ble_interface(
         patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
@@ -302,7 +304,7 @@ def test_main_shutdown_cancels_reconnect_before_ble_disconnect_and_unsubscribes(
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch(
                 "mmrelay.main.asyncio.get_running_loop",
-                side_effect=_make_patched_get_running_loop(),
+                side_effect=make_patched_get_running_loop(),
             ),
             patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
@@ -364,7 +366,7 @@ def test_main_shutdown_runs_blocking_cleanup_off_event_loop_thread(
         patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", new=_thread_backed_to_thread),
         patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
@@ -421,7 +423,7 @@ def test_main_shutdown_plugin_timeout_continues_cleanup(
         patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", new=_thread_backed_to_thread),
         patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
@@ -523,7 +525,7 @@ def test_main_shutdown_timeout_warns_and_continues(
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch(
                 "mmrelay.main.asyncio.get_running_loop",
-                side_effect=_make_patched_get_running_loop(),
+                side_effect=make_patched_get_running_loop(),
             ),
             patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
@@ -600,7 +602,7 @@ def test_main_shutdown_logs_unexpected_close_error(
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch(
                 "mmrelay.main.asyncio.get_running_loop",
-                side_effect=_make_patched_get_running_loop(),
+                side_effect=make_patched_get_running_loop(),
             ),
             patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
@@ -682,7 +684,7 @@ def test_main_shutdown_uses_blocking_timeout_helper(
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch(
                 "mmrelay.main.asyncio.get_running_loop",
-                side_effect=_make_patched_get_running_loop(),
+                side_effect=make_patched_get_running_loop(),
             ),
             patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
@@ -759,7 +761,7 @@ def test_main_shutdown_success_logs_close_complete(
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch(
                 "mmrelay.main.asyncio.get_running_loop",
-                side_effect=_make_patched_get_running_loop(),
+                side_effect=make_patched_get_running_loop(),
             ),
             patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
@@ -805,7 +807,7 @@ def test_exception_in_shutdown_step_logs_error():
         patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
@@ -858,7 +860,7 @@ def test_exception_in_stop_message_queue_logs_error() -> None:
         patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
@@ -913,7 +915,7 @@ def test_shutdown_exceptions_are_logged_and_suppressed():
                 patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
                 patch(
                     "mmrelay.main.asyncio.get_running_loop",
-                    side_effect=_make_patched_get_running_loop(),
+                    side_effect=make_patched_get_running_loop(),
                 ),
                 patch(
                     "mmrelay.main.asyncio.to_thread",

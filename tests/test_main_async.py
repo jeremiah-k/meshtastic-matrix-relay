@@ -16,10 +16,12 @@ from tests._test_main_helpers import (
     _async_noop,
     _ImmediateEvent,
     _make_async_return,
-    _make_patched_get_running_loop,
-    inline_to_thread,
 )
-from tests.helpers import InlineExecutorLoop
+from tests.helpers import (
+    InlineExecutorLoop,
+    inline_to_thread,
+    make_patched_get_running_loop,
+)
 
 __all__ = [
     "test_main_async_initialization_sequence",
@@ -66,7 +68,7 @@ def test_main_async_initialization_sequence():
         patch("mmrelay.main.start_message_queue") as mock_start_queue,
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch(
@@ -122,7 +124,7 @@ def test_main_async_with_multiple_rooms():
         patch("mmrelay.main.start_message_queue"),
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch(
@@ -398,7 +400,7 @@ def test_main_windows_keyboard_interrupt_triggers_shutdown():
     with (
         patch(
             "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
+            side_effect=make_patched_get_running_loop(),
         ),
         patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
         patch("mmrelay.main.initialize_database"),
