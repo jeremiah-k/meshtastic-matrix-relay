@@ -1495,7 +1495,7 @@ class TestConnectionRefusedExceptionHandler:
         assert result is None
         assert mu._relay_startup_drain_deadline_monotonic_secs is None
         assert mu._startup_packet_drain_applied is False
-        first_client.close.assert_called_once()
+        mock_client.close.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
