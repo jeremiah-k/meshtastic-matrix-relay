@@ -15,14 +15,24 @@ import contextlib
 import inspect
 import threading
 import unittest
+from collections.abc import Iterator
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
+from contextlib import ExitStack, contextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from meshtastic import BROADCAST_NUM
 
-from mmrelay.constants.formats import TEXT_MESSAGE_APP
+from mmrelay.constants.config import CONFIG_KEY_MESHNET_NAME
+from mmrelay.constants.formats import (
+    EMOJI_FLAG_VALUE,
+    TEXT_MESSAGE_APP,
+)
+from mmrelay.constants.messages import (
+    PORTNUM_DETECTION_SENSOR_APP,
+    PORTNUM_TEXT_MESSAGE_APP,
+)
 from mmrelay.constants.network import (
     BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
     CONNECTION_TYPE_BLE,
@@ -31,6 +41,12 @@ from mmrelay.constants.network import (
     DEFAULT_MESHTASTIC_TIMEOUT,
     DEFAULT_TCP_PORT,
     STARTUP_PACKET_DRAIN_SECS,
+)
+from mmrelay.meshtastic.packet_routing import (
+    PacketAction,
+    _get_packet_routing_overrides,
+    _resolve_portnum_set,
+    classify_packet,
 )
 from mmrelay.meshtastic_utils import (
     _get_packet_details,
@@ -128,6 +144,21 @@ def reset_meshtastic_relay_state(monkeypatch):
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._health_probe_request_deadlines",
         {},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.config",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.matrix_rooms",
+        [],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.meshtastic_client",
+        None,
         raising=False,
     )
 

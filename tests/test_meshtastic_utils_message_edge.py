@@ -22,11 +22,13 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from meshtastic import BROADCAST_NUM
 
+import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.network import (
     CONNECTION_TYPE_SERIAL,
 )
 from mmrelay.meshtastic_utils import (
+    on_lost_meshtastic_connection,
     on_meshtastic_message,
 )
 from tests.conftest import cleanup_ble_future_state
@@ -101,6 +103,26 @@ def reset_meshtastic_relay_state(monkeypatch):
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._relay_connection_started_monotonic_secs",
         0.0,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.meshtastic_client",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.reconnecting",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.shutting_down",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._callbacks_tearing_down",
+        False,
         raising=False,
     )
     monkeypatch.setattr(
@@ -1198,3 +1220,164 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             1 for msg in debug_log_messages if "Startup drain window has ended" in msg
         )
         assert drain_end_count == 1
+
+
+class TestOnLostConnectionNoActiveClient:
+    def test_ignores_when_no_active_client_and_subscribed(self):
+        mu.meshtastic_client = None
+        mu.subscribed_to_connection_lost = True
+        mu.shutting_down = False
+
+        mock_interface = MagicMock()
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            on_lost_meshtastic_connection(interface=mock_interface)
+
+        assert mu.reconnecting is False
+        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        assert any(
+            "Ignoring connection-lost event because no Meshtastic interface is currently active"
+            in c
+            for c in debug_calls
+        )
+
+    def test_ignores_when_no_active_client_and_callbacks_tearing_down(self):
+        mu.meshtastic_client = None
+        mu.subscribed_to_connection_lost = False
+        mu._callbacks_tearing_down = True
+        mu.shutting_down = False
+
+        mock_interface = MagicMock()
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            on_lost_meshtastic_connection(interface=mock_interface)
+
+        assert mu.reconnecting is False
+        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        assert any(
+            "Ignoring connection-lost event because no Meshtastic interface is currently active"
+            in c
+            for c in debug_calls
+        )
+
+
+class TestOnLostConnectionStaleInterface:
+    def test_ignores_stale_interface_with_relay_active_client_id(self):
+        active_client = MagicMock()
+        stale_interface = MagicMock()
+        mu.meshtastic_client = active_client
+        mu._relay_active_client_id = id(active_client)
+        mu.reconnecting = False
+        mu.shutting_down = False
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            on_lost_meshtastic_connection(
+                interface=stale_interface, detection_source="test"
+            )
+
+        assert mu.reconnecting is False
+        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        assert any("stale Meshtastic interface" in c for c in debug_calls)
+
+    def test_ignores_stale_interface_without_relay_active_client_id(self):
+        active_client = MagicMock()
+        stale_interface = MagicMock()
+        mu.meshtastic_client = active_client
+        mu._relay_active_client_id = None
+        mu.reconnecting = False
+        mu.shutting_down = False
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            on_lost_meshtastic_connection(
+                interface=stale_interface, detection_source="test"
+            )
+
+        assert mu.reconnecting is False
+        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        assert any("stale Meshtastic interface" in c for c in debug_calls)
+
+
+class TestOnMeshtasticMessageNoActiveClient:
+    def test_ignores_packet_when_subscribed_to_messages(self):
+        mu.meshtastic_client = None
+        mu.subscribed_to_messages = True
+
+        mock_interface = MagicMock()
+        packet = {"decoded": {"text": "hello"}, "fromId": "!abc", "to": 4294967295}
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            on_meshtastic_message(packet, mock_interface)
+
+        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        assert any(
+            "Ignoring packet because no Meshtastic interface is currently active" in c
+            for c in debug_calls
+        )
+
+    def test_ignores_packet_when_reconnecting(self):
+        mu.meshtastic_client = None
+        mu.reconnecting = True
+
+        mock_interface = MagicMock()
+        packet = {"decoded": {"text": "hello"}, "fromId": "!abc", "to": 4294967295}
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            on_meshtastic_message(packet, mock_interface)
+
+        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        assert any(
+            "Ignoring packet because no Meshtastic interface is currently active" in c
+            for c in debug_calls
+        )
+
+    def test_ignores_packet_when_callbacks_tearing_down(self):
+        mu.meshtastic_client = None
+        mu._callbacks_tearing_down = True
+
+        mock_interface = MagicMock()
+        packet = {"decoded": {"text": "hello"}, "fromId": "!abc", "to": 4294967295}
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            on_meshtastic_message(packet, mock_interface)
+
+        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        assert any(
+            "Ignoring packet because no Meshtastic interface is currently active" in c
+            for c in debug_calls
+        )
+
+    def test_ignores_packet_when_shutting_down(self):
+        mu.meshtastic_client = None
+        mu.shutting_down = True
+
+        mock_interface = MagicMock()
+        packet = {"decoded": {"text": "hello"}, "fromId": "!abc", "to": 4294967295}
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            on_meshtastic_message(packet, mock_interface)
+
+        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        assert any(
+            "Shutdown in progress. Ignoring incoming messages." in c
+            for c in debug_calls
+        )
+        assert not any(
+            "Ignoring packet because no Meshtastic interface is currently active" in c
+            for c in debug_calls
+        )
+
+    def test_ignores_packet_when_active_client_id_set(self):
+        mu.meshtastic_client = None
+        mu._relay_active_client_id = 12345
+
+        mock_interface = MagicMock()
+        packet = {"decoded": {"text": "hello"}, "fromId": "!abc", "to": 4294967295}
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            on_meshtastic_message(packet, mock_interface)
+
+        error_calls = [str(c) for c in mock_logger.error.call_args_list]
+        assert any(
+            "Inconsistent relay state: active_client is None but active_client_id=" in c
+            for c in error_calls
+        )
