@@ -26,6 +26,7 @@ import sys
 import unittest
 import unittest.mock
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import MagicMock, mock_open, patch
 
 from mmrelay.cli import (
@@ -797,9 +798,9 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _is_valid_serial_port with edge cases."""
         from mmrelay.cli import _is_valid_serial_port
 
-        self.assertFalse(_is_valid_serial_port(None))  # type: ignore[arg-type]
+        self.assertFalse(_is_valid_serial_port(cast(str, None)))
         self.assertFalse(_is_valid_serial_port(""))
-        self.assertFalse(_is_valid_serial_port(123))  # type: ignore[arg-type]
+        self.assertFalse(_is_valid_serial_port(cast(str, 123)))
 
     def test_is_valid_host_ipv4_address(self):
         """Test _is_valid_host with valid IPv4 addresses."""
@@ -843,9 +844,9 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _is_valid_host with edge cases."""
         from mmrelay.cli import _is_valid_host
 
-        self.assertFalse(_is_valid_host(None))  # type: ignore[arg-type]
+        self.assertFalse(_is_valid_host(cast(str, None)))
         self.assertFalse(_is_valid_host(""))
-        self.assertFalse(_is_valid_host(123))  # type: ignore[arg-type]
+        self.assertFalse(_is_valid_host(cast(str, 123)))
         self.assertFalse(_is_valid_host("   "))
 
     def test_is_valid_ble_address_mac_address(self):
@@ -870,7 +871,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _is_valid_ble_address with invalid addresses."""
         from mmrelay.cli import _is_valid_ble_address
 
-        self.assertFalse(_is_valid_ble_address(None))  # type: ignore[arg-type]
+        self.assertFalse(_is_valid_ble_address(cast(str, None)))
         self.assertFalse(_is_valid_ble_address(""))
         self.assertFalse(_is_valid_ble_address("AA:BB:CC:DD:EE"))
         self.assertFalse(_is_valid_ble_address("AA:BB:CC:DD:EE:FF:00"))
@@ -881,7 +882,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _is_valid_ble_address with edge cases."""
         from mmrelay.cli import _is_valid_ble_address
 
-        self.assertFalse(_is_valid_ble_address(123))  # type: ignore[arg-type]
+        self.assertFalse(_is_valid_ble_address(cast(str, 123)))
         self.assertFalse(_is_valid_ble_address("   "))
 
 

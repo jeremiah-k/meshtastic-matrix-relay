@@ -4,6 +4,7 @@
 
 import os
 import unittest
+from typing import cast
 from unittest.mock import patch
 
 import mmrelay.plugin_loader as pl
@@ -213,7 +214,7 @@ class TestURLValidation(unittest.TestCase):
         """Test None URL normalization."""
         from mmrelay.plugin_loader import _normalize_repo_target
 
-        scheme, host = _normalize_repo_target(None)  # type: ignore[arg-type]
+        scheme, host = _normalize_repo_target(cast(str, None))
         self.assertEqual(scheme, "")
         self.assertEqual(host, "")
 
@@ -249,7 +250,7 @@ class TestURLValidation(unittest.TestCase):
         """Test None host handling."""
         from mmrelay.plugin_loader import _host_in_allowlist
 
-        result = _host_in_allowlist(None, ["github.com"])  # type: ignore[arg-type]
+        result = _host_in_allowlist(cast(str, None), ["github.com"])
         self.assertFalse(result)
 
     def test_repo_url_rejected_for_dash_prefix(self):

@@ -3,6 +3,7 @@
 Covers alias resolution, room joining, and error handling.
 """
 
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -168,7 +169,7 @@ async def test_join_matrix_room_non_string_input():
     mock_client = MagicMock()
 
     with patch("mmrelay.matrix_utils.logger") as mock_logger:
-        await join_matrix_room(mock_client, 123)  # type: ignore
+        await join_matrix_room(mock_client, cast(str, 123))
 
     assert any(
         "expected a string" in str(call.args[0])

@@ -4,6 +4,7 @@
 
 import subprocess  # nosec B404 - tests exercise command runner failures
 import unittest
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
@@ -34,7 +35,7 @@ class TestCommandRunner(unittest.TestCase):
     def test_run_type_error_not_list(self):
         """Test _run raises TypeError for non-list command."""
         with pytest.raises(TypeError) as excinfo:
-            _run("git status")  # type: ignore[arg-type]
+            _run(cast(Any, "git status"))
         self.assertIn("cmd must be a list of str", str(excinfo.value))
 
     def test_run_value_error_empty_list(self):
@@ -46,7 +47,7 @@ class TestCommandRunner(unittest.TestCase):
     def test_run_type_error_non_string_args(self):
         """Test _run raises TypeError for non-string arguments."""
         with pytest.raises(TypeError) as excinfo:
-            _run(["git", 123])  # type: ignore[list-item]
+            _run(cast(Any, ["git", 123]))
         self.assertIn("all command arguments must be strings", str(excinfo.value))
 
     def test_run_value_error_shell_true(self):

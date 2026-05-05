@@ -17,7 +17,7 @@ import unittest
 from collections.abc import Callable
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -201,7 +201,7 @@ class TestAsyncHelperUtilities(unittest.TestCase):
         from mmrelay.meshtastic_utils import _fire_and_forget
 
         with patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit:
-            _fire_and_forget("not-a-coro")  # type: ignore[arg-type]
+            _fire_and_forget(cast(Any, "not-a-coro"))
 
         mock_submit.assert_not_called()
 

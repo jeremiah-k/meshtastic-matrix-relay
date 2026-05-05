@@ -304,6 +304,48 @@ asyncmock_patterns = [
 ]
 ```
 
+## Test Suite Modernization
+
+The test suite is undergoing a multi-phase modernization (see
+`docs/superpowers/specs/2026-05-03-test-suite-modernization-design.md` for the
+full design). Phase 1 (decomposing the two largest monoliths into domain files)
+is complete. The principles below apply to all test domains, not just Matrix.
+
+### Split-Domain Layout
+
+Tests are organized by behavioral domain, one file per concern. The two
+original monoliths (`test_plugin_loader.py` at 7,076 lines and
+`test_meshtastic_utils.py` at 5,797 lines) have been decomposed into domain
+files under `tests/`.
+
+When adding tests, place them in the existing domain file whose scope matches
+the behavior under test. If no file matches, create a new one following the
+`test_<module>_<domain>.py` naming convention. Do not create catch-all files or
+broadly named supplements like `_coverage.py` or `_edge_cases.py`. Those
+satellite patterns exist only as a legacy of the pre-modernization layout and
+are being folded back into their domain files.
+
+### File Size Limit
+
+No test file should exceed 2,000 lines. When a domain file approaches that
+boundary, split it by subdomain rather than letting it grow.
+
+Guidance for splitting an oversized file:
+
+1. Identify distinct subdomains (e.g., connect paths vs. message handling vs.
+   metadata helpers).
+2. Create a new `test_<module>_<subdomain>.py` file.
+3. Move the relevant classes, fixtures, and imports. Keep shared helpers in a
+   `_helpers.py` companion module if needed.
+4. Run the affected tests to confirm nothing breaks.
+5. Delete the moved code from the original file.
+
+### Avoid TestCase + Pytest Mixing
+
+Some files mix `unittest.TestCase` with pytest-specific features (parametrize,
+autouse fixtures, marks). This is fragile. When editing or splitting a file
+that has this mix, convert the affected class to pure pytest style.
+
 ## Coverage and Quality
 
 ### Running Tests with Coverage
@@ -315,6 +357,47 @@ python -m pytest tests/test_cli.py -v --cov --tb=short
 # Run all tests with coverage
 python -m pytest -v --cov --junitxml=junit.xml -o junit_family=legacy --timeout=60
 ```
+
+### Targeted Verification
+
+Run only the tests relevant to your change, not the full suite, during
+development cycles. Use file or keyword selectors:
+
+```bash
+# Single domain file
+python -m pytest tests/test_matrix_utils_relay.py -v --timeout=60
+
+# Files matching a prefix
+python -m pytest tests/test_plugin_loader_*.py -v --timeout=60
+
+# Keyword match
+python -m pytest -k "test_connect" -v --timeout=60
+
+# Exclude integration tests for fast cycles
+python -m pytest -m "not integration" -v --timeout=60
+```
+
+Before merging, run the full suite once and confirm no new warnings or
+failures.
+
+### Lint and Type-Check Discipline for Tests
+
+Tests should be held to the same linting and type-checking standards as
+production code. Avoidable suppressions (lint `noqa`, `pyright: ignore`,
+`type: ignore`, and similar comments) should be removed, not added.
+
+Guidelines:
+
+1. Fix the underlying issue instead of suppressing it. A suppressed lint
+   warning in a test often signals a mock shape that could be more precise or
+   an import that is no longer needed.
+2. Narrow suppressions are acceptable only when the warning comes from a
+   third-party library or tooling limitation that cannot be resolved at the
+   source. Include a brief comment explaining why.
+3. When editing a test file that already has suppressions, remove any that
+   your edit makes unnecessary.
+4. Run `python -m mypy src/ --strict` and `.trunk/trunk check --fix --all`
+   to catch issues before pushing.
 
 ### Code Quality Checks
 
@@ -342,6 +425,8 @@ Do not suppress warnings; fix the underlying issue. Warnings in tests often indi
 - Resource leaks
 - API misuse
 - Configuration problems
+- Avoidable lint or type-ignore suppressions that mask real issues (see Lint and
+  Type-Check Discipline for Tests above)
 
 Recommended pytest configuration (picked up by CI):
 
@@ -707,7 +792,9 @@ The `mmrelay.matrix_utils` module serves as a facade that re-exports functions f
 
 ### Where to write new Matrix tests
 
-Write tests into the appropriate split domain files:
+Write tests into the appropriate split domain file. The split-domain principle
+applies to all test modules in the repo (see Test Suite Modernization); this
+section documents the Matrix-specific mappings.
 
 | File                                             | Domain                                      |
 | ------------------------------------------------ | ------------------------------------------- |
@@ -740,19 +827,25 @@ All Matrix tests live in split domain files under `tests/`. Each file targets a 
 
 **Rules:**
 
-1. **Do NOT recreate legacy catch-all Matrix test files** — no new `test_matrix_utils.py` or `test_matrix_utils_auth.py`
-2. **New Matrix tests must go into the appropriate split domain file** — extend the file whose domain matches the behavior under test
+1. **Do NOT recreate legacy catch-all Matrix test files** -- no new `test_matrix_utils.py` or `test_matrix_utils_auth.py`
+2. **New Matrix tests must go into the appropriate split domain file** -- extend the file whose domain matches the behavior under test
 3. **Prefer existing split files before creating new ones**
-4. **If a domain file grows too large, split it by subdomain** — e.g. `test_matrix_utils_relay_send.py`, `test_matrix_utils_relay_formatting.py` — rather than creating a new misc/catch-all file
+4. **No file should exceed 2,000 lines** -- if a domain file grows too large, split it by subdomain (e.g. `test_matrix_utils_relay_send.py`, `test_matrix_utils_relay_formatting.py`) rather than creating a new misc/catch-all file. See Test Suite Modernization for the splitting procedure.
 
 ### File Boundary Guidance
 
-- **`auth_login.py`** — login flow, user discovery, authentication-specific behavior
-- **`connect_*` files** — `connect_matrix` orchestration, bootstrap, sync, credentials reload, room setup, E2EE/device initialization during connection
-- **`relay.py`** — message relay, retry logic, `on_room_message` handler, message formatting, mapping/storage, reply/quote behavior, meshnet/prefix relay
-- **`room.py`** — room mapping and discovery (separate from connect-time room setup)
-- **`auth_credentials.py`** — credential loading and storage (separate from connect-time credential reload)
-- **`auth_e2ee.py`** — E2EE setup and decryption logic (separate from connect-time E2EE bootstrapping)
+These boundaries apply to Matrix tests specifically. For the broader principle
+that covers all test domains, see the Test Suite Modernization section above.
+
+- **`auth_login.py`** -- login flow, user discovery, authentication-specific behavior
+- **`connect_*` files** -- `connect_matrix` orchestration, bootstrap, sync, credentials reload, room setup, E2EE/device initialization during connection
+- **`relay.py`** -- message relay, retry logic, `on_room_message` handler, message formatting, mapping/storage, reply/quote behavior, meshnet/prefix relay
+- **`room.py`** -- room mapping and discovery (separate from connect-time room setup)
+- **`auth_credentials.py`** -- credential loading and storage (separate from connect-time credential reload)
+- **`auth_e2ee.py`** -- E2EE setup and decryption logic (separate from connect-time E2EE bootstrapping)
+
+If a domain file grows past 2,000 lines, split it by subdomain following the
+guidance in Test Suite Modernization.
 
 If unsure where a new test belongs, follow the function's source module: tests for `mmrelay.matrix.relay` go in `test_matrix_utils_relay.py`, tests for `mmrelay.matrix.sync_bootstrap` go in `test_matrix_utils_connect*.py`, etc.
 
@@ -771,7 +864,7 @@ Patch a source submodule directly **only** when the test is specifically verifyi
 
 Rationale: the decomposed submodules call each other through the facade (`facade.func_name`), so patches on `mmrelay.matrix_utils.X` intercept the actual call path.
 
-Note: The `asyncmock_patterns` list in `conftest.py` contains **filename-prefix patterns** used for GC cleanup (e.g., `test_matrix_utils_connect` matches `test_matrix_utils_connect.py`, `test_matrix_utils_connect_sync.py`, etc.). Entries should NOT be removed just because legacy monolith files were deleted — they match by prefix, not exact filename.
+Note: The `asyncmock_patterns` list in `conftest.py` contains **filename-prefix patterns** used for GC cleanup (e.g., `test_matrix_utils_connect` matches `test_matrix_utils_connect.py`, `test_matrix_utils_connect_sync.py`, etc.). Entries should NOT be removed just because legacy monolith files were deleted; they match by prefix, not exact filename.
 
 ### nio mock classes
 

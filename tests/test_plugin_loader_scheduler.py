@@ -6,6 +6,7 @@ import os
 import subprocess  # nosec B404 - tests assert subprocess error handling
 import threading
 import unittest
+from typing import cast
 from unittest.mock import ANY, MagicMock, call, patch
 
 import mmrelay.plugin_loader as pl
@@ -267,7 +268,7 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
         """Test _validate_clone_inputs with None URL."""
         ref = {"type": "branch", "value": "main"}
         # The function handles None by converting to empty string internally
-        result = _validate_clone_inputs(None, ref)  # type: ignore[arg-type]
+        result = _validate_clone_inputs(cast(str, None), ref)
 
         self.assertEqual(result, (False, None, None, None, None))
 

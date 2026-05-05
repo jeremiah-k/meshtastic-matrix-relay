@@ -4,63 +4,112 @@ Date: 2026-05-03
 
 ## Summary
 
-The MMRelay test suite has grown organically to 138 test files totaling ~106,426 lines and ~4,086 test functions. This document catalogs the structural issues and prescribes a modernization plan.
+The MMRelay test suite grew organically to 138 test files totaling ~106,426 lines and ~4,086 test functions at the baseline. After Phase 1 decomposition it stands at 149 files totaling ~106,054 lines and ~4,039 test functions. This document catalogs the structural issues and prescribes a modernization plan, tracking progress through four phases.
 
 ## Implementation Phases
 
 ### Phase 1 (Complete): Decompose Monolithic Files
 
-Decomposed the two largest test files into domain-specific modules:
+Decomposed the three largest test files into domain-specific modules:
 
-| Original File              | Lines | Result                                       | Tests |
-| -------------------------- | ----- | -------------------------------------------- | ----- |
-| `test_plugin_loader.py`    | 7,076 | 8 domain files + `_plugin_loader_helpers.py` | 290   |
-| `test_meshtastic_utils.py` | 5,797 | 9 domain files                               | 189   |
+| Original File              | Lines | Result                                                              | Tests |
+| -------------------------- | ----- | ------------------------------------------------------------------- | ----- |
+| `test_plugin_loader.py`    | 7,076 | 13 domain files + `_plugin_loader_helpers.py`                       | 290   |
+| `test_meshtastic_utils.py` | 5,797 | 9 domain files                                                      | 189   |
+| `test_main.py`             | 4,557 | 9 domain files + helpers (`test_main.py` retained as 831-line core) | 79    |
 
-**Note**: The 14 `test_meshtastic_utils_*` satellite files (coverage gaps, edge cases) are kept as separate files for now. Absorbing them into the domain files caused cross-test state pollution (63 failures) due to conflicting `autouse` fixtures. This is deferred to future work.
+All three original monoliths have been removed. The `test_main.py` decomposition also converted its `unittest.TestCase` class to pure pytest style.
 
-### Phase 2 (Future): Absorb Satellite Files
+### Phase 2 (In Progress): Absorb Satellite Files
 
-Fold the 14 `test_meshtastic_utils_*` satellite files into their corresponding domain files. Requires resolving fixture conflicts — likely by consolidating all reset fixtures into `conftest.py` as a single comprehensive fixture.
+12 of 14 `test_meshtastic_utils_*` satellite files have been absorbed into their corresponding domain files. Fixture conflicts were resolved case-by-case by consolidating reset fixtures and adjusting autouse scope.
 
-### Phase 3 (Future): Remaining Tasks
+**Remaining satellites (2 files, ~3,594 lines):**
 
-- Fix TestCase + pytest mix in `test_main.py` and `test_db_runtime_security.py`
+| File                                  | Lines | Notes                                                  |
+| ------------------------------------- | ----- | ------------------------------------------------------ |
+| `test_meshtastic_utils_coverage.py`   | 2,160 | Largest remaining supplement, catch-all coverage fills |
+| `test_meshtastic_utils_edge_cases.py` | 1,434 | Catch-all edge cases                                   |
+
+**Also still needs attention:**
+
+| File                                     | Lines | Notes                                              |
+| ---------------------------------------- | ----- | -------------------------------------------------- |
+| `test_meshtastic_utils_connect_paths.py` | 1,445 | Uses `unittest.TestCase`; should convert to pytest |
+
+**Absorbed (12 files):** `test_meshtastic_utils_message_paths.py`, `test_meshtastic_utils_callback_lifecycle.py`, `test_meshtastic_utils_client_cleanup_coverage.py`, `test_meshtastic_utils_event_guards_coverage.py`, `test_meshtastic_utils_health.py`, `test_meshtastic_utils_node_name_refresh.py`, `test_meshtastic_utils_probe_coverage.py`, `test_meshtastic_utils_reconnect_bootstrap_coverage.py`, `test_meshtastic_utils_reconnect_paths.py`, `test_meshtastic_utils_reconnect.py`, `test_meshtastic_utils_skew_drain_coverage.py`, `test_meshtastic_utils_async_helpers.py`.
+
+### Phase 3 (In Progress): Remaining Tasks
+
+- ~~Fix TestCase + pytest mix in `test_main.py`~~ Converted to pure pytest during decomposition
+- ~~Fix TestCase + pytest mix in `test_db_runtime_security.py`~~ Converted to pure pytest
+- Convert `test_meshtastic_utils_connect_paths.py` from `unittest.TestCase` to pure pytest (1 remaining TestCase file in meshtastic_utils domain)
 - Clean up `conftest.py` — extract subsystems into separate modules
 - Triage dead/skipped tests
 - Remove redundant `sys.path` boilerplate
 
+### Phase 4 (New): Lint/Type-Ignore Suppression Cleanup
+
+82 `# type: ignore` suppressions and 30 `# noqa` suppressions remain across test files (plus 46 in `tests/helpers.py` which are largely unavoidable dynamic-attribute assignments). Many of the test-file suppressions are avoidable and mask real type issues.
+
+**Approach:**
+
+1. Audit each `# type: ignore` in test files. Classify as "avoidable" (fixable by adding proper types, using `Any`, or restructuring) or "necessary" (third-party stub limitations, dynamic attribute access inherent to the test pattern).
+2. Fix avoidable suppressions. For necessary ones, narrow the ignore to a specific error code (e.g., `# type: ignore[attr-defined]` instead of bare `# type: ignore`).
+3. Audit `# noqa` suppressions similarly. Many blanket `noqa` comments can be replaced with targeted `noqa: E402` etc.
+
+**Success criteria:**
+
+- No bare `# type: ignore` without an error code in test files
+- `# type: ignore` count in test files reduced by at least 50% (from 82 to 40 or fewer)
+- `# noqa` count in test files reduced by at least 50% (from 30 to 15 or fewer)
+- All remaining suppressions have a brief inline comment explaining why they are necessary
+
 ---
 
-## Current State (Pre-Phase 1 Baseline)
+## Current State (Post-Phase 1 / Phase 2 In Progress)
 
-| Metric                                     | Value                          |
-| ------------------------------------------ | ------------------------------ |
-| Total test files                           | 138                            |
-| Total test functions                       | 4,086                          |
-| Total lines of test code                   | ~106,426                       |
-| Files using `unittest.TestCase`            | 51 (37%)                       |
-| Files using `@patch` decorators            | 59 (43%)                       |
-| Files using `@pytest.mark.parametrize`     | 10 (7%)                        |
-| Files mixing TestCase + pytest features    | 3                              |
-| Files with 0 test functions                | 1 (`test_e2ee_integration.py`) |
-| Skipped test files                         | 3                              |
-| Files > 2,000 lines                        | 10                             |
-| `_coverage.py` suffix (coverage gap fills) | 11                             |
-| `_edge_cases.py` suffix                    | 8                              |
+| Metric                                     | Value (Baseline) | Value (Current)                |
+| ------------------------------------------ | ---------------- | ------------------------------ |
+| Total test files                           | 138              | 149                            |
+| Total test functions                       | 4,086            | ~4,039                         |
+| Total lines of test code                   | ~106,426         | ~106,054                       |
+| Files using `unittest.TestCase`            | 51 (37%)         | Reduced (see Phase 3)          |
+| Files using `@patch` decorators            | 59 (43%)         | Unchanged                      |
+| Files using `@pytest.mark.parametrize`     | 10 (7%)          | Unchanged                      |
+| Files mixing TestCase + pytest features    | 3                | 1 (`connect_paths`)            |
+| Files with 0 test functions                | 1                | 1 (`test_e2ee_integration.py`) |
+| Skipped test files                         | 3                | Unchanged                      |
+| Files > 2,000 lines                        | 10               | 8                              |
+| `_coverage.py` suffix (coverage gap fills) | 11               | 11                             |
+| `_edge_cases.py` suffix                    | 8                | 8                              |
+| `# type: ignore` in test files             | N/A              | 82                             |
+| `# noqa` in test files                     | N/A              | 30                             |
 
 ## Issue #1: Monolithic Test Files
 
-Four files account for 21,076 lines (20% of the entire test suite):
+Three of the original four oversized files have been decomposed. `test_cli.py` (3,542 lines) remains the largest single test file and a candidate for future decomposition.
 
-| File                       | Lines | Tests | Lines/Test |
-| -------------------------- | ----- | ----- | ---------- |
-| `test_plugin_loader.py`    | 7,076 | 290   | 24.4       |
-| `test_meshtastic_utils.py` | 5,797 | 189   | 30.7       |
-| `test_main.py`             | 4,557 | 79    | 57.7       |
-| `test_cli.py`              | 3,546 | 164   | 21.6       |
+**Original state (resolved):**
 
-These are difficult to navigate, slow to edit, and encourage merge conflicts.
+| File                       | Lines | Tests | Lines/Test | Status               |
+| -------------------------- | ----- | ----- | ---------- | -------------------- |
+| `test_plugin_loader.py`    | 7,076 | 290   | 24.4       | Decomposed (Phase 1) |
+| `test_meshtastic_utils.py` | 5,797 | 189   | 30.7       | Decomposed (Phase 1) |
+| `test_main.py`             | 4,557 | 79    | 57.7       | Decomposed (Phase 1) |
+
+**Remaining oversized files (> 2,000 lines):**
+
+| File                                | Lines | Notes                                    |
+| ----------------------------------- | ----- | ---------------------------------------- |
+| `test_cli.py`                       | 3,542 | Largest single file; candidate for split |
+| `test_matrix_utils_relay.py`        | 2,837 | Relay domain                             |
+| `test_meshtastic_utils_messages.py` | 2,271 | Messages domain                          |
+| `test_migrate.py`                   | 2,259 | Migration tests                          |
+| `test_db_utils.py`                  | 2,224 | Database utilities                       |
+| `test_weather_plugin.py`            | 2,200 | Weather plugin                           |
+| `test_meshtastic_utils_coverage.py` | 2,160 | Satellite (Phase 2 target)               |
+| `test_migrate_coverage.py`          | 2,106 | Migration coverage supplement            |
 
 ### Proposed decomposition: `test_plugin_loader.py` (7,076 lines)
 
@@ -93,50 +142,47 @@ Split into 9 domain files. Satellite file absorption is deferred to Phase 2.
 | `test_meshtastic_utils_message_edge.py`  | Message processing edge cases                                                               | 33    | `TestMessageProcessingEdgeCases` (edge portions)                                                 |
 | `test_meshtastic_utils_connect_paths.py` | Connection path edge cases, reconnect                                                       | 26    | Reconnect and connection path tests                                                              |
 
-**Satellite files retained** (14 files, ~10,974 lines, 282 tests): `test_meshtastic_utils_coverage.py`, `test_meshtastic_utils_edge_cases.py`, `test_meshtastic_utils_message_paths.py`, `test_meshtastic_utils_callback_lifecycle.py`, `test_meshtastic_utils_client_cleanup_coverage.py`, `test_meshtastic_utils_event_guards_coverage.py`, `test_meshtastic_utils_health.py`, `test_meshtastic_utils_node_name_refresh.py`, `test_meshtastic_utils_probe_coverage.py`, `test_meshtastic_utils_reconnect_bootstrap_coverage.py`, `test_meshtastic_utils_reconnect_paths.py`, `test_meshtastic_utils_reconnect.py`, `test_meshtastic_utils_skew_drain_coverage.py`, `test_meshtastic_utils_async_helpers.py`. See Phase 2 for absorption plan.
+**Satellite files retained** (2 of 14 remain, ~3,594 lines): `test_meshtastic_utils_coverage.py`, `test_meshtastic_utils_edge_cases.py`. The other 12 have been absorbed into domain files (see Phase 2). Additionally, `test_meshtastic_utils_connect_paths.py` (1,445 lines) still uses `unittest.TestCase` and needs conversion.
 
 ## Issue #2: TestCase + Pytest Incompatibility
 
-Three files mix `unittest.TestCase` with pytest-specific features, which is fragile and can cause subtle failures:
+Three files originally mixed `unittest.TestCase` with pytest-specific features. Two have been resolved:
 
-### `test_meshtastic_utils.py` (5,797 lines)
+### `test_meshtastic_utils.py` (5,797 lines) — Resolved
 
-- 18 `unittest.TestCase` classes
-- Uses `@pytest.fixture(autouse=True)` at module level (lines 89, 158)
-- Uses `@pytest.mark.usefixtures(...)` on 3 classes
-- Uses `@pytest.mark.parametrize` on a standalone function
-- **Fix**: Convert to pure pytest style as part of decomposition
+Converted to pure pytest style during Phase 1 decomposition.
 
-### `test_main.py` (4,557 lines)
+### `test_main.py` (4,557 lines) — Resolved
 
-- `class TestMain(unittest.TestCase)` at line 474
-- Uses `@pytest.mark.parametrize` with `@patch` decorators on TestCase methods
-- **Fix**: Convert to pure pytest style as part of decomposition
+Converted to pure pytest style during Phase 1 decomposition. `TestMain(unittest.TestCase)` and its `@pytest.mark.parametrize` usage were converted to plain pytest functions.
 
-### `test_db_runtime_security.py` (1,379 lines)
+### `test_db_runtime_security.py` (1,379 lines) — Resolved
 
-- Has both `class TestDatabaseManager(unittest.TestCase)` and standalone `@pytest.mark.asyncio` functions
-- **Fix**: Convert the TestCase class to pytest-style, merge with standalone functions
+Converted to pure pytest style. The `TestDatabaseManager` TestCase class and standalone async functions are now consistent.
+
+### `test_meshtastic_utils_connect_paths.py` (1,445 lines) — Remaining
+
+Still uses `unittest.TestCase`. Should be converted to pure pytest as part of Phase 2 cleanup.
 
 ## Issue #3: Coverage Gap File Fragmentation
 
 11 `_coverage.py` and 8 `_edge_cases.py` files exist as scattered supplements:
 
-**Meshtastic utils satellite files (14 files):**
+**Meshtastic utils satellites (2 remaining of original 14):**
 
-- `test_meshtastic_utils_coverage.py` (2,160 lines, 116 tests) - Largest supplement
-- `test_meshtastic_utils_edge_cases.py` (1,434 lines, 44 tests)
-- `test_meshtastic_utils_message_paths.py` (1,046 lines, 50 tests)
-- Plus 11 more smaller files
+- `test_meshtastic_utils_coverage.py` (2,160 lines) - Largest remaining supplement
+- `test_meshtastic_utils_edge_cases.py` (1,434 lines)
+
+The other 12 meshtastic_utils satellites have been absorbed into domain files (see Phase 2).
 
 **Other satellite files:**
 
-- `test_meshtastic_utils_health.py`, `test_migrate_coverage.py`, `test_paths_coverage.py`, `test_core_utils_coverage.py`, `test_cli_health_check_coverage.py`, `test_cli_system_health_coverage.py`
+- `test_migrate_coverage.py`, `test_paths_coverage.py`, `test_core_utils_coverage.py`, `test_cli_health_check_coverage.py`, `test_cli_system_health_coverage.py`
 - `test_main_shutdown_coverage.py`, `test_db_utils_name_sync_coverage.py`, `test_db_utils_close_manager_coverage.py`
 - `test_db_runtime_del_coverage.py`, `test_db_utils_edge_cases.py`, `test_message_queue_additional_coverage.py`
 - `test_message_queue_edge_cases.py`, `test_setup_utils_edge_cases.py`, `test_setup_utils_improvements.py`
 - `test_setup_utils_execstart_improvements.py`, `test_cli_edge_cases.py`, `test_cli_targeted.py`
-- `test_plugin_loader_edge_cases.py`
+- `test_plugin_loader_edge_cases.py`, `test_config_edge_cases.py`
 
 These files exist because the parent files grew too large to easily add tests to. Folding them into their decomposed domain files eliminates the fragmentation.
 
@@ -176,27 +222,52 @@ This is already handled by `conftest.py:12-14`, so the per-file inserts are redu
 
 ## Implementation Order
 
-1. ~~**Decompose `test_plugin_loader.py`** (7,076 → ~8 files)~~ ✅ Phase 1 Complete
-2. ~~**Decompose `test_meshtastic_utils.py`** (5,797 → ~9 files)~~ ✅ Phase 1 Complete (satellite absorption deferred to Phase 2)
-3. **Absorb meshtastic satellite files** — Fold 14 satellite files into 9 domain files (Phase 2)
-4. **Fix TestCase + pytest mix** in remaining files — Addresses fragility
-5. **Clean up conftest.py** — Extract subsystems into separate modules
-6. **Triage dead/skipped tests** — Clean up orphaned code
-7. **Remove sys.path boilerplate** — Clean redundant imports
+1. ~~**Decompose `test_plugin_loader.py`** (7,076 → ~13 files)~~ ✅ Phase 1 Complete
+2. ~~**Decompose `test_meshtastic_utils.py`** (5,797 → ~9 files)~~ ✅ Phase 1 Complete
+3. ~~**Decompose `test_main.py`** (4,557 → ~9 files + core)~~ ✅ Phase 1 Complete
+4. ~~**Fix TestCase + pytest mix in `test_main.py`**~~ ✅ Done during decomposition
+5. ~~**Fix TestCase + pytest mix in `test_db_runtime_security.py`**~~ ✅ Done
+6. **Absorb remaining meshtastic satellite files** — Fold 2 remaining satellites into domain files (Phase 2, in progress)
+7. **Convert `test_meshtastic_utils_connect_paths.py`** from TestCase to pytest (Phase 3)
+8. **Clean up conftest.py** — Extract subsystems into separate modules (Phase 3)
+9. **Triage dead/skipped tests** — Clean up orphaned code (Phase 3)
+10. **Remove sys.path boilerplate** — Clean redundant imports (Phase 3)
+11. **Lint/type-ignore suppression cleanup** — Audit and reduce `# type: ignore` and `# noqa` in test files (Phase 4, new)
 
 ## Success Criteria
 
-### Phase 1 (Current)
+### Phase 1 (Complete)
 
-- `test_plugin_loader.py` decomposed into 8 domain files + helpers
+- `test_plugin_loader.py` decomposed into 13 domain files + helpers
 - `test_meshtastic_utils.py` decomposed into 9 domain files
+- `test_main.py` decomposed into 9 domain files + core
 - All tests pass with same coverage
 - No warnings or errors in test output
 
-### Full Modernization (Future)
+### Phase 2 (In Progress)
+
+- 12 of 14 satellite files absorbed into domain files
+- Remaining 2 satellites (`_coverage.py`, `_edge_cases.py`) folded or justified
+- `test_meshtastic_utils_connect_paths.py` converted from TestCase to pytest
+- All tests pass with same coverage
+
+### Phase 3 (Remaining)
+
+- No files mixing `unittest.TestCase` with pytest features
+- `conftest.py` extracted into focused modules
+- Dead/skipped tests triaged and resolved
+- No redundant `sys.path` boilerplate
+
+### Phase 4 (New: Lint/Type-Ignore Cleanup)
+
+- No bare `# type: ignore` in test files (all have error codes)
+- `# type: ignore` count reduced by at least 50% (82 → 40 or fewer)
+- `# noqa` count reduced by at least 50% (30 → 15 or fewer)
+- All remaining suppressions have inline justification comments
+
+### Full Modernization
 
 - All files < 2,000 lines
-- No files mixing `unittest.TestCase` with pytest features
-- No `_coverage.py` or `_edge_cases.py` files remaining
+- No `_coverage.py` or `_edge_cases.py` files remaining as catch-all supplements
 - All tests pass with same coverage
 - No warnings or errors in test output

@@ -582,8 +582,8 @@ class TestGetDeviceMetadata(unittest.TestCase):
         original_lock = mu._metadata_future_lock
         original_degraded = mu._metadata_executor_degraded
         try:
-            mu._metadata_future_lock = tracking_lock  # type: ignore[assignment]
-            mu._metadata_executor_degraded = degraded_flag  # type: ignore[assignment]
+            setattr(mu, "_metadata_future_lock", tracking_lock)
+            setattr(mu, "_metadata_executor_degraded", degraded_flag)
             mu._reset_metadata_executor_for_stale_probe()
         finally:
             mu._metadata_future_lock = original_lock
@@ -1421,7 +1421,7 @@ class TestGetConnectTimeProbeSettings(unittest.TestCase):
 
     def test_non_dict_config_returns_defaults(self):
         enabled, timeout = mu._get_connect_time_probe_settings(
-            "not_a_dict",  # type: ignore[arg-type]
+            cast(Any, "not_a_dict"),
             CONNECTION_TYPE_TCP,
         )
         self.assertEqual(enabled, DEFAULT_HEALTH_CHECK_ENABLED)
@@ -1597,7 +1597,7 @@ async def test_refresh_node_name_tables_skips_when_nodes_attribute_unavailable()
         patch.object(mu, "sync_name_tables_if_changed") as mock_sync,
     ):
         await mu.refresh_node_name_tables(
-            _OnePassEvent(),  # type: ignore[arg-type]
+            cast(asyncio.Event, _OnePassEvent()),
             refresh_interval_seconds=0.01,
         )
     mock_sync.assert_not_called()
@@ -1625,7 +1625,7 @@ async def test_refresh_node_name_tables_handles_timeout_then_retries() -> None:
         ) as mock_sync,
     ):
         await mu.refresh_node_name_tables(
-            event,  # type: ignore[arg-type]
+            cast(asyncio.Event, event),
             refresh_interval_seconds=0.01,
         )
     assert event.first_wait_cancelled is True
@@ -1644,7 +1644,7 @@ async def test_refresh_node_name_tables_logs_unavailable_only_once_per_state() -
         patch.object(mu, "logger") as mock_logger,
     ):
         await mu.refresh_node_name_tables(
-            event,  # type: ignore[arg-type]
+            cast(asyncio.Event, event),
             refresh_interval_seconds=0.01,
         )
 
@@ -1668,7 +1668,7 @@ async def test_refresh_node_name_tables_uses_reconnecting_unavailable_message() 
         patch.object(mu, "logger") as mock_logger,
     ):
         await mu.refresh_node_name_tables(
-            event,  # type: ignore[arg-type]
+            cast(asyncio.Event, event),
             refresh_interval_seconds=0.01,
         )
 
@@ -1697,7 +1697,7 @@ async def test_refresh_node_name_tables_non_positive_interval_exits_after_one_pa
         patch.object(mu, "sync_name_tables_if_changed", return_value=()) as mock_sync,
     ):
         await mu.refresh_node_name_tables(
-            _OnePassEvent(),  # type: ignore[arg-type]
+            cast(asyncio.Event, _OnePassEvent()),
             refresh_interval_seconds=0.0,
         )
     mock_sync.assert_called_once()
@@ -1727,7 +1727,7 @@ async def test_refresh_node_name_tables_handles_sync_exceptions(caplog) -> None:
         ):
             with pytest.raises(RuntimeError, match="sync failure"):
                 await mu.refresh_node_name_tables(
-                    _OnePassEvent(),  # type: ignore[arg-type]
+                    cast(asyncio.Event, _OnePassEvent()),
                     refresh_interval_seconds=0.0,
                 )
     finally:
