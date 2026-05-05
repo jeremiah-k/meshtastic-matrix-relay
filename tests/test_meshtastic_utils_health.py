@@ -14,6 +14,7 @@ Covers:
 
 import asyncio
 import contextlib
+import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from unittest.mock import Mock, patch
@@ -30,6 +31,21 @@ from mmrelay.constants.network import (
     RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS,
 )
 from tests.constants import TEST_BLE_MAC
+
+
+def _cancel_startup_drain_timer() -> None:
+    """Best-effort cancellation and join of the startup-drain expiry timer."""
+    _timer = getattr(mu, "_relay_startup_drain_expiry_timer", None)
+    if _timer is None:
+        return
+    with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+        _timer.cancel()
+    _join = getattr(_timer, "join", None)
+    if callable(_join):
+        with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+            _join(0.2)
+    with contextlib.suppress(AttributeError):
+        mu._relay_startup_drain_expiry_timer = None
 
 
 def _submit_done_reconnect_future(coro: object, _loop: object) -> Future[None]:
@@ -54,7 +70,7 @@ def _submit_done_reconnect_future(coro: object, _loop: object) -> Future[None]:
 
 
 @pytest.fixture(autouse=True)
-def reset_meshtastic_state(reset_meshtastic_globals):
+def reset_meshtastic_state(monkeypatch):
     """
     Reset mmrelay.meshtastic_utils module state to a clean baseline before each test.
 
@@ -62,28 +78,133 @@ def reset_meshtastic_state(reset_meshtastic_globals):
     timeouts, health-probe tracking, clock skew/drain timers, and degraded/executor orphan counters)
     so tests run with a deterministic, isolated environment.
     """
-    _ = reset_meshtastic_globals
-    # Additional resets specific to these tests
-    mu.meshtastic_iface = None
-    mu._metadata_future = None
-    mu._metadata_future_started_at = None
-    mu._ble_future = None
-    mu._ble_future_address = None
-    mu._ble_future_started_at = None
-    mu._ble_future_timeout_secs = None
-    mu._ble_timeout_counts = {}
-    mu._health_probe_request_deadlines = {}
-    mu._relay_rx_time_clock_skew_secs = None
-    mu._relay_startup_drain_deadline_monotonic_secs = None
-    mu._startup_packet_drain_applied = False
-    # Keep startup bootstrap window deterministically closed in this suite unless
-    # a test explicitly opts into startup-window behavior.
-    mu._relay_connection_started_monotonic_secs = time.monotonic() - (
-        RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS + 1.0
+    _cancel_startup_drain_timer()
+
+    startup_drain_complete_event = threading.Event()
+    startup_drain_complete_event.set()
+
+    monkeypatch.setattr("mmrelay.meshtastic_utils.config", None, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.meshtastic_client", None, raising=False
     )
-    mu._ble_executor_orphaned_workers_by_address = {}
-    mu._metadata_executor_orphaned_workers = 0
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.meshtastic_iface", None, raising=False
+    )
+    monkeypatch.setattr("mmrelay.meshtastic_utils.reconnecting", False, raising=False)
+    monkeypatch.setattr("mmrelay.meshtastic_utils.shutting_down", False, raising=False)
+    monkeypatch.setattr("mmrelay.meshtastic_utils.reconnect_task", None, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.reconnect_task_future", None, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.subscribed_to_messages", False, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.subscribed_to_connection_lost", False, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._callbacks_tearing_down", False, raising=False
+    )
+    monkeypatch.setattr("mmrelay.meshtastic_utils.matrix_rooms", [], raising=False)
+
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._metadata_future", None, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._metadata_future_started_at", None, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._metadata_executor", None, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._metadata_executor_degraded", False, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._metadata_executor_orphaned_workers", 0, raising=False
+    )
+
+    monkeypatch.setattr("mmrelay.meshtastic_utils._ble_future", None, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future_address", None, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future_started_at", None, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future_timeout_secs", None, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_timeout_counts", {}, raising=False
+    )
+    monkeypatch.setattr("mmrelay.meshtastic_utils._ble_executor", None, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_executor_degraded_addresses",
+        set(),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_executor_orphaned_workers_by_address",
+        {},
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._health_probe_request_deadlines", {}, raising=False
+    )
+
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_active_client_id", None, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_rx_time_clock_skew_secs", None, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_startup_drain_deadline_monotonic_secs",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_startup_drain_expiry_timer",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_startup_drain_complete_event",
+        startup_drain_complete_event,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._startup_packet_drain_applied", False, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_connection_started_monotonic_secs",
+        time.monotonic() - (RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS + 1.0),
+        raising=False,
+    )
+    monkeypatch.setattr("mmrelay.meshtastic_utils.RELAY_START_TIME", 0, raising=False)
+
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._connect_attempt_lock",
+        threading.RLock(),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._connect_attempt_condition",
+        threading.Condition(),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._connect_attempt_in_progress", False, raising=False
+    )
+
     yield
+
+    _cancel_startup_drain_timer()
 
 
 class TestExecutorShutdown:
