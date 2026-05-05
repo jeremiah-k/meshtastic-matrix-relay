@@ -44,24 +44,30 @@ from tests.constants import (
 
 
 @pytest.fixture
-def db_manager():
+def db_path():
+    """Create a temporary SQLite database file path. Guarantees cleanup on teardown."""
+    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    temp_db.close()
+    path = temp_db.name
+    yield path
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
+@pytest.fixture
+def db_manager(db_path):
     """
-    Create a temporary SQLite database file, initialize a DatabaseManager,
+    Create a DatabaseManager on a temporary database path,
     and yield both for use in tests. Guarantees cleanup on teardown.
 
     Yields:
         tuple[DatabaseManager, str]: (manager, db_path)
     """
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    temp_db.close()
-    db_path = temp_db.name
     manager = DatabaseManager(db_path)
     yield manager, db_path
     manager.close()
-    try:
-        os.unlink(db_path)
-    except OSError:
-        pass
 
 
 @pytest.fixture
@@ -95,9 +101,8 @@ def test_initialization_default_parameters(db_manager):
         manager.close()
 
 
-def test_initialization_custom_parameters(db_manager):
+def test_initialization_custom_parameters(db_path):
     """Test DatabaseManager initialization with custom parameters."""
-    _, db_path = db_manager
     custom_pragmas = {"synchronous": "OFF", "cache_size": 1000}
     manager = DatabaseManager(
         db_path,
@@ -113,9 +118,8 @@ def test_initialization_custom_parameters(db_manager):
         manager.close()
 
 
-def test_initialization_allows_missing_json_each_support(db_manager):
+def test_initialization_allows_missing_json_each_support(db_path):
     """DatabaseManager should initialize and mark json_each as unavailable."""
-    _, db_path = db_manager
     _validate_sqlite_json_each_support.cache_clear()
     try:
         probe_conn = MagicMock()
@@ -148,9 +152,8 @@ def test_initialization_allows_missing_json_each_support(db_manager):
         _validate_sqlite_json_each_support.cache_clear()
 
 
-def test_initialization_marks_json_each_supported_when_probe_succeeds(db_manager):
+def test_initialization_marks_json_each_supported_when_probe_succeeds(db_path):
     """DatabaseManager should mark json_each support when probe succeeds."""
-    _, db_path = db_manager
     _validate_sqlite_json_each_support.cache_clear()
     try:
         probe_result = MagicMock()
@@ -219,9 +222,8 @@ def test_probe_sqlite_json_each_support_reraises_non_json_errors():
         "pragma_v3",  # Valid: contains numbers after first character
     ],
 )
-def test_pragma_validation_valid_names(pragma, db_manager):
+def test_pragma_validation_valid_names(pragma, db_path):
     """Test that valid pragma names are accepted."""
-    _, db_path = db_manager
     manager = DatabaseManager(db_path, extra_pragmas={pragma: "value"})
     try:
         with manager.read() as cursor:
@@ -244,9 +246,8 @@ def test_pragma_validation_valid_names(pragma, db_manager):
         "",  # Empty string
     ],
 )
-def test_pragma_validation_invalid_names(pragma, db_manager):
+def test_pragma_validation_invalid_names(pragma, db_path):
     """Test that invalid pragma names are rejected."""
-    _, db_path = db_manager
     with pytest.raises(ValueError) as cm:
         manager = DatabaseManager(db_path, extra_pragmas={pragma: "value"})
         with manager.read() as cursor:
@@ -271,9 +272,8 @@ def test_pragma_validation_invalid_names(pragma, db_manager):
         "value.with.dots",
     ],
 )
-def test_pragma_validation_string_values(value, db_manager):
+def test_pragma_validation_string_values(value, db_path):
     """Test pragma validation for string values."""
-    _, db_path = db_manager
     manager = DatabaseManager(db_path, extra_pragmas={"test_pragma": value})
     try:
         with manager.read() as cursor:
@@ -296,9 +296,8 @@ def test_pragma_validation_string_values(value, db_manager):
         "value\\",  # Test backslash at end vulnerability
     ],
 )
-def test_pragma_validation_invalid_string_values(value, db_manager):
+def test_pragma_validation_invalid_string_values(value, db_path):
     """Test that invalid string pragma values are rejected."""
-    _, db_path = db_manager
     with pytest.raises(ValueError) as cm:
         manager = DatabaseManager(db_path, extra_pragmas={"test_pragma": value})
         with manager.read() as cursor:
@@ -307,9 +306,8 @@ def test_pragma_validation_invalid_string_values(value, db_manager):
 
 
 @pytest.mark.parametrize("value", [1000, 0, -1, 3.14, 2.718])
-def test_pragma_validation_numeric_values(value, db_manager):
+def test_pragma_validation_numeric_values(value, db_path):
     """Test pragma validation for numeric values."""
-    _, db_path = db_manager
     manager = DatabaseManager(db_path, extra_pragmas={"cache_size": value})
     try:
         with manager.read() as cursor:
@@ -319,9 +317,8 @@ def test_pragma_validation_numeric_values(value, db_manager):
 
 
 @pytest.mark.parametrize("value", [True, False])
-def test_pragma_validation_boolean_values(value, db_manager):
+def test_pragma_validation_boolean_values(value, db_path):
     """Test pragma validation for boolean values."""
-    _, db_path = db_manager
     manager = DatabaseManager(db_path, extra_pragmas={"recursive_triggers": value})
     try:
         with manager.read() as cursor:
@@ -340,9 +337,8 @@ def test_pragma_validation_boolean_values(value, db_manager):
         None,
     ],
 )
-def test_pragma_validation_invalid_numeric_types(value, db_manager):
+def test_pragma_validation_invalid_numeric_types(value, db_path):
     """Test that invalid numeric pragma value types are rejected."""
-    _, db_path = db_manager
     with pytest.raises(TypeError) as cm:
         manager = DatabaseManager(db_path, extra_pragmas={"test_pragma": value})
         with manager.read() as cursor:
@@ -878,9 +874,8 @@ def test_close_rejected_during_active_database_operation(db_manager):
         manager.run_sync(close_inside_operation, write=False)
 
 
-def test_close_handles_connection_errors(db_manager):
+def test_close_handles_connection_errors(db_path):
     """Test close method handles connection errors gracefully."""
-    _, db_path = db_manager
     # Create a manager and get a connection
     test_manager = DatabaseManager(db_path)
     conn = test_manager._get_connection()
@@ -896,9 +891,8 @@ def test_close_handles_connection_errors(db_manager):
     assert len(test_manager._connections) == 0
 
 
-def test_close_waits_for_active_sync_work_to_finish(db_manager):
+def test_close_waits_for_active_sync_work_to_finish(db_path):
     """close() should wait until active sync work drains."""
-    _, db_path = db_manager
     manager = DatabaseManager(db_path)
     with manager._connections_lock:
         manager._active_sync_count = 1
@@ -953,9 +947,8 @@ def test_close_waits_for_active_sync_work_to_finish(db_manager):
     assert close_done.is_set(), "close() did not finish after release"
 
 
-def test_close_logs_sqlite_errors_when_connection_close_fails(db_manager):
+def test_close_logs_sqlite_errors_when_connection_close_fails(db_path):
     """close() should log sqlite close failures and continue cleanup."""
-    _, db_path = db_manager
     manager = DatabaseManager(db_path)
     real_conn = manager._get_connection()
     bad_conn = MagicMock()
@@ -972,10 +965,9 @@ def test_close_logs_sqlite_errors_when_connection_close_fails(db_manager):
 
 
 def test_close_ignores_attributeerror_while_deleting_thread_local_connection(
-    db_manager,
+    db_path,
 ):
     """close() should ignore AttributeError from unusual thread-local implementations."""
-    _, db_path = db_manager
 
     class _DelattrRaises:
         connection = object()
@@ -1083,9 +1075,8 @@ def test_write_lock_serialization(db_manager):
 # ========================================================================
 
 
-def test_connection_creation_error_cleanup(db_manager):
+def test_connection_creation_error_cleanup(db_path):
     """Test that connection creation errors don't leak connections."""
-    _, db_path = db_manager
     # Try to create a manager with invalid pragma that will fail
     with pytest.raises(ValueError):
         manager = DatabaseManager(db_path, extra_pragmas={"invalid;pragma": "value"})
@@ -1096,9 +1087,8 @@ def test_connection_creation_error_cleanup(db_manager):
     # since the manager creation failed, there shouldn't be any connections to track
 
 
-def test_busy_timeout_pragma_application(db_manager):
+def test_busy_timeout_pragma_application(db_path):
     """Test that busy timeout pragma is properly applied."""
-    _, db_path = db_manager
     manager = DatabaseManager(db_path, busy_timeout_ms=1000)
     try:
         with manager.read() as cursor:
@@ -1109,9 +1099,8 @@ def test_busy_timeout_pragma_application(db_manager):
         manager.close()
 
 
-def test_wal_mode_pragma_application(db_manager):
+def test_wal_mode_pragma_application(db_path):
     """Test that WAL mode pragma is properly applied."""
-    _, db_path = db_manager
     manager = DatabaseManager(db_path, enable_wal=True)
     try:
         with manager.read() as cursor:
@@ -1320,9 +1309,8 @@ async def test_await_submitted_future_maps_concurrent_cancel_to_async_cancel(
 # ========================================================================
 
 
-def test_empty_extra_pragmas_dict(db_manager):
+def test_empty_extra_pragmas_dict(db_path):
     """Test handling of empty extra_pragmas dictionary."""
-    _, db_path = db_manager
     manager = DatabaseManager(db_path, extra_pragmas={})
     try:
         with manager.read() as cursor:
@@ -1331,9 +1319,8 @@ def test_empty_extra_pragmas_dict(db_manager):
         manager.close()
 
 
-def test_none_extra_pragmas(db_manager):
+def test_none_extra_pragmas(db_path):
     """Test handling of None extra_pragmas."""
-    _, db_path = db_manager
     manager = DatabaseManager(db_path, extra_pragmas=None)
     try:
         with manager.read() as cursor:
@@ -1342,9 +1329,8 @@ def test_none_extra_pragmas(db_manager):
         manager.close()
 
 
-def test_zero_busy_timeout(db_manager):
+def test_zero_busy_timeout(db_path):
     """Test handling of zero busy timeout."""
-    _, db_path = db_manager
     manager = DatabaseManager(db_path, busy_timeout_ms=0)
     try:
         with manager.read() as cursor:
@@ -1353,9 +1339,8 @@ def test_zero_busy_timeout(db_manager):
         manager.close()
 
 
-def test_negative_busy_timeout(db_manager):
+def test_negative_busy_timeout(db_path):
     """Test handling of negative busy timeout."""
-    _, db_path = db_manager
     manager = DatabaseManager(db_path, busy_timeout_ms=-1000)
     try:
         with manager.read() as cursor:
@@ -1364,13 +1349,12 @@ def test_negative_busy_timeout(db_manager):
         manager.close()
 
 
-def test_database_file_permissions(db_manager):
+def test_database_file_permissions(db_path):
     """
     Verify DatabaseManager behavior when the database file's filesystem permissions are changed to read-only.
 
     Creates a table to ensure the database file exists, changes the file mode to read-only, attempts a write that may either succeed or raise sqlite3.OperationalError depending on the platform/SQLite build, restores the original permissions, and closes the manager to ensure cleanup.
     """
-    _, db_path = db_manager
 
     # Create manager
     manager = DatabaseManager(db_path)
@@ -1398,9 +1382,8 @@ def test_database_file_permissions(db_manager):
         manager.close()
 
 
-def test_concurrent_read_operations(db_manager):
+def test_concurrent_read_operations(db_path):
     """Test that concurrent read operations work correctly."""
-    _, db_path = db_manager
     manager = DatabaseManager(db_path)
     try:
         # Create test data

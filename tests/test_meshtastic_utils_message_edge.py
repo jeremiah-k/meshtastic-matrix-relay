@@ -1452,7 +1452,8 @@ class TestMessageHandlerEdgeCases:
 
         mu.on_meshtastic_message(packet, mock_interface)
 
-    def test_check_connection_non_dict_health_config(self):
+    @pytest.mark.asyncio
+    async def test_check_connection_non_dict_health_config(self):
         """Test check_connection with non-dict health_check config exits early via requires_continuous_health_monitor."""
         mu.config = {
             "meshtastic": {
@@ -1464,14 +1465,15 @@ class TestMessageHandlerEdgeCases:
         mu.shutting_down = True
 
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
-            asyncio.run(mu.check_connection())
+            await mu.check_connection()
 
             mock_logger.warning.assert_not_called()
             mock_logger.info.assert_called()
             call_args = mock_logger.info.call_args[0]
             assert "disabled" in call_args[0]
 
-    def test_check_connection_probe_submission_fails(self):
+    @pytest.mark.asyncio
+    async def test_check_connection_probe_submission_fails(self):
         """Test check_connection when probe submission raises RuntimeError."""
         mu.config = {
             "meshtastic": {
@@ -1483,30 +1485,26 @@ class TestMessageHandlerEdgeCases:
         mu.reconnecting = False
         mu.shutting_down = False
 
-        async def run_test():
-            sleep_count = [0]
+        sleep_count = [0]
 
-            async def sleep_side_effect(delay):
-                sleep_count[0] += 1
-                if sleep_count[0] >= 2:
-                    mu.shutting_down = True
+        async def sleep_side_effect(delay):
+            sleep_count[0] += 1
+            if sleep_count[0] >= 2:
+                mu.shutting_down = True
+
+        with patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit:
+            mock_submit.side_effect = RuntimeError("Executor closed")
 
             with patch(
-                "mmrelay.meshtastic_utils._submit_metadata_probe"
-            ) as mock_submit:
-                mock_submit.side_effect = RuntimeError("Executor closed")
+                "mmrelay.meshtastic_utils.asyncio.sleep",
+                side_effect=sleep_side_effect,
+            ):
+                await mu.check_connection()
 
-                with patch(
-                    "mmrelay.meshtastic_utils.asyncio.sleep",
-                    side_effect=sleep_side_effect,
-                ):
-                    await mu.check_connection()
+                assert mock_submit.call_count >= 1
 
-                    assert mock_submit.call_count >= 1
-
-        asyncio.run(run_test())
-
-    def test_check_connection_probe_future_none(self):
+    @pytest.mark.asyncio
+    async def test_check_connection_probe_future_none(self):
         """Test check_connection when probe submission returns None."""
         mu.config = {
             "meshtastic": {
@@ -1518,30 +1516,26 @@ class TestMessageHandlerEdgeCases:
         mu.reconnecting = False
         mu.shutting_down = False
 
-        async def run_test():
-            sleep_count = [0]
+        sleep_count = [0]
 
-            async def sleep_side_effect(delay):
-                sleep_count[0] += 1
-                if sleep_count[0] >= 2:
-                    mu.shutting_down = True
+        async def sleep_side_effect(delay):
+            sleep_count[0] += 1
+            if sleep_count[0] >= 2:
+                mu.shutting_down = True
+
+        with patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit:
+            mock_submit.return_value = None
 
             with patch(
-                "mmrelay.meshtastic_utils._submit_metadata_probe"
-            ) as mock_submit:
-                mock_submit.return_value = None
+                "mmrelay.meshtastic_utils.asyncio.sleep",
+                side_effect=sleep_side_effect,
+            ):
+                await mu.check_connection()
 
-                with patch(
-                    "mmrelay.meshtastic_utils.asyncio.sleep",
-                    side_effect=sleep_side_effect,
-                ):
-                    await mu.check_connection()
+                assert mock_submit.call_count >= 1
 
-                    assert mock_submit.call_count >= 1
-
-        asyncio.run(run_test())
-
-    def test_check_connection_probe_fails_not_reconnecting(self):
+    @pytest.mark.asyncio
+    async def test_check_connection_probe_fails_not_reconnecting(self):
         """Test check_connection when probe fails and not reconnecting."""
         mu.config = {
             "meshtastic": {
@@ -1553,41 +1547,35 @@ class TestMessageHandlerEdgeCases:
         mu.reconnecting = False
         mu.shutting_down = False
 
-        async def run_test():
-            sleep_count = [0]
+        sleep_count = [0]
 
-            async def sleep_side_effect(delay):
-                sleep_count[0] += 1
-                if sleep_count[0] >= 2:
-                    mu.shutting_down = True
+        async def sleep_side_effect(delay):
+            sleep_count[0] += 1
+            if sleep_count[0] >= 2:
+                mu.shutting_down = True
 
-            mock_future = Mock(spec=Future)
-            mock_future.done.return_value = True
+        mock_future = Mock(spec=Future)
+        mock_future.done.return_value = True
+
+        with patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit:
+            mock_submit.return_value = mock_future
 
             with patch(
-                "mmrelay.meshtastic_utils._submit_metadata_probe"
-            ) as mock_submit:
-                mock_submit.return_value = mock_future
+                "mmrelay.meshtastic_utils.asyncio.sleep",
+                side_effect=sleep_side_effect,
+            ):
+                with patch("mmrelay.meshtastic_utils.asyncio.wait_for") as mock_wait:
+                    mock_wait.side_effect = Exception("Connection lost")
 
-                with patch(
-                    "mmrelay.meshtastic_utils.asyncio.sleep",
-                    side_effect=sleep_side_effect,
-                ):
                     with patch(
-                        "mmrelay.meshtastic_utils.asyncio.wait_for"
-                    ) as mock_wait:
-                        mock_wait.side_effect = Exception("Connection lost")
+                        "mmrelay.meshtastic_utils.on_lost_meshtastic_connection"
+                    ) as mock_lost:
+                        await mu.check_connection()
 
-                        with patch(
-                            "mmrelay.meshtastic_utils.on_lost_meshtastic_connection"
-                        ) as mock_lost:
-                            await mu.check_connection()
+                        mock_lost.assert_called_once()
 
-                            mock_lost.assert_called_once()
-
-        asyncio.run(run_test())
-
-    def test_check_connection_probe_fails_already_reconnecting(self):
+    @pytest.mark.asyncio
+    async def test_check_connection_probe_fails_already_reconnecting(self):
         """Test check_connection when probe fails but already reconnecting."""
         mu.config = {
             "meshtastic": {
@@ -1599,46 +1587,37 @@ class TestMessageHandlerEdgeCases:
         mu.reconnecting = True
         mu.shutting_down = False
 
-        async def run_test():
-            sleep_count = [0]
+        sleep_count = [0]
 
-            async def sleep_side_effect(delay):
-                sleep_count[0] += 1
-                if sleep_count[0] >= 2:
-                    mu.shutting_down = True
+        async def sleep_side_effect(delay):
+            sleep_count[0] += 1
+            if sleep_count[0] >= 2:
+                mu.shutting_down = True
 
-            mock_future = Mock(spec=Future)
-            mock_future.done.return_value = True
+        mock_future = Mock(spec=Future)
+        mock_future.done.return_value = True
+
+        with patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit:
+            mock_submit.return_value = mock_future
 
             with patch(
-                "mmrelay.meshtastic_utils._submit_metadata_probe"
-            ) as mock_submit:
-                mock_submit.return_value = mock_future
+                "mmrelay.meshtastic_utils.asyncio.sleep",
+                side_effect=sleep_side_effect,
+            ):
+                with patch("mmrelay.meshtastic_utils.asyncio.wait_for") as mock_wait:
+                    mock_wait.side_effect = Exception("Connection lost")
 
-                with patch(
-                    "mmrelay.meshtastic_utils.asyncio.sleep",
-                    side_effect=sleep_side_effect,
-                ):
                     with patch(
-                        "mmrelay.meshtastic_utils.asyncio.wait_for"
-                    ) as mock_wait:
-                        mock_wait.side_effect = Exception("Connection lost")
+                        "mmrelay.meshtastic_utils.on_lost_meshtastic_connection"
+                    ) as mock_lost:
+                        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+                            await mu.check_connection()
 
-                        with patch(
-                            "mmrelay.meshtastic_utils.on_lost_meshtastic_connection"
-                        ) as mock_lost:
-                            with patch(
-                                "mmrelay.meshtastic_utils.logger"
-                            ) as mock_logger:
-                                await mu.check_connection()
-
-                                mock_lost.assert_not_called()
-                                assert any(
-                                    "debug" in str(call)
-                                    for call in mock_logger.method_calls
-                                )
-
-        asyncio.run(run_test())
+                            mock_lost.assert_not_called()
+                            assert any(
+                                "debug" in str(call)
+                                for call in mock_logger.method_calls
+                            )
 
 
 class TestOnMeshtasticMessageOldPacketFiltering:

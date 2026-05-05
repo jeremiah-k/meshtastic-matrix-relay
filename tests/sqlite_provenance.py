@@ -25,6 +25,7 @@ class _ConnectionProvenance:
         - _patched: boolean flag indicating whether sqlite3.connect has been replaced.
         """
         self._registry: dict[int, dict[str, Any]] = {}
+        self._registry_lock = threading.Lock()
         self._current_nodeid: str = ""
         self._real_connect = sqlite3.connect
         self._patched: bool = False
@@ -50,9 +51,8 @@ class _ConnectionProvenance:
 
             class _TrackedConnection(base):
                 def close(self) -> None:
-                    try:
-                        super().close()
-                    finally:
+                    super().close()
+                    with tracker._registry_lock:
                         registry.pop(id(self), None)
 
             return _TrackedConnection
@@ -83,14 +83,15 @@ class _ConnectionProvenance:
             conn = real_connect(*args, **kwargs)
             db_path = args[0] if args else kwargs.get("database", "?")
             conn_id = id(conn)
-            registry[conn_id] = {
-                "conn_id": conn_id,
-                "db_path": str(db_path),
-                "test_nodeid": tracker._current_nodeid,
-                "thread_name": threading.current_thread().name,
-                "thread_id": threading.current_thread().ident,
-                "creation_stack": "".join(traceback.format_stack()),
-            }
+            with tracker._registry_lock:
+                registry[conn_id] = {
+                    "conn_id": conn_id,
+                    "db_path": str(db_path),
+                    "test_nodeid": tracker._current_nodeid,
+                    "thread_name": threading.current_thread().name,
+                    "thread_id": threading.current_thread().ident,
+                    "creation_stack": "".join(traceback.format_stack()),
+                }
             return conn
 
         sqlite3.connect = _tracked_connect
@@ -103,7 +104,8 @@ class _ConnectionProvenance:
         Parameters:
             conn (sqlite3.Connection): The connection object to remove from tracking.
         """
-        self._registry.pop(id(conn), None)
+        with self._registry_lock:
+            self._registry.pop(id(conn), None)
 
     def report_open(self) -> list[dict[str, Any]]:
         """
@@ -112,7 +114,8 @@ class _ConnectionProvenance:
         Returns:
             list[dict[str, Any]]: A list of metadata dictionaries for each connection currently recorded in the provenance registry. Each dictionary contains the provenance information captured when the connection was created.
         """
-        return list(self._registry.values())
+        with self._registry_lock:
+            return list(self._registry.values())
 
     def clear(self) -> None:
         """
@@ -121,7 +124,8 @@ class _ConnectionProvenance:
         This clears the internal registry of tracked connection metadata so subsequent
         calls will behave as if no connections have been recorded.
         """
-        self._registry.clear()
+        with self._registry_lock:
+            self._registry.clear()
 
     def uninstall(self) -> None:
         """
@@ -133,7 +137,8 @@ class _ConnectionProvenance:
             return
         sqlite3.connect = self._real_connect
         self._patched = False
-        self._registry.clear()
+        with self._registry_lock:
+            self._registry.clear()
 
 
 _conn_provenance = _ConnectionProvenance()

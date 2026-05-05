@@ -116,6 +116,8 @@ def test_sync_timeout_logs_warning_and_retries():
 
     mock_logger = asyncio.run(run_test())
 
+    assert call_count[0] == 2  # first attempt + one retry
+
     assert any(
         "Matrix sync timed out" in str(call)
         for call in mock_logger.warning.call_args_list
@@ -200,6 +202,8 @@ def test_sync_client_error_logs_warning_and_retries():
         return mock_logger
 
     mock_logger = asyncio.run(run_test())
+
+    assert call_count[0] == 2  # first attempt + one retry
 
     assert any(
         "Matrix sync failed, retrying" in str(call)

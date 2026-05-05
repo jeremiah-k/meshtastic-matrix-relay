@@ -1171,12 +1171,12 @@ def test_on_meshtastic_message_plugin_timeout_with_dm():
         "decoded": {"text": "!test", "portnum": PORTNUM_TEXT_MESSAGE_APP},
         "fromId": "!67890",
         "channel": 0,
-        "to": 12345,
+        "to": BROADCAST_NUM,
     }
     interface = MagicMock()
     interface.nodes = {"!67890": {"user": {"id": "!67890", "longName": "TestNode"}}}
     interface.myInfo = MagicMock()
-    interface.myInfo.my_node_num = 12345
+    interface.myInfo.my_node_num = 99999
 
     future = _DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
 

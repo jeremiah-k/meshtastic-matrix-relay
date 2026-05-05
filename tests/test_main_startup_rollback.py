@@ -291,32 +291,39 @@ def test_startup_rollback_cleans_reconnect_state_and_callbacks(
 
     import mmrelay.meshtastic_utils as mu
 
+    original_reconnect_task = mu.reconnect_task
+    original_reconnect_future = mu.reconnect_task_future
     reconnect_task = MagicMock()
     reconnect_future = MagicMock()
-    mu.reconnect_task = reconnect_task
-    mu.reconnect_task_future = reconnect_future
 
-    config = {"matrix_rooms": [{"id": "!room:matrix.org"}]}
+    try:
+        mu.reconnect_task = reconnect_task
+        mu.reconnect_task_future = reconnect_future
 
-    with (
-        patch(
-            "mmrelay.main.asyncio.get_running_loop",
-            side_effect=_make_patched_get_running_loop(),
-        ),
-        patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
-        patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-        patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
-        patch(
-            "mmrelay.main.meshtastic_utils.unsubscribe_meshtastic_callbacks"
-        ) as mock_unsubscribe,
-        patch("mmrelay.main.logger"),
-    ):
-        with pytest.raises(RuntimeError):
-            asyncio.run(main(config))
+        config = {"matrix_rooms": [{"id": "!room:matrix.org"}]}
 
-    reconnect_task.cancel.assert_called_once()
-    reconnect_future.cancel.assert_called_once()
-    mock_unsubscribe.assert_called_once()
+        with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_make_patched_get_running_loop(),
+            ),
+            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+            patch(
+                "mmrelay.main.meshtastic_utils.unsubscribe_meshtastic_callbacks"
+            ) as mock_unsubscribe,
+            patch("mmrelay.main.logger"),
+        ):
+            with pytest.raises(RuntimeError):
+                asyncio.run(main(config))
+
+        reconnect_task.cancel.assert_called_once()
+        reconnect_future.cancel.assert_called_once()
+        mock_unsubscribe.assert_called_once()
+    finally:
+        mu.reconnect_task = original_reconnect_task
+        mu.reconnect_task_future = original_reconnect_future
 
 
 @patch("mmrelay.main.initialize_database")

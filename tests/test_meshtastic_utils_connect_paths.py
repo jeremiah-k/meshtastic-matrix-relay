@@ -18,9 +18,10 @@ import threading
 import unittest
 from collections.abc import Generator
 from typing import Any, NoReturn
-from unittest.mock import ANY, Mock, patch
+from unittest.mock import ANY, MagicMock, Mock, patch
 
 import pytest
+import serial
 
 from mmrelay.constants.network import (
     BLE_CONNECT_TIMEOUT_SECS,
@@ -1529,15 +1530,6 @@ class TestUncoveredMeshtasticUtilsPaths:
 class TestSerialPortExistsEdgeCases(unittest.TestCase):
     """Edge case tests for serial_port_exists."""
 
-    def test_serial_port_exists_permission_error(self):
-        """serial_port_exists returns False on permission-denied serial port."""
-        with patch(
-            "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
-            return_value=[],
-        ):
-            result = serial_port_exists("/dev/ttyUSB0")
-            self.assertFalse(result)
-
     def test_serial_port_exists_device_not_found(self):
         """serial_port_exists returns False when device is not found."""
         with patch(
@@ -1545,13 +1537,28 @@ class TestSerialPortExistsEdgeCases(unittest.TestCase):
             return_value=[],
         ):
             result = serial_port_exists("/dev/nonexistent")
-            self.assertFalse(result)
+            assert result is False
+
+    def test_serial_port_exists_permission_error(self):
+        """serial_port_exists returns False on permission-denied serial port."""
+        with patch(
+            "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
+            side_effect=PermissionError("Permission denied"),
+        ):
+            result = serial_port_exists("/dev/ttyUSB0")
+            assert result is False
 
     def test_serial_port_exists_device_busy(self):
         """serial_port_exists returns False when serial device is busy."""
-        with patch(
-            "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
-            return_value=[],
+        with (
+            patch(
+                "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
+                return_value=[MagicMock(device="/dev/ttyUSB0")],
+            ),
+            patch(
+                "mmrelay.meshtastic_utils.serial.Serial",
+                side_effect=serial.SerialException("Device busy"),
+            ),
         ):
             result = serial_port_exists("/dev/ttyUSB0")
-            self.assertFalse(result)
+            assert result is False

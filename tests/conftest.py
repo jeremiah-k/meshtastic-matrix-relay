@@ -33,7 +33,6 @@ import pytest
 from pubsub import pub
 
 # Mock all external dependencies before any application imports can occur.
-# tests.mocks patches sys.modules and provides mock classes; it runs at import time.
 import tests.mocks  # noqa: F401
 from tests.ble_cleanup import (  # noqa: E402
     _drain_future_result_safely,

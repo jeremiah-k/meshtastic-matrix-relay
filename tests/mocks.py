@@ -53,7 +53,21 @@ sys.modules["serial.tools"] = MagicMock()
 sys.modules["serial.tools.list_ports"] = MagicMock()
 
 sys.modules["bleak"] = MagicMock()
-sys.modules["pubsub"] = MagicMock()
+pubsub_mock = MagicMock()
+pubsub_mock.__path__ = ["/fake/pubsub"]  # type: ignore[attr-defined]
+sys.modules["pubsub"] = pubsub_mock
+sys.modules["pubsub.core"] = MagicMock()
+sys.modules["pubsub.core"].__path__ = ["/fake/pubsub/core"]  # type: ignore[attr-defined]
+sys.modules["pubsub.core.topicexc"] = MagicMock()
+
+
+class TopicNameError(ValueError):
+    """Mock TopicNameError for testing pubsub subscriptions."""
+
+    pass
+
+
+sys.modules["pubsub.core.topicexc"].TopicNameError = TopicNameError  # type: ignore[attr-defined]
 sys.modules["matplotlib"] = MagicMock()
 sys.modules["matplotlib.pyplot"] = MagicMock()
 sys.modules["requests"] = MagicMock()

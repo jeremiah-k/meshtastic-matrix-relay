@@ -69,7 +69,7 @@ TEST_PACKET_RX_TIME = 1234567890
 import mmrelay.meshtastic_utils as mu
 
 
-def _base_config():
+def _base_config() -> dict[str, Any]:
     """
     Return a minimal base configuration used by tests.
 
@@ -87,7 +87,7 @@ def _base_config():
     }
 
 
-def _base_packet():
+def _base_packet() -> dict[str, Any]:
     """
     Create a representative Meshtastic packet dictionary used by tests.
 
@@ -108,7 +108,9 @@ def _base_packet():
     }
 
 
-def _make_interface(node_id=999, nodes=None):
+def _make_interface(
+    node_id: int = 999, nodes: dict[Any, Any] | None = None
+) -> MagicMock:
     """
     Create a MagicMock that simulates a Meshtastic interface for tests.
 
@@ -125,7 +127,7 @@ def _make_interface(node_id=999, nodes=None):
     return interface
 
 
-def _set_globals(config):
+def _set_globals(config: dict[str, Any]) -> None:
     """
     Assign the provided configuration to meshtastic_utils module globals.
 
@@ -1489,8 +1491,14 @@ class TestOnMeshtasticMessageDatabaseError(unittest.TestCase):
 
         mock_interface = MagicMock()
 
-        with patch(
-            "mmrelay.db_utils.get_longname", side_effect=Exception("Database error")
+        config = _base_config()
+        with (
+            patch("mmrelay.meshtastic_utils.config", config),
+            patch("mmrelay.meshtastic_utils.matrix_rooms", config["matrix_rooms"]),
+            patch(
+                "mmrelay.meshtastic_utils.get_longname",
+                side_effect=TypeError("Database error"),
+            ),
+            patch("mmrelay.meshtastic_utils.logger"),
         ):
-            with patch("mmrelay.meshtastic_utils.logger"):
-                on_meshtastic_message(packet, mock_interface)
+            on_meshtastic_message(packet, mock_interface)

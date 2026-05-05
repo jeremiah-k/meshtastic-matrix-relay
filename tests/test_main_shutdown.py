@@ -119,7 +119,7 @@ def test_main_matrix_connection_failure(
     mock_connect_meshtastic.return_value = mock_meshtastic_client
 
     mock_connect_matrix.side_effect = _make_async_raise(
-        Exception("Matrix connection failed")
+        RuntimeError("Matrix connection failed")
     )
     # Should raise the Matrix connection exception
     with (
@@ -132,9 +132,8 @@ def test_main_matrix_connection_failure(
             side_effect=inline_to_thread,
         ),
     ):
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(RuntimeError, match="Matrix connection failed"):
             asyncio.run(main(mock_config))
-    assert "Matrix connection failed" in str(exc_info.value)
 
 
 @patch("mmrelay.main.initialize_database")
