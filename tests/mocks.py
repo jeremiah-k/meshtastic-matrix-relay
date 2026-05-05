@@ -81,7 +81,9 @@ class HTTPError(RequestException):
     pass
 
 
-class ConnectionError(RequestException):
+class ConnectionError(
+    RequestException
+):  # noqa: A001 - intentionally shadows built-in to mirror requests library
     pass
 
 

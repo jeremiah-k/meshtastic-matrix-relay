@@ -60,7 +60,8 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
     def test_start_global_scheduler_starts_thread(self, mock_schedule, mock_threading):
         """Test that start_global_scheduler creates and starts a daemon thread."""
 
-        # Reset global state before test
+        original_thread = pl._global_scheduler_thread
+        original_event = pl._global_scheduler_stop_event
         pl._global_scheduler_thread = None
         pl._global_scheduler_stop_event = None
 
@@ -69,12 +70,16 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
         mock_thread = MagicMock()
         mock_threading.Thread.return_value = mock_thread
 
-        start_global_scheduler()
+        try:
+            start_global_scheduler()
 
-        # Event should be called since schedule is available (mocked)
-        mock_threading.Event.assert_called_once()
-        mock_threading.Thread.assert_called_once()
-        mock_thread.start.assert_called_once()
+            # Event should be called since schedule is available (mocked)
+            mock_threading.Event.assert_called_once()
+            mock_threading.Thread.assert_called_once()
+            mock_thread.start.assert_called_once()
+        finally:
+            pl._global_scheduler_thread = original_thread
+            pl._global_scheduler_stop_event = original_event
 
     def test_start_global_scheduler_runs_pending_once(self):
         """scheduler_loop should call schedule.run_pending when available."""
@@ -109,6 +114,8 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
                 """
 
         original_schedule = pl.schedule
+        original_thread = pl._global_scheduler_thread
+        original_event = pl._global_scheduler_stop_event
         pl.schedule = FakeSchedule()
         pl._global_scheduler_thread = None
         pl._global_scheduler_stop_event = None
@@ -119,6 +126,8 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
             stop_global_scheduler()
         finally:
             pl.schedule = original_schedule
+            pl._global_scheduler_thread = original_thread
+            pl._global_scheduler_stop_event = original_event
 
         self.assertTrue(run_event.is_set())
 

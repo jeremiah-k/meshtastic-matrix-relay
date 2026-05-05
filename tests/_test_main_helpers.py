@@ -11,6 +11,8 @@ import contextlib
 import functools
 import inspect
 import sys
+import time
+from concurrent.futures import Future
 from typing import Any, Callable
 
 import pytest
@@ -182,7 +184,6 @@ def _reset_all_mmrelay_globals() -> None:
         module.bot_user_id = None  # type: ignore[attr-defined]
         module.bot_user_name = None  # type: ignore[attr-defined]
         module.matrix_client = None  # type: ignore[attr-defined]
-        import time
 
         module.bot_start_time = int(time.time() * 1000)  # type: ignore[attr-defined]
 
@@ -371,7 +372,7 @@ class _ControlledExecutor:
         self.close_future = None
         self.calls: list[Any] = []
 
-    def submit(self, func, *args, **kwargs):
+    def submit(self, func: Any, *args: Any, **kwargs: Any) -> Future:
         """
         Submit a callable to the controlled executor, execute it synchronously, and return a Future representing its outcome.
 

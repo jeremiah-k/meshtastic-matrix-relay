@@ -255,9 +255,9 @@ def serial_port_exists(port_name: str) -> bool:
     if port_name not in ports:
         return False
     try:
-        with facade.serial.Serial(port_name) as s:
-            s.close()
-    except facade.serial.SerialException:
+        with facade.serial.Serial(port_name):
+            pass
+    except (PermissionError, facade.serial.SerialException):
         return False
     return True
 

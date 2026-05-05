@@ -499,13 +499,12 @@ class TestPluginLoaderClone(BaseGitTest):
             "repo",
         )
         # Verify fallback failure was logged
-        self.assertTrue(mock_logger.warning.called)
         warning_calls = [
             warn_call[0][0]
             for warn_call in mock_logger.warning.call_args_list
             if "Fallback fetch also failed" in warn_call[0][0]
         ]
-        self.assertTrue(len(warning_calls) > 0)
+        self.assertGreater(len(warning_calls), 0, "Expected fallback failure warning")
 
     @patch("os.makedirs")
     @patch("mmrelay.plugin_loader._run_git")

@@ -39,6 +39,13 @@ from tests.constants import TEST_BLE_MAC
 TEST_PACKET_RX_TIME = 1234567890
 
 
+class _SuppressedBLEInterface:
+    """Test double that simulates duplicate connect suppression."""
+
+    def __init__(self, **_kwargs):
+        raise RuntimeError("Connection suppressed: recently connected elsewhere")
+
+
 def _cancel_startup_drain_timer() -> None:
     """Best-effort cancellation and join of the startup-drain expiry timer."""
     import mmrelay.meshtastic_utils as _mu
@@ -1018,55 +1025,44 @@ class TestBLEDuplicateConnectSuppressionDetector(unittest.TestCase):
         assert _is_ble_duplicate_connect_suppressed_error(exc) is True
 
 
-class TestBLEGateResetCallable(unittest.TestCase):
+class TestBLEGateResetCallable:
     """Test cases for BLE gate reset callable behavior."""
 
-    def test_reset_returns_false_when_no_callable(self):
+    def test_reset_returns_false_when_no_callable(self, monkeypatch):
         """Should return False when _ble_gate_reset_callable is None."""
-        original_callable = mu._ble_gate_reset_callable
+        monkeypatch.setattr(mu, "_ble_gate_reset_callable", None, raising=False)
+        result = _reset_ble_connection_gate_state("AA:BB:CC:DD:EE:FF", reason="test")
+        assert result is False
 
-        try:
-            mu._ble_gate_reset_callable = None
-            result = _reset_ble_connection_gate_state(
-                "AA:BB:CC:DD:EE:FF", reason="test"
-            )
-            assert result is False
-        finally:
-            mu._ble_gate_reset_callable = original_callable
-
-    def test_reset_handles_callable_exception(self):
+    def test_reset_handles_callable_exception(self, monkeypatch):
         """Should handle exceptions from _ble_gate_reset_callable gracefully."""
-        original_callable = mu._ble_gate_reset_callable
 
         def _raising_callable():
             raise RuntimeError("Gate reset failed")
 
-        try:
-            mu._ble_gate_reset_callable = _raising_callable
-            result = _reset_ble_connection_gate_state(
-                "AA:BB:CC:DD:EE:FF", reason="test exception handling"
-            )
-            assert result is False
-        finally:
-            mu._ble_gate_reset_callable = original_callable
+        monkeypatch.setattr(
+            mu, "_ble_gate_reset_callable", _raising_callable, raising=False
+        )
+        result = _reset_ble_connection_gate_state(
+            "AA:BB:CC:DD:EE:FF", reason="test exception handling"
+        )
+        assert result is False
 
-    def test_reset_returns_true_on_success(self):
+    def test_reset_returns_true_on_success(self, monkeypatch):
         """Should return True when callable succeeds."""
-        original_callable = mu._ble_gate_reset_callable
         call_count = [0]
 
         def _successful_callable():
             call_count[0] += 1
 
-        try:
-            mu._ble_gate_reset_callable = _successful_callable
-            result = _reset_ble_connection_gate_state(
-                "AA:BB:CC:DD:EE:FF", reason="test success"
-            )
-            assert result is True
-            assert call_count[0] == 1
-        finally:
-            mu._ble_gate_reset_callable = original_callable
+        monkeypatch.setattr(
+            mu, "_ble_gate_reset_callable", _successful_callable, raising=False
+        )
+        result = _reset_ble_connection_gate_state(
+            "AA:BB:CC:DD:EE:FF", reason="test success"
+        )
+        assert result is True
+        assert call_count[0] == 1
 
 
 class TestBLEGateImportDetection(unittest.TestCase):
@@ -1113,12 +1109,6 @@ class TestDuplicateSuppressionRetryLogic(unittest.TestCase):
             }
         }
 
-        class _SuppressedBLEInterface:
-            def __init__(self, **_kwargs):
-                raise RuntimeError(
-                    "Connection suppressed: recently connected elsewhere"
-                )
-
         with patch(
             "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
             new=_SuppressedBLEInterface,
@@ -1147,12 +1137,6 @@ class TestDuplicateSuppressionRetryLogic(unittest.TestCase):
                 "retries": 1,
             }
         }
-
-        class _SuppressedBLEInterface:
-            def __init__(self, **_kwargs):
-                raise RuntimeError(
-                    "Connection suppressed: recently connected elsewhere"
-                )
 
         original_callable = mu._ble_gate_reset_callable
         try:
@@ -1195,12 +1179,6 @@ class TestDuplicateSuppressionRetryLogic(unittest.TestCase):
                 "retries": 1,
             }
         }
-
-        class _SuppressedBLEInterface:
-            def __init__(self, **_kwargs):
-                raise RuntimeError(
-                    "Connection suppressed: recently connected elsewhere"
-                )
 
         original_callable = mu._ble_gate_reset_callable
 

@@ -1833,8 +1833,8 @@ class TestFirmwareVersionExtraction:
         client = Mock()
         client.localNode = Mock()
         client.localNode.getMetadata = Mock()
-        client.localNode.metadata = None
-        client.metadata = None
+        client.localNode.iface = Mock()
+        client.localNode.iface.metadata = None
 
         with patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit:
             mock_submit.side_effect = RuntimeError("Executor shutting down")
@@ -1849,8 +1849,8 @@ class TestFirmwareVersionExtraction:
         client = Mock()
         client.localNode = Mock()
         client.localNode.getMetadata = Mock()
-        client.localNode.metadata = None
-        client.metadata = None
+        client.localNode.iface = Mock()
+        client.localNode.iface.metadata = None
 
         with patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit:
             mock_submit.side_effect = RuntimeError("Executor shutting down")
@@ -1863,8 +1863,8 @@ class TestFirmwareVersionExtraction:
         client = Mock()
         client.localNode = Mock()
         client.localNode.getMetadata = Mock()
-        client.localNode.metadata = None
-        client.metadata = None
+        client.localNode.iface = Mock()
+        client.localNode.iface.metadata = None
 
         with patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit:
             mock_submit.return_value = None

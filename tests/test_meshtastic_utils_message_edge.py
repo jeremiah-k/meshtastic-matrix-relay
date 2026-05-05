@@ -18,7 +18,6 @@ import time
 import unittest
 from collections.abc import Callable
 from concurrent.futures import Future
-from concurrent.futures import Future as FuturesFuture
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from typing import Any
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
@@ -181,11 +180,6 @@ def reset_meshtastic_relay_state(monkeypatch):
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._meshtastic_last_direct_node_id",
         None,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        "mmrelay.meshtastic_utils._startup_packet_drain_applied",
-        False,
         raising=False,
     )
 
@@ -1695,7 +1689,7 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
             """Test-specific plugin failure."""
 
         def _submit_coro_mock(coro, loop=None):
-            f = FuturesFuture()
+            f = Future()
             try:
                 result = asyncio.run(coro)
                 f.set_result(result)

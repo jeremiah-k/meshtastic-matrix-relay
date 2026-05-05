@@ -189,6 +189,11 @@ def reset_meshtastic_relay_state(monkeypatch):
         0,
         raising=False,
     )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.event_loop",
+        None,
+        raising=False,
+    )
 
     yield
 
@@ -588,7 +593,8 @@ class TestConnectionLossHandling(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
-def _sleep_and_mark_shutdown(_seconds: int) -> None:
+def _mark_shutdown(*_args, **_kwargs) -> None:
+    """Set the shutting_down flag. Suitable for side_effect or direct call."""
     mu.shutting_down = True
 
 
@@ -603,15 +609,6 @@ class _FailedExecutorLoop:
 
     def run_in_executor(self, *_args, **_kwargs):
         return self._future
-
-
-def _sleep_and_shutdown(_seconds):
-    mu.shutting_down = True
-    return None
-
-
-def _mark_shutdown(*_args, **_kwargs):
-    mu.shutting_down = True
 
 
 # ---------------------------------------------------------------------------
@@ -757,7 +754,7 @@ class TestConnectionLostHandlerClearingStaleBleFuture:
             ),
             patch("mmrelay.meshtastic_utils.logger"),
         ):
-            mu.on_lost_meshtastic_connection(detection_source="test source")
+            mu.on_lost_meshtastic_connection(None, detection_source="test source")
 
             assert mu._ble_future is None
             assert mu._ble_future_address is None
@@ -788,7 +785,7 @@ class TestConnectionLostHandlerClearingStaleBleFuture:
             ),
             patch("mmrelay.meshtastic_utils.logger"),
         ):
-            mu.on_lost_meshtastic_connection(detection_source="test source")
+            mu.on_lost_meshtastic_connection(None, detection_source="test source")
 
             assert "11:22:33:44:55:66" not in mu._ble_timeout_counts
             assert mu._ble_timeout_counts["OTHER:ADDRESS"] == 3
@@ -806,7 +803,7 @@ class TestReconnectShutdownAbort:
             patch(
                 "mmrelay.meshtastic_utils.asyncio.sleep",
                 new_callable=AsyncMock,
-                side_effect=_sleep_and_mark_shutdown,
+                side_effect=_mark_shutdown,
             ),
             patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
@@ -909,7 +906,7 @@ async def test_reconnect_rich_progress_breaks_on_shutdown():
         patch(
             "mmrelay.meshtastic_utils.asyncio.sleep",
             new_callable=AsyncMock,
-            side_effect=_sleep_and_shutdown,
+            side_effect=_mark_shutdown,
         ),
         patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,

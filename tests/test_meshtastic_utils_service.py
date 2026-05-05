@@ -22,6 +22,9 @@ import pytest
 
 import mmrelay.meshtastic_utils as mu
 from mmrelay.meshtastic_utils import (
+    _coerce_bool,
+    _coerce_int_id,
+    _coerce_positive_float,
     is_running_as_service,
     serial_port_exists,
 )
@@ -351,38 +354,27 @@ class TestCoercionFunctions:
 
     def test_coerce_int_id_with_valid_int(self):
         """Test _coerce_int_id with valid integer."""
-        from mmrelay.meshtastic_utils import _coerce_int_id
-
         assert _coerce_int_id(123) == 123
 
     def test_coerce_int_id_with_string(self):
         """Test _coerce_int_id with string number."""
-        from mmrelay.meshtastic_utils import _coerce_int_id
-
         assert _coerce_int_id("456") == 456
 
     def test_coerce_int_id_with_invalid_string(self):
         """Test _coerce_int_id with non-numeric string."""
-        from mmrelay.meshtastic_utils import _coerce_int_id
-
         assert _coerce_int_id("not-a-number") is None
 
     def test_coerce_int_id_with_none(self):
         """Test _coerce_int_id with None."""
-        from mmrelay.meshtastic_utils import _coerce_int_id
-
         assert _coerce_int_id(None) is None
 
     def test_coerce_positive_float_with_valid(self):
         """Test _coerce_positive_float with valid positive float."""
-        from mmrelay.meshtastic_utils import _coerce_positive_float
 
         assert _coerce_positive_float(5.5, 1.0, "test") == 5.5
 
     def test_coerce_positive_float_with_zero(self):
         """Test _coerce_positive_float with zero (invalid)."""
-        from mmrelay.meshtastic_utils import _coerce_positive_float
-
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             result = _coerce_positive_float(0, 2.0, "test_setting")
             assert result == 2.0
@@ -390,8 +382,6 @@ class TestCoercionFunctions:
 
     def test_coerce_positive_float_with_negative(self):
         """Test _coerce_positive_float with negative (invalid)."""
-        from mmrelay.meshtastic_utils import _coerce_positive_float
-
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             result = _coerce_positive_float(-5.0, 3.0, "test_setting")
             assert result == 3.0
@@ -399,8 +389,6 @@ class TestCoercionFunctions:
 
     def test_coerce_positive_float_with_invalid_type(self):
         """Test _coerce_positive_float with invalid type."""
-        from mmrelay.meshtastic_utils import _coerce_positive_float
-
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             result = _coerce_positive_float("not-a-number", 4.0, "test_setting")
             assert result == 4.0
@@ -412,64 +400,46 @@ class TestCoerceBoolEdgeCases:
 
     def test_coerce_bool_with_true_bool(self):
         """Test _coerce_bool with True boolean."""
-        from mmrelay.meshtastic_utils import _coerce_bool
-
         result = _coerce_bool(True, False, "test_setting")
         assert result is True
 
     def test_coerce_bool_with_false_bool(self):
         """Test _coerce_bool with False boolean."""
-        from mmrelay.meshtastic_utils import _coerce_bool
-
         result = _coerce_bool(False, True, "test_setting")
         assert result is False
 
     def test_coerce_bool_with_positive_int(self):
         """Test _coerce_bool with positive integer."""
-        from mmrelay.meshtastic_utils import _coerce_bool
-
         result = _coerce_bool(1, False, "test_setting")
         assert result is True
 
     def test_coerce_bool_with_zero_int(self):
         """Test _coerce_bool with zero integer."""
-        from mmrelay.meshtastic_utils import _coerce_bool
-
         result = _coerce_bool(0, True, "test_setting")
         assert result is False
 
     def test_coerce_bool_with_positive_float(self):
         """Test _coerce_bool with positive float."""
-        from mmrelay.meshtastic_utils import _coerce_bool
-
         result = _coerce_bool(1.5, False, "test_setting")
         assert result is True
 
     def test_coerce_bool_with_zero_float(self):
         """Test _coerce_bool with zero float."""
-        from mmrelay.meshtastic_utils import _coerce_bool
-
         result = _coerce_bool(0.0, True, "test_setting")
         assert result is False
 
     def test_coerce_bool_with_whitespace_string(self):
         """Test _coerce_bool with whitespace-only string defaults to False."""
-        from mmrelay.meshtastic_utils import _coerce_bool
-
         result = _coerce_bool("   ", True, "test_setting")
         assert result is False
 
     def test_coerce_bool_with_empty_string(self):
         """Test _coerce_bool with empty string returns False."""
-        from mmrelay.meshtastic_utils import _coerce_bool
-
         result = _coerce_bool("", True, "test_setting")
         assert result is False
 
     def test_coerce_bool_with_invalid_type(self):
         """Test _coerce_bool with invalid type logs warning and returns default."""
-        from mmrelay.meshtastic_utils import _coerce_bool
-
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             result = _coerce_bool(["list"], True, "test_setting")
             assert result is True
@@ -645,10 +615,10 @@ class TestIsRunningAsServiceEdgeCases(unittest.TestCase):
     """Edge case tests for is_running_as_service."""
 
     def test_is_running_as_service_detection_failure(self):
-        """is_running_as_service returns bool when process detection fails."""
+        """is_running_as_service returns False when process detection fails."""
         with patch("os.getppid", side_effect=OSError("Cannot get parent PID")):
             with patch(
                 "psutil.Process", side_effect=Exception("Process info unavailable")
             ):
                 result = is_running_as_service()
-                self.assertIsInstance(result, bool)
+                self.assertFalse(result)

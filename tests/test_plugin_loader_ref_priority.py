@@ -66,9 +66,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Test that commit ref takes priority over tag and branch in plugin config."""
-        # Reset global state
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
 
         config = {
             "community-plugins": {
@@ -116,9 +113,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Test that tag ref takes priority over branch in plugin config."""
-        # Reset global state
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
 
         config = {
             "community-plugins": {
@@ -167,9 +161,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Test that warning is logged when commit is specified with tag/branch."""
-        # Reset global state
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
 
         config = {
             "community-plugins": {
@@ -215,9 +206,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Test that plugin defaults to main branch when no ref is specified."""
-        # Reset global state
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
 
         config = {
             "community-plugins": {
@@ -264,8 +252,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Missing refs should warn and still default to the main branch."""
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
 
         config = {
             "community-plugins": {
@@ -310,8 +296,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Branch refs should always warn for explicit branch pins."""
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
 
         config = {
             "community-plugins": {
@@ -375,8 +359,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Tag ref warning should be emitted once per load cycle."""
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
 
         config = {
             "community-plugins": {
@@ -431,8 +413,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Commit refs should not emit branch/tag safety warnings."""
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
 
         config = {
             "community-plugins": {
@@ -486,8 +466,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Community dependency install should be skipped unless explicitly enabled."""
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
 
         config = {
             "community-plugins": {
@@ -541,8 +519,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Opted-in commit-pinned community plugin should install requirements."""
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
         self._write_community_requirements()
         config = {
             "community-plugins": {
@@ -610,8 +586,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Explicit branch refs should warn but still allow dependency installation."""
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
         self._write_community_requirements()
         config = {
             "community-plugins": {
@@ -683,8 +657,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Explicit tag refs should warn but still allow dependency installation."""
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
         self._write_community_requirements()
         config = {
             "community-plugins": {
@@ -749,8 +721,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Missing refs with install_requirements should warn and skip installation."""
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
         config = {
             "community-plugins": {
                 "default-branch-plugin": {
@@ -797,8 +767,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """No requirements.txt should not compute install state or churn cache."""
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
         repo_path = self._community_repo_path()
         config = {
             "community-plugins": {
@@ -855,8 +823,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Dependency install should be skipped when commit is already installed."""
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
         repo_path = self._write_community_requirements()
         deps_dir = os.path.join(self.test_dir, "plugins", "deps")
         os.makedirs(deps_dir, exist_ok=True)
@@ -920,8 +886,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Matching state should not skip install when the target is invalid."""
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
         repo_path = self._write_community_requirements()
         deps_dir = os.path.join(self.test_dir, "plugins", "deps")
         os.makedirs(deps_dir, exist_ok=True)
@@ -988,8 +952,6 @@ class TestRefPriority(BaseGitTest):
 
     def test_load_plugins_matching_commit_stale_hash_reinstalls_requirements(self):
         """Matching commit should reinstall when saved requirements hash is stale."""
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
         repo_path = self._write_community_requirements()
         deps_dir = os.path.join(self.test_dir, "plugins", "deps")
         os.makedirs(deps_dir, exist_ok=True)
@@ -1059,8 +1021,6 @@ class TestRefPriority(BaseGitTest):
 
     def test_load_plugins_matching_commit_stale_target_reinstalls_requirements(self):
         """Matching commit should reinstall when saved target identity is stale."""
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
         repo_path = self._write_community_requirements()
         deps_dir = os.path.join(self.test_dir, "plugins", "deps")
         os.makedirs(deps_dir, exist_ok=True)
@@ -1144,8 +1104,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Failed dependency installs should not refresh plugin install state."""
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
         repo_path = self._write_community_requirements()
         deps_dir = os.path.join(self.test_dir, "plugins", "deps")
         os.makedirs(deps_dir, exist_ok=True)
@@ -1212,8 +1170,6 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo,
     ):
         """Dependency install should run when commit changes."""
-        pl.plugins_loaded = False
-        pl.sorted_active_plugins = []
         self._write_community_requirements()
         config = {
             "community-plugins": {

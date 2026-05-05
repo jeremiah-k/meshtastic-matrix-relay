@@ -303,7 +303,8 @@ class TestMetadataFutureCleanup:
         assert mu._metadata_future_started_at is None
         old_executor.shutdown.assert_called_once()
 
-    def test_schedule_metadata_future_cleanup_timer(self):
+        # Clean up the newly created executor
+        mu._metadata_executor.shutdown(wait=False)
         """Test metadata future cleanup timer is scheduled."""
         mock_future = Mock(spec=Future)
         mock_future.done.return_value = False
@@ -581,8 +582,6 @@ class TestProbeAckHandling:
         client.localNode.nodeNum = 12345
         client.sendData = Mock(return_value=Mock(id=999))
         client._acknowledgment = None
-        if hasattr(client, "waitForAckNak"):
-            delattr(client, "waitForAckNak")
 
         with pytest.raises(RuntimeError, match="cannot wait for metadata probe ACK"):
             mu._probe_device_connection(client, 1.0)
@@ -737,11 +736,6 @@ class TestMetadataFutureCleanupPaths:
 
         with patch("mmrelay.meshtastic_utils._reset_metadata_executor_for_stale_probe"):
             mu._schedule_metadata_future_cleanup(mock_future, "test-reason")
-            [
-                call
-                for call in mock_future.method_calls
-                if "add_done_callback" in str(call)
-            ]
             mock_future.add_done_callback.assert_called_once()
 
     def test_cleanup_early_return_when_should_clear_false(self):

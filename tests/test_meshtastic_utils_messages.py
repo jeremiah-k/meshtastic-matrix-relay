@@ -1474,9 +1474,12 @@ class TestOnMeshtasticMessageDatabaseError(unittest.TestCase):
             "decoded": {"text": "test message", "portnum": TEXT_MESSAGE_APP},
             "fromId": "!12345678",
             "channel": 0,
+            "to": BROADCAST_NUM,
+            "id": 999,
         }
 
         mock_interface = MagicMock()
+        mock_interface.myInfo.my_node_num = TEST_NODE_NUM
 
         config = _base_config()
         with (
@@ -1486,6 +1489,9 @@ class TestOnMeshtasticMessageDatabaseError(unittest.TestCase):
                 "mmrelay.meshtastic_utils.get_longname",
                 side_effect=TypeError("Database error"),
             ),
-            patch("mmrelay.meshtastic_utils.logger"),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
         ):
-            on_meshtastic_message(packet, mock_interface)
+            result = on_meshtastic_message(packet, mock_interface)
+
+        self.assertIsNone(result)
+        mock_logger.exception.assert_called()

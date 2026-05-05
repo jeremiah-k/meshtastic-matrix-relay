@@ -711,7 +711,8 @@ def test_wait_for_result_target_loop_running_uses_threadsafe():
     assert result == "threadsafe"
 
 
-def test_wait_for_result_running_loop_threadsafe():
+def test_wait_for_result_running_loop_skips_threadsafe_without_explicit_loop():
+    """Returns False when running loop is present without explicit loop argument."""
     loop = asyncio.new_event_loop()
     try:
         future = loop.create_future()

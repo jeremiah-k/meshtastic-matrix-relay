@@ -124,10 +124,6 @@ def test_run_main(
     # Verify configuration was loaded and set
     mock_load_config.assert_called_once_with(args=mock_args)
 
-    # Verify log level was overridden
-    expected_config = mock_config.copy()
-    expected_config["logging"] = {"level": "debug"}
-
     # Verify banner was printed
     mock_print_banner.assert_called_once()
 

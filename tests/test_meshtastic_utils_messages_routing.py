@@ -1393,6 +1393,8 @@ def test_on_meshtastic_message_large_node_list():
         "decoded": {"text": "test message", "portnum": PORTNUM_TEXT_MESSAGE_APP},
         "fromId": "!12345678",
         "channel": 0,
+        "to": BROADCAST_NUM,
+        "id": 999,
     }
 
     mock_interface = MagicMock()
@@ -1429,5 +1431,5 @@ def _make_plugin_routing(name, handled=False):
     """Create a MagicMock plugin for routing tests."""
     plugin = MagicMock()
     plugin.plugin_name = name
-    plugin.handle_meshtastic_message = AsyncMock(return_value=handled)
+    plugin.handle_meshtastic_message = Mock(return_value=handled)
     return plugin

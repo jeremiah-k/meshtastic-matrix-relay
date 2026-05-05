@@ -355,11 +355,13 @@ def test_startup_rollback_closes_matrix_client(
         if inspect.iscoroutine(coro):
             coro_name = getattr(getattr(coro, "cr_code", None), "co_name", "")
             if coro_name == "_node_name_refresh_supervisor":
+                coro.close()
                 task = MagicMock()
                 task.done = MagicMock(return_value=False)
                 task.add_done_callback = MagicMock()
                 return task
             if coro_name == "_ready_heartbeat":
+                coro.close()
                 task = MagicMock()
                 task.done = MagicMock(return_value=False)
                 task.add_done_callback = MagicMock()

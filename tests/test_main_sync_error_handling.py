@@ -208,7 +208,7 @@ def test_sync_client_error_logs_warning_and_retries():
 
 
 def test_sync_connection_error_logs_exception():
-    """ConnectionError/OSError/RuntimeError/ValueError from sync logs exception."""
+    """ConnectionError from sync logs exception."""
     config = {
         "matrix_rooms": [{"id": "!room:matrix.org"}],
         "matrix": {"homeserver": "https://matrix.org"},

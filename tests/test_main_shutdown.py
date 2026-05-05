@@ -235,21 +235,24 @@ def test_main_shutdown_disconnects_ble_interface(
     mock_queue.ensure_processor_started = MagicMock()
     mock_get_queue.return_value = mock_queue
 
-    with (
-        patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-        patch(
-            "mmrelay.main.asyncio.get_running_loop",
-            side_effect=make_patched_get_running_loop(),
-        ),
-        patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
-        patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
-    ):
-        asyncio.run(main(mock_config))
+    try:
+        with (
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=make_patched_get_running_loop(),
+            ),
+            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
+            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+        ):
+            asyncio.run(main(mock_config))
 
-    mock_disconnect_iface.assert_called_once_with(mock_iface, reason="shutdown")
-    import mmrelay.meshtastic_utils as mu
+        mock_disconnect_iface.assert_called_once_with(mock_iface, reason="shutdown")
+        import mmrelay.meshtastic_utils as mu
 
-    assert mu.meshtastic_iface is None
+        assert mu.meshtastic_iface is None
+    finally:
+        _reset_all_mmrelay_globals()
 
 
 def test_main_shutdown_cancels_reconnect_before_ble_disconnect_and_unsubscribes(
@@ -791,16 +794,20 @@ def test_exception_in_shutdown_step_logs_error():
         "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
     }
 
+    mock_matrix_client = MagicMock()
+    mock_matrix_client.add_event_callback = MagicMock()
+    mock_matrix_client.close = AsyncMock()
+
     with (
         patch("mmrelay.main.initialize_database"),
         patch("mmrelay.main.load_plugins"),
         patch("mmrelay.main.start_message_queue"),
         patch(
             "mmrelay.main.connect_matrix",
-            new_callable=AsyncMock,
+            side_effect=_make_async_return(mock_matrix_client),
         ),
         patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
-        patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
+        patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
         patch("mmrelay.main.get_message_queue") as mock_get_queue,
         patch("mmrelay.main.shutdown_plugins") as mock_shutdown,
         patch("mmrelay.main.stop_message_queue") as mock_stop_message_queue,
@@ -813,16 +820,120 @@ def test_exception_in_shutdown_step_logs_error():
         patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
         patch("mmrelay.main.logger") as mock_logger,
     ):
-        mock_matrix_client = AsyncMock()
-        mock_matrix_client.add_event_callback = MagicMock()
-        mock_matrix_client.close = AsyncMock()
-        mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
-        with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
+
+        mock_shutdown.side_effect = ValueError("Shutdown error")
+
+        asyncio.run(main(config))
+
+        mock_shutdown.assert_called_once()
+        mock_stop_message_queue.assert_called_once()
+        mock_matrix_client.close.assert_awaited_once()
+
+    assert any(
+        "Error while stopping" in str(call) for call in mock_logger.error.call_args_list
+    )
+
+
+def test_exception_in_stop_message_queue_logs_error() -> None:
+    """Message queue shutdown failures should be logged and not abort teardown."""
+    config = {
+        "matrix_rooms": [{"id": "!room:matrix.org"}],
+        "matrix": {"homeserver": "https://matrix.org"},
+        "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
+    }
+
+    mock_matrix_client = MagicMock()
+    mock_matrix_client.add_event_callback = MagicMock()
+    mock_matrix_client.close = AsyncMock()
+
+    with (
+        patch("mmrelay.main.initialize_database"),
+        patch("mmrelay.main.load_plugins"),
+        patch("mmrelay.main.start_message_queue"),
+        patch(
+            "mmrelay.main.connect_matrix",
+            side_effect=_make_async_return(mock_matrix_client),
+        ),
+        patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
+        patch("mmrelay.main.get_message_queue") as mock_get_queue,
+        patch("mmrelay.main.shutdown_plugins") as mock_shutdown,
+        patch("mmrelay.main.stop_message_queue") as mock_stop_message_queue,
+        patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+        patch(
+            "mmrelay.main.asyncio.get_running_loop",
+            side_effect=make_patched_get_running_loop(),
+        ),
+        patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
+        patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+        patch("mmrelay.main.logger") as mock_logger,
+    ):
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
+        mock_stop_message_queue.side_effect = ValueError("Queue stop error")
+
+        asyncio.run(main(config))
+
+        mock_shutdown.assert_called_once()
+        mock_stop_message_queue.assert_called_once()
+        mock_matrix_client.close.assert_awaited_once()
+
+    assert any(
+        "Error while stopping" in str(call) and "message queue" in str(call)
+        for call in mock_logger.error.call_args_list
+    )
+
+
+@pytest.mark.parametrize("exception_class", [KeyboardInterrupt, SystemExit])
+def test_shutdown_exceptions_are_logged_and_suppressed(exception_class):
+    """KeyboardInterrupt and SystemExit raised by shutdown steps should be logged, not re-raised."""
+    config = {
+        "matrix_rooms": [{"id": TEST_ROOM_ID_1}],
+        "matrix": {"homeserver": TEST_MATRIX_HOMESERVER},
+        "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
+    }
+
+    mock_matrix_client = MagicMock()
+    mock_matrix_client.add_event_callback = MagicMock()
+    mock_matrix_client.close = AsyncMock()
+
+    try:
+        with (
+            patch("mmrelay.main.initialize_database"),
+            patch("mmrelay.main.load_plugins"),
+            patch("mmrelay.main.start_message_queue"),
+            patch(
+                "mmrelay.main.connect_matrix",
+                side_effect=_make_async_return(mock_matrix_client),
+            ),
+            patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
+            patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+            patch("mmrelay.main.shutdown_plugins") as mock_shutdown,
+            patch("mmrelay.main.stop_message_queue") as mock_stop_message_queue,
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=make_patched_get_running_loop(),
+            ),
+            patch(
+                "mmrelay.main.asyncio.to_thread",
+                side_effect=inline_to_thread,
+            ),
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                new=_async_noop,
+            ),
+            patch("mmrelay.main.logger") as mock_logger,
+        ):
             mock_queue = MagicMock()
             mock_queue.ensure_processor_started = MagicMock()
             mock_get_queue.return_value = mock_queue
-
-            mock_shutdown.side_effect = ValueError("Shutdown error")
+            mock_shutdown.side_effect = exception_class()
 
             asyncio.run(main(config))
 
@@ -834,119 +945,5 @@ def test_exception_in_shutdown_step_logs_error():
             "Error while stopping" in str(call)
             for call in mock_logger.error.call_args_list
         )
-
-
-def test_exception_in_stop_message_queue_logs_error() -> None:
-    """Message queue shutdown failures should be logged and not abort teardown."""
-    config = {
-        "matrix_rooms": [{"id": "!room:matrix.org"}],
-        "matrix": {"homeserver": "https://matrix.org"},
-        "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
-    }
-
-    with (
-        patch("mmrelay.main.initialize_database"),
-        patch("mmrelay.main.load_plugins"),
-        patch("mmrelay.main.start_message_queue"),
-        patch(
-            "mmrelay.main.connect_matrix",
-            new_callable=AsyncMock,
-        ),
-        patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
-        patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
-        patch("mmrelay.main.get_message_queue") as mock_get_queue,
-        patch("mmrelay.main.shutdown_plugins") as mock_shutdown,
-        patch("mmrelay.main.stop_message_queue") as mock_stop_message_queue,
-        patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-        patch(
-            "mmrelay.main.asyncio.get_running_loop",
-            side_effect=make_patched_get_running_loop(),
-        ),
-        patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
-        patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
-        patch("mmrelay.main.logger") as mock_logger,
-    ):
-        mock_matrix_client = AsyncMock()
-        mock_matrix_client.add_event_callback = MagicMock()
-        mock_matrix_client.close = AsyncMock()
-        mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
-        with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
-            mock_queue = MagicMock()
-            mock_queue.ensure_processor_started = MagicMock()
-            mock_get_queue.return_value = mock_queue
-            mock_stop_message_queue.side_effect = ValueError("Queue stop error")
-
-            asyncio.run(main(config))
-
-            mock_shutdown.assert_called_once()
-            mock_stop_message_queue.assert_called_once()
-            mock_matrix_client.close.assert_awaited_once()
-
-        assert any(
-            "Error while stopping" in str(call) and "message queue" in str(call)
-            for call in mock_logger.error.call_args_list
-        )
-
-
-def test_shutdown_exceptions_are_logged_and_suppressed():
-    """KeyboardInterrupt and SystemExit raised by shutdown steps should be logged, not re-raised."""
-    for exception_class in (KeyboardInterrupt, SystemExit):
-        # subTest removed - converted to inline loop
-        try:
-            config = {
-                "matrix_rooms": [{"id": TEST_ROOM_ID_1}],
-                "matrix": {"homeserver": TEST_MATRIX_HOMESERVER},
-                "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
-            }
-
-            with (
-                patch("mmrelay.main.initialize_database"),
-                patch("mmrelay.main.load_plugins"),
-                patch("mmrelay.main.start_message_queue"),
-                patch(
-                    "mmrelay.main.connect_matrix",
-                    new_callable=AsyncMock,
-                ),
-                patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
-                patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
-                patch("mmrelay.main.get_message_queue") as mock_get_queue,
-                patch("mmrelay.main.shutdown_plugins") as mock_shutdown,
-                patch("mmrelay.main.stop_message_queue") as mock_stop_message_queue,
-                patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-                patch(
-                    "mmrelay.main.asyncio.get_running_loop",
-                    side_effect=make_patched_get_running_loop(),
-                ),
-                patch(
-                    "mmrelay.main.asyncio.to_thread",
-                    side_effect=inline_to_thread,
-                ),
-                patch(
-                    "mmrelay.main.meshtastic_utils.check_connection",
-                    new=_async_noop,
-                ),
-                patch("mmrelay.main.logger") as mock_logger,
-            ):
-                mock_matrix_client = AsyncMock()
-                mock_matrix_client.add_event_callback = MagicMock()
-                mock_matrix_client.close = AsyncMock()
-                mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
-                with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
-                    mock_queue = MagicMock()
-                    mock_queue.ensure_processor_started = MagicMock()
-                    mock_get_queue.return_value = mock_queue
-                    mock_shutdown.side_effect = exception_class()
-
-                    asyncio.run(main(config))
-
-                    mock_shutdown.assert_called_once()
-                    mock_stop_message_queue.assert_called_once()
-                    mock_matrix_client.close.assert_awaited_once()
-
-            assert any(
-                "Error while stopping" in str(call)
-                for call in mock_logger.error.call_args_list
-            )
-
-        finally:
-            _reset_all_mmrelay_globals()
+    finally:
+        _reset_all_mmrelay_globals()

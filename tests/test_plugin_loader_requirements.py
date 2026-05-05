@@ -21,14 +21,11 @@ class TestRequirementsInfrastructure(unittest.TestCase):
     def setUp(self):
         """Set up temporary directories for requirements tests."""
         self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(self.temp_dir, ignore_errors=True))
         self.repo_path = os.path.join(self.temp_dir, "test-plugin")
         self.deps_dir = os.path.join(self.temp_dir, "deps")
         os.makedirs(self.deps_dir, exist_ok=True)
         os.makedirs(self.repo_path, exist_ok=True)
-
-    def tearDown(self):
-        """Clean up temporary directory."""
-        shutil.rmtree(self.temp_dir)
 
     def test_requirements_install_target_identity_unknown_user_site_is_stable(self):
         """Missing user-site support should not produce cwd-dependent target IDs."""
@@ -342,7 +339,9 @@ class TestRequirementsInfrastructure(unittest.TestCase):
 
     def test_requirements_install_target_valid_unrelated_deps_file_is_invalid(self):
         """Unrelated files in the shared deps dir should not validate a plugin."""
-        with open(os.path.join(self.deps_dir, "unrelated.txt"), "w") as handle:
+        with open(
+            os.path.join(self.deps_dir, "unrelated.txt"), "w", encoding="utf-8"
+        ) as handle:
             handle.write("not a marker\n")
 
         with patch.object(pl, "_PLUGIN_DEPS_DIR", self.deps_dir):
@@ -369,7 +368,7 @@ class TestCollectRequirements(unittest.TestCase):
     def test_collect_requirements_basic(self):
         """Test collecting basic requirements from a simple file."""
         req_file = os.path.join(self.temp_dir, "requirements.txt")
-        with open(req_file, "w") as f:
+        with open(req_file, "w", encoding="utf-8") as f:
             f.write("requests==2.28.0\n")
             f.write("numpy>=1.20.0\n")
             f.write("# This is a comment\n")
@@ -382,7 +381,7 @@ class TestCollectRequirements(unittest.TestCase):
     def test_collect_requirements_with_inline_comments(self):
         """Test handling inline comments."""
         req_file = os.path.join(self.temp_dir, "requirements.txt")
-        with open(req_file, "w") as f:
+        with open(req_file, "w", encoding="utf-8") as f:
             f.write("requests==2.28.0  # HTTP library\n")
             f.write("numpy>=1.20.0    # Numerical computing\n")
 
@@ -396,11 +395,11 @@ class TestCollectRequirements(unittest.TestCase):
         main_req = os.path.join(self.temp_dir, "requirements.txt")
         included_req = os.path.join(self.temp_dir, "base.txt")
 
-        with open(included_req, "w") as f:
+        with open(included_req, "w", encoding="utf-8") as f:
             f.write("requests==2.28.0\n")
             f.write("numpy>=1.20.0\n")
 
-        with open(main_req, "w") as f:
+        with open(main_req, "w", encoding="utf-8") as f:
             f.write("-r base.txt\n")
             f.write("scipy>=1.7.0\n")
 
@@ -413,10 +412,10 @@ class TestCollectRequirements(unittest.TestCase):
         req_file = os.path.join(self.temp_dir, "requirements.txt")
         constraint_file = os.path.join(self.temp_dir, "constraints.txt")
 
-        with open(constraint_file, "w") as f:
+        with open(constraint_file, "w", encoding="utf-8") as f:
             f.write("requests<=2.30.0\n")
 
-        with open(req_file, "w") as f:
+        with open(req_file, "w", encoding="utf-8") as f:
             f.write("-c constraints.txt\n")
             f.write("requests>=2.25.0\n")
 
@@ -428,7 +427,7 @@ class TestCollectRequirements(unittest.TestCase):
     def test_collect_requirements_with_complex_flags(self):
         """Test handling complex requirement flags."""
         req_file = os.path.join(self.temp_dir, "requirements.txt")
-        with open(req_file, "w") as f:
+        with open(req_file, "w", encoding="utf-8") as f:
             f.write("--requirement=requirements-dev.txt\n")
             f.write("--constraint=constraints.txt\n")
             f.write("package>=1.0.0 --extra-index-url https://pypi.org/simple\n")
@@ -437,10 +436,10 @@ class TestCollectRequirements(unittest.TestCase):
         dev_req = os.path.join(self.temp_dir, "requirements-dev.txt")
         constraint_file = os.path.join(self.temp_dir, "constraints.txt")
 
-        with open(dev_req, "w") as f:
+        with open(dev_req, "w", encoding="utf-8") as f:
             f.write("pytest>=6.0.0\n")
 
-        with open(constraint_file, "w") as f:
+        with open(constraint_file, "w", encoding="utf-8") as f:
             f.write("pytest<=7.0.0\n")
 
         result = _collect_requirements(req_file)
@@ -464,23 +463,25 @@ class TestCollectRequirements(unittest.TestCase):
         req1 = os.path.join(self.temp_dir, "req1.txt")
         req2 = os.path.join(self.temp_dir, "req2.txt")
 
-        with open(req1, "w") as f:
+        with open(req1, "w", encoding="utf-8") as f:
             f.write("-r req2.txt\n")
             f.write("package1>=1.0.0\n")
 
-        with open(req2, "w") as f:
+        with open(req2, "w", encoding="utf-8") as f:
             f.write("-r req1.txt\n")  # Recursive include
             f.write("package2>=1.0.0\n")
 
         result = _collect_requirements(req1)
         # Should handle recursion gracefully and not crash
         self.assertIsInstance(result, list)
+        self.assertIn("package1>=1.0.0", result)
+        self.assertIn("package2>=1.0.0", result)
 
     @patch("mmrelay.plugin_loader.logger")
     def test_collect_requirements_malformed_requirement_directive(self, mock_logger):
         """Test handling of malformed requirement directives."""
         req_file = os.path.join(self.temp_dir, "requirements.txt")
-        with open(req_file, "w") as f:
+        with open(req_file, "w", encoding="utf-8") as f:
             f.write("-r \n")  # Malformed - missing file
             f.write("requests==2.28.0\n")
 
@@ -497,7 +498,7 @@ class TestCollectRequirements(unittest.TestCase):
         req_file = os.path.join(self.temp_dir, "requirements.txt")
 
         # Create file and then mock open to raise IOError
-        with open(req_file, "w") as f:
+        with open(req_file, "w", encoding="utf-8") as f:
             f.write("requests==2.28.0\n")
 
         with patch("builtins.open", side_effect=IOError("Permission denied")):
@@ -509,7 +510,7 @@ class TestCollectRequirements(unittest.TestCase):
     def test_collect_requirements_empty_file(self):
         """Test handling empty requirements file."""
         req_file = os.path.join(self.temp_dir, "empty.txt")
-        with open(req_file, "w"):
+        with open(req_file, "w", encoding="utf-8"):
             pass  # Create empty file
 
         result = _collect_requirements(req_file)
