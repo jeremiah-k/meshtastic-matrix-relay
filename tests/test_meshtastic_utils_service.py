@@ -609,3 +609,21 @@ class TestRefreshNodeNameTablesInvalidInterval:
                         for call in warning_calls
                     )
                     assert any("90.0" in call for call in warning_calls)
+
+
+# ---------------------------------------------------------------------------
+# Tests absorbed from test_meshtastic_utils_edge_cases.py (service domain)
+# ---------------------------------------------------------------------------
+
+
+class TestIsRunningAsServiceEdgeCases(unittest.TestCase):
+    """Edge case tests for is_running_as_service."""
+
+    def test_is_running_as_service_detection_failure(self):
+        """is_running_as_service returns bool when process detection fails."""
+        with patch("os.getppid", side_effect=OSError("Cannot get parent PID")):
+            with patch(
+                "psutil.Process", side_effect=Exception("Process info unavailable")
+            ):
+                result = is_running_as_service()
+                self.assertIsInstance(result, bool)

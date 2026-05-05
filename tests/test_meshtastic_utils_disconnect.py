@@ -619,6 +619,51 @@ def _mark_shutdown(*_args, **_kwargs):
 # ---------------------------------------------------------------------------
 
 
+def test_on_lost_meshtastic_connection_reconnection_failure():
+    """Logs error when reconnection attempts fail (connect_meshtastic returns None)."""
+    mock_interface = MagicMock()
+
+    import mmrelay.meshtastic_utils
+
+    mmrelay.meshtastic_utils.reconnecting = False
+
+    with (
+        patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=None),
+        patch("mmrelay.meshtastic.events._schedule_reconnect_after_disconnect"),
+        patch("time.sleep"),
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    ):
+        on_lost_meshtastic_connection(mock_interface)
+        mock_logger.error.assert_called()
+
+
+def test_on_lost_meshtastic_connection_detection_source_edge_cases():
+    """Handles unusual detection_source values without raising exceptions."""
+    mock_interface = MagicMock()
+
+    import mmrelay.meshtastic_utils
+
+    mmrelay.meshtastic_utils.reconnecting = False
+
+    detection_sources = [
+        "unknown_source",
+        None,
+        123,
+        "",
+    ]
+
+    for source in detection_sources:
+        with (
+            patch(
+                "mmrelay.meshtastic_utils.connect_meshtastic",
+                return_value=MagicMock(),
+            ),
+            patch("mmrelay.meshtastic.events._schedule_reconnect_after_disconnect"),
+            patch("time.sleep"),
+        ):
+            on_lost_meshtastic_connection(mock_interface, detection_source=source)
+
+
 @pytest.mark.asyncio
 class TestReconnectSuccess:
     async def test_reconnect_succeeds_and_clears_future_and_flag(self):

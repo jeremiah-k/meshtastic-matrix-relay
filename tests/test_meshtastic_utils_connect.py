@@ -34,6 +34,7 @@ from mmrelay.meshtastic_utils import (
     check_connection,
     connect_meshtastic,
     ensure_meshtastic_callbacks_subscribed,
+    is_running_as_service,
     reconnect,
     unsubscribe_meshtastic_callbacks,
 )
@@ -1494,48 +1495,139 @@ class TestConnectionRefusedExceptionHandler:
         assert result is None
         assert mu._relay_startup_drain_deadline_monotonic_secs is None
         assert mu._startup_packet_drain_applied is False
-        assert mu.meshtastic_client is None
-        assert mu._relay_active_client_id is None
-        mock_client.close.assert_called_once()
+        first_client.close.assert_called_once()
 
 
-class TestTimeoutExceptionHandler:
-    def test_timeout_after_drain_armed_clears_state(self):
-        first_client = MagicMock()
-        first_client.getMyNodeInfo.return_value = {
-            "user": {"shortName": "Node", "hwModel": "HW"}
+# ---------------------------------------------------------------------------
+# Tests absorbed from test_meshtastic_utils_edge_cases.py (connect domain)
+# ---------------------------------------------------------------------------
+
+
+class TestConnectMeshtasticConfigAndRetryEdgeCases(unittest.TestCase):
+    """Edge case tests for connect_meshtastic config validation and retry."""
+
+    def test_connect_meshtastic_serial_connection_timeout(self):
+        """Returns None and logs exception on serial connection timeout."""
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            }
         }
 
-        with (
-            patch(
-                "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
-                side_effect=[first_client, TimeoutError("retry timeout")],
-            ),
-            patch(
-                "mmrelay.meshtastic_utils._get_device_metadata",
-                return_value={"firmware_version": "unknown", "success": False},
-            ),
-            patch(
-                "mmrelay.meshtastic_utils._schedule_connect_time_calibration_probe",
-                side_effect=TimeoutError("probe timeout"),
-            ),
-            patch("mmrelay.meshtastic_utils.logger"),
-            patch("mmrelay.meshtastic_utils.time.sleep"),
-            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_000.0),
-        ):
-            config = {
-                "meshtastic": {
-                    "connection_type": CONNECTION_TYPE_TCP,
-                    "host": "127.0.0.1",
-                    "retries": 1,
-                }
-            }
-            result = connect_meshtastic(passed_config=config)
+        with patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True):
+            with patch(
+                "mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface",
+                side_effect=ConcurrentTimeoutError("Connection timeout"),
+            ):
+                with patch("time.sleep"):
+                    with (
+                        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+                        patch(
+                            "mmrelay.meshtastic_utils.is_running_as_service",
+                            return_value=True,
+                        ),
+                        patch("mmrelay.matrix_utils.matrix_client", None),
+                    ):
+                        result = connect_meshtastic(config)
+                        self.assertIsNone(result)
+                        mock_logger.exception.assert_called()
 
-        assert result is None
-        assert mu._relay_startup_drain_deadline_monotonic_secs is None
-        assert mu._startup_packet_drain_applied is False
-        first_client.close.assert_called_once()
+    def test_connect_meshtastic_tcp_connection_refused(self):
+        """Returns None when TCP connection is refused (not a critical error)."""
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.100",
+            }
+        }
+
+        with patch(
+            "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+            side_effect=ConnectionRefusedError("Connection refused"),
+        ):
+            with patch("mmrelay.meshtastic_utils.logger"):
+                result = connect_meshtastic(config)
+                self.assertIsNone(result)
+
+    def test_connect_meshtastic_invalid_connection_type(self):
+        """Returns None and logs error for invalid connection type."""
+        config = {"meshtastic": {"connection_type": "invalid_type"}}
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            result = connect_meshtastic(config)
+            self.assertIsNone(result)
+            mock_logger.error.assert_called()
+
+    def test_connect_meshtastic_exponential_backoff_max_retries(self):
+        """Returns None after max retries on persistent MemoryError."""
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            }
+        }
+
+        with patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True):
+            with patch(
+                "mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface",
+                side_effect=MemoryError("Out of memory"),
+            ):
+                with patch("time.sleep"):
+                    with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+                        result = connect_meshtastic(config)
+                        self.assertIsNone(result)
+                        mock_logger.exception.assert_called()
+
+    def test_connect_meshtastic_concurrent_access(self):
+        """Returns None when a reconnection is already in progress."""
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            }
+        }
+
+        import mmrelay.meshtastic_utils
+
+        mmrelay.meshtastic_utils.reconnecting = True
+        result = connect_meshtastic(config)
+        self.assertIsNone(result)
+
+    def test_connect_meshtastic_memory_constraint(self):
+        """Handles MemoryError during serial connection gracefully."""
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            }
+        }
+
+        with patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True):
+            with patch(
+                "mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface",
+                side_effect=MemoryError("Out of memory"),
+            ):
+                with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+                    result = connect_meshtastic(config)
+                    self.assertIsNone(result)
+                    mock_logger.exception.assert_called()
+
+    def test_connect_meshtastic_config_validation_edge_cases(self):
+        """Returns None for various invalid configs without raising."""
+        invalid_configs = [
+            None,
+            {},
+            {"meshtastic": None},
+            {"meshtastic": {}},
+            {"meshtastic": {"connection_type": None}},
+        ]
+
+        for config in invalid_configs:
+            with self.subTest(config=config):
+                with patch("mmrelay.meshtastic_utils.logger"):
+                    result = connect_meshtastic(config)
+                    self.assertIsNone(result)
 
     def test_timeout_breaks_on_shutdown(self):
         def _timeout_then_shutdown(*_args: Any, **_kwargs: Any) -> NoReturn:

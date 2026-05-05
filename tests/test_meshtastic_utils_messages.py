@@ -1443,3 +1443,54 @@ class TestTextReplyFunctionality(unittest.TestCase):
 
         # Function should exist and be callable
         self.assertTrue(callable(send_text_reply))
+
+    def test_send_text_reply_no_client(self):
+        """send_text_reply returns None and logs error when no client is set."""
+        with (
+            patch("mmrelay.meshtastic_utils.meshtastic_client", None),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            result = send_text_reply(None, "test message", 12345)
+            self.assertIsNone(result)
+            mock_logger.error.assert_called_with(
+                "No Meshtastic interface available for sending reply"
+            )
+
+    def test_send_text_reply_client_send_failure(self):
+        """send_text_reply returns None when client's send operation raises."""
+        mock_client = MagicMock()
+        mock_client._generatePacketId.return_value = 12345
+        mock_client._sendPacket.side_effect = RuntimeError("Send failed")
+
+        with (
+            patch("mmrelay.meshtastic_utils.meshtastic_client", mock_client),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            result = send_text_reply(mock_client, "test message", 12345)
+            self.assertIsNone(result)
+            mock_logger.exception.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# Tests absorbed from test_meshtastic_utils_edge_cases.py (message/DB domain)
+# ---------------------------------------------------------------------------
+
+
+class TestOnMeshtasticMessageDatabaseError(unittest.TestCase):
+    """Test database error handling in on_meshtastic_message."""
+
+    def test_on_meshtastic_message_database_error(self):
+        """Handles database utility exceptions without raising unhandled errors."""
+        packet = {
+            "decoded": {"text": "test message", "portnum": TEXT_MESSAGE_APP},
+            "fromId": "!12345678",
+            "channel": 0,
+        }
+
+        mock_interface = MagicMock()
+
+        with patch(
+            "mmrelay.db_utils.get_longname", side_effect=Exception("Database error")
+        ):
+            with patch("mmrelay.meshtastic_utils.logger"):
+                on_meshtastic_message(packet, mock_interface)

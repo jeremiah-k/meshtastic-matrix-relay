@@ -15,6 +15,7 @@ import contextlib
 import inspect
 import sys
 import threading
+import unittest
 from collections.abc import Generator
 from typing import Any, NoReturn
 from unittest.mock import ANY, Mock, patch
@@ -32,6 +33,7 @@ from mmrelay.constants.network import (
 from mmrelay.meshtastic_utils import (
     _get_device_metadata,
     connect_meshtastic,
+    serial_port_exists,
 )
 from tests.conftest import cleanup_ble_future_state
 from tests.constants import (
@@ -1426,3 +1428,39 @@ class TestUncoveredMeshtasticUtilsPaths:
             result = connect_meshtastic(passed_config=config)
             assert result is None
             mock_scan.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Tests absorbed from test_meshtastic_utils_edge_cases.py (serial port domain)
+# ---------------------------------------------------------------------------
+
+
+class TestSerialPortExistsEdgeCases(unittest.TestCase):
+    """Edge case tests for serial_port_exists."""
+
+    def test_serial_port_exists_permission_error(self):
+        """serial_port_exists returns False on permission-denied serial port."""
+        with patch(
+            "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
+            return_value=[],
+        ):
+            result = serial_port_exists("/dev/ttyUSB0")
+            self.assertFalse(result)
+
+    def test_serial_port_exists_device_not_found(self):
+        """serial_port_exists returns False when device is not found."""
+        with patch(
+            "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
+            return_value=[],
+        ):
+            result = serial_port_exists("/dev/nonexistent")
+            self.assertFalse(result)
+
+    def test_serial_port_exists_device_busy(self):
+        """serial_port_exists returns False when serial device is busy."""
+        with patch(
+            "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
+            return_value=[],
+        ):
+            result = serial_port_exists("/dev/ttyUSB0")
+            self.assertFalse(result)
