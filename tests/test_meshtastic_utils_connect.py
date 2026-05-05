@@ -34,7 +34,6 @@ from mmrelay.meshtastic_utils import (
     check_connection,
     connect_meshtastic,
     ensure_meshtastic_callbacks_subscribed,
-    is_running_as_service,
     reconnect,
     unsubscribe_meshtastic_callbacks,
 )

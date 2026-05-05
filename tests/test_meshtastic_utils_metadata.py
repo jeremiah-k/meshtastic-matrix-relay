@@ -582,8 +582,8 @@ class TestGetDeviceMetadata(unittest.TestCase):
         original_lock = mu._metadata_future_lock
         original_degraded = mu._metadata_executor_degraded
         try:
-            setattr(mu, "_metadata_future_lock", tracking_lock)
-            setattr(mu, "_metadata_executor_degraded", degraded_flag)
+            mu._metadata_future_lock = tracking_lock
+            mu._metadata_executor_degraded = degraded_flag
             mu._reset_metadata_executor_for_stale_probe()
         finally:
             mu._metadata_future_lock = original_lock

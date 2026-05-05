@@ -9,22 +9,16 @@ Covers:
 """
 
 import asyncio
-import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from aiohttp import ClientError
 
 from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
 from mmrelay.main import main
 from tests._test_main_helpers import (
     _async_noop,
-    _ImmediateEvent,
     _make_patched_get_running_loop,
-    _OnePassEvent,
-    _reset_all_mmrelay_globals,
     inline_to_thread,
-    mock_config,
 )
 
 __all__ = [

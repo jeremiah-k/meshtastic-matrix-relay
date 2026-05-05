@@ -8,7 +8,6 @@ import shutil
 import subprocess  # nosec B404 - tests assert subprocess error handling
 import sys
 import tempfile
-import unittest
 from typing import Any
 from unittest.mock import patch
 

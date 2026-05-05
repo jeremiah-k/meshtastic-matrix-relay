@@ -9,7 +9,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import unittest
 from types import ModuleType
 from unittest.mock import MagicMock, patch
 
@@ -21,9 +20,8 @@ from mmrelay.plugin_loader import (
     load_plugins,
     load_plugins_from_directory,
     shutdown_plugins,
-    start_global_scheduler,
 )
-from tests._plugin_loader_helpers import TEST_GIT_TIMEOUT, BaseGitTest, MockPlugin
+from tests._plugin_loader_helpers import BaseGitTest, MockPlugin
 
 
 class TestPluginLoader(BaseGitTest):

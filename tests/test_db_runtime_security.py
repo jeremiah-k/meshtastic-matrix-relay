@@ -549,7 +549,7 @@ def test_run_sync_write_operation(db_manager):
     manager, _ = db_manager
 
     def write_func(cursor):
-        """
+        r"""
         Creates the table named \"test\" (id INTEGER PRIMARY KEY, value TEXT) and inserts a row with value "sync_test".
 
         Parameters:

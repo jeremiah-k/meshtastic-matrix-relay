@@ -5,7 +5,7 @@
 import os
 import shutil
 import tempfile
-from unittest.mock import ANY, call, patch
+from unittest.mock import ANY, patch
 
 import mmrelay.plugin_loader as pl
 from mmrelay.plugin_loader import load_plugins

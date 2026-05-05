@@ -11,7 +11,6 @@ import contextlib
 import functools
 import inspect
 import sys
-import threading
 from typing import Any, Callable
 
 import pytest
@@ -23,12 +22,6 @@ from tests.constants import (
     TEST_MATRIX_HOMESERVER,
     TEST_ROOM_ID_1,
     TEST_ROOM_ID_2,
-)
-from tests.helpers import (
-    inline_to_thread,
-)
-from tests.helpers import (
-    make_patched_get_running_loop as _make_patched_get_running_loop,
 )
 from tests.helpers import (
     reset_meshtastic_utils_globals,

@@ -6,31 +6,19 @@ and ready-file/heartbeat tests in main.py.
 
 import asyncio
 import contextlib
-import os
-import platform
-import signal
-import sys
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mmrelay.constants.app import DEFAULT_READY_HEARTBEAT_SECONDS
 from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
-from mmrelay.main import main, print_banner, run_main
+from mmrelay.main import main
 from tests._test_main_helpers import (
     _async_noop,
-    _AutoSetAfterWaitEvent,
     _ImmediateEvent,
     _make_async_return,
     _make_patched_get_running_loop,
-    _OnePassEvent,
-    _reset_all_mmrelay_globals,
-    _sync_forever_blocks,
     inline_to_thread,
-    mock_config,
 )
-from tests.constants import TEST_MATRIX_HOMESERVER, TEST_ROOM_ID_1
 from tests.helpers import InlineExecutorLoop
 
 __all__ = [

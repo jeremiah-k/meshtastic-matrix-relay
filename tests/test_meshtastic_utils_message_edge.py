@@ -1874,7 +1874,7 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
             patch(
                 "mmrelay.meshtastic_utils._submit_coro",
                 side_effect=_submit_raises,
-            ) as mock_submit_coro,
+            ),
             patch(
                 "mmrelay.matrix_utils.matrix_relay",
                 AsyncMock(return_value=None),

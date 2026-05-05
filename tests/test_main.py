@@ -20,7 +20,6 @@ Other main-related tests are split into focused domain files:
 
 import asyncio
 import contextlib
-import functools
 import threading
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -28,24 +27,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from mmrelay.constants.config import DEFAULT_NODEDB_REFRESH_INTERVAL
-from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
-from mmrelay.main import main, print_banner, run_main
+from mmrelay.main import main
 from tests._test_main_helpers import (
     _AutoSetAfterWaitEvent,
-    _ImmediateEvent,
-    _make_async_return,
     _make_patched_get_running_loop,
     _OnePassEvent,
     _reset_all_mmrelay_globals,
     inline_to_thread,
-    mock_config,
-    mock_config_edge_cases,
-)
-from tests.constants import (
-    TEST_BOT_USER_ID,
-    TEST_MATRIX_HOMESERVER,
-    TEST_ROOM_ID_1,
-    TEST_ROOM_ID_2,
 )
 
 

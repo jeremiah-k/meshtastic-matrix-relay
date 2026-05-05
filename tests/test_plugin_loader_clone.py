@@ -2,7 +2,6 @@
 
 # Decomposed from test_plugin_loader_core.py
 
-import os
 import subprocess
 from unittest.mock import call, patch
 

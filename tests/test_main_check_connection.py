@@ -9,30 +9,23 @@ Covers:
 """
 
 import asyncio
-import contextlib
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from aiohttp import ClientError
 
-from mmrelay.constants.app import DEFAULT_READY_HEARTBEAT_SECONDS
-from mmrelay.constants.config import DEFAULT_NODEDB_REFRESH_INTERVAL
 from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
 from mmrelay.main import main
 from tests._test_main_helpers import (
     _async_noop,
     _close_coro_if_possible,
     _ImmediateEvent,
-    _make_async_raise,
     _make_patched_get_running_loop,
     _OnePassEvent,
     _reset_all_mmrelay_globals,
-    _reset_meshtastic_utils_globals,
     _sync_forever_blocks,
     _TaskSpy,
     inline_to_thread,
-    mock_config,
 )
 from tests.constants import TEST_MATRIX_HOMESERVER, TEST_ROOM_ID_1
 

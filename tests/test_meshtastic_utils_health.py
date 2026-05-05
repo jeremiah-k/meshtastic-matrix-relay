@@ -12,7 +12,6 @@ Covers:
 - Shutdown clearing degraded state
 """
 
-import asyncio
 import contextlib
 import threading
 import time
@@ -23,10 +22,6 @@ import pytest
 
 import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.network import (
-    CONFIG_KEY_BLE_ADDRESS,
-    CONFIG_KEY_CONNECTION_TYPE,
-    CONNECTION_TYPE_BLE,
-    CONNECTION_TYPE_TCP,
     METADATA_WATCHDOG_SECS,
     RX_TIME_SKEW_BOOTSTRAP_WINDOW_SECS,
 )

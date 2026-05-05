@@ -24,14 +24,10 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 from meshtastic import BROADCAST_NUM
 
+import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.config import CONFIG_KEY_MESHNET_NAME
 from mmrelay.constants.formats import (
-    EMOJI_FLAG_VALUE,
     TEXT_MESSAGE_APP,
-)
-from mmrelay.constants.messages import (
-    PORTNUM_DETECTION_SENSOR_APP,
-    PORTNUM_TEXT_MESSAGE_APP,
 )
 from mmrelay.constants.network import (
     BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
@@ -41,12 +37,6 @@ from mmrelay.constants.network import (
     DEFAULT_MESHTASTIC_TIMEOUT,
     DEFAULT_TCP_PORT,
     STARTUP_PACKET_DRAIN_SECS,
-)
-from mmrelay.meshtastic.packet_routing import (
-    PacketAction,
-    _get_packet_routing_overrides,
-    _resolve_portnum_set,
-    classify_packet,
 )
 from mmrelay.meshtastic_utils import (
     _get_packet_details,
@@ -64,9 +54,6 @@ from tests.constants import (
 )
 
 TEST_PACKET_RX_TIME = 1234567890
-
-
-import mmrelay.meshtastic_utils as mu
 
 
 def _base_config() -> dict[str, Any]:

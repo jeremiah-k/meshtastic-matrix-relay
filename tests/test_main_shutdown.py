@@ -31,7 +31,6 @@ from tests._test_main_helpers import (
     _reset_all_mmrelay_globals,
     _thread_backed_to_thread,
     inline_to_thread,
-    mock_config,
 )
 from tests.constants import TEST_MATRIX_HOMESERVER, TEST_ROOM_ID_1
 

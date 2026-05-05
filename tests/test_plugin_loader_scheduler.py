@@ -2,10 +2,8 @@
 
 # Decomposed from test_plugin_loader_deps.py
 
-import os
 import subprocess  # nosec B404 - tests assert subprocess error handling
 import threading
-import unittest
 from typing import cast
 from unittest.mock import ANY, MagicMock, call, patch
 

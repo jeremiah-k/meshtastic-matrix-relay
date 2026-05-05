@@ -9,7 +9,7 @@ Covers:
 
 import asyncio
 import unittest
-from collections.abc import Awaitable, Callable, Generator
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
