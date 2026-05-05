@@ -305,6 +305,8 @@ class TestMetadataFutureCleanup:
 
         # Clean up the newly created executor
         mu._metadata_executor.shutdown(wait=False)
+
+    def test_schedule_metadata_future_cleanup(self):
         """Test metadata future cleanup timer is scheduled."""
         mock_future = Mock(spec=Future)
         mock_future.done.return_value = False

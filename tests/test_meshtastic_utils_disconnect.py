@@ -145,6 +145,11 @@ def reset_meshtastic_relay_state(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.reconnect_task",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
         "mmrelay.meshtastic_utils._ble_future",
         None,
         raising=False,
@@ -278,19 +283,6 @@ class TestConnectionLossHandling(unittest.TestCase):
 
     def tearDown(self):
         """Drain any coroutines submitted via run_coroutine_threadsafe."""
-
-        import mmrelay.meshtastic_utils as mu
-
-        loop = mu.event_loop
-        if loop and not loop.is_closed():
-            if loop.is_running():
-                with contextlib.suppress(RuntimeError, ConcurrentTimeoutError):
-                    asyncio.run_coroutine_threadsafe(asyncio.sleep(0), loop).result(
-                        timeout=1
-                    )
-            else:
-                with contextlib.suppress(RuntimeError):
-                    loop.run_until_complete(asyncio.sleep(0))
 
         import mmrelay.meshtastic_utils as mu
 

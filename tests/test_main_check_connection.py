@@ -413,7 +413,10 @@ def test_exception_during_shutdown_wait_logs_error():
             asyncio.run(main(config))
 
             assert shutdown_wait_for_injected
-            assert mock_logger.error.called
+            assert any(
+                "Error while waiting for" in str(call)
+                for call in mock_logger.error.call_args_list
+            )
 
 
 def test_cancelled_error_cancels_task_and_returns():

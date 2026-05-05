@@ -365,16 +365,16 @@ development cycles. Use file or keyword selectors:
 
 ```bash
 # Single domain file
-python -m pytest tests/test_matrix_utils_relay.py -v --timeout=60
+python -m pytest tests/test_matrix_utils_relay.py -v --cov=src/mmrelay --cov-report=term-missing --tb=short --timeout=60
 
 # Files matching a prefix
-python -m pytest tests/test_plugin_loader_*.py -v --timeout=60
+python -m pytest tests/test_plugin_loader_*.py -v --cov=src/mmrelay --cov-report=term-missing --tb=short --timeout=60
 
 # Keyword match
-python -m pytest -k "test_connect" -v --timeout=60
+python -m pytest -k "test_connect" -v --cov=src/mmrelay --cov-report=term-missing --tb=short --timeout=60
 
 # Exclude integration tests for fast cycles
-python -m pytest -m "not integration" -v --timeout=60
+python -m pytest -m "not integration" -v --cov=src/mmrelay --cov-report=term-missing --tb=short --timeout=60
 ```
 
 Before merging, run the full suite once and confirm no new warnings or

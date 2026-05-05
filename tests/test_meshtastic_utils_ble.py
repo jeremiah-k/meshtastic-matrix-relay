@@ -211,6 +211,51 @@ def reset_meshtastic_relay_state(monkeypatch):
         [],
         raising=False,
     )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_generation_by_address",
+        {},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_iface_generation_by_id",
+        {},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_teardown_unresolved_by_generation",
+        {},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_lifecycle_lock",
+        threading.Lock(),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future_watchdog_secs",
+        120.0,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_timeout_reset_threshold",
+        3,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_scan_timeout_secs",
+        4.0,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future_stale_grace_secs",
+        2.0,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_interface_create_timeout_secs",
+        25.0,
+        raising=False,
+    )
 
     yield
 

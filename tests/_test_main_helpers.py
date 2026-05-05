@@ -401,8 +401,12 @@ class _ControlledExecutor:
             return self.close_future
 
         future = concurrent.futures.Future()
-        result = func(*args, **kwargs)
-        future.set_result(result)
+        try:
+            result = func(*args, **kwargs)
+        except BaseException as exc:
+            future.set_exception(exc)
+        else:
+            future.set_result(result)
         return future
 
     def shutdown(self, wait: bool = False, cancel_futures: bool = False) -> None:
