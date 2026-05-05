@@ -14,6 +14,12 @@ from unittest.mock import MagicMock, patch
 
 from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
 from mmrelay.main import main
+from tests._test_main_helpers import (
+    _async_noop,
+    _ImmediateEvent,
+    _make_async_return,
+    _make_patched_get_running_loop,
+)
 from tests.constants import (
     TEST_BOT_USER_ID,
     TEST_MATRIX_HOMESERVER,
@@ -22,28 +28,8 @@ from tests.constants import (
 )
 from tests.helpers import (
     inline_to_thread,
-    make_patched_get_running_loop,
     reset_meshtastic_utils_globals,
 )
-
-_make_patched_get_running_loop = make_patched_get_running_loop
-
-
-def _make_async_return(value: object) -> Callable[..., Awaitable[object]]:
-    """
-    Create an async function that ignores its arguments and always returns the given value.
-
-    Parameters:
-        value: The value the created async function will return when awaited.
-
-    Returns:
-        Callable[..., Awaitable[object]]: An async function that accepts any arguments and returns `value` when awaited.
-    """
-
-    async def _async_return(*_args: object, **_kwargs: object) -> object:
-        return value
-
-    return _async_return
 
 
 class _ImmediateAwaitable:
@@ -83,30 +69,6 @@ def _make_matrix_client_with_awaitable_close() -> MagicMock:
     client = MagicMock()
     client.close = MagicMock(return_value=_ImmediateAwaitable(None))
     return client
-
-
-async def _async_noop(*_args: object, **_kwargs: object) -> None:
-    """
-    Immediately completes without performing any action.
-
-    Returns:
-        None: Always returns None.
-    """
-    return None
-
-
-class _ImmediateEvent:
-    def __init__(self) -> None:
-        self._set = True
-
-    def is_set(self) -> bool:
-        return self._set
-
-    def set(self) -> None:
-        self._set = True
-
-    async def wait(self) -> None:
-        return None
 
 
 def _reset_all_mmrelay_globals() -> None:
