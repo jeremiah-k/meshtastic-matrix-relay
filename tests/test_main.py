@@ -171,7 +171,7 @@ class _TaskSpy:
     rather than inferring shutdown from loop teardown cancellation.
     """
 
-    def __init__(task: asyncio.Task[Any]) -> None:
+    def __init__(self, task: asyncio.Task[Any]) -> None:
         self._task = task
         self.cancel_called = False
 
@@ -182,7 +182,7 @@ class _TaskSpy:
     def __await__(self) -> Any:
         return self._task.__await__()
 
-    def __getattr__(name: str) -> Any:
+    def __getattr__(self, name: str) -> Any:
         return getattr(self._task, name)
 
 
@@ -397,6 +397,7 @@ class _ControlledExecutor:
     """Executor that runs normal tasks immediately and can override close behavior."""
 
     def __init__(
+        self,
         *,
         close_future_factory: Callable[[], concurrent.futures.Future] | None = None,
         submit_timeout: bool = False,
@@ -421,7 +422,7 @@ class _ControlledExecutor:
         self.close_future = None
         self.calls: list[Any] = []
 
-    def submit(func, *args, **kwargs):
+    def submit(self, func, *args, **kwargs):
         """
         Submit a callable to the controlled executor, execute it synchronously, and return a Future representing its outcome.
 
@@ -454,7 +455,7 @@ class _ControlledExecutor:
         future.set_result(result)
         return future
 
-    def shutdown(wait: bool = False, cancel_futures: bool = False) -> None:
+    def shutdown(self, wait: bool = False, cancel_futures: bool = False) -> None:
         """
         Record an executor shutdown request and optionally simulate a legacy TypeError when `cancel_futures` is used.
 
@@ -964,6 +965,7 @@ def test_run_main(
     mock_set_config,
     mock_load_config,
     mock_asyncio_run,
+    mock_config,
 ):
     """
     Test that `run_main` executes the full startup sequence and returns 0 on success.
@@ -1071,7 +1073,6 @@ def test_main_meshtastic_connection_failure(
             "mmrelay.main.asyncio.to_thread",
             side_effect=inline_to_thread,
         ),
-        mock_config,
     ):
         with pytest.raises(ConnectionError):
             asyncio.run(main(mock_config))
@@ -1120,7 +1121,7 @@ def test_main_matrix_connection_failure(
     ):
         with pytest.raises(Exception) as exc_info:
             asyncio.run(main(mock_config))
-    assert "Matrix connection failed" in str(context.exception)
+    assert "Matrix connection failed" in str(exc_info.value)
 
 
 @patch("mmrelay.main.initialize_database")
@@ -2227,11 +2228,11 @@ def test_nodedb_refresh_interval_invalid_defaults():
     import mmrelay.meshtastic_utils as meshtastic_module
 
     for raw_value in ("inf", "not-a-number", True, False, -1.0):
-        with subTest(raw_value=raw_value):
-            interval = meshtastic_module.get_nodedb_refresh_interval_seconds(
-                {"meshtastic": {"nodedb_refresh_interval": raw_value}}
-            )
-            assert interval == DEFAULT_NODEDB_REFRESH_INTERVAL
+        # subTest removed - converted to inline loop
+        interval = meshtastic_module.get_nodedb_refresh_interval_seconds(
+            {"meshtastic": {"nodedb_refresh_interval": raw_value}}
+        )
+        assert interval == DEFAULT_NODEDB_REFRESH_INTERVAL
 
 
 @pytest.mark.parametrize("db_key", ["database", "db"])
@@ -3038,10 +3039,10 @@ def test_suppresses_unretrieved_keys_query_timeout():
         cr_code = _DummyCode()
 
     class _DummyTask:
-        def get_coro():
+        def get_coro(self):
             return _DummyCoro()
 
-        def __repr__() -> str:
+        def __repr__(self) -> str:
             return "<Task coro=keys_query()>"
 
     context = {
@@ -4092,65 +4093,65 @@ def test_exception_in_stop_message_queue_logs_error() -> None:
 def test_shutdown_exceptions_are_logged_and_suppressed():
     """KeyboardInterrupt and SystemExit raised by shutdown steps should be logged, not re-raised."""
     for exception_class in (KeyboardInterrupt, SystemExit):
-        with subTest(exception_class=exception_class):
-            try:
-                config = {
-                    "matrix_rooms": [{"id": TEST_ROOM_ID_1}],
-                    "matrix": {"homeserver": TEST_MATRIX_HOMESERVER},
-                    "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
-                }
+        # subTest removed - converted to inline loop
+        try:
+            config = {
+                "matrix_rooms": [{"id": TEST_ROOM_ID_1}],
+                "matrix": {"homeserver": TEST_MATRIX_HOMESERVER},
+                "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
+            }
 
-                with (
-                    patch("mmrelay.main.initialize_database"),
-                    patch("mmrelay.main.load_plugins"),
-                    patch("mmrelay.main.start_message_queue"),
-                    patch(
-                        "mmrelay.main.connect_matrix",
-                        new_callable=AsyncMock,
-                    ),
-                    patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
-                    patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
-                    patch("mmrelay.main.get_message_queue") as mock_get_queue,
-                    patch("mmrelay.main.shutdown_plugins") as mock_shutdown,
-                    patch("mmrelay.main.stop_message_queue") as mock_stop_message_queue,
-                    patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-                    patch(
-                        "mmrelay.main.asyncio.get_running_loop",
-                        side_effect=_make_patched_get_running_loop(),
-                    ),
-                    patch(
-                        "mmrelay.main.asyncio.to_thread",
-                        side_effect=inline_to_thread,
-                    ),
-                    patch(
-                        "mmrelay.main.meshtastic_utils.check_connection",
-                        new=_async_noop,
-                    ),
-                    patch("mmrelay.main.logger") as mock_logger,
-                ):
-                    mock_matrix_client = AsyncMock()
-                    mock_matrix_client.add_event_callback = MagicMock()
-                    mock_matrix_client.close = AsyncMock()
-                    mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
-                    with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
-                        mock_queue = MagicMock()
-                        mock_queue.ensure_processor_started = MagicMock()
-                        mock_get_queue.return_value = mock_queue
-                        mock_shutdown.side_effect = exception_class()
+            with (
+                patch("mmrelay.main.initialize_database"),
+                patch("mmrelay.main.load_plugins"),
+                patch("mmrelay.main.start_message_queue"),
+                patch(
+                    "mmrelay.main.connect_matrix",
+                    new_callable=AsyncMock,
+                ),
+                patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
+                patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
+                patch("mmrelay.main.get_message_queue") as mock_get_queue,
+                patch("mmrelay.main.shutdown_plugins") as mock_shutdown,
+                patch("mmrelay.main.stop_message_queue") as mock_stop_message_queue,
+                patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+                patch(
+                    "mmrelay.main.asyncio.get_running_loop",
+                    side_effect=_make_patched_get_running_loop(),
+                ),
+                patch(
+                    "mmrelay.main.asyncio.to_thread",
+                    side_effect=inline_to_thread,
+                ),
+                patch(
+                    "mmrelay.main.meshtastic_utils.check_connection",
+                    new=_async_noop,
+                ),
+                patch("mmrelay.main.logger") as mock_logger,
+            ):
+                mock_matrix_client = AsyncMock()
+                mock_matrix_client.add_event_callback = MagicMock()
+                mock_matrix_client.close = AsyncMock()
+                mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
+                with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
+                    mock_queue = MagicMock()
+                    mock_queue.ensure_processor_started = MagicMock()
+                    mock_get_queue.return_value = mock_queue
+                    mock_shutdown.side_effect = exception_class()
 
-                        asyncio.run(main(config))
+                    asyncio.run(main(config))
 
-                        mock_shutdown.assert_called_once()
-                        mock_stop_message_queue.assert_called_once()
-                        mock_matrix_client.close.assert_awaited_once()
+                    mock_shutdown.assert_called_once()
+                    mock_stop_message_queue.assert_called_once()
+                    mock_matrix_client.close.assert_awaited_once()
 
-                assert any(
-                    "Error while stopping" in str(call)
-                    for call in mock_logger.error.call_args_list
-                )
+            assert any(
+                "Error while stopping" in str(call)
+                for call in mock_logger.error.call_args_list
+            )
 
-            finally:
-                _reset_all_mmrelay_globals()
+        finally:
+            _reset_all_mmrelay_globals()
 
 
 # =============================================================================
@@ -4200,7 +4201,7 @@ def test_exception_during_ensure_processor_started_raised():
         with pytest.raises(RuntimeError) as exc_info:
             asyncio.run(main(config))
 
-        assert "Queue processor failed" in str(context.exception)
+        assert "Queue processor failed" in str(exc_info.value)
 
 
 # =============================================================================
