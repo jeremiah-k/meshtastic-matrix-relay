@@ -18,6 +18,7 @@ src/mmrelay.egg-info/
 .aider*
 .opencode/
 .codex
+.commandcode/
 coderabbit_actionable_items.md
 
 # Build and test outputs
