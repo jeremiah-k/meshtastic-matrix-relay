@@ -17,7 +17,6 @@ import sqlite3
 import stat
 import tempfile
 import threading
-import time
 from concurrent.futures import Future
 from typing import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -92,13 +91,10 @@ def temp_db_manager() -> Generator[DatabaseManager, None, None]:
 def test_initialization_default_parameters(db_manager):
     """Test DatabaseManager initialization with default parameters."""
     manager, db_path = db_manager
-    try:
-        assert manager._path == db_path
-        assert manager._enable_wal is True
-        assert manager._busy_timeout_ms == DEFAULT_BUSY_TIMEOUT_MS
-        assert manager._extra_pragmas == {}
-    finally:
-        manager.close()
+    assert manager._path == db_path
+    assert manager._enable_wal is True
+    assert manager._busy_timeout_ms == DEFAULT_BUSY_TIMEOUT_MS
+    assert manager._extra_pragmas == {}
 
 
 def test_initialization_custom_parameters(db_path):
@@ -835,13 +831,13 @@ def test_read_rejects_new_work_when_manager_closing(db_manager):
 def test_close_cleanup(db_manager):
     """Test close method properly cleans up resources."""
     manager, _ = db_manager
-    # Create some connections
-    conn1 = manager._get_connection()
-    conn2 = manager._get_connection()
+    # _get_connection is thread-local: calling it again on the same thread returns the same connection.
+    conn = manager._get_connection()
 
-    # Verify connections exist
-    assert conn1 in manager._connections
-    assert conn2 in manager._connections
+    # Verify connection exists
+    assert conn in manager._connections
+    # Calling _get_connection again on the same thread reuses the same connection
+    assert manager._get_connection() is conn
 
     # Close manager
     manager.close()

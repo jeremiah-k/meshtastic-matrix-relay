@@ -700,6 +700,7 @@ def test_on_lost_meshtastic_connection_detection_source_edge_cases():
     ]
 
     for source in detection_sources:
+        mmrelay.meshtastic_utils.reconnecting = False
         with (
             patch(
                 "mmrelay.meshtastic_utils.connect_meshtastic",

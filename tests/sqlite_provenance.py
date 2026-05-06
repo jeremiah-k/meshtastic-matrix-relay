@@ -30,6 +30,10 @@ class _ConnectionProvenance:
         self._real_connect = sqlite3.connect
         self._patched: bool = False
 
+    def set_nodeid(self, nodeid: str) -> None:
+        """Set the current test node identifier for provenance tracking."""
+        self._current_nodeid = nodeid
+
     def install(self) -> None:
         """
         Install a connection tracker that intercepts sqlite3.connect and records provenance for each new connection.
@@ -51,9 +55,11 @@ class _ConnectionProvenance:
 
             class _TrackedConnection(base):
                 def close(self) -> None:
-                    super().close()
-                    with tracker._registry_lock:
-                        registry.pop(id(self), None)
+                    try:
+                        super().close()
+                    finally:
+                        with tracker._registry_lock:
+                            registry.pop(id(self), None)
 
             return _TrackedConnection
 
@@ -77,6 +83,8 @@ class _ConnectionProvenance:
                 caller_factory, sqlite3.Connection
             ):
                 kwargs["factory"] = _make_tracked_class(caller_factory)
+            # Note: Non-type callable factories cannot be wrapped; they will still
+            # be tracked in the registry but won't auto-deregister on close().
 
             conn = real_connect(*args, **kwargs)
             db_path = args[0] if args else kwargs.get("database", "?")

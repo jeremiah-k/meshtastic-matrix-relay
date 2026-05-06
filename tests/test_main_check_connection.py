@@ -121,6 +121,10 @@ def test_returns_early_when_task_is_none():
         "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
     }
 
+    mock_matrix_client = AsyncMock()
+    mock_matrix_client.add_event_callback = MagicMock()
+    mock_matrix_client.close = AsyncMock()
+
     with (
         patch("mmrelay.main.initialize_database"),
         patch("mmrelay.main.load_plugins"),
@@ -128,7 +132,7 @@ def test_returns_early_when_task_is_none():
         patch(
             "mmrelay.main.connect_matrix",
             new_callable=AsyncMock,
-        ),
+        ) as mock_connect_matrix,
         patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
         patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
         patch("mmrelay.main.get_message_queue") as mock_get_queue,
@@ -141,16 +145,12 @@ def test_returns_early_when_task_is_none():
             return_value=None,
         ),
     ):
-        mock_matrix_client = AsyncMock()
-        mock_matrix_client.add_event_callback = MagicMock()
-        mock_matrix_client.close = AsyncMock()
-        mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
-        with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
-            mock_queue = MagicMock()
-            mock_queue.ensure_processor_started = MagicMock()
-            mock_get_queue.return_value = mock_queue
+        mock_connect_matrix.return_value = mock_matrix_client
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
 
-            asyncio.run(main(config))
+        asyncio.run(main(config))
 
 
 def test_timeout_during_shutdown_cancels_task():
@@ -180,6 +180,10 @@ def test_timeout_during_shutdown_cancels_task():
             raise asyncio.TimeoutError()
         return await real_wait_for(awaitable, timeout=timeout)
 
+    mock_matrix_client = AsyncMock()
+    mock_matrix_client.add_event_callback = MagicMock()
+    mock_matrix_client.close = AsyncMock()
+
     with (
         patch("mmrelay.main.initialize_database"),
         patch("mmrelay.main.load_plugins"),
@@ -187,7 +191,7 @@ def test_timeout_during_shutdown_cancels_task():
         patch(
             "mmrelay.main.connect_matrix",
             new_callable=AsyncMock,
-        ),
+        ) as mock_connect_matrix,
         patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
         patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
         patch("mmrelay.main.get_message_queue") as mock_get_queue,
@@ -201,18 +205,14 @@ def test_timeout_during_shutdown_cancels_task():
         patch("mmrelay.main.asyncio.wait_for") as mock_wait_for,
         patch("mmrelay.main.asyncio.create_task", side_effect=_capture_create_task),
     ):
-        mock_matrix_client = AsyncMock()
-        mock_matrix_client.add_event_callback = MagicMock()
-        mock_matrix_client.close = AsyncMock()
-        mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
-        with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
-            mock_queue = MagicMock()
-            mock_queue.ensure_processor_started = MagicMock()
-            mock_get_queue.return_value = mock_queue
+        mock_connect_matrix.return_value = mock_matrix_client
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
 
-            mock_wait_for.side_effect = _wait_for_side_effect
+        mock_wait_for.side_effect = _wait_for_side_effect
 
-            asyncio.run(main(config))
+        asyncio.run(main(config))
 
         mock_connect_matrix.assert_called_once()
         mock_matrix_client.close.assert_awaited_once()
@@ -372,6 +372,10 @@ def test_exception_during_shutdown_wait_logs_error():
             raise ValueError("Test error")
         return await real_wait_for(awaitable, timeout=timeout)
 
+    mock_matrix_client = AsyncMock()
+    mock_matrix_client.add_event_callback = MagicMock()
+    mock_matrix_client.close = AsyncMock()
+
     with (
         patch("mmrelay.main.initialize_database"),
         patch("mmrelay.main.load_plugins"),
@@ -379,7 +383,7 @@ def test_exception_during_shutdown_wait_logs_error():
         patch(
             "mmrelay.main.connect_matrix",
             new_callable=AsyncMock,
-        ),
+        ) as mock_connect_matrix,
         patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
         patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
         patch("mmrelay.main.get_message_queue") as mock_get_queue,
@@ -393,24 +397,20 @@ def test_exception_during_shutdown_wait_logs_error():
         patch("mmrelay.main.asyncio.wait_for") as mock_wait_for,
         patch("mmrelay.main.logger") as mock_logger,
     ):
-        mock_matrix_client = AsyncMock()
-        mock_matrix_client.add_event_callback = MagicMock()
-        mock_matrix_client.close = AsyncMock()
-        mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
-        with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
-            mock_queue = MagicMock()
-            mock_queue.ensure_processor_started = MagicMock()
-            mock_get_queue.return_value = mock_queue
+        mock_connect_matrix.return_value = mock_matrix_client
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
 
-            mock_wait_for.side_effect = _wait_for_side_effect
+        mock_wait_for.side_effect = _wait_for_side_effect
 
-            asyncio.run(main(config))
+        asyncio.run(main(config))
 
-            assert shutdown_wait_for_injected
-            assert any(
-                "Error while waiting for" in str(call)
-                for call in mock_logger.error.call_args_list
-            )
+        assert shutdown_wait_for_injected
+        assert any(
+            "Error while waiting for" in str(call)
+            for call in mock_logger.error.call_args_list
+        )
 
 
 def test_cancelled_error_cancels_task_and_returns():
@@ -467,6 +467,10 @@ def test_cancelled_error_cancels_task_and_returns():
                     raise asyncio.CancelledError()
         return await real_wait_for(coro, timeout=timeout)
 
+    mock_matrix_client = AsyncMock()
+    mock_matrix_client.add_event_callback = MagicMock()
+    mock_matrix_client.close = AsyncMock()
+
     with (
         patch("mmrelay.main.initialize_database"),
         patch("mmrelay.main.load_plugins"),
@@ -474,7 +478,7 @@ def test_cancelled_error_cancels_task_and_returns():
         patch(
             "mmrelay.main.connect_matrix",
             new_callable=AsyncMock,
-        ),
+        ) as mock_connect_matrix,
         patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
         patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
         patch("mmrelay.main.get_message_queue") as mock_get_queue,
@@ -488,16 +492,12 @@ def test_cancelled_error_cancels_task_and_returns():
         patch("mmrelay.main.asyncio.wait_for", new=mock_wait_for),
         patch("mmrelay.main.asyncio.create_task", side_effect=_capture_create_task),
     ):
-        mock_matrix_client = AsyncMock()
-        mock_matrix_client.add_event_callback = MagicMock()
-        mock_matrix_client.close = AsyncMock()
-        mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
-        with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
-            mock_queue = MagicMock()
-            mock_queue.ensure_processor_started = MagicMock()
-            mock_get_queue.return_value = mock_queue
+        mock_connect_matrix.return_value = mock_matrix_client
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
 
-            asyncio.run(main(config))
+        asyncio.run(main(config))
 
         mock_connect_matrix.assert_called_once()
         mock_matrix_client.close.assert_awaited_once()
@@ -530,6 +530,10 @@ def test_task_with_exception_result_logs_error():
         "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
     }
 
+    mock_matrix_client = AsyncMock()
+    mock_matrix_client.add_event_callback = MagicMock()
+    mock_matrix_client.close = AsyncMock()
+
     with (
         patch("mmrelay.main.initialize_database"),
         patch("mmrelay.main.load_plugins"),
@@ -537,7 +541,7 @@ def test_task_with_exception_result_logs_error():
         patch(
             "mmrelay.main.connect_matrix",
             new_callable=AsyncMock,
-        ),
+        ) as mock_connect_matrix,
         patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
         patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
         patch("mmrelay.main.get_message_queue") as mock_get_queue,
@@ -548,21 +552,17 @@ def test_task_with_exception_result_logs_error():
         patch("mmrelay.main.asyncio.gather") as mock_gather,
         patch("mmrelay.main.logger") as mock_logger,
     ):
-        mock_matrix_client = AsyncMock()
-        mock_matrix_client.add_event_callback = MagicMock()
-        mock_matrix_client.close = AsyncMock()
-        mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
-        with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
-            mock_queue = MagicMock()
-            mock_queue.ensure_processor_started = MagicMock()
-            mock_get_queue.return_value = mock_queue
+        mock_connect_matrix.return_value = mock_matrix_client
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
 
-            async def _mock_gather(*_args: Any, **_kwargs: Any) -> list[Any]:
-                return [ValueError("Task error")]
+        async def _mock_gather(*_args: Any, **_kwargs: Any) -> list[Any]:
+            return [ValueError("Task error")]
 
-            mock_gather.side_effect = _mock_gather
+        mock_gather.side_effect = _mock_gather
 
-            asyncio.run(main(config))
+        asyncio.run(main(config))
 
         assert any(
             "Error during" in str(call) for call in mock_logger.error.call_args_list

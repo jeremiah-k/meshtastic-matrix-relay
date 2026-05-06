@@ -980,17 +980,6 @@ class SleepAndShutdown:
         return None
 
 
-def _sleep_and_shutdown(_seconds: float) -> None:
-    """
-    Mark the application as shutting down; intended as a placeholder to use where asyncio.sleep is expected.
-
-    Parameters:
-        _seconds (float): Ignored --- present only to match the asyncio.sleep signature.
-    """
-    mu.shutting_down = True
-    return None
-
-
 @pytest.mark.asyncio
 async def test_check_connection_health_disabled_returns():
     mu.config = _make_health_config(enabled=False)
@@ -1883,11 +1872,11 @@ class TestFirmwareVersionExtraction:
         client.metadata = None
 
         mock_future = Mock(spec=Future)
-        mock_future.result.side_effect = TimeoutError("Timeout")
+        mock_future.result.side_effect = ConcurrentTimeoutError("Timeout")
         mock_future.done.return_value = True
 
         with patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit:
             mock_submit.return_value = mock_future
 
-            with pytest.raises(TimeoutError):
+            with pytest.raises(ConcurrentTimeoutError):
                 mu._get_device_metadata(client, raise_on_error=True)

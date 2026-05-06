@@ -9,6 +9,8 @@ banner printing, error handling, KeyboardInterrupt, and argument variants.
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
 from mmrelay.main import print_banner, run_main
 from tests._test_main_helpers import (
@@ -16,6 +18,16 @@ from tests._test_main_helpers import (
     _mock_run_with_exception,
     _mock_run_with_keyboard_interrupt,
 )
+
+
+@pytest.fixture(autouse=True)
+def reset_banner_state():
+    import mmrelay.main
+
+    mmrelay.main._banner_printed = False
+    yield
+    mmrelay.main._banner_printed = False
+
 
 # =============================================================================
 # Banner tests
@@ -26,10 +38,6 @@ def test_print_banner():
     """
     Tests that the banner is printed exactly once and includes the version information in the log output.
     """
-    import mmrelay.main
-
-    mmrelay.main._banner_printed = False
-
     with patch("mmrelay.main.logger") as mock_logger:
         print_banner()
 
@@ -42,48 +50,12 @@ def test_print_banner():
 
 def test_print_banner_only_once():
     """Test that banner is only printed once."""
-    import mmrelay.main
-
-    mmrelay.main._banner_printed = False
-
     with patch("mmrelay.main.logger") as mock_logger:
         print_banner()
         print_banner()  # Second call
 
         # Should only be called once
         assert mock_logger.info.call_count == 1
-
-
-@patch("mmrelay.main.logger")
-def test_print_banner_first_time(mock_logger):
-    """
-    Test that the banner is printed and includes version information on the first call to print_banner.
-    """
-    import mmrelay.main
-
-    mmrelay.main._banner_printed = False
-
-    print_banner()
-    mock_logger.info.assert_called_once()
-    # Check that the message contains version info
-    call_args = mock_logger.info.call_args[0][0]
-    assert "Starting MMRelay" in call_args
-    assert "version " in call_args  # Version should be included
-
-
-@patch("mmrelay.main.logger")
-def test_print_banner_subsequent_calls(mock_logger):
-    """
-    Test that the banner is printed only once, even if print_banner is called multiple times.
-    """
-    import mmrelay.main
-
-    mmrelay.main._banner_printed = False
-
-    print_banner()
-    print_banner()  # Second call
-    # Should only be called once
-    mock_logger.info.assert_called_once()
 
 
 # =============================================================================
@@ -428,8 +400,8 @@ def test_run_main_with_credentials_json(
         mock_asyncio_run.side_effect = _close_coro_if_possible
         result = run_main(mock_args)
 
-    assert result == 0
-    mock_asyncio_run.assert_called_once()
+        assert result == 0
+        mock_asyncio_run.assert_called_once()
 
 
 @patch("mmrelay.main.print_banner")

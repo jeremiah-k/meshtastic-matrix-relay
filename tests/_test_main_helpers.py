@@ -47,7 +47,7 @@ def _make_async_return(value: Any) -> Callable[..., Any]:
     return _async_return
 
 
-async def _async_noop(*_args, **_kwargs) -> None:
+async def _async_noop(*_args: Any, **_kwargs: Any) -> None:
     """
     Asynchronous no-op that accepts any positional and keyword arguments.
 
@@ -148,7 +148,7 @@ def _make_async_raise(exc: Exception):
         Callable[..., Coroutine]: An async function that, when called and awaited, raises `exc`.
     """
 
-    async def _async_raise(*_args, **_kwargs):
+    async def _async_raise(*_args: Any, **_kwargs: Any) -> None:
         raise exc
 
     return _async_raise
@@ -233,13 +233,13 @@ class _ImmediateEvent:
         """
         self._set = True
 
-    async def wait(self) -> None:
+    async def wait(self) -> bool:
         """
         Return immediately without blocking, simulating an event that is already set.
 
-        This coroutine is a no-op used in tests to represent an event whose wait completes immediately.
+        This coroutine returns ``True`` immediately to indicate the event is set.
         """
-        return None
+        return True
 
 
 class _OnePassEvent:
@@ -368,7 +368,6 @@ class _ControlledExecutor:
         self.close_future_factory = close_future_factory
         self.submit_timeout = submit_timeout
         self.shutdown_typeerror = shutdown_typeerror
-        self.future = None
         self.close_future = None
         self.calls: list[Any] = []
 

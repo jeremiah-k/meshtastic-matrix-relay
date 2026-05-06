@@ -23,11 +23,6 @@ from tests.helpers import (
     make_patched_get_running_loop,
 )
 
-__all__ = [
-    "test_sync_timeout_logs_warning_and_retries",
-    "test_sync_client_error_logs_warning_and_retries",
-    "test_sync_connection_error_logs_exception",
-]
 # =============================================================================
 # TestMatrixSyncLoopErrorHandling (converted from unittest.TestCase)
 # =============================================================================
@@ -58,7 +53,7 @@ def test_sync_timeout_logs_warning_and_retries():
         def sync_forever_side_effect(**kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
-                raise asyncio.TimeoutError("Sync timeout")
+                raise TimeoutError("Sync timeout")
             for event in created_events:
                 event.set()
             return None

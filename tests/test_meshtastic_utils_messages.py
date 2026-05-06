@@ -15,9 +15,7 @@ import contextlib
 import inspect
 import threading
 import unittest
-from collections.abc import Iterator
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
-from contextlib import ExitStack, contextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -72,134 +70,6 @@ def _base_config() -> dict[str, Any]:
         },
         "matrix_rooms": [{"id": "!room:test", "meshtastic_channel": 0}],
     }
-
-
-def _base_packet() -> dict[str, Any]:
-    """
-    Create a representative Meshtastic packet dictionary used by tests.
-
-    Returns:
-        dict: A packet containing:
-            - fromId: sender node id (123)
-            - to: recipient id (BROADCAST_NUM)
-            - decoded: payload with `text` ("Hello") and `portnum` (TEXT_MESSAGE_APP)
-            - channel: channel index (0)
-            - id: message id (999)
-    """
-    return {
-        "fromId": 123,
-        "to": BROADCAST_NUM,
-        "decoded": {"text": "Hello", "portnum": TEXT_MESSAGE_APP},
-        "channel": 0,
-        "id": 999,
-    }
-
-
-def _make_interface(
-    node_id: int = 999, nodes: dict[Any, Any] | None = None
-) -> MagicMock:
-    """
-    Create a MagicMock that simulates a Meshtastic interface for tests.
-
-    Parameters:
-        node_id (int): The node number to assign to interface.myInfo.my_node_num.
-        nodes (dict | None): Mapping of node IDs to node info objects to attach to interface.nodes; uses an empty dict if None.
-
-    Returns:
-        MagicMock: A mock interface with `myInfo.my_node_num` and `nodes` set as provided.
-    """
-    interface = MagicMock()
-    interface.myInfo.my_node_num = node_id
-    interface.nodes = nodes or {}
-    return interface
-
-
-def _set_globals(config: dict[str, Any]) -> None:
-    """
-    Assign the provided configuration to meshtastic_utils module globals.
-
-    Set mu.config to the given config and mu.matrix_rooms to the value of the config's
-    "matrix_rooms" key or an empty list if that key is missing.
-
-    Parameters:
-        config (dict): Configuration mapping to apply to mmrelay.meshtastic_utils.
-    """
-    mu.config = config
-    mu.matrix_rooms = config.get("matrix_rooms", [])
-
-
-@contextmanager
-def _patch_message_deps(
-    interaction_settings=None,
-    longname: str | None = "Long",
-    shortname: str | None = "Short",
-    message_map=None,
-    plugins=None,
-    matrix_prefix="[p] ",
-    patch_logger=True,
-    patch_relay=True,
-) -> Iterator[tuple[Any | None, Any | None]]:
-    if interaction_settings is None:
-        interaction_settings = {"reactions": False, "replies": False}
-    if plugins is None:
-        plugins = []
-
-    with ExitStack() as stack:
-        stack.enter_context(
-            patch(
-                "mmrelay.matrix_utils.get_interaction_settings",
-                return_value=interaction_settings,
-            )
-        )
-        stack.enter_context(
-            patch("mmrelay.meshtastic_utils.get_longname", return_value=longname)
-        )
-        stack.enter_context(
-            patch("mmrelay.meshtastic_utils.get_shortname", return_value=shortname)
-        )
-        stack.enter_context(
-            patch(
-                "mmrelay.meshtastic_utils.get_message_map_by_meshtastic_id",
-                return_value=message_map,
-            )
-        )
-        stack.enter_context(
-            patch("mmrelay.plugin_loader.load_plugins", return_value=plugins)
-        )
-        stack.enter_context(
-            patch("mmrelay.matrix_utils.get_matrix_prefix", return_value=matrix_prefix)
-        )
-        mock_relay = (
-            stack.enter_context(
-                patch("mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock)
-            )
-            if patch_relay
-            else None
-        )
-        mock_logger = (
-            stack.enter_context(patch("mmrelay.meshtastic_utils.logger"))
-            if patch_logger
-            else None
-        )
-        yield mock_logger, mock_relay
-
-
-def _base_config_with_routing(
-    chat_portnums: list[Any] | str | None = None,
-    disabled_portnums: list[Any] | str | None = None,
-    encrypted_action: str | None = None,
-) -> dict[str, Any]:
-    config = _base_config()
-    routing: dict[str, Any] = {}
-    if chat_portnums is not None:
-        routing["chat_portnums"] = chat_portnums
-    if disabled_portnums is not None:
-        routing["disabled_portnums"] = disabled_portnums
-    if encrypted_action is not None:
-        routing["encrypted_action"] = encrypted_action
-    if routing:
-        config["meshtastic"]["packet_routing"] = routing
-    return config
 
 
 def _cancel_startup_drain_timer() -> None:
@@ -1491,4 +1361,4 @@ class TestOnMeshtasticMessageDatabaseError(unittest.TestCase):
             on_meshtastic_message(packet, mock_interface)
 
         mock_get_longname.assert_called()
-        assert mock_logger.debug.called
+        self.assertTrue(mock_logger.debug.called)

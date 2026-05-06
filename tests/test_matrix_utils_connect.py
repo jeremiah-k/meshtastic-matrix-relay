@@ -291,7 +291,7 @@ async def test_connect_matrix_no_config_returns_none():
 @pytest.mark.asyncio
 async def test_connect_matrix_ssl_context_failure_logs_warning():
     """connect_matrix handles _create_ssl_context returning None by logging a warning and still returning a client."""
-    mock_client = AsyncMock()
+    mock_client = MagicMock()
     mock_client.sync = AsyncMock(return_value=MagicMock())
     mock_client.rooms = {}
 
@@ -313,4 +313,8 @@ async def test_connect_matrix_ssl_context_failure_logs_warning():
         result = await connect_matrix(config)
 
     assert result is not None
-    mock_logger.warning.assert_called()
+    # Verify warning mentions SSL context creation failure
+    warning_call_args = mock_logger.warning.call_args
+    assert warning_call_args is not None
+    warning_message = str(warning_call_args)
+    assert "SSL" in warning_message or "ssl" in warning_message

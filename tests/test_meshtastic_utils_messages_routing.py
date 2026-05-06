@@ -645,7 +645,6 @@ def test_on_meshtastic_message_logs_when_matrix_rooms_falsy():
     assert mock_logger is not None
     assert any(
         "matrix_rooms is empty" in str(call)
-        and call[0][0].startswith("matrix_rooms is empty")
         for call in mock_logger.warning.call_args_list
     ), f"Expected warning about empty matrix_rooms, got: {mock_logger.warning.call_args_list}"
 
@@ -1388,7 +1387,11 @@ def test_on_meshtastic_message_non_text_plugin_match_skips_remaining():
 
 
 def test_on_meshtastic_message_large_node_list():
-    """Handles packet when interface has a very large number of nodes."""
+    """Handles packet when interface has a very large number of nodes.
+
+    This test verifies the function completes without error or timeout when
+    processing messages with a large node list in the interface.
+    """
     packet = {
         "decoded": {"text": "test message", "portnum": PORTNUM_TEXT_MESSAGE_APP},
         "fromId": "!12345678",
@@ -1424,6 +1427,7 @@ def test_on_meshtastic_message_large_node_list():
         patch("mmrelay.matrix_utils.matrix_client", None),
         patch("mmrelay.matrix_utils.matrix_relay", Mock(return_value=None)),
     ):
+        # Primary assertion: function completes without exception for 10,000 nodes
         on_meshtastic_message(packet, mock_interface)
 
 

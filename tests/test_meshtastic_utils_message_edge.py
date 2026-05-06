@@ -1444,7 +1444,11 @@ class TestMessageHandlerEdgeCases:
         mu.config = {"meshtastic": {"meshnet_name": "test"}}
         mu.matrix_rooms = []
 
-        mu.on_meshtastic_message(packet, mock_interface)
+        # Should not raise any exception
+        try:
+            mu.on_meshtastic_message(packet, mock_interface)
+        except Exception as e:
+            self.fail(f"on_meshtastic_message raised {type(e).__name__}: {e}")
 
     @pytest.mark.asyncio
     async def test_check_connection_non_dict_health_config(self):
@@ -1711,7 +1715,7 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
         ):
             mock_plugin = MagicMock()
             mock_plugin.plugin_name = "test_plugin"
-            mock_plugin.handle_meshtastic_message = AsyncMock(
+            mock_plugin.handle_meshtastic_message = Mock(
                 side_effect=_PluginFailure("Plugin failed")
             )
             mock_load_plugins.return_value = [mock_plugin]
@@ -1954,11 +1958,16 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
+async def _plugin_return_false(*args: Any, **kwargs: Any) -> bool:
+    """Async helper that returns False — used as Mock side_effect for plugin handlers."""
+    return False
+
+
 def _make_plugin(name: str) -> MagicMock:
     """Create a MagicMock plugin with the given name and async handle_meshtastic_message."""
     plugin = MagicMock()
     plugin.plugin_name = name
-    plugin.handle_meshtastic_message = AsyncMock(return_value=False)
+    plugin.handle_meshtastic_message = Mock(side_effect=_plugin_return_false)
     return plugin
 
 

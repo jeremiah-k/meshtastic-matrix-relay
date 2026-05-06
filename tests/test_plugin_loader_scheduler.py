@@ -88,30 +88,17 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
 
         class FakeSchedule:
             def __bool__(self) -> bool:
-                """
-                Make the object always evaluate as truthy.
-
-                Returns:
-                    True indicating the object is truthy.
-                """
+                """Always truthy to simulate available schedule."""
                 return True
 
             def run_pending(self) -> None:
-                """
-                Signal the scheduler to execute pending jobs now and request the global scheduler thread to stop.
-
-                Sets the local run event to trigger immediate execution of pending jobs. If a global scheduler stop event is present, sets that event to request the global scheduler thread to terminate after processing.
-                """
+                """Signal run and stop the scheduler thread."""
                 run_event.set()
                 if pl._global_scheduler_stop_event:
                     pl._global_scheduler_stop_event.set()
 
             def clear(self) -> None:
-                """
-                Remove all scheduled jobs associated with this plugin.
-
-                This method clears any entries the global scheduler has registered for the plugin instance so no future scheduled tasks for this plugin will run.
-                """
+                """No-op clear for test."""
 
         original_schedule = pl.schedule
         original_thread = pl._global_scheduler_thread
@@ -304,7 +291,7 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
         ref = {
             "type": "commit",
             "value": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4",
-        }  # 41 chars
+        }  # 64 chars (exceeds 40-char SHA-1 limit)
         result = _validate_clone_inputs("https://github.com/user/repo.git", ref)
 
         self.assertEqual(result, (False, None, None, None, None))
@@ -764,7 +751,9 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
         """Test updating to a tag."""
         mock_run_git.side_effect = [
             subprocess.CompletedProcess([], 0),  # fetch succeeds
-            MagicMock(stdout="abc123\n"),  # current commit
+            subprocess.CompletedProcess(
+                [], 0, stdout="abc123\n", stderr=""
+            ),  # current commit
             subprocess.CalledProcessError(
                 1, "git"
             ),  # rev-parse tag fails (tag not local)

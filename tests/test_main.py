@@ -284,7 +284,7 @@ def test_main_sync_failure_before_drain_does_not_publish_ready(
 
     async def _request_shutdown() -> None:
         nonlocal shutdown_backstop_fired
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(0.2)
         shutdown_backstop_fired = True
         shutdown_event.set()
 
@@ -379,7 +379,7 @@ def test_main_none_startup_drain_event_is_safe_noop(
     mock_matrix_client.add_event_callback = MagicMock()
     mock_matrix_client.close = AsyncMock()
 
-    async def _sync_forever_once(*_args, **_kwargs):
+    async def _sync_forever_once(*_args: Any, **_kwargs: Any) -> None:
         await asyncio.sleep(0)
         shutdown_event.set()
 

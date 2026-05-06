@@ -1561,23 +1561,23 @@ class TestConnectMeshtasticConfigAndRetryEdgeCases(unittest.TestCase):
             }
         }
 
-        with patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True):
-            with patch(
+        with (
+            patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True),
+            patch(
                 "mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface",
                 side_effect=ConcurrentTimeoutError("Connection timeout"),
-            ):
-                with patch("mmrelay.meshtastic_utils.time.sleep"):
-                    with (
-                        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
-                        patch(
-                            "mmrelay.meshtastic_utils.is_running_as_service",
-                            return_value=True,
-                        ),
-                        patch("mmrelay.matrix_utils.matrix_client", None),
-                    ):
-                        result = connect_meshtastic(config)
-                        self.assertIsNone(result)
-                        mock_logger.exception.assert_called()
+            ),
+            patch("mmrelay.meshtastic_utils.time.sleep"),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+            patch(
+                "mmrelay.meshtastic_utils.is_running_as_service",
+                return_value=True,
+            ),
+            patch("mmrelay.matrix_utils.matrix_client", None),
+        ):
+            result = connect_meshtastic(config)
+            self.assertIsNone(result)
+            mock_logger.exception.assert_called()
 
     def test_connect_meshtastic_tcp_connection_refused(self):
         """Returns None when TCP connection is refused (not a critical error)."""
@@ -1617,16 +1617,18 @@ class TestConnectMeshtasticConfigAndRetryEdgeCases(unittest.TestCase):
             }
         }
 
-        with patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True):
-            with patch(
+        with (
+            patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True),
+            patch(
                 "mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface",
                 side_effect=MemoryError("Out of memory"),
-            ):
-                with patch("mmrelay.meshtastic_utils.time.sleep"):
-                    with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
-                        result = connect_meshtastic(config)
-                        self.assertIsNone(result)
-                        mock_logger.exception.assert_called()
+            ),
+            patch("mmrelay.meshtastic_utils.time.sleep"),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            result = connect_meshtastic(config)
+            self.assertIsNone(result)
+            mock_logger.exception.assert_called()
 
     def test_connect_meshtastic_concurrent_access(self):
         """Returns None when a reconnection is already in progress."""
@@ -1652,15 +1654,17 @@ class TestConnectMeshtasticConfigAndRetryEdgeCases(unittest.TestCase):
             }
         }
 
-        with patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True):
-            with patch(
+        with (
+            patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True),
+            patch(
                 "mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface",
                 side_effect=MemoryError("Out of memory"),
-            ):
-                with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
-                    result = connect_meshtastic(config)
-                    self.assertIsNone(result)
-                    mock_logger.exception.assert_called()
+            ),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            result = connect_meshtastic(config)
+            self.assertIsNone(result)
+            mock_logger.exception.assert_called()
 
     def test_connect_meshtastic_config_validation_edge_cases(self):
         """Returns None for various invalid configs without raising."""

@@ -486,13 +486,20 @@ class TestRefreshNodeNameTablesInvalidInterval:
     """Test refresh_node_name_tables invalid interval handling."""
 
     @pytest.mark.asyncio
-    async def test_refresh_node_name_tables_boolean_interval(self):
-        """Test with boolean interval raises TypeError, defaults to configured interval."""
+    @pytest.mark.parametrize(
+        "invalid_interval,expected_fallback",
+        [(True, 60.0), (float("nan"), 120.0), (float("inf"), 90.0)],
+        ids=["boolean", "nan", "inf"],
+    )
+    async def test_refresh_node_name_tables_invalid_interval(
+        self, invalid_interval, expected_fallback
+    ):
+        """Test with invalid interval defaults to configured interval."""
         mu.config = {"meshtastic": {}}
 
         with patch(
             "mmrelay.meshtastic.node_refresh.get_nodedb_refresh_interval_seconds",
-            return_value=60.0,
+            return_value=expected_fallback,
         ):
             with patch(
                 "mmrelay.meshtastic.node_refresh.asyncio.to_thread",
@@ -510,7 +517,7 @@ class TestRefreshNodeNameTablesInvalidInterval:
                     try:
                         await mu.refresh_node_name_tables(
                             shutdown_event,
-                            refresh_interval_seconds=True,
+                            refresh_interval_seconds=invalid_interval,
                         )
                     finally:
                         shutdown_task.cancel()
@@ -524,89 +531,7 @@ class TestRefreshNodeNameTablesInvalidInterval:
                         "Invalid NodeDB name-cache refresh interval override" in call
                         for call in warning_calls
                     )
-                    assert any("60.0" in call for call in warning_calls)
-
-    @pytest.mark.asyncio
-    async def test_refresh_node_name_tables_nan_interval(self):
-        """Test with nan interval raises ValueError, defaults to configured interval."""
-        mu.config = {"meshtastic": {}}
-
-        with patch(
-            "mmrelay.meshtastic.node_refresh.get_nodedb_refresh_interval_seconds",
-            return_value=120.0,
-        ):
-            with patch(
-                "mmrelay.meshtastic.node_refresh.asyncio.to_thread",
-                new_callable=AsyncMock,
-                return_value=(None, True),
-            ):
-                with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
-                    shutdown_event = asyncio.Event()
-
-                    async def run_with_shutdown():
-                        await asyncio.sleep(0.01)
-                        shutdown_event.set()
-
-                    shutdown_task = asyncio.create_task(run_with_shutdown())
-                    try:
-                        await mu.refresh_node_name_tables(
-                            shutdown_event,
-                            refresh_interval_seconds=float("nan"),
-                        )
-                    finally:
-                        shutdown_task.cancel()
-                        with contextlib.suppress(asyncio.CancelledError):
-                            await shutdown_task
-
-                    warning_calls = [
-                        str(call) for call in mock_logger.warning.call_args_list
-                    ]
-                    assert any(
-                        "Invalid NodeDB name-cache refresh interval override" in call
-                        for call in warning_calls
-                    )
-                    assert any("120.0" in call for call in warning_calls)
-
-    @pytest.mark.asyncio
-    async def test_refresh_node_name_tables_inf_interval(self):
-        """Test with inf interval raises ValueError, defaults to configured interval."""
-        mu.config = {"meshtastic": {}}
-
-        with patch(
-            "mmrelay.meshtastic.node_refresh.get_nodedb_refresh_interval_seconds",
-            return_value=90.0,
-        ):
-            with patch(
-                "mmrelay.meshtastic.node_refresh.asyncio.to_thread",
-                new_callable=AsyncMock,
-                return_value=(None, True),
-            ):
-                with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
-                    shutdown_event = asyncio.Event()
-
-                    async def run_with_shutdown():
-                        await asyncio.sleep(0.01)
-                        shutdown_event.set()
-
-                    shutdown_task = asyncio.create_task(run_with_shutdown())
-                    try:
-                        await mu.refresh_node_name_tables(
-                            shutdown_event,
-                            refresh_interval_seconds=float("inf"),
-                        )
-                    finally:
-                        shutdown_task.cancel()
-                        with contextlib.suppress(asyncio.CancelledError):
-                            await shutdown_task
-
-                    warning_calls = [
-                        str(call) for call in mock_logger.warning.call_args_list
-                    ]
-                    assert any(
-                        "Invalid NodeDB name-cache refresh interval override" in call
-                        for call in warning_calls
-                    )
-                    assert any("90.0" in call for call in warning_calls)
+                    assert any(str(expected_fallback) in call for call in warning_calls)
 
 
 # ---------------------------------------------------------------------------

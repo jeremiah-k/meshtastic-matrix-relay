@@ -30,9 +30,10 @@ class TestPluginLoaderClone(BaseGitTest):
             "https://github.com/user/repo.git", ref, self.temp_plugins_dir
         )
 
-        # The function is designed to be resilient and may return True even when git operations fail
+        # Result is False because _run_git always raises CalledProcessError
+        # and both code paths return False on git failure
         # The important part is that validation passes (no "Invalid commit hash" error)
-        self.assertIsInstance(result, bool)  # Just verify it returns a boolean
+        self.assertEqual(result, False)
         # Check that no validation error was logged for the valid commit hash
         validation_errors = [
             log_call
@@ -134,19 +135,7 @@ class TestPluginLoaderClone(BaseGitTest):
         checkout_call_count = 0
 
         def side_effect(*args, **_kwargs):
-            """
-            Create a fake git subprocess side effect used in tests.
-
-            Parameters:
-                *args: Positional arguments forwarded from subprocess.run or similar; the first element is expected to be the git command sequence (list or str).
-                **kwargs: Ignored.
-
-            Returns:
-                subprocess.CompletedProcess: A successful result with returncode 0 and empty stdout/stderr.
-
-            Raises:
-                subprocess.CalledProcessError: If the git command contains "rev-parse" for the target commit, to simulate a missing commit object.
-            """
+            """Simulate git ops: fail rev-parse for target commit, fail first checkout."""
             nonlocal checkout_call_count
             # Fail on rev-parse for the target commit (not found locally), but succeed on HEAD rev-parse
             if "rev-parse" in args[0] and "deadbeef^{commit}" in args[0]:

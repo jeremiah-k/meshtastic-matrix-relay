@@ -492,8 +492,7 @@ class TestCollectRequirements(unittest.TestCase):
         # Should still include the valid requirement
         self.assertIn("requests==2.28.0", result)
 
-    @patch("mmrelay.plugin_loader.logger")
-    def test_collect_requirements_io_error(self, mock_logger):
+    def test_collect_requirements_io_error(self):
         """Test handling of IO errors during file reading."""
         req_file = os.path.join(self.temp_dir, "requirements.txt")
 

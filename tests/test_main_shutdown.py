@@ -36,23 +36,6 @@ from tests.helpers import (
     make_patched_get_running_loop,
 )
 
-__all__ = [
-    "test_main_meshtastic_connection_failure",
-    "test_main_matrix_connection_failure",
-    "test_main_closes_meshtastic_client_on_shutdown",
-    "test_main_shutdown_disconnects_ble_interface",
-    "test_main_shutdown_cancels_reconnect_before_ble_disconnect_and_unsubscribes",
-    "test_main_shutdown_runs_blocking_cleanup_off_event_loop_thread",
-    "test_main_shutdown_plugin_timeout_continues_cleanup",
-    "test_main_shutdown_timeout_warns_and_continues",
-    "test_main_shutdown_logs_unexpected_close_error",
-    "test_main_shutdown_uses_blocking_timeout_helper",
-    "test_main_shutdown_success_logs_close_complete",
-    "test_exception_in_shutdown_step_logs_error",
-    "test_exception_in_stop_message_queue_logs_error",
-    "test_shutdown_exceptions_are_logged_and_suppressed",
-]
-
 
 @patch("mmrelay.main.connect_meshtastic")
 @patch("mmrelay.main.initialize_database")
@@ -209,7 +192,7 @@ def test_main_shutdown_disconnects_ble_interface(
 
     mock_iface = MagicMock()
 
-    def _connect_meshtastic(*_args, **_kwargs):
+    def _connect_meshtastic(*_args: Any, **_kwargs: Any) -> Any:
         """
         Install the test Meshtastic interface into mmrelay.meshtastic_utils and return it.
 
@@ -483,7 +466,7 @@ def test_main_shutdown_timeout_warns_and_continues(
 
     mock_iface = MagicMock()
 
-    def _connect_meshtastic(*_args, **_kwargs):
+    def _connect_meshtastic(*_args: Any, **_kwargs: Any) -> Any:
         """
         Install the provided mock Meshtastic interface into the mmrelay.meshtastic_utils module for tests.
 
@@ -669,8 +652,7 @@ def test_main_shutdown_uses_blocking_timeout_helper(
 
     import mmrelay.meshtastic_utils as mu
 
-    def _run_helper_side_effect(close_callable, *args, **kwargs):
-        _ = args, kwargs
+    def _run_helper_side_effect(close_callable, *_args, **_kwargs):
         close_callable()
         return None
 
@@ -751,8 +733,7 @@ def test_main_shutdown_success_logs_close_complete(
 
     import mmrelay.meshtastic_utils as mu
 
-    def _run_helper_side_effect(close_callable, *args, **kwargs):
-        _ = args, kwargs
+    def _run_helper_side_effect(close_callable, *_args, **_kwargs):
         close_callable()
         return None
 

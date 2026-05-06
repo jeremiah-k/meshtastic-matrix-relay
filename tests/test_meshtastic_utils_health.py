@@ -411,9 +411,9 @@ class TestHealthProbeTracking:
         }
 
         mock_interface = Mock()
-        mock_myInfo = Mock()
-        mock_myInfo.my_node_num = 12345
-        mock_interface.myInfo = mock_myInfo
+        mock_my_info = Mock()
+        mock_my_info.my_node_num = 12345
+        mock_interface.myInfo = mock_my_info
 
         result = mu._is_health_probe_response_packet(packet, mock_interface)
         assert result is True
@@ -428,9 +428,9 @@ class TestHealthProbeTracking:
         }
 
         mock_interface = Mock()
-        mock_myInfo = Mock()
-        mock_myInfo.my_node_num = 12345
-        mock_interface.myInfo = mock_myInfo
+        mock_my_info = Mock()
+        mock_my_info.my_node_num = 12345
+        mock_interface.myInfo = mock_my_info
 
         result = mu._is_health_probe_response_packet(packet, mock_interface)
         assert result is False
@@ -664,9 +664,9 @@ class TestHealthProbeResponsePacketLocalNodeFallback:
 
         mock_interface = Mock()
         mock_interface.myInfo = None
-        mock_localNode = Mock()
-        mock_localNode.nodeNum = 12345
-        mock_interface.localNode = mock_localNode
+        mock_local_node = Mock()
+        mock_local_node.nodeNum = 12345
+        mock_interface.localNode = mock_local_node
 
         result = mu._is_health_probe_response_packet(packet, mock_interface)
         assert result is True

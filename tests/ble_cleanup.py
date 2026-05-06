@@ -11,6 +11,8 @@ import contextlib
 import logging
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 
 def _safe_is_done(future: Any) -> bool:
     """
@@ -74,7 +76,7 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
         ):
             return
         except Exception as exc:
-            logging.getLogger(__name__).debug(
+            logger.debug(
                 "Suppressing future-drain exception during teardown: %s",
                 exc,
             )
@@ -90,7 +92,7 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
     ):
         return
     except Exception as exc:
-        logging.getLogger(__name__).debug(
+        logger.debug(
             "Suppressing future-drain exception during teardown: %s",
             exc,
         )
@@ -162,12 +164,12 @@ def cleanup_ble_future_state(module: Any) -> None:
                 concurrent.futures.CancelledError,
                 concurrent.futures.InvalidStateError,
             ) as exc:
-                logging.getLogger(__name__).debug(
+                logger.debug(
                     "Expected BLE Task cleanup exception: %s",
                     exc,
                 )
             except Exception as exc:
-                logging.getLogger(__name__).debug(
+                logger.debug(
                     "Suppressing BLE Task cleanup exception: %s",
                     exc,
                 )
@@ -175,7 +177,7 @@ def cleanup_ble_future_state(module: Any) -> None:
             try:
                 cancel_fn()
             except Exception as exc:
-                logging.getLogger(__name__).debug(
+                logger.debug(
                     "Suppressing BLE future cleanup exception: %s",
                     exc,
                 )

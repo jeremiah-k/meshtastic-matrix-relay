@@ -1021,7 +1021,7 @@ class TestConnectMeshtasticBLEDeviceNotFound(unittest.TestCase):
             "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
             side_effect=ConnectionRefusedError("Device not found"),
         ):
-            with patch("time.sleep"):
+            with patch("mmrelay.meshtastic_utils.time.sleep"):
                 with (
                     patch("mmrelay.meshtastic_utils.logger") as mock_logger,
                     patch(
