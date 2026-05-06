@@ -768,6 +768,16 @@ Useful commands:
    - Mock external dependencies (Meshtastic library objects, filesystem/network boundaries).
    - Exercise real orchestration code between modules.
 
+### Standalone E2EE Integration Diagnostics
+
+A standalone script for diagnosing E2EE behavior against a real Matrix homeserver:
+
+```bash
+python scripts/test_e2ee_integration.py
+```
+
+Requires valid MMRelay configuration, Matrix credentials, and network access. See also `scripts/debug_e2ee.py` for a complementary E2EE diagnostic utility.
+
 ### CI harness integration checks
 
 When updating `scripts/ci/run-mmrelay-meshtasticd-integration.sh`:

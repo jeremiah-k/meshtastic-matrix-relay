@@ -1811,3 +1811,70 @@ class TestGenericExceptionHandler:
         assert mu._relay_startup_drain_deadline_monotonic_secs is None
         assert mu._startup_packet_drain_applied is False
         first_client.close.assert_called_once()
+
+
+class TestTimeoutExceptionHandler:
+    def test_timeout_after_drain_armed_clears_state(self):
+        first_client = MagicMock()
+        first_client.getMyNodeInfo.return_value = {
+            "user": {"shortName": "Node", "hwModel": "HW"}
+        }
+
+        with (
+            patch(
+                "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+                side_effect=[first_client, ConcurrentTimeoutError("retry timeout")],
+            ),
+            patch(
+                "mmrelay.meshtastic_utils._get_device_metadata",
+                return_value={"firmware_version": "unknown", "success": False},
+            ),
+            patch(
+                "mmrelay.meshtastic_utils._schedule_connect_time_calibration_probe",
+                side_effect=ConcurrentTimeoutError("probe timeout"),
+            ),
+            patch("mmrelay.meshtastic_utils.logger"),
+            patch("mmrelay.meshtastic_utils.time.sleep"),
+            patch("mmrelay.meshtastic_utils.time.monotonic", return_value=1_000.0),
+        ):
+            config = {
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "127.0.0.1",
+                    "retries": 1,
+                }
+            }
+            result = connect_meshtastic(passed_config=config)
+
+        assert result is None
+        assert mu._relay_startup_drain_deadline_monotonic_secs is None
+        assert mu._startup_packet_drain_applied is False
+        first_client.close.assert_called_once()
+
+
+@pytest.mark.no_global_mocks
+@pytest.mark.usefixtures("meshtastic_loop_safety", "reset_meshtastic_globals")
+class TestRealAsyncScheduling:
+    """
+    Tests that exercise production _submit_coro and asyncio.to_thread behavior
+    (no monkeypatching) to catch regressions in real scheduling/thread boundaries.
+    """
+
+    async def test_submit_coro_real_scheduling(self):
+        """Test that _submit_coro schedules a real coroutine and returns a Future."""
+        from mmrelay.meshtastic.async_utils import _submit_coro as real_submit_coro
+
+        async def _sample() -> str:
+            return "done"
+
+        future = real_submit_coro(_sample())
+        assert future is not None
+        result = await future
+        assert result == "done"
+
+    async def test_submit_coro_non_coroutine_returns_none(self):
+        """Test that non-coroutine inputs return None from real _submit_coro."""
+        from mmrelay.meshtastic.async_utils import _submit_coro as real_submit_coro
+
+        result = real_submit_coro(42)
+        assert result is None

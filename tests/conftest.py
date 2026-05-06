@@ -29,7 +29,7 @@ from unittest.mock import MagicMock
 import pytest
 from pubsub import pub
 
-import tests.mocks  # noqa: F401
+import tests.mocks  # noqa: F401  # Must be imported before pubsub to install mocks
 
 # Mock all external dependencies before any application imports can occur.
 from tests.ble_cleanup import (  # noqa: E402
@@ -321,12 +321,19 @@ def cleanup_asyncmock_objects(request):
 
 
 @pytest.fixture(autouse=True)
-def mock_submit_coro(monkeypatch):
+def mock_submit_coro(monkeypatch, request):
     """
     Replace mmrelay.meshtastic_utils._submit_coro with a test helper that ensures passed coroutines are executed and awaited so AsyncMock coroutines run to completion.
 
     This pytest fixture patches the module-level _submit_coro to a mock implementation that schedules a coroutine on an available running event loop when possible, otherwise runs it synchronously in a temporary loop. It yields control to the test and restores the original function on teardown.
+
+    When the ``no_global_mocks`` marker is applied to the test, this fixture does nothing,
+    allowing tests to exercise real async scheduling and thread boundaries.
     """
+    if request.node.get_closest_marker("no_global_mocks"):
+        yield
+        return
+
     import asyncio
     import inspect
 
@@ -806,14 +813,19 @@ def comprehensive_cleanup():
 
 
 @pytest.fixture(autouse=True)
-def mock_to_thread(monkeypatch):
+def mock_to_thread(monkeypatch, request):
     """
     Mock asyncio.to_thread to run synchronously for tests.
 
     This avoids creating separate threads during testing, ensuring that code designed to run
     in a thread (via asyncio.to_thread) executes immediately in the main thread. This simplifies
     testing with mocks (which are often not thread-safe) and ensures deterministic execution.
+
+    When the ``no_global_mocks`` marker is applied to the test, this fixture does nothing,
+    allowing tests to exercise real async scheduling and thread boundaries.
     """
+    if request.node.get_closest_marker("no_global_mocks"):
+        return
 
     async def _to_thread(func, *args, **kwargs):
         """
