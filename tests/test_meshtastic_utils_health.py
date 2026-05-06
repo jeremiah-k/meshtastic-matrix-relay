@@ -340,7 +340,11 @@ class TestMetadataFutureCleanup:
         mock_future = Mock(spec=Future)
         mock_future.add_done_callback.side_effect = RuntimeError("Test error")
 
-        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+        with (
+            patch("mmrelay.meshtastic.executors.threading.Timer") as mock_timer_class,
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            mock_timer_class.return_value = Mock()
             mu._schedule_metadata_future_cleanup(mock_future, "test-reason")
             mock_logger.debug.assert_called()
 

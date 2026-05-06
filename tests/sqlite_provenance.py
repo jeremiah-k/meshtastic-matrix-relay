@@ -70,15 +70,13 @@ class _ConnectionProvenance:
             Returns:
                 sqlite3.Connection: The connection object returned by the underlying sqlite3.connect call.
             """
-            caller_factory = kwargs.get("factory", None)
-            if caller_factory is not None and (
-                isinstance(caller_factory, type)
-                and issubclass(caller_factory, sqlite3.Connection)
+            caller_factory = kwargs.get("factory")
+            if caller_factory is None:
+                kwargs["factory"] = _make_tracked_class(sqlite3.Connection)
+            elif isinstance(caller_factory, type) and issubclass(
+                caller_factory, sqlite3.Connection
             ):
-                tracked_cls = _make_tracked_class(caller_factory)
-            else:
-                tracked_cls = _make_tracked_class(sqlite3.Connection)
-            kwargs["factory"] = tracked_cls
+                kwargs["factory"] = _make_tracked_class(caller_factory)
 
             conn = real_connect(*args, **kwargs)
             db_path = args[0] if args else kwargs.get("database", "?")

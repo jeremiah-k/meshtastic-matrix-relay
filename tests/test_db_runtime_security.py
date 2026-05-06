@@ -1027,7 +1027,10 @@ def test_write_lock_serialization(db_manager):
                 result = manager.run_sync(write_func, write=True)
                 results.append((thread_id, result))
                 break  # Success, exit retry loop
-            except Exception as e:
+            except sqlite3.OperationalError as e:
+                message = str(e).lower()
+                if "locked" not in message and "busy" not in message:
+                    raise
                 if attempt == max_retries - 1:
                     # Last attempt, record the error
                     errors.append((thread_id, e))

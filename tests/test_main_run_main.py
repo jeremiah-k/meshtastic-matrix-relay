@@ -232,6 +232,7 @@ def test_run_main_missing_config_keys(
 
     Sets up a minimal incomplete config (only matrix.homeserver) and ensures run_main detects the missing fields and returns a non-zero exit code. Uses the coroutine cleanup helper for asyncio.run to avoid ResourceWarnings.
     """
+    _mock_load_credentials.return_value = None
     # Mock incomplete configuration
     mock_config = {"matrix": {"homeserver": "https://matrix.org"}}  # Missing keys
     mock_load_config.return_value = mock_config

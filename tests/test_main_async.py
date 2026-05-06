@@ -220,11 +220,15 @@ def test_main_signal_handler_sets_shutdown_flag():
         mock_queue.ensure_processor_started = MagicMock()
         mock_get_queue.return_value = mock_queue
 
-        asyncio.run(main(config))
+        import mmrelay.meshtastic_utils as mu
 
-    import mmrelay.meshtastic_utils as mu
+        original_shutting_down = mu.shutting_down
+        try:
+            asyncio.run(main(config))
+            assert mu.shutting_down
+        finally:
+            mu.shutting_down = original_shutting_down
 
-    assert mu.shutting_down
     assert captured_handlers
 
 
@@ -285,7 +289,13 @@ def test_main_shutdown_signal_logging_is_idempotent():
         mock_queue.ensure_processor_started = MagicMock()
         mock_get_queue.return_value = mock_queue
 
-        asyncio.run(main(config))
+        import mmrelay.meshtastic_utils as mu
+
+        original_shutting_down = mu.shutting_down
+        try:
+            asyncio.run(main(config))
+        finally:
+            mu.shutting_down = original_shutting_down
 
     shutdown_logs = [
         call
@@ -427,11 +437,14 @@ def test_main_windows_keyboard_interrupt_triggers_shutdown():
         mock_queue.ensure_processor_started = MagicMock()
         mock_get_queue.return_value = mock_queue
 
-        asyncio.run(main(config))
+        import mmrelay.meshtastic_utils as mu
 
-    import mmrelay.meshtastic_utils as mu
-
-    assert mu.shutting_down
+        original_shutting_down = mu.shutting_down
+        try:
+            asyncio.run(main(config))
+            assert mu.shutting_down
+        finally:
+            mu.shutting_down = original_shutting_down
 
 
 def test_main_async_event_loop_setup():
@@ -555,11 +568,14 @@ def test_main_shutdown_task_cancellation_coverage() -> None:
         mock_queue.ensure_processor_started = MagicMock()
         mock_get_queue.return_value = mock_queue
 
-        asyncio.run(main(config))
+        import mmrelay.meshtastic_utils as mu
 
-    import mmrelay.meshtastic_utils as mu
-
-    assert mu.shutting_down
+        original_shutting_down = mu.shutting_down
+        try:
+            asyncio.run(main(config))
+            assert mu.shutting_down
+        finally:
+            mu.shutting_down = original_shutting_down
 
 
 def test_ready_file_helpers(tmp_path, monkeypatch) -> None:
