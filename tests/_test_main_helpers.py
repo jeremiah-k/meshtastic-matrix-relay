@@ -59,7 +59,7 @@ async def _async_noop(*_args, **_kwargs) -> None:
     return None
 
 
-async def _sync_forever_blocks(*_args: Any, **_kwargs: Any) -> None:
+async def _async_block_forever(*_args: Any, **_kwargs: Any) -> None:
     """Block indefinitely for shutdown tests."""
     await asyncio.Event().wait()
 

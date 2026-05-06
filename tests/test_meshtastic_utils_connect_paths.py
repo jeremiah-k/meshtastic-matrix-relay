@@ -1542,7 +1542,7 @@ class TestUncoveredMeshtasticUtilsPaths:
 # ---------------------------------------------------------------------------
 
 
-class TestSerialPortExistsEdgeCases(unittest.TestCase):
+class TestSerialPortExistsEdgeCases:
     """Edge case tests for serial_port_exists."""
 
     def test_serial_port_exists_device_not_found(self):

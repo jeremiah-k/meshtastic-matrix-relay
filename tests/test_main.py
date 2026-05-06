@@ -526,9 +526,9 @@ def test_main_database_wipe_config(
             _reset_all_mmrelay_globals()
 
         # Should wipe message map on startup
-        mock_wipe.assert_called()
+        mock_wipe.assert_called_once()
         # Should start the message queue processor
-        mock_queue.ensure_processor_started.assert_called()
+        mock_queue.ensure_processor_started.assert_called_once()
 
 
 @patch("mmrelay.main.initialize_database")
@@ -596,7 +596,7 @@ def test_main_database_wipe_preferred_false_wins_over_legacy_true(
             _reset_all_mmrelay_globals()
 
         mock_wipe.assert_not_called()
-        mock_queue.ensure_processor_started.assert_called()
+        mock_queue.ensure_processor_started.assert_called_once()
 
 
 # =============================================================================

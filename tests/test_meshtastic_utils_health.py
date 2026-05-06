@@ -598,8 +598,7 @@ class TestProbeAckHandling:
         client.localNode.nodeNum = 12345
         client.sendData = Mock(return_value=Mock(id=999))
         client._acknowledgment = None
-        if hasattr(client, "waitForAckNak"):
-            delattr(client, "waitForAckNak")
+        del client.waitForAckNak
 
         with pytest.raises(RuntimeError, match="cannot wait for metadata probe ACK"):
             mu._probe_device_connection(client, 1.0)

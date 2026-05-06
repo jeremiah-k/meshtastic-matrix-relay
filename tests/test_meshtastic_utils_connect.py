@@ -1566,7 +1566,7 @@ class TestConnectMeshtasticConfigAndRetryEdgeCases(unittest.TestCase):
                 "mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface",
                 side_effect=ConcurrentTimeoutError("Connection timeout"),
             ):
-                with patch("time.sleep"):
+                with patch("mmrelay.meshtastic_utils.time.sleep"):
                     with (
                         patch("mmrelay.meshtastic_utils.logger") as mock_logger,
                         patch(
@@ -1622,7 +1622,7 @@ class TestConnectMeshtasticConfigAndRetryEdgeCases(unittest.TestCase):
                 "mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface",
                 side_effect=MemoryError("Out of memory"),
             ):
-                with patch("time.sleep"):
+                with patch("mmrelay.meshtastic_utils.time.sleep"):
                     with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                         result = connect_meshtastic(config)
                         self.assertIsNone(result)

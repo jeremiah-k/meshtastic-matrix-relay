@@ -36,13 +36,6 @@ __all__ = [
     "test_ready_file_helpers",
     "test_ready_file_noops_when_unset",
 ]
-# =============================================================================
-# TestDatabaseConfiguration (converted from unittest.TestCase)
-# =============================================================================
-
-# =============================================================================
-# TestMainAsyncFunction (converted from unittest.TestCase)
-# =============================================================================
 
 
 def test_main_async_initialization_sequence():

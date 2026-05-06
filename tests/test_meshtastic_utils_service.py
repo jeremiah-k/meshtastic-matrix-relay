@@ -536,9 +536,10 @@ class TestRefreshNodeNameTablesInvalidInterval:
             return_value=120.0,
         ):
             with patch(
-                "mmrelay.meshtastic.node_refresh.asyncio.to_thread"
-            ) as mock_to_thread:
-                mock_to_thread.return_value = (None, True)
+                "mmrelay.meshtastic.node_refresh.asyncio.to_thread",
+                new_callable=AsyncMock,
+                return_value=(None, True),
+            ):
                 with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                     shutdown_event = asyncio.Event()
 
@@ -576,9 +577,10 @@ class TestRefreshNodeNameTablesInvalidInterval:
             return_value=90.0,
         ):
             with patch(
-                "mmrelay.meshtastic.node_refresh.asyncio.to_thread"
-            ) as mock_to_thread:
-                mock_to_thread.return_value = (None, True)
+                "mmrelay.meshtastic.node_refresh.asyncio.to_thread",
+                new_callable=AsyncMock,
+                return_value=(None, True),
+            ):
                 with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                     shutdown_event = asyncio.Event()
 

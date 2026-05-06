@@ -64,8 +64,6 @@ sys.modules["pubsub.core.topicexc"] = MagicMock()
 class TopicNameError(ValueError):
     """Mock TopicNameError for testing pubsub subscriptions."""
 
-    pass
-
 
 sys.modules["pubsub.core.topicexc"].TopicNameError = TopicNameError  # type: ignore[attr-defined]
 sys.modules["matplotlib"] = MagicMock()

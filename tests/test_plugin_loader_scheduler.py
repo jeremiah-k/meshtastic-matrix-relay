@@ -147,20 +147,26 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
     ):
         """Test that start_global_scheduler exits early when already running."""
 
+        original_thread = pl._global_scheduler_thread
         # Simulate already running thread
         pl._global_scheduler_thread = MagicMock()
         pl._global_scheduler_thread.is_alive.return_value = True
 
-        start_global_scheduler()
+        try:
+            start_global_scheduler()
 
-        # Should not create new thread
-        mock_threading.Thread.assert_not_called()
+            # Should not create new thread
+            mock_threading.Thread.assert_not_called()
+        finally:
+            pl._global_scheduler_thread = original_thread
 
     @patch("mmrelay.plugin_loader.threading")
     @patch("mmrelay.plugin_loader.schedule")
     def test_stop_global_scheduler_stops_thread(self, mock_schedule, mock_threading):
         """Test that stop_global_scheduler stops the scheduler thread."""
 
+        original_thread = pl._global_scheduler_thread
+        original_event = pl._global_scheduler_stop_event
         # Setup running thread
         mock_event = MagicMock()
         mock_thread = MagicMock()
@@ -168,25 +174,32 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
         pl._global_scheduler_thread = mock_thread
         pl._global_scheduler_stop_event = mock_event
 
-        stop_global_scheduler()
+        try:
+            stop_global_scheduler()
 
-        mock_event.set.assert_called_once()
-        mock_thread.join.assert_called_once_with(timeout=5)
-        mock_schedule.clear.assert_called_once()
-        self.assertIsNone(pl._global_scheduler_thread)
+            mock_event.set.assert_called_once()
+            mock_thread.join.assert_called_once_with(timeout=5)
+            mock_schedule.clear.assert_called_once()
+            self.assertIsNone(pl._global_scheduler_thread)
+        finally:
+            pl._global_scheduler_thread = original_thread
+            pl._global_scheduler_stop_event = original_event
 
     @patch("mmrelay.plugin_loader.threading")
     def test_stop_global_scheduler_no_thread(self, mock_threading):
         """Test that stop_global_scheduler exits early when no thread exists."""
 
+        original_thread = pl._global_scheduler_thread
         # Ensure no thread is running
         pl._global_scheduler_thread = None
 
-        stop_global_scheduler()
+        try:
+            stop_global_scheduler()
 
-        # Should not call any threading methods
-
-        mock_threading.Event.assert_not_called()
+            # Should not call any threading methods
+            mock_threading.Event.assert_not_called()
+        finally:
+            pl._global_scheduler_thread = original_thread
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")

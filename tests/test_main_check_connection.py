@@ -17,12 +17,12 @@ import pytest
 from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
 from mmrelay.main import main
 from tests._test_main_helpers import (
+    _async_block_forever,
     _async_noop,
     _close_coro_if_possible,
     _ImmediateEvent,
     _OnePassEvent,
     _reset_all_mmrelay_globals,
-    _sync_forever_blocks,
     _TaskSpy,
 )
 from tests.constants import TEST_MATRIX_HOMESERVER, TEST_ROOM_ID_1
@@ -69,11 +69,6 @@ def test_supervisor_runs_refresh_before_shutdown_signal():
         patch("mmrelay.main.initialize_database"),
         patch("mmrelay.main.load_plugins"),
         patch("mmrelay.main.start_message_queue"),
-        patch(
-            "mmrelay.main.connect_matrix",
-            new_callable=AsyncMock,
-            return_value=AsyncMock(),
-        ),
         patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
         patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
         patch("mmrelay.main.asyncio.Event", return_value=shutdown_event),
@@ -273,7 +268,7 @@ def test_check_connection_exception_is_raised_after_cleanup():
         mock_matrix_client = AsyncMock()
         mock_matrix_client.add_event_callback = MagicMock()
         mock_matrix_client.close = AsyncMock()
-        mock_matrix_client.sync_forever = AsyncMock(side_effect=_sync_forever_blocks)
+        mock_matrix_client.sync_forever = AsyncMock(side_effect=_async_block_forever)
         mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
         with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
             mock_queue = MagicMock()
@@ -328,7 +323,7 @@ def test_check_connection_unexpected_return_is_raised_after_cleanup():
         mock_matrix_client = AsyncMock()
         mock_matrix_client.add_event_callback = MagicMock()
         mock_matrix_client.close = AsyncMock()
-        mock_matrix_client.sync_forever = AsyncMock(side_effect=_sync_forever_blocks)
+        mock_matrix_client.sync_forever = AsyncMock(side_effect=_async_block_forever)
         mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
         with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
             mock_queue = MagicMock()

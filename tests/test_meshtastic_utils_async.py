@@ -693,20 +693,21 @@ def test_wait_for_result_result_method_typeerror_fallback():
 
 def test_wait_for_result_target_loop_running_uses_threadsafe():
     loop = asyncio.new_event_loop()
-    future = loop.create_future()
-    future.set_result("done")
+    try:
+        future = loop.create_future()
+        future.set_result("done")
 
-    with (
-        patch.object(loop, "is_running", return_value=True),
-        patch.object(loop, "is_closed", return_value=False),
-        patch(
-            "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
-            side_effect=_make_threadsafe_runner("threadsafe"),
-        ),
-    ):
-        result = _wait_for_result(future, timeout=0.1, loop=loop)
-
-    loop.close()
+        with (
+            patch.object(loop, "is_running", return_value=True),
+            patch.object(loop, "is_closed", return_value=False),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
+                side_effect=_make_threadsafe_runner("threadsafe"),
+            ),
+        ):
+            result = _wait_for_result(future, timeout=0.1, loop=loop)
+    finally:
+        loop.close()
 
     assert result == "threadsafe"
 

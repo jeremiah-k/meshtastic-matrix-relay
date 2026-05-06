@@ -225,7 +225,6 @@ def test_run_main_missing_config_keys(
     mock_load_config,
     mock_set_config,
     mock_asyncio_run,
-    mock_config,
 ):
     """
     Verify run_main returns 1 when the loaded configuration is missing required keys.
@@ -406,7 +405,7 @@ def test_run_main_with_log_level(
 @patch("mmrelay.config.load_config")
 @patch("mmrelay.config.load_credentials")
 def test_run_main_with_credentials_json(
-    mock_load_credentials, mock_load_config, mock_print_banner, mock_config
+    mock_load_credentials, mock_load_config, mock_print_banner
 ):
     """
     Test run_main with credentials.json present (different required keys).
@@ -450,7 +449,6 @@ def test_run_main_legacy_layout_warning(
     mock_load_credentials,
     mock_load_config,
     mock_print_banner,
-    mock_config,
 ):
     """Test that warning messages are logged when legacy layout is enabled."""
     mock_config = {

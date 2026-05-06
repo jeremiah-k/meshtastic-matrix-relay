@@ -415,7 +415,7 @@ class TestPluginLoaderClone(BaseGitTest):
 
         self.assertTrue(result)
 
-        # Verify cat-file check, failed specific fetch, successful fallback, and checkout
+        # Verify rev-parse check, failed specific fetch, successful fallback, and checkout
         fetch_calls = [
             call for call in mock_run_git.call_args_list if "fetch" in call[0][0]
         ]
