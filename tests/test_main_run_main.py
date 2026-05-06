@@ -71,7 +71,7 @@ def test_print_banner_only_once():
 def test_run_main(
     mock_print_banner,
     mock_configure_debug,
-    mock_set_config,
+    _mock_set_config,
     mock_load_config,
     mock_asyncio_run,
     mock_config,
@@ -152,8 +152,8 @@ def test_run_main_keyboard_interrupt(mock_asyncio_run, mock_load_config, mock_co
 @patch("mmrelay.main.print_banner")
 def test_run_main_success(
     mock_print_banner,
-    mock_configure_logging,
-    mock_set_config,
+    _mock_configure_logging,
+    _mock_set_config,
     mock_load_config,
     mock_asyncio_run,
 ):
@@ -192,10 +192,10 @@ def test_run_main_success(
 @patch("mmrelay.config.load_credentials")
 @patch("mmrelay.main.print_banner")
 def test_run_main_missing_config_keys(
-    mock_print_banner,
+    _mock_print_banner,
     mock_load_credentials,
     mock_load_config,
-    mock_set_config,
+    _mock_set_config,
     mock_asyncio_run,
 ):
     """
@@ -226,9 +226,9 @@ def test_run_main_missing_config_keys(
 @patch("mmrelay.log_utils.configure_component_debug_logging")
 @patch("mmrelay.main.print_banner")
 def test_run_main_keyboard_interrupt_with_args(
-    mock_print_banner,
-    mock_configure_logging,
-    mock_set_config,
+    _mock_print_banner,
+    _mock_configure_logging,
+    _mock_set_config,
     mock_load_config,
     mock_asyncio_run,
 ):
@@ -262,9 +262,9 @@ def test_run_main_keyboard_interrupt_with_args(
 @patch("mmrelay.log_utils.configure_component_debug_logging")
 @patch("mmrelay.main.print_banner")
 def test_run_main_exception(
-    mock_print_banner,
-    mock_configure_logging,
-    mock_set_config,
+    _mock_print_banner,
+    _mock_configure_logging,
+    _mock_set_config,
     mock_load_config,
     mock_asyncio_run,
 ):
@@ -296,9 +296,9 @@ def test_run_main_exception(
 @patch("mmrelay.log_utils.configure_component_debug_logging")
 @patch("mmrelay.main.print_banner")
 def test_run_main_with_data_dir(
-    mock_print_banner,
-    mock_configure_logging,
-    mock_set_config,
+    _mock_print_banner,
+    _mock_configure_logging,
+    _mock_set_config,
     mock_load_config,
     mock_asyncio_run,
 ):
@@ -341,9 +341,9 @@ def test_run_main_with_data_dir(
 @patch("mmrelay.log_utils.configure_component_debug_logging", spec=True)
 @patch("mmrelay.main.print_banner", spec=True)
 def test_run_main_with_log_level(
-    mock_print_banner,
-    mock_configure_logging,
-    mock_set_config,
+    _mock_print_banner,
+    _mock_configure_logging,
+    _mock_set_config,
     mock_load_config,
     mock_asyncio_run,
 ):
@@ -377,7 +377,7 @@ def test_run_main_with_log_level(
 @patch("mmrelay.config.load_config")
 @patch("mmrelay.config.load_credentials")
 def test_run_main_with_credentials_json(
-    mock_load_credentials, mock_load_config, mock_print_banner
+    mock_load_credentials, mock_load_config, _mock_print_banner
 ):
     """
     Test run_main with credentials.json present (different required keys).
@@ -413,14 +413,14 @@ def test_run_main_with_credentials_json(
 @patch("mmrelay.config.get_log_dir")
 @patch("mmrelay.config.os.makedirs")
 def test_run_main_legacy_layout_warning(
-    _mock_makedirs,
+    mock_makedirs,
     mock_get_log_dir,
     mock_get_home_dir,
     mock_get_legacy_dirs,
     mock_get_legacy_env_vars,
     mock_load_credentials,
     mock_load_config,
-    mock_print_banner,
+    _mock_print_banner,
 ):
     """Test that warning messages are logged when legacy layout is enabled."""
     mock_config = {

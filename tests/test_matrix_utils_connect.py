@@ -7,7 +7,7 @@ and legacy config handling during Matrix connection establishment.
 from collections.abc import Generator
 from types import SimpleNamespace
 from typing import Generic, TypeVar
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 
 import pytest
 
@@ -283,7 +283,7 @@ async def test_connect_matrix_no_config_returns_none():
         result = await connect_matrix(None)
 
     assert result is None
-    mock_logger.error.assert_called_with(
+    mock_logger.error.assert_any_call(
         "No configuration available. Cannot connect to Matrix."
     )
 
@@ -315,11 +315,18 @@ async def test_connect_matrix_ssl_context_failure_logs_warning():
         patch("mmrelay.matrix_utils.logger") as mock_logger,
         patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client),
         patch("mmrelay.matrix_utils._create_ssl_context", return_value=None),
+        patch(
+            "mmrelay.matrix_utils._resolve_aliases_in_mapping",
+            return_value={},
+        ),
+        patch("mmrelay.matrix_utils._display_room_channel_mappings", Mock()),
     ):
         result = await connect_matrix(config)
 
     assert result is not None
-    # Verify warning mentions SSL context creation failure
-    mock_logger.warning.assert_called()
-    warning_message = mock_logger.warning.call_args[0][0]
-    assert "ssl" in warning_message.lower()
+    ssl_warnings = [
+        call.args[0]
+        for call in mock_logger.warning.call_args_list
+        if call.args and "ssl" in call.args[0].lower()
+    ]
+    assert ssl_warnings, "Expected at least one SSL-related warning to be logged"

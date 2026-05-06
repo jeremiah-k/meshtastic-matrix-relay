@@ -1849,6 +1849,7 @@ class TestTimeoutExceptionHandler:
 
 @pytest.mark.no_global_mocks
 @pytest.mark.usefixtures("meshtastic_loop_safety", "reset_meshtastic_globals")
+@pytest.mark.asyncio
 class TestRealAsyncScheduling:
     """
     Tests that exercise production _submit_coro and asyncio.to_thread behavior

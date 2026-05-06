@@ -183,14 +183,15 @@ def reset_meshtastic_state(monkeypatch):
     )
     monkeypatch.setattr("mmrelay.meshtastic_utils.RELAY_START_TIME", 0, raising=False)
 
+    connect_attempt_lock = threading.RLock()
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._connect_attempt_lock",
-        threading.RLock(),
+        connect_attempt_lock,
         raising=False,
     )
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._connect_attempt_condition",
-        threading.Condition(),
+        threading.Condition(connect_attempt_lock),
         raising=False,
     )
     monkeypatch.setattr(

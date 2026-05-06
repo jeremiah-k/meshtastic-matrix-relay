@@ -19,13 +19,6 @@ from typing import Any
 import pytest
 
 from mmrelay.constants.app import DEFAULT_READY_HEARTBEAT_SECONDS
-from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
-from tests.constants import (
-    TEST_BOT_USER_ID,
-    TEST_MATRIX_HOMESERVER,
-    TEST_ROOM_ID_1,
-    TEST_ROOM_ID_2,
-)
 from tests.helpers import (
     reset_meshtastic_utils_globals,
 )
@@ -90,19 +83,18 @@ def _close_coro_if_possible(coro: Any) -> None:
     Parameters:
         coro: An awaitable object (e.g., coroutine object or generator-based coroutine). If it has a `close()` method it will be called; otherwise the object is left untouched.
     """
-    if inspect.isawaitable(coro) and hasattr(coro, "close"):
-        coro.close()  # type: ignore[attr-defined]
-    return None
+    if inspect.iscoroutine(coro):
+        coro.close()
 
 
-class _TestError(Exception):
+class _HelperTestError(Exception):
     """Custom exception for testing error handling paths."""
 
 
 def _mock_run_with_exception(coro: Any) -> None:
     """Close coroutine and raise test exception."""
     _close_coro_if_possible(coro)
-    raise _TestError("Test error")
+    raise _HelperTestError("Test error")
 
 
 def _mock_run_with_keyboard_interrupt(coro: Any) -> None:
@@ -398,13 +390,14 @@ class _ControlledExecutor:
         is_close = "_close_meshtastic" in target_name or "_close_meshtastic" in (
             target_qualname
         )
-        if is_close and self.submit_timeout:
-            timeout_future = concurrent.futures.Future()
-            timeout_future.set_exception(concurrent.futures.TimeoutError())
-            return timeout_future
-        if is_close and self.close_future_factory is not None:
+        if is_close and (self.submit_timeout or self.close_future_factory is not None):
             if self.close_future is None:
-                self.close_future = self.close_future_factory()
+                if self.submit_timeout:
+                    timeout_future = concurrent.futures.Future()
+                    timeout_future.set_exception(concurrent.futures.TimeoutError())
+                    self.close_future = timeout_future
+                else:
+                    self.close_future = self.close_future_factory()
             return self.close_future
 
         future = concurrent.futures.Future()
@@ -434,42 +427,3 @@ class _ControlledExecutor:
 # =============================================================================
 # Fixtures
 # =============================================================================
-
-
-@pytest.fixture
-def mock_config():
-    """Default mock configuration used by TestMain tests."""
-    return {
-        "matrix": {
-            "homeserver": TEST_MATRIX_HOMESERVER,
-            "access_token": "test_token",
-            "bot_user_id": TEST_BOT_USER_ID,
-        },
-        "matrix_rooms": [
-            {"id": TEST_ROOM_ID_1, "meshtastic_channel": 0},
-            {"id": TEST_ROOM_ID_2, "meshtastic_channel": 1},
-        ],
-        "meshtastic": {
-            "connection_type": CONNECTION_TYPE_SERIAL,
-            "serial_port": "/dev/ttyUSB0",
-            "message_delay": 2.0,
-        },
-        "database": {"msg_map": {"wipe_on_restart": False}},
-    }
-
-
-@pytest.fixture
-def mock_config_edge_cases():
-    """Mock configuration used by TestMainFunctionEdgeCases tests."""
-    return {
-        "matrix": {
-            "homeserver": "https://matrix.org",
-            "access_token": "test_token",
-            "bot_user_id": "@bot:matrix.org",
-        },
-        "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
-        "meshtastic": {
-            "connection_type": CONNECTION_TYPE_SERIAL,
-            "serial_port": "/dev/ttyUSB0",
-        },
-    }

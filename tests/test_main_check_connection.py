@@ -9,7 +9,6 @@ Covers:
 """
 
 import asyncio
-import sys
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -31,11 +30,6 @@ from tests.helpers import (
     inline_to_thread,
     make_patched_get_running_loop,
 )
-
-if sys.version_info < (3, 10):
-    pytest.skip(
-        "Test requires CPython 3.10+ coroutine internals", allow_module_level=True
-    )
 
 # =============================================================================
 # TestNodeNameRefreshSupervisor (converted from unittest.TestCase)

@@ -25,15 +25,6 @@ from tests.helpers import (
     make_patched_get_running_loop,
 )
 
-__all__ = [
-    "test_startup_rollback_cancels_check_connection_task",
-    "test_startup_rollback_removes_ready_file",
-    "test_startup_rollback_shutdowns_plugins_when_loaded",
-    "test_startup_rollback_stops_message_queue_when_started",
-    "test_startup_rollback_cleans_reconnect_state_and_callbacks",
-    "test_startup_rollback_closes_matrix_client",
-    "test_startup_rollback_closes_meshtastic_client",
-]
 # =============================================================================
 # TestStartupRollback (converted from unittest.TestCase)
 # =============================================================================
@@ -48,14 +39,14 @@ __all__ = [
 @patch("mmrelay.main.shutdown_plugins")
 @patch("mmrelay.main.stop_message_queue")
 def test_startup_rollback_cancels_check_connection_task(
-    mock_stop_queue,
-    mock_shutdown_plugins,
-    mock_remove_ready,
+    _mock_stop_queue,
+    _mock_shutdown_plugins,
+    _mock_remove_ready,
     mock_connect_meshtastic,
     mock_connect_matrix,
-    mock_start_queue,
-    mock_load_plugins,
-    mock_init_db,
+    _mock_start_queue,
+    _mock_load_plugins,
+    _mock_init_db,
 ):
     """Exception during startup should cancel check_connection_task."""
     mock_check_task = MagicMock()
@@ -134,14 +125,14 @@ def test_startup_rollback_cancels_check_connection_task(
 @patch("mmrelay.main.shutdown_plugins")
 @patch("mmrelay.main.stop_message_queue")
 def test_startup_rollback_removes_ready_file(
-    mock_stop_queue,
-    mock_shutdown_plugins,
+    _mock_stop_queue,
+    _mock_shutdown_plugins,
     mock_remove_ready,
     mock_connect_meshtastic,
-    mock_connect_matrix,
-    mock_start_queue,
-    mock_load_plugins,
-    mock_init_db,
+    _mock_connect_matrix,
+    _mock_start_queue,
+    _mock_load_plugins,
+    _mock_init_db,
 ):
     """Exception during startup should call _remove_ready_file."""
     mock_connect_meshtastic.side_effect = RuntimeError("Meshtastic connection error")
@@ -173,14 +164,14 @@ def test_startup_rollback_removes_ready_file(
 @patch("mmrelay.main.shutdown_plugins")
 @patch("mmrelay.main.stop_message_queue")
 def test_startup_rollback_shutdowns_plugins_when_loaded(
-    mock_stop_queue,
+    _mock_stop_queue,
     mock_shutdown_plugins,
-    mock_remove_ready,
-    mock_connect_meshtastic,
-    mock_connect_matrix,
+    _mock_remove_ready,
+    _mock_connect_meshtastic,
+    _mock_connect_matrix,
     mock_start_queue,
-    mock_load_plugins,
-    mock_init_db,
+    _mock_load_plugins,
+    _mock_init_db,
 ):
     """Exception after plugins loaded should call shutdown_plugins."""
     mock_start_queue.side_effect = RuntimeError("Queue start error")
@@ -213,13 +204,13 @@ def test_startup_rollback_shutdowns_plugins_when_loaded(
 @patch("mmrelay.main.stop_message_queue")
 def test_startup_rollback_stops_message_queue_when_started(
     mock_stop_queue,
-    mock_shutdown_plugins,
-    mock_remove_ready,
+    _mock_shutdown_plugins,
+    _mock_remove_ready,
     mock_connect_meshtastic,
-    mock_connect_matrix,
-    mock_start_queue,
-    mock_load_plugins,
-    mock_init_db,
+    _mock_connect_matrix,
+    _mock_start_queue,
+    _mock_load_plugins,
+    _mock_init_db,
 ):
     """Exception after message queue started should call stop_message_queue."""
     mock_connect_meshtastic.side_effect = RuntimeError("Meshtastic connection error")
@@ -251,14 +242,14 @@ def test_startup_rollback_stops_message_queue_when_started(
 @patch("mmrelay.main.shutdown_plugins")
 @patch("mmrelay.main.stop_message_queue")
 def test_startup_rollback_cleans_reconnect_state_and_callbacks(
-    mock_stop_queue,
-    mock_shutdown_plugins,
-    mock_remove_ready,
+    _mock_stop_queue,
+    _mock_shutdown_plugins,
+    _mock_remove_ready,
     mock_connect_meshtastic,
     mock_connect_matrix,
-    mock_start_queue,
-    mock_load_plugins,
-    mock_init_db,
+    _mock_start_queue,
+    _mock_load_plugins,
+    _mock_init_db,
 ):
     """Startup rollback should cancel reconnect work and unsubscribe callbacks."""
 
@@ -302,14 +293,14 @@ def test_startup_rollback_cleans_reconnect_state_and_callbacks(
 @patch("mmrelay.main.shutdown_plugins")
 @patch("mmrelay.main.stop_message_queue")
 def test_startup_rollback_closes_matrix_client(
-    mock_stop_queue,
-    mock_shutdown_plugins,
-    mock_remove_ready,
+    _mock_stop_queue,
+    _mock_shutdown_plugins,
+    _mock_remove_ready,
     mock_connect_meshtastic,
     mock_connect_matrix,
-    mock_start_queue,
-    mock_load_plugins,
-    mock_init_db,
+    _mock_start_queue,
+    _mock_load_plugins,
+    _mock_init_db,
 ):
     """Exception after Matrix client created should close it."""
     mock_matrix_client = MagicMock()
@@ -379,14 +370,14 @@ def test_startup_rollback_closes_matrix_client(
 @patch("mmrelay.main.shutdown_plugins")
 @patch("mmrelay.main.stop_message_queue")
 def test_startup_rollback_closes_meshtastic_client(
-    mock_stop_queue,
-    mock_shutdown_plugins,
-    mock_remove_ready,
+    _mock_stop_queue,
+    _mock_shutdown_plugins,
+    _mock_remove_ready,
     mock_connect_meshtastic,
     mock_connect_matrix,
-    mock_start_queue,
-    mock_load_plugins,
-    mock_init_db,
+    _mock_start_queue,
+    _mock_load_plugins,
+    _mock_init_db,
 ):
     """Exception after Meshtastic client created should close it."""
     mock_meshtastic_client = MagicMock()
