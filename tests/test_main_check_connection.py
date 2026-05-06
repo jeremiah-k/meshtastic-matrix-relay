@@ -49,7 +49,6 @@ __all__ = [
 
 def test_supervisor_runs_refresh_before_shutdown_signal():
     """Supervisor should run one refresh pass before a runtime shutdown signal."""
-    from mmrelay.main import main
 
     config = {
         "matrix_rooms": [{"id": "!room:matrix.org"}],

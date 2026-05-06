@@ -439,16 +439,15 @@ def test_refresh_node_name_tables_skips_db_sync_without_meshtastic_client():
     assert result is None
 
 
-def test_nodedb_refresh_interval_invalid_defaults():
+@pytest.mark.parametrize("raw_value", ["inf", "not-a-number", True, False, -1.0])
+def test_nodedb_refresh_interval_invalid_defaults(raw_value):
     """Invalid nodedb refresh intervals should fall back to the default value."""
     import mmrelay.meshtastic_utils as meshtastic_module
 
-    for raw_value in ("inf", "not-a-number", True, False, -1.0):
-        # subTest removed - converted to inline loop
-        interval = meshtastic_module.get_nodedb_refresh_interval_seconds(
-            {"meshtastic": {"nodedb_refresh_interval": raw_value}}
-        )
-        assert interval == DEFAULT_NODEDB_REFRESH_INTERVAL
+    interval = meshtastic_module.get_nodedb_refresh_interval_seconds(
+        {"meshtastic": {"nodedb_refresh_interval": raw_value}}
+    )
+    assert interval == DEFAULT_NODEDB_REFRESH_INTERVAL
 
 
 @pytest.mark.parametrize("db_key", ["database", "db"])

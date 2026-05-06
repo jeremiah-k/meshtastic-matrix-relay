@@ -16,7 +16,7 @@ import os
 import threading
 import unittest
 from typing import Any
-from unittest.mock import MagicMock, Mock, mock_open, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, mock_open, patch
 
 import pytest
 
@@ -495,9 +495,10 @@ class TestRefreshNodeNameTablesInvalidInterval:
             return_value=60.0,
         ):
             with patch(
-                "mmrelay.meshtastic.node_refresh.asyncio.to_thread"
+                "mmrelay.meshtastic.node_refresh.asyncio.to_thread",
+                new_callable=AsyncMock,
+                return_value=(None, True),
             ) as mock_to_thread:
-                mock_to_thread.return_value = (None, True)
                 with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                     shutdown_event = asyncio.Event()
 
