@@ -510,7 +510,7 @@ class TestRefreshNodeNameTablesInvalidInterval:
                     shutdown_event = asyncio.Event()
 
                     async def run_with_shutdown():
-                        await asyncio.sleep(0.01)
+                        await asyncio.sleep(0.05)
                         shutdown_event.set()
 
                     shutdown_task = asyncio.create_task(run_with_shutdown())
@@ -549,4 +549,4 @@ class TestIsRunningAsServiceEdgeCases(unittest.TestCase):
                 "psutil.Process", side_effect=Exception("Process info unavailable")
             ):
                 result = is_running_as_service()
-                self.assertIsInstance(result, bool)
+                self.assertFalse(result)

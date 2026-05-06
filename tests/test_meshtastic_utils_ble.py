@@ -1109,7 +1109,7 @@ class TestBLEGateResetCallable:
         assert call_count[0] == 1
 
 
-class TestBLEGateImportDetection(unittest.TestCase):
+class TestBLEGateImportDetection:
     """Test cases for module-level BLE gate import detection."""
 
     def test_module_imports_gracefully_when_gating_unavailable(self):
@@ -1120,18 +1120,13 @@ class TestBLEGateImportDetection(unittest.TestCase):
             mu._ble_gate_reset_callable
         )
 
-    def test_helper_safe_when_no_gating_module(self):
+    def test_helper_safe_when_no_gating_module(self, monkeypatch):
         """Should be safe to call _reset_ble_connection_gate_state even without gating."""
-        original_callable = mu._ble_gate_reset_callable
-
-        try:
-            mu._ble_gate_reset_callable = None
-            result = _reset_ble_connection_gate_state(
-                "AA:BB:CC:DD:EE:FF", reason="no gating module"
-            )
-            assert result is False
-        finally:
-            mu._ble_gate_reset_callable = original_callable
+        monkeypatch.setattr(mu, "_ble_gate_reset_callable", None, raising=False)
+        result = _reset_ble_connection_gate_state(
+            "AA:BB:CC:DD:EE:FF", reason="no gating module"
+        )
+        assert result is False
 
 
 class TestDuplicateSuppressionRetryLogic(unittest.TestCase):
@@ -1171,7 +1166,9 @@ class TestDuplicateSuppressionRetryLogic(unittest.TestCase):
 
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("mmrelay.meshtastic_utils.time.sleep")
-    def test_logs_debug_when_gate_reset_unavailable(self, mock_sleep, mock_logger):
+    def test_logs_debug_when_gate_reset_unavailable(
+        self, mock_sleep, mock_logger, monkeypatch
+    ):
         """Should log debug when gate reset hook is unavailable."""
         ble_address = "AA:BB:CC:DD:EE:FF"
         config = {
@@ -1182,34 +1179,30 @@ class TestDuplicateSuppressionRetryLogic(unittest.TestCase):
             }
         }
 
-        original_callable = mu._ble_gate_reset_callable
-        try:
-            mu._ble_gate_reset_callable = None
+        monkeypatch.setattr(mu, "_ble_gate_reset_callable", None, raising=False)
 
-            with patch(
-                "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
-                new=_SuppressedBLEInterface,
-            ):
-                result = connect_meshtastic(passed_config=config)
+        with patch(
+            "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+            new=_SuppressedBLEInterface,
+        ):
+            result = connect_meshtastic(passed_config=config)
 
-            assert result is None
+        assert result is None
 
-            suppression_calls = [
-                call
-                for call in mock_logger.warning.call_args_list
-                if call.args
-                and "Detected duplicate BLE connect suppression" in str(call.args[0])
-            ]
-            assert len(suppression_calls) > 0, "Expected suppression detection warning"
+        suppression_calls = [
+            call
+            for call in mock_logger.warning.call_args_list
+            if call.args
+            and "Detected duplicate BLE connect suppression" in str(call.args[0])
+        ]
+        assert len(suppression_calls) > 0, "Expected suppression detection warning"
 
-            debug_calls = [
-                call
-                for call in mock_logger.debug.call_args_list
-                if call.args and "BLE gate reset hook unavailable" in str(call.args[0])
-            ]
-            assert len(debug_calls) > 0, "Expected debug about unavailable hook"
-        finally:
-            mu._ble_gate_reset_callable = original_callable
+        debug_calls = [
+            call
+            for call in mock_logger.debug.call_args_list
+            if call.args and "BLE gate reset hook unavailable" in str(call.args[0])
+        ]
+        assert len(debug_calls) > 0, "Expected debug about unavailable hook"
 
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("mmrelay.meshtastic_utils.time.sleep")

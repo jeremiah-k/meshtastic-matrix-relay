@@ -771,9 +771,9 @@ def test_thread_local_connections(db_manager):
     assert len(set(connections)) == 3  # All should be different
 
 
-def test_connection_tracking(db_manager):
+def test_connection_tracking(db_path):
     """Test that connections are tracked and reused per thread."""
-    manager, _ = db_manager
+    manager = DatabaseManager(db_path)
     initial_count = len(manager._connections)
 
     # Fetching again on the same thread should reuse the eager connection.
@@ -831,9 +831,9 @@ def test_read_rejects_new_work_when_manager_closing(db_manager):
 # ========================================================================
 
 
-def test_close_cleanup(db_manager):
+def test_close_cleanup(db_path):
     """Test close method properly cleans up resources."""
-    manager, _ = db_manager
+    manager = DatabaseManager(db_path)
     # _get_connection is thread-local: calling it again on the same thread returns the same connection.
     conn = manager._get_connection()
 

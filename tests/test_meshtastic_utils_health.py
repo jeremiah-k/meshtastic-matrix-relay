@@ -763,7 +763,8 @@ class TestMetadataFutureCleanupPaths:
             mu._schedule_metadata_future_cleanup(mock_future, "test-reason")
             mock_future.add_done_callback.assert_called_once()
             mock_timer.assert_called_once()
-            # Verify early return prevented reset
+            cleanup_callback = mock_timer.call_args[0][1]
+            cleanup_callback()
             mock_reset.assert_not_called()
 
     def test_cleanup_early_return_when_should_clear_false(self):

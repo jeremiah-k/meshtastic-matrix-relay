@@ -322,4 +322,4 @@ async def test_connect_matrix_ssl_context_failure_logs_warning():
     # Verify warning mentions SSL context creation failure
     mock_logger.warning.assert_called()
     warning_message = mock_logger.warning.call_args[0][0]
-    assert "SSL" in warning_message or "ssl" in warning_message.lower()
+    assert "ssl" in warning_message.lower()

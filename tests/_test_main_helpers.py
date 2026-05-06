@@ -142,7 +142,7 @@ class _TaskSpy:
         return getattr(self._task, name)
 
 
-def _make_async_raise(exc: Exception):
+def _make_async_raise(exc: Exception) -> Callable[..., Any]:
     """
     Create an async callable that always raises provided exception when awaited.
 

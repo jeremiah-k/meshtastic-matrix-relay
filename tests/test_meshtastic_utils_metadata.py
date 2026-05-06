@@ -977,7 +977,6 @@ class SleepAndShutdown:
         self.sleep_count += 1
         if self.sleep_count >= self.shutdown_after:
             mu.shutting_down = True
-        return None
 
 
 @pytest.mark.asyncio
@@ -1083,9 +1082,8 @@ async def test_check_connection_uses_configured_probe_timeout():
         probe_future.set_result(None)
         return probe_future
 
-    async def _wait_for_passthrough(awaitable, timeout):
+    async def _wait_for_passthrough(awaitable, _timeout):
         # Intentionally ignore timeout - this is a passthrough for testing
-        _ = timeout
         return await awaitable
 
     executor.submit.side_effect = _submit

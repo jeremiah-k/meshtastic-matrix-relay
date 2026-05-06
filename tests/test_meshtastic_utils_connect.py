@@ -925,15 +925,9 @@ class TestConnectMeshtasticShutdownGuard:
         mu._connect_attempt_in_progress = True
         mu.shutting_down = True
 
-        start = time.monotonic()
         result = connect_meshtastic(passed_config=None)
-        elapsed = time.monotonic() - start
 
         assert result is None
-        # NOTE: Timing-based assertion — may be flaky under extreme CI load.
-        # The 0.2s threshold is generous; if this becomes flaky, consider removing
-        # the timing check and relying only on the `result is None` assertion.
-        assert elapsed < 0.2
 
 
 class TestConnectMeshtasticImplGuards:

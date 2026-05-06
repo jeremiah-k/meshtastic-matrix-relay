@@ -9,6 +9,7 @@ Covers:
 """
 
 import asyncio
+import sys
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -30,6 +31,11 @@ from tests.helpers import (
     inline_to_thread,
     make_patched_get_running_loop,
 )
+
+if sys.version_info < (3, 10):
+    pytest.skip(
+        "Test requires CPython 3.10+ coroutine internals", allow_module_level=True
+    )
 
 # =============================================================================
 # TestNodeNameRefreshSupervisor (converted from unittest.TestCase)
@@ -140,6 +146,8 @@ def test_returns_early_when_task_is_none():
         mock_get_queue.return_value = mock_queue
 
         asyncio.run(main(config))
+        # Test passes if main() completes without raising an exception,
+        # indicating None tasks were handled gracefully during shutdown
 
 
 def test_timeout_during_shutdown_cancels_task():

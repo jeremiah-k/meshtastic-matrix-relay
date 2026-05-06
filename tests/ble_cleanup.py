@@ -13,6 +13,26 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_DRAIN_EXCEPTIONS = (
+    TimeoutError,
+    asyncio.CancelledError,
+    asyncio.InvalidStateError,
+    concurrent.futures.CancelledError,
+    concurrent.futures.InvalidStateError,
+)
+
+
+def _clear_ble_module_state(module: Any) -> None:
+    """Clear BLE-related state attributes on a module."""
+    for attr in (
+        "_ble_future",
+        "_ble_future_address",
+        "_ble_future_started_at",
+        "_ble_future_timeout_secs",
+    ):
+        if hasattr(module, attr):
+            setattr(module, attr, None)
+
 
 def _safe_is_done(future: Any) -> bool:
     """
@@ -44,15 +64,7 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
     is_done = _safe_is_done(future)
     if is_done and callable(exception_fn):
         # For completed futures/tasks, consume stored exceptions without re-raising.
-        with contextlib.suppress(
-            TimeoutError,
-            asyncio.TimeoutError,
-            asyncio.CancelledError,
-            asyncio.InvalidStateError,
-            concurrent.futures.TimeoutError,
-            concurrent.futures.CancelledError,
-            concurrent.futures.InvalidStateError,
-        ):
+        with contextlib.suppress(*_DRAIN_EXCEPTIONS):
             exception_fn()
         return
 
@@ -65,15 +77,7 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
     except TypeError:
         try:
             result_fn()
-        except (
-            TimeoutError,
-            asyncio.TimeoutError,
-            asyncio.CancelledError,
-            asyncio.InvalidStateError,
-            concurrent.futures.TimeoutError,
-            concurrent.futures.CancelledError,
-            concurrent.futures.InvalidStateError,
-        ):
+        except (*_DRAIN_EXCEPTIONS,):
             return
         except Exception as exc:
             logger.debug(
@@ -81,15 +85,7 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
                 exc,
             )
             return
-    except (
-        TimeoutError,
-        asyncio.TimeoutError,
-        asyncio.CancelledError,
-        asyncio.InvalidStateError,
-        concurrent.futures.TimeoutError,
-        concurrent.futures.CancelledError,
-        concurrent.futures.InvalidStateError,
-    ):
+    except (*_DRAIN_EXCEPTIONS,):
         return
     except Exception as exc:
         logger.debug(
@@ -112,14 +108,7 @@ def cleanup_ble_future_state(module: Any) -> None:
     if ble_future is None:
         if isinstance(timeout_counts, dict) and ble_address is not None:
             timeout_counts.pop(ble_address, None)
-        if hasattr(module, "_ble_future"):
-            module._ble_future = None
-        if hasattr(module, "_ble_future_address"):
-            module._ble_future_address = None
-        if hasattr(module, "_ble_future_started_at"):
-            module._ble_future_started_at = None
-        if hasattr(module, "_ble_future_timeout_secs"):
-            module._ble_future_timeout_secs = None
+        _clear_ble_module_state(module)
         return
 
     cancel_fn = getattr(ble_future, "cancel", None)
@@ -190,11 +179,4 @@ def cleanup_ble_future_state(module: Any) -> None:
 
     if isinstance(timeout_counts, dict) and ble_address is not None:
         timeout_counts.pop(ble_address, None)
-    if hasattr(module, "_ble_future"):
-        module._ble_future = None
-    if hasattr(module, "_ble_future_address"):
-        module._ble_future_address = None
-    if hasattr(module, "_ble_future_started_at"):
-        module._ble_future_started_at = None
-    if hasattr(module, "_ble_future_timeout_secs"):
-        module._ble_future_timeout_secs = None
+    _clear_ble_module_state(module)

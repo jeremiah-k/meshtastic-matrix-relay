@@ -35,6 +35,17 @@ class _ConnectionProvenance:
         with self._registry_lock:
             self._current_nodeid = nodeid
 
+    def clear_by_nodeid(self, nodeid: str) -> None:
+        """Remove all provenance entries whose test_nodeid matches *nodeid*."""
+        with self._registry_lock:
+            stale_ids = [
+                cid
+                for cid, meta in self._registry.items()
+                if meta.get("test_nodeid") == nodeid
+            ]
+            for cid in stale_ids:
+                self._registry.pop(cid, None)
+
     def install(self) -> None:
         """
         Install a connection tracker that intercepts sqlite3.connect and records provenance for each new connection.
@@ -56,9 +67,11 @@ class _ConnectionProvenance:
 
             class _TrackedConnection(base):
                 def close(self) -> None:
-                    super().close()
-                    with tracker._registry_lock:
-                        registry.pop(id(self), None)
+                    try:
+                        super().close()
+                    finally:
+                        with tracker._registry_lock:
+                            registry.pop(id(self), None)
 
             return _TrackedConnection
 

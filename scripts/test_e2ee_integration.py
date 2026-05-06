@@ -14,6 +14,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -33,11 +34,11 @@ class E2EEIntegrationTester:
     """Integration tester for E2EE functionality"""
 
     def __init__(self):
-        self.config = None
-        self.client = None
-        self.test_results = {}
+        self.config: dict[str, Any] | None = None
+        self.client: Any | None = None
+        self.test_results: dict[str, dict[str, Any]] = {}
 
-    async def setup_test_environment(self):
+    async def setup_test_environment(self) -> bool:
         """Set up test environment with real config"""
         print("🔧 Setting up test environment...")
 
@@ -45,7 +46,7 @@ class E2EEIntegrationTester:
             # Load real config
             self.config = load_config()
             if not self.config:
-                raise Exception("Could not load config")
+                raise ValueError("Could not load config")
 
             print("✅ Config loaded successfully")
             return True
@@ -54,7 +55,7 @@ class E2EEIntegrationTester:
             print(f"❌ Setup failed: {e}")
             return False
 
-    async def check_matrix_connection(self):
+    async def check_matrix_connection(self) -> bool:
         """Test Matrix connection with E2EE"""
         print("\n🔍 Testing Matrix connection...")
 

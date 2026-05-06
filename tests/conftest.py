@@ -825,6 +825,7 @@ def mock_to_thread(monkeypatch, request):
     allowing tests to exercise real async scheduling and thread boundaries.
     """
     if request.node.get_closest_marker("no_global_mocks"):
+        yield
         return
 
     async def _to_thread(func, *args, **kwargs):
@@ -842,6 +843,7 @@ def mock_to_thread(monkeypatch, request):
         return func(*args, **kwargs)
 
     monkeypatch.setattr(asyncio, "to_thread", _to_thread)
+    yield
 
 
 @pytest.fixture
@@ -1031,12 +1033,4 @@ def pytest_runtest_makereport(item, call):
                 )
             )
     if report.when == "teardown":
-        nodeid = item.nodeid
-        with _conn_provenance._registry_lock:
-            stale_ids = [
-                cid
-                for cid, meta in _conn_provenance._registry.items()
-                if meta.get("test_nodeid") == nodeid
-            ]
-            for cid in stale_ids:
-                _conn_provenance._registry.pop(cid, None)
+        _conn_provenance.clear_by_nodeid(item.nodeid)

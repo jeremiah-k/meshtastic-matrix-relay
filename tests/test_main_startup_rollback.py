@@ -288,9 +288,9 @@ def test_startup_rollback_cleans_reconnect_state_and_callbacks(
         with pytest.raises(RuntimeError):
             asyncio.run(main(config))
 
-    reconnect_task.cancel.assert_called_once()
-    reconnect_future.cancel.assert_called_once()
-    mock_unsubscribe.assert_called_once()
+        reconnect_task.cancel.assert_called_once()
+        reconnect_future.cancel.assert_called_once()
+        mock_unsubscribe.assert_called_once()
 
 
 @patch("mmrelay.main.initialize_database")
@@ -326,7 +326,7 @@ def test_startup_rollback_closes_matrix_client(
 
     shutdown_event = _OnePassEvent()
 
-    def mock_create_task(coro):
+    def mock_create_task(coro: object, *_args: object, **_kwargs: object) -> object:
         if inspect.iscoroutine(coro):
             coro_name = getattr(getattr(coro, "cr_code", None), "co_name", "")
             if coro_name == "_node_name_refresh_supervisor":
@@ -393,23 +393,20 @@ def test_startup_rollback_closes_meshtastic_client(
     mock_connect_meshtastic.return_value = mock_meshtastic_client
     mock_connect_matrix.side_effect = RuntimeError("After meshtastic client error")
 
-    original_client = mu.meshtastic_client
-    try:
-        config = {"matrix_rooms": [{"id": "!room:matrix.org"}]}
+    config = {"matrix_rooms": [{"id": "!room:matrix.org"}]}
 
-        with (
-            patch(
-                "mmrelay.main.asyncio.get_running_loop",
-                side_effect=make_patched_get_running_loop(),
-            ),
-            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
-            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
-            patch("mmrelay.main.logger"),
-        ):
-            with pytest.raises(RuntimeError):
-                asyncio.run(main(config))
+    with (
+        patch(
+            "mmrelay.main.asyncio.get_running_loop",
+            side_effect=make_patched_get_running_loop(),
+        ),
+        patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
+        patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+        patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+        patch.object(mu, "meshtastic_client", None),
+        patch("mmrelay.main.logger"),
+    ):
+        with pytest.raises(RuntimeError):
+            asyncio.run(main(config))
 
-            mock_meshtastic_client.close.assert_called_once()
-    finally:
-        mu.meshtastic_client = original_client
+        mock_meshtastic_client.close.assert_called_once()

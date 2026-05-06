@@ -293,6 +293,10 @@ sys.modules["bleak"].BleakDBusError = BleakDBusError  # type: ignore[attr-define
 
 
 class MockLatLng:
+    def __init__(self, lat: float = 0.0, lng: float = 0.0) -> None:
+        self.lat = lat
+        self.lng = lng
+
     @classmethod
     def from_degrees(cls, lat: float, lng: float) -> "MockLatLng":
         """
@@ -309,7 +313,7 @@ class MockLatLng:
         Returns:
             object: A new instance of the class (empty/mock).
         """
-        return cls()
+        return cls(lat, lng)
 
 
 class MockLatLngRect:
