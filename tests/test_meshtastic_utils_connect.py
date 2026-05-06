@@ -1588,13 +1588,16 @@ class TestConnectMeshtasticConfigAndRetryEdgeCases(unittest.TestCase):
             }
         }
 
-        with patch(
-            "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
-            side_effect=ConnectionRefusedError("Connection refused"),
+        with (
+            patch(
+                "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+                side_effect=ConnectionRefusedError("Connection refused"),
+            ),
+            patch("mmrelay.meshtastic_utils.time.sleep"),
+            patch("mmrelay.meshtastic_utils.logger"),
         ):
-            with patch("mmrelay.meshtastic_utils.logger"):
-                result = connect_meshtastic(config)
-                self.assertIsNone(result)
+            result = connect_meshtastic(config)
+            self.assertIsNone(result)
 
     def test_connect_meshtastic_invalid_connection_type(self):
         """Returns None and logs error for invalid connection type."""

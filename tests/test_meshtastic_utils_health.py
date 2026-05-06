@@ -202,6 +202,14 @@ def reset_meshtastic_state(monkeypatch):
         yield
     finally:
         _cancel_startup_drain_timer()
+        for attr in ("_metadata_executor", "_ble_executor"):
+            executor = getattr(mu, attr, None)
+            if executor is None:
+                continue
+            try:
+                executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                executor.shutdown(wait=False)
 
 
 class TestExecutorShutdown:

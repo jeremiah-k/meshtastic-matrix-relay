@@ -19,7 +19,7 @@ import unittest
 from collections.abc import Callable
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
-from typing import Any
+from typing import Any, Callable, NoReturn
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -1688,7 +1688,7 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
         class _PluginFailure(RuntimeError):
             """Test-specific plugin failure."""
 
-        def _submit_coro_mock(coro, loop=None):
+        def _submit_coro_mock(coro: Any, loop: Any = None) -> Future[Any]:
             f = Future()
             try:
                 result = asyncio.run(coro)
@@ -1858,7 +1858,7 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
         class _MatrixRelayFailure(RuntimeError):
             """Test-specific Matrix relay failure."""
 
-        def _submit_raises(coro, **_kwargs):
+        def _submit_raises(coro: Any, **_kwargs: Any) -> NoReturn:
             if asyncio.iscoroutine(coro):
                 coro.close()
             raise _MatrixRelayFailure
@@ -1951,7 +1951,7 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
-def _make_plugin(name):
+def _make_plugin(name: str) -> MagicMock:
     """Create a MagicMock plugin with the given name and async handle_meshtastic_message."""
     plugin = MagicMock()
     plugin.plugin_name = name
@@ -1959,10 +1959,9 @@ def _make_plugin(name):
     return plugin
 
 
-def _make_submit_side_effect(future):
-    """Return a side effect function that closes coroutines and returns the given future."""
+def _make_submit_side_effect(future: Any) -> Callable[[Any], Any]:
 
-    def _submit(coro, **_kwargs):
+    def _submit(coro: Any, **_kwargs: Any) -> Any:
         if asyncio.iscoroutine(coro):
             coro.close()
         return future

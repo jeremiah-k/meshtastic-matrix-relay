@@ -174,12 +174,12 @@ def cleanup_ble_future_state(module: Any) -> None:
         else:
             try:
                 cancel_fn()
-                _drain_future_result_safely(ble_future, timeout=0.2)
             except Exception as exc:
                 logging.getLogger(__name__).debug(
                     "Suppressing BLE future cleanup exception: %s",
                     exc,
                 )
+            _drain_future_result_safely(ble_future, timeout=0.2)
 
     # Drain completed-task exceptions as well (prevents "exception was never retrieved").
     is_done_now = _safe_is_done(ble_future)

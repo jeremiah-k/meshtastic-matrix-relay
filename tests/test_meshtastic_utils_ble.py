@@ -235,27 +235,27 @@ def reset_meshtastic_relay_state(monkeypatch):
     )
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._ble_future_watchdog_secs",
-        120.0,
+        mu._ble_future_watchdog_secs,
         raising=False,
     )
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._ble_timeout_reset_threshold",
-        3,
+        mu._ble_timeout_reset_threshold,
         raising=False,
     )
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._ble_scan_timeout_secs",
-        4.0,
+        mu._ble_scan_timeout_secs,
         raising=False,
     )
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._ble_future_stale_grace_secs",
-        2.0,
+        mu._ble_future_stale_grace_secs,
         raising=False,
     )
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._ble_interface_create_timeout_secs",
-        25.0,
+        mu._ble_interface_create_timeout_secs,
         raising=False,
     )
 

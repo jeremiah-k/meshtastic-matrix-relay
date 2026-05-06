@@ -248,11 +248,8 @@ def test_pragma_validation_valid_names(pragma, db_path):
 )
 def test_pragma_validation_invalid_names(pragma, db_path):
     """Test that invalid pragma names are rejected."""
-    with pytest.raises(ValueError) as cm:
-        manager = DatabaseManager(db_path, extra_pragmas={pragma: "value"})
-        with manager.read() as cursor:
-            cursor.execute(TEST_SQL_SELECT_ONE)
-    assert "Invalid pragma name" in str(cm.value)
+    with pytest.raises(ValueError, match="Invalid pragma name"):
+        DatabaseManager(db_path, extra_pragmas={pragma: "value"})
 
 
 @pytest.mark.parametrize(
@@ -298,10 +295,8 @@ def test_pragma_validation_string_values(value, db_path):
 )
 def test_pragma_validation_invalid_string_values(value, db_path):
     """Test that invalid string pragma values are rejected."""
-    with pytest.raises(ValueError) as cm:
-        manager = DatabaseManager(db_path, extra_pragmas={"test_pragma": value})
-        with manager.read() as cursor:
-            cursor.execute(TEST_SQL_SELECT_ONE)
+    with pytest.raises(ValueError):
+        DatabaseManager(db_path, extra_pragmas={"test_pragma": value})
     assert "Invalid or unsafe pragma value" in str(cm.value)
 
 
@@ -339,10 +334,8 @@ def test_pragma_validation_boolean_values(value, db_path):
 )
 def test_pragma_validation_invalid_numeric_types(value, db_path):
     """Test that invalid numeric pragma value types are rejected."""
-    with pytest.raises(TypeError) as cm:
-        manager = DatabaseManager(db_path, extra_pragmas={"test_pragma": value})
-        with manager.read() as cursor:
-            cursor.execute(TEST_SQL_SELECT_ONE)
+    with pytest.raises(TypeError):
+        DatabaseManager(db_path, extra_pragmas={"test_pragma": value})
     assert "Invalid pragma value type" in str(cm.value)
 
 
@@ -1078,10 +1071,9 @@ def test_write_lock_serialization(db_manager):
 def test_connection_creation_error_cleanup(db_path):
     """Test that connection creation errors don't leak connections."""
     # Try to create a manager with invalid pragma that will fail
+    # If __init__ raises, nothing to clean up
     with pytest.raises(ValueError):
-        manager = DatabaseManager(db_path, extra_pragmas={"invalid;pragma": "value"})
-        with manager.read() as cursor:
-            cursor.execute(TEST_SQL_SELECT_ONE)
+        DatabaseManager(db_path, extra_pragmas={"invalid;pragma": "value"})
 
     # Verify no connections were leaked (this is more of a sanity check)
     # since the manager creation failed, there shouldn't be any connections to track
