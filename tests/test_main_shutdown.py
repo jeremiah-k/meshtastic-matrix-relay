@@ -442,7 +442,10 @@ def test_main_shutdown_plugin_timeout_continues_cleanup(
         mock_queue = MagicMock()
         mock_queue.ensure_processor_started = MagicMock()
         mock_get_queue.return_value = mock_queue
-        asyncio.run(main(mock_config))
+        try:
+            asyncio.run(main(mock_config))
+        finally:
+            block_event.set()
 
     mock_shutdown_plugins.assert_called_once()
     mock_stop_queue.assert_called_once()

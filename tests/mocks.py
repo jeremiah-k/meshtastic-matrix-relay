@@ -236,9 +236,14 @@ class MockToDeviceError:
         return self.message
 
 
+class MockRoomMemberEvent:
+    pass
+
+
 nio_mock.ToDeviceResponse = MockToDeviceResponse
 nio_mock.ToDeviceError = MockToDeviceError
-sys.modules["nio.events.room_events"].RoomMemberEvent = MagicMock()  # type: ignore[attr-defined]
+nio_mock.RoomMemberEvent = MockRoomMemberEvent
+sys.modules["nio.events.room_events"].RoomMemberEvent = MockRoomMemberEvent
 
 
 # ── PIL mock ──────────────────────────────────────────────────────────

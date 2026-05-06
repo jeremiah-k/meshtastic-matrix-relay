@@ -446,7 +446,9 @@ def test_cancelled_error_cancels_task_and_returns():
             # target coroutine name using CPython internals with defensive
             # getattr fallbacks to reduce brittleness.
             candidate = getattr(coro, "_coro", coro)
-            gather_args = getattr(candidate, "_args", None)
+            gather_args = getattr(candidate, "_args", None) or getattr(
+                candidate, "_children", None
+            )
             if gather_args:
                 for arg in gather_args:
                     inner = getattr(arg, "_coro", arg)

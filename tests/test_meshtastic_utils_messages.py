@@ -1485,7 +1485,10 @@ class TestOnMeshtasticMessageDatabaseError(unittest.TestCase):
             patch(
                 "mmrelay.meshtastic_utils.get_longname",
                 side_effect=TypeError("Database error"),
-            ),
-            patch("mmrelay.meshtastic_utils.logger"),
+            ) as mock_get_longname,
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
         ):
             on_meshtastic_message(packet, mock_interface)
+
+        mock_get_longname.assert_called()
+        assert mock_logger.debug.called

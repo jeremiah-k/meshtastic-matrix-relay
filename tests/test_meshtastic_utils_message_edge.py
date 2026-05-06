@@ -1608,10 +1608,13 @@ class TestMessageHandlerEdgeCases:
                             await mu.check_connection()
 
                             mock_lost.assert_not_called()
+                            debug_calls = [
+                                str(call) for call in mock_logger.debug.call_args_list
+                            ]
                             assert any(
-                                "debug" in str(call)
-                                for call in mock_logger.method_calls
-                            )
+                                "reconnection in progress" in call.lower()
+                                for call in debug_calls
+                            ), f"Expected 'reconnection in progress' debug message, got: {debug_calls}"
 
 
 class TestOnMeshtasticMessageOldPacketFiltering:

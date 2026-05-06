@@ -497,39 +497,69 @@ def test_main_restores_loop_exception_handler_on_early_init_failure() -> None:
 
 
 def test_main_shutdown_task_cancellation_coverage() -> None:
-    """Test shutdown task cancellation logic with and without pending tasks."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    """Exercise the production shutdown path's task-cancellation logic by running main() with a blocking background task that forces _await_background_task_shutdown to time out, cancel, and drain the pending task."""
+    config = {
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+        "matrix": {"homeserver": "https://matrix.org"},
+        "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
+    }
 
-    try:
+    mock_matrix_client = AsyncMock()
+    mock_matrix_client.add_event_callback = MagicMock()
+    mock_matrix_client.close = AsyncMock()
 
-        async def background_task() -> None:
-            await asyncio.sleep(10)
+    async def blocking_check_connection() -> None:
+        """Block forever so check_connection_task stays pending at shutdown, forcing _await_background_task_shutdown to exercise its timeout→cancel path."""
+        await asyncio.Event().wait()
 
-        async def run_with_pending_tasks() -> None:
-            task = asyncio.create_task(background_task())
-            pending = {
-                t for t in asyncio.all_tasks() if t is not asyncio.current_task()
-            }
-            assert task in pending
+    real_get_running_loop = asyncio.get_running_loop
 
-            for t in pending:
-                t.cancel()
-            await asyncio.gather(*pending, return_exceptions=True)
+    def _patched_get_running_loop() -> asyncio.AbstractEventLoop:
+        loop = real_get_running_loop()
+        if not isinstance(loop, InlineExecutorLoop):
+            loop = InlineExecutorLoop(loop)
+        if not hasattr(loop, "_signal_handler_patched"):
 
-            assert task.cancelled()
+            def _fake_add_signal_handler(_sig, handler):
+                handler()
 
-        async def run_without_pending_tasks() -> None:
-            pending = {
-                t for t in asyncio.all_tasks() if t is not asyncio.current_task()
-            }
-            assert not pending
+            loop.add_signal_handler = _fake_add_signal_handler  # type: ignore[attr-defined]
+            loop._signal_handler_patched = True  # type: ignore[attr-defined]
+        return loop
 
-        loop.run_until_complete(run_with_pending_tasks())
-        loop.run_until_complete(run_without_pending_tasks())
-    finally:
-        loop.close()
-        asyncio.set_event_loop(None)
+    with (
+        patch(
+            "mmrelay.main.asyncio.get_running_loop",
+            side_effect=_patched_get_running_loop,
+        ),
+        patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
+        patch("mmrelay.main.initialize_database"),
+        patch("mmrelay.main.load_plugins"),
+        patch("mmrelay.main.start_message_queue"),
+        patch(
+            "mmrelay.main.connect_matrix",
+            side_effect=_make_async_return(mock_matrix_client),
+        ),
+        patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
+        patch("mmrelay.main.get_message_queue") as mock_get_queue,
+        patch(
+            "mmrelay.main.meshtastic_utils.check_connection",
+            side_effect=blocking_check_connection,
+        ),
+        patch("mmrelay.main.shutdown_plugins"),
+        patch("mmrelay.main.stop_message_queue"),
+        patch("mmrelay.main.sys.platform", "linux"),
+    ):
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
+
+        asyncio.run(main(config))
+
+    import mmrelay.meshtastic_utils as mu
+
+    assert mu.shutting_down
 
 
 def test_ready_file_helpers(tmp_path, monkeypatch) -> None:

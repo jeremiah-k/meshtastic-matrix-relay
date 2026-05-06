@@ -623,21 +623,63 @@ class _FailedExecutorLoop:
 
 
 def test_on_lost_meshtastic_connection_reconnection_failure():
-    """Logs error when reconnection attempts fail (connect_meshtastic returns None)."""
+    """Exercises the reconnect failure path when connect_meshtastic returns None."""
     mock_interface = MagicMock()
 
     import mmrelay.meshtastic_utils
 
     mmrelay.meshtastic_utils.reconnecting = False
+    mmrelay.meshtastic_utils.shutting_down = False
+
+    _connect_call_count = [0]
+
+    def _connect_side_effect(*_args, **_kwargs):
+        """Return None. On second call, signal shutdown to stop the retry loop."""
+        _connect_call_count[0] += 1
+        if _connect_call_count[0] >= 2:
+            mmrelay.meshtastic_utils.shutting_down = True
+        return None
+
+    def _schedule_and_run_reconnect():
+        """Run the real reconnect() coroutine to exercise its failure branch."""
+        import asyncio
+
+        original_backoff = mmrelay.meshtastic_utils.DEFAULT_BACKOFF_TIME
+        mmrelay.meshtastic_utils.DEFAULT_BACKOFF_TIME = 0
+        try:
+            reconnect_coro = mmrelay.meshtastic_utils.reconnect()
+            asyncio.run(reconnect_coro)
+        finally:
+            mmrelay.meshtastic_utils.DEFAULT_BACKOFF_TIME = original_backoff
 
     with (
-        patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=None),
-        patch("mmrelay.meshtastic.events._schedule_reconnect_after_disconnect"),
+        patch(
+            "mmrelay.meshtastic_utils.connect_meshtastic",
+            side_effect=_connect_side_effect,
+        ),
+        patch(
+            "mmrelay.meshtastic.events._schedule_reconnect_after_disconnect",
+            side_effect=_schedule_and_run_reconnect,
+        ),
+        patch(
+            "mmrelay.meshtastic_utils.is_running_as_service",
+            return_value=True,
+        ),
+        patch("mmrelay.meshtastic_utils.config", {}),
         patch("time.sleep"),
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,
     ):
         on_lost_meshtastic_connection(mock_interface)
-        mock_logger.error.assert_called()
+
+        # Verify reconnect was invoked
+        mock_logger.info.assert_any_call(
+            "Reconnection attempt starting in 0 seconds..."
+        )
+
+        # Verify the reconnect failure branch was exercised
+        mock_logger.warning.assert_any_call(
+            "Reconnection attempt did not produce a client; backing off"
+        )
 
 
 def test_on_lost_meshtastic_connection_detection_source_edge_cases():

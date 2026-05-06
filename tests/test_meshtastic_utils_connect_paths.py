@@ -215,6 +215,21 @@ def reset_meshtastic_relay_state(monkeypatch):
         0,
         raising=False,
     )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._metadata_executor_degraded",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_executor_degraded_addresses",
+        set(),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_executor_orphaned_workers_by_address",
+        {},
+        raising=False,
+    )
 
     yield
 

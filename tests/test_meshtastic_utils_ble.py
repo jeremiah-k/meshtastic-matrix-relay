@@ -24,6 +24,11 @@ import pytest
 
 import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.network import (
+    BLE_FUTURE_STALE_GRACE_SECS,
+    BLE_FUTURE_WATCHDOG_SECS,
+    BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
+    BLE_SCAN_TIMEOUT_SECS,
+    BLE_TIMEOUT_RESET_THRESHOLD,
     CONFIG_KEY_BLE_ADDRESS,
     CONFIG_KEY_CONNECTION_TYPE,
     CONNECTION_TYPE_BLE,
@@ -235,27 +240,27 @@ def reset_meshtastic_relay_state(monkeypatch):
     )
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._ble_future_watchdog_secs",
-        mu._ble_future_watchdog_secs,
+        BLE_FUTURE_WATCHDOG_SECS,
         raising=False,
     )
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._ble_timeout_reset_threshold",
-        mu._ble_timeout_reset_threshold,
+        BLE_TIMEOUT_RESET_THRESHOLD,
         raising=False,
     )
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._ble_scan_timeout_secs",
-        mu._ble_scan_timeout_secs,
+        BLE_SCAN_TIMEOUT_SECS,
         raising=False,
     )
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._ble_future_stale_grace_secs",
-        mu._ble_future_stale_grace_secs,
+        BLE_FUTURE_STALE_GRACE_SECS,
         raising=False,
     )
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._ble_interface_create_timeout_secs",
-        mu._ble_interface_create_timeout_secs,
+        BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
         raising=False,
     )
 

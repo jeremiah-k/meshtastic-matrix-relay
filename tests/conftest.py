@@ -29,8 +29,9 @@ from unittest.mock import MagicMock
 import pytest
 from pubsub import pub
 
-# Mock all external dependencies before any application imports can occur.
 import tests.mocks  # noqa: F401
+
+# Mock all external dependencies before any application imports can occur.
 from tests.ble_cleanup import (  # noqa: E402
     _drain_future_result_safely,
     _safe_is_done,
