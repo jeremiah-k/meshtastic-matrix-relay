@@ -66,6 +66,11 @@ def reset_meshtastic_relay_state(monkeypatch):
 
     _cancel_startup_drain_timer()
 
+    import mmrelay.meshtastic_utils as mu
+
+    with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+        mu.shutdown_shared_executors()
+
     startup_drain_complete_event = threading.Event()
     startup_drain_complete_event.set()
     monkeypatch.setattr(
@@ -231,6 +236,11 @@ def reset_meshtastic_relay_state(monkeypatch):
     )
 
     yield
+
+    import mmrelay.meshtastic_utils as mu
+
+    with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+        mu.shutdown_shared_executors()
 
     _cancel_startup_drain_timer()
 

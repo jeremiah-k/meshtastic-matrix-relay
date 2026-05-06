@@ -1622,12 +1622,14 @@ class TestMessageHandlerEdgeCases:
 class TestOnMeshtasticMessageOldPacketFiltering:
     """Test old message filtering in on_meshtastic_message."""
 
-    def test_on_meshtastic_message_filters_old_packets(self):
+    def test_on_meshtastic_message_filters_old_packets(self, monkeypatch):
         """Test that packets with rx_time < RELAY_START_TIME are filtered out."""
         import mmrelay.meshtastic_utils as mu_module
 
-        mu_module.RELAY_START_TIME = time.time()
-        mu_module._relay_rx_time_clock_skew_secs = None
+        monkeypatch.setattr(mu_module, "RELAY_START_TIME", time.time(), raising=False)
+        monkeypatch.setattr(
+            mu_module, "_relay_rx_time_clock_skew_secs", None, raising=False
+        )
 
         old_packet = {
             "from": 12345,

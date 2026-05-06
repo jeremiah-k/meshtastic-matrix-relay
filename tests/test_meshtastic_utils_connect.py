@@ -1681,7 +1681,7 @@ class TestConnectMeshtasticConfigAndRetryEdgeCases(unittest.TestCase):
                     self.assertIsNone(result)
 
     def test_timeout_breaks_on_shutdown(self):
-        def _timeout_then_shutdown(*_args, **_kwargs) -> NoReturn:
+        def _timeout_then_shutdown(*_args: object, **_kwargs: object) -> NoReturn:
             mu.shutting_down = True
             raise TimeoutError("timeout")
 

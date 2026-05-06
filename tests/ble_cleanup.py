@@ -9,7 +9,6 @@ import asyncio
 import concurrent.futures
 import contextlib
 import logging
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,7 @@ _DRAIN_EXCEPTIONS = (
 )
 
 
-def _clear_ble_module_state(module: Any) -> None:
+def _clear_ble_module_state(module: object) -> None:
     """Clear BLE-related state attributes on a module."""
     for attr in (
         "_ble_future",
@@ -34,12 +33,12 @@ def _clear_ble_module_state(module: Any) -> None:
             setattr(module, attr, None)
 
 
-def _safe_is_done(future: Any) -> bool:
+def _safe_is_done(future: object) -> bool:
     """
     Determine whether a future-like object reports it is completed.
 
     Parameters:
-        future (Any): Object expected to provide a callable `done()` method.
+        future (object): Object expected to provide a callable `done()` method.
 
     Returns:
         bool: `True` if `future.done()` exists and returns a truthy value; `False` otherwise (including when `done()` is absent or raises known invalid-state errors).
@@ -56,7 +55,7 @@ def _safe_is_done(future: Any) -> bool:
     return False
 
 
-def _drain_future_result_safely(future: Any, timeout: float) -> None:
+def _drain_future_result_safely(future: object, timeout: float) -> None:
     """
     Drain a future/task result best-effort so teardown does not leak exceptions.
     """
@@ -95,7 +94,7 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
         return
 
 
-def cleanup_ble_future_state(module: Any) -> None:
+def cleanup_ble_future_state(module: object) -> None:
     """
     Best-effort cancel and drain BLE in-flight future/task state on a module.
 
@@ -117,7 +116,7 @@ def cleanup_ble_future_state(module: Any) -> None:
     if callable(cancel_fn) and not is_done:
         if isinstance(ble_future, asyncio.Task):
 
-            def _consume_task_result(done_task: asyncio.Task[Any]) -> None:
+            def _consume_task_result(done_task: asyncio.Task[object]) -> None:
                 with contextlib.suppress(
                     asyncio.CancelledError,
                     asyncio.InvalidStateError,

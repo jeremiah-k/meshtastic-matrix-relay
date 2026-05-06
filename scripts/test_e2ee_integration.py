@@ -33,26 +33,24 @@ except ImportError as e:
 class MatrixConnectionError(Exception):
     """Raised when Matrix connection fails."""
 
-    pass
-
 
 class E2EEIntegrationTester:
     """Integration tester for E2EE functionality"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.config: dict[str, Any] | None = None
         self.client: Any | None = None
         self.test_results: dict[str, dict[str, Any]] = {}
 
-    async def setup_test_environment(self) -> bool:
+    def setup_test_environment(self) -> bool:
         """Set up test environment with real config"""
         print("🔧 Setting up test environment...")
 
         try:
-            # Load real config
             self.config = load_config()
             if not self.config:
-                raise ValueError("Could not load config")
+                print("❌ Setup failed: Could not load config")
+                return False
 
             print("✅ Config loaded successfully")
             return True
@@ -66,41 +64,44 @@ class E2EEIntegrationTester:
         print("\n🔍 Testing Matrix connection...")
 
         try:
-            # Attempt to connect (but don't start sync loop)
             self.client = await connect_matrix(self.config)
-
-            if not self.client:
-                raise MatrixConnectionError("Failed to connect to Matrix")
-
-            print("✅ Matrix connection successful")
-
-            # Check E2EE setup
-            has_device_id = bool(getattr(self.client, "device_id", None))
-            has_store_path = bool(getattr(self.client, "store_path", None))
-            encryption_enabled = False
-
-            if hasattr(self.client, "config") and self.client.config:
-                encryption_enabled = getattr(
-                    self.client.config, "encryption_enabled", False
-                )
-
-            print(f"   Device ID: {getattr(self.client, 'device_id', 'None')}")
-            print(f"   Store Path: {getattr(self.client, 'store_path', 'None')}")
-            print(f"   Encryption Enabled: {encryption_enabled}")
-
-            self.test_results["connection"] = {
-                "success": True,
-                "has_device_id": has_device_id,
-                "has_store_path": has_store_path,
-                "encryption_enabled": encryption_enabled,
-            }
-
-            return True
-
         except Exception as e:
             print(f"❌ Connection failed: {e}")
             self.test_results["connection"] = {"success": False, "error": str(e)}
             return False
+
+        if not self.client:
+            print("❌ Connection failed: Failed to connect to Matrix")
+            self.test_results["connection"] = {
+                "success": False,
+                "error": "Failed to connect to Matrix",
+            }
+            return False
+
+        print("✅ Matrix connection successful")
+
+        # Check E2EE setup
+        has_device_id = bool(getattr(self.client, "device_id", None))
+        has_store_path = bool(getattr(self.client, "store_path", None))
+        encryption_enabled = False
+
+        if hasattr(self.client, "config") and self.client.config:
+            encryption_enabled = getattr(
+                self.client.config, "encryption_enabled", False
+            )
+
+        print(f"   Device ID: {getattr(self.client, 'device_id', 'None')}")
+        print(f"   Store Path: {getattr(self.client, 'store_path', 'None')}")
+        print(f"   Encryption Enabled: {encryption_enabled}")
+
+        self.test_results["connection"] = {
+            "success": True,
+            "has_device_id": has_device_id,
+            "has_store_path": has_store_path,
+            "encryption_enabled": encryption_enabled,
+        }
+
+        return True
 
     async def check_room_encryption_detection(self) -> bool:
         """
@@ -271,7 +272,7 @@ class E2EEIntegrationTester:
         print("=" * 50)
 
         # Setup
-        if not await self.setup_test_environment():
+        if not self.setup_test_environment():
             return False
 
         # Run tests
