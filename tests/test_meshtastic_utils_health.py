@@ -196,6 +196,7 @@ def reset_meshtastic_state(monkeypatch):
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._connect_attempt_in_progress", False, raising=False
     )
+    monkeypatch.setattr("mmrelay.meshtastic_utils.event_loop", None, raising=False)
 
     yield
 

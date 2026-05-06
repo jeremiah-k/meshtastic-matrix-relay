@@ -352,10 +352,10 @@ that has this mix, convert the affected class to pure pytest style.
 
 ```bash
 # Run specific test module
-python -m pytest tests/test_cli.py -v --cov --tb=short
+python -m pytest tests/test_cli.py -v --cov=src/mmrelay --cov-report=term-missing --tb=short
 
 # Run all tests with coverage
-python -m pytest -v --cov --junitxml=junit.xml -o junit_family=legacy --timeout=60
+python -m pytest -v --cov=src/mmrelay --cov-report=term-missing --tb=short --junitxml=junit.xml -o junit_family=legacy --timeout=60
 ```
 
 ### Targeted Verification
@@ -746,9 +746,9 @@ def test_connection_lifecycle_with_retry():
 
 Useful commands:
 
-- Run only integration tests: `python -m pytest -m integration -v --timeout=60`
+- Run only integration tests: `python -m pytest -m integration -v --cov=src/mmrelay --cov-report=term-missing --tb=short --timeout=60`
 - Skip integration tests during fast local cycles:
-  `python -m pytest -m "not integration" -v --timeout=60`
+  `python -m pytest -m "not integration" -v --cov=src/mmrelay --cov-report=term-missing --tb=short --timeout=60`
 
 ### Integration test design rules
 

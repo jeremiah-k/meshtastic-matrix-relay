@@ -395,7 +395,9 @@ class _ControlledExecutor:
             target_qualname
         )
         if is_close and self.submit_timeout:
-            raise concurrent.futures.TimeoutError()
+            timeout_future = concurrent.futures.Future()
+            timeout_future.set_exception(concurrent.futures.TimeoutError())
+            return timeout_future
         if is_close and self.close_future_factory is not None:
             if self.close_future is None:
                 self.close_future = self.close_future_factory()

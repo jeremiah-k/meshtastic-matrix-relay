@@ -1043,9 +1043,10 @@ class TestBleValidationFailure:
 
             mu.meshtastic_iface = None
 
-            result = connect_meshtastic(passed_config=config)
-
-        _FakeBLEWithSideEffect.__init__ = orig_init
+            try:
+                result = connect_meshtastic(passed_config=config)
+            finally:
+                _FakeBLEWithSideEffect.__init__ = orig_init
 
         assert result is None
 

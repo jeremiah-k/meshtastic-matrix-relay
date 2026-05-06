@@ -1704,6 +1704,7 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
             patch("mmrelay.plugin_loader.load_plugins") as mock_load_plugins,
             patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+            patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
         ):
             mock_plugin = MagicMock()
             mock_plugin.plugin_name = "test_plugin"
@@ -1725,7 +1726,6 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
             mmrelay.meshtastic_utils.matrix_rooms = [
                 {"meshtastic_channel": 0, "matrix_room_id": "!test:example.com"}
             ]
-            mmrelay.meshtastic_utils.event_loop = MagicMock()
             mock_interface.myInfo.my_node_num = 999999
 
             on_meshtastic_message(packet, mock_interface)
@@ -1874,6 +1874,7 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
                 AsyncMock(return_value=None),
             ),
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+            patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
         ):
             import mmrelay.meshtastic_utils
 
@@ -1887,7 +1888,6 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
                     "message_interactions": {"reactions": True, "replies": True},
                 },
             }
-            mmrelay.meshtastic_utils.event_loop = MagicMock()
 
             on_meshtastic_message(packet, mock_interface)
             mock_logger.exception.assert_called()

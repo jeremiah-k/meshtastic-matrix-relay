@@ -577,7 +577,9 @@ def test_exception_during_ensure_processor_started_raised():
         patch("mmrelay.main.initialize_database"),
         patch("mmrelay.main.load_plugins"),
         patch("mmrelay.main.start_message_queue"),
-        patch("mmrelay.main.connect_matrix") as mock_connect_matrix,
+        patch(
+            "mmrelay.main.connect_matrix", new_callable=AsyncMock
+        ) as mock_connect_matrix,
         patch("mmrelay.main.connect_meshtastic") as mock_connect_meshtastic,
         patch("mmrelay.main.join_matrix_room"),
         patch("mmrelay.main.get_message_queue") as mock_get_queue,

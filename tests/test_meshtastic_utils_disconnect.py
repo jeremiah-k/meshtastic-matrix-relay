@@ -140,6 +140,11 @@ def reset_meshtastic_relay_state(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.meshtastic_iface",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
         "mmrelay.meshtastic_utils.reconnect_task_future",
         None,
         raising=False,
@@ -728,6 +733,8 @@ class TestReconnectCancellation:
             await reconnect()
 
         mock_logger.info.assert_any_call("Reconnection task was cancelled.")
+        assert mu.reconnecting is False
+        assert mu.reconnect_task_future is None
 
 
 class TestConnectionLostHandlerClearingStaleBleFuture:
