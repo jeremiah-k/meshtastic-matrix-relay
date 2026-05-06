@@ -142,6 +142,7 @@ def test_main_closes_meshtastic_client_on_shutdown(
     """Shutdown should close the Meshtastic client when present."""
 
     mock_meshtastic_client = MagicMock()
+    del mock_meshtastic_client.close_ble_and_release
     mock_connect_meshtastic.return_value = mock_meshtastic_client
 
     mock_matrix_client = MagicMock()
@@ -434,7 +435,8 @@ def test_main_shutdown_plugin_timeout_continues_cleanup(
     mock_stop_queue.assert_called_once()
     mock_matrix_client.close.assert_awaited_once()
     assert any(
-        "Timed out stopping" in str(call) and "plugins" in str(call)
+        call.args[0] == "Timed out stopping %s after %.1fs; continuing shutdown"
+        and call.args[1] == "plugins"
         for call in mock_logger.warning.call_args_list
     )
 
@@ -640,7 +642,9 @@ def test_main_shutdown_uses_blocking_timeout_helper(
     Ensure main uses daemon-thread timeout helper for Meshtastic close.
     """
 
-    mock_connect_meshtastic.return_value = MagicMock()
+    mock_meshtastic_client = MagicMock()
+    del mock_meshtastic_client.close_ble_and_release
+    mock_connect_meshtastic.return_value = mock_meshtastic_client
     mock_matrix_client = MagicMock()
     mock_matrix_client.close = AsyncMock()
     mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
@@ -683,7 +687,7 @@ def test_main_shutdown_uses_blocking_timeout_helper(
         args, kwargs = mock_run_blocking_with_timeout.call_args
         close_callable = args[0]
         assert callable(close_callable)
-        mock_connect_meshtastic.return_value.close.assert_called_once()
+        mock_meshtastic_client.close.assert_called_once()
         assert kwargs.get("timeout") == timeout_sentinel
         assert kwargs.get("label") == "meshtastic-client-close-shutdown"
         assert kwargs.get("timeout_log_level") is None
