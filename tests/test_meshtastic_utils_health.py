@@ -198,9 +198,10 @@ def reset_meshtastic_state(monkeypatch):
     )
     monkeypatch.setattr("mmrelay.meshtastic_utils.event_loop", None, raising=False)
 
-    yield
-
-    _cancel_startup_drain_timer()
+    try:
+        yield
+    finally:
+        _cancel_startup_drain_timer()
 
 
 class TestExecutorShutdown:
@@ -742,9 +743,13 @@ class TestMetadataFutureCleanupPaths:
         mock_future.done.return_value = True
         mu._metadata_future = mock_future
 
-        with patch("mmrelay.meshtastic_utils._reset_metadata_executor_for_stale_probe"):
+        with (
+            patch("mmrelay.meshtastic_utils._reset_metadata_executor_for_stale_probe"),
+            patch("mmrelay.meshtastic.executors.threading.Timer") as mock_timer,
+        ):
             mu._schedule_metadata_future_cleanup(mock_future, "test-reason")
             mock_future.add_done_callback.assert_called_once()
+            mock_timer.assert_called_once()
 
     def test_cleanup_early_return_when_should_clear_false(self):
         """Test that cleanup returns early when _metadata_future is different."""

@@ -308,7 +308,7 @@ asyncmock_patterns = [
 
 The test suite is undergoing a multi-phase modernization (see
 `docs/superpowers/specs/2026-05-03-test-suite-modernization-design.md` for the
-full design). Phase 1 (decomposing the two largest monoliths into domain files)
+full design). Phase 1 (decomposing the two largest monoliths and test_main.py into domain files)
 is complete. The principles below apply to all test domains, not just Matrix.
 
 ### Split-Domain Layout
@@ -352,7 +352,7 @@ that has this mix, convert the affected class to pure pytest style.
 
 ```bash
 # Run specific test module
-python -m pytest tests/test_cli.py -v --cov=src/mmrelay --cov-report=term-missing --tb=short
+python -m pytest tests/test_cli.py -v --cov=src/mmrelay --cov-report=term-missing --tb=short --timeout=60
 
 # Run all tests with coverage
 python -m pytest -v --cov=src/mmrelay --cov-report=term-missing --tb=short --junitxml=junit.xml -o junit_family=legacy --timeout=60

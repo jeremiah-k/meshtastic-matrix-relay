@@ -1369,15 +1369,16 @@ def test_database_file_permissions(db_path):
 
         # Try to write - may fail depending on system/SQLite version
         try:
-            with manager.write() as cursor:
-                cursor.execute("INSERT INTO test (id) VALUES (1)")
-            # If it succeeds, that's also valid behavior (some SQLite versions handle this differently)
-        except sqlite3.OperationalError:
-            # This is expected on most systems
-            pass
-
-        # Restore permissions for cleanup
-        os.chmod(db_path, current_permissions)
+            try:
+                with manager.write() as cursor:
+                    cursor.execute("INSERT INTO test (id) VALUES (1)")
+                # If it succeeds, that's also valid behavior (some SQLite versions handle this differently)
+            except sqlite3.OperationalError:
+                # This is expected on most systems
+                pass
+        finally:
+            # Restore permissions for cleanup
+            os.chmod(db_path, current_permissions)
     finally:
         manager.close()
 

@@ -441,21 +441,33 @@ def test_cancelled_error_cancels_task_and_returns():
 
     real_wait_for = asyncio.wait_for
 
-    def _awaitable_name(awaitable: Any) -> str:
-        candidate = getattr(awaitable, "_coro", awaitable)
-        inner = getattr(candidate, "_inner", None)
-        if inner is not None:
-            candidate = getattr(inner, "get_coro", lambda: inner)()
-        elif hasattr(candidate, "get_coro"):
-            candidate = candidate.get_coro()
-        code = getattr(candidate, "cr_code", None) or getattr(
-            candidate, "__code__", None
-        )
-        return getattr(code, "co_name", "")
-
     async def mock_wait_for(coro, timeout=None):
-        if timeout == 5.0 and _awaitable_name(coro) == "_check_connection_wait":
-            raise asyncio.CancelledError()
+        if timeout == 5.0:
+            # Peek inside asyncio wrappers (gather, etc.) to find the
+            # target coroutine name without fragile CPython internals.
+            candidate = getattr(coro, "_coro", coro)
+            gather_args = getattr(candidate, "_args", None)
+            if gather_args:
+                for arg in gather_args:
+                    inner = getattr(arg, "_coro", arg)
+                    if (
+                        getattr(getattr(inner, "cr_code", None), "co_name", "")
+                        == "_check_connection_wait"
+                    ):
+                        raise asyncio.CancelledError()
+                    co_code = getattr(inner, "__code__", None)
+                    if (
+                        co_code
+                        and getattr(co_code, "co_name", "") == "_check_connection_wait"
+                    ):
+                        raise asyncio.CancelledError()
+            else:
+                code = getattr(candidate, "cr_code", None) or getattr(
+                    candidate, "__code__", None
+                )
+                name = getattr(code, "co_name", "")
+                if name == "_check_connection_wait":
+                    raise asyncio.CancelledError()
         return await real_wait_for(coro, timeout=timeout)
 
     with (
