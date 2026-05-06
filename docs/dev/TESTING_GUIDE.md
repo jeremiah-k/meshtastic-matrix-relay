@@ -287,7 +287,7 @@ The project uses a cleanup fixture in `tests/conftest.py` to handle AsyncMock cl
 # In conftest.py
 asyncmock_patterns = [
     "test_async_patterns",
-    "test_matrix_utils_edge_cases",
+
     "test_mesh_relay_plugin",
     "test_map_plugin",
     "test_meshtastic_utils",
@@ -324,11 +324,6 @@ the behavior under test. If no file matches, create a new one following the
 broadly named supplements like `_coverage.py` or `_edge_cases.py`. Those
 satellite patterns exist only as a legacy of the pre-modernization layout and
 are being folded back into their domain files.
-
-> **Exception**: `tests/test_matrix_utils_edge_cases.py` remains as a temporary
-> legacy file. New Matrix edge-case tests should go in the appropriate
-> `test_matrix_utils_<domain>.py` domain file instead; this file will be
-> fully absorbed once its remaining tests are migrated.
 
 ### File Size Limit
 
@@ -801,28 +796,28 @@ Write tests into the appropriate split domain file. The split-domain principle
 applies to all test modules in the repo (see Test Suite Modernization); this
 section documents the Matrix-specific mappings.
 
-| File                                             | Domain                                      |
-| ------------------------------------------------ | ------------------------------------------- |
-| `tests/test_matrix_utils_invite.py`              | Room invite handling and alias matching     |
-| `tests/test_matrix_utils_auth_login.py`          | Login flow and discovery                    |
-| `tests/test_matrix_utils_auth_credentials.py`    | Credential loading and storage              |
-| `tests/test_matrix_utils_auth_logout.py`         | Logout and cleanup                          |
-| `tests/test_matrix_utils_auth_e2ee.py`           | E2EE setup and decryption                   |
-| `tests/test_matrix_utils_core.py`                | Prefixes, config parsing, general utilities |
-| `tests/test_matrix_utils_room.py`                | Room mapping and discovery                  |
-| `tests/test_matrix_utils_error_handling.py`      | Error paths across Matrix operations        |
-| `tests/test_matrix_utils_edge_cases.py`          | Boundary conditions and unusual inputs      |
-| `tests/test_matrix_utils_bot.py`                 | Bot lifecycle and identity                  |
-| `tests/test_matrix_utils_errors.py`              | Error classification and reporting          |
-| `tests/test_matrix_utils_relay.py`               | Message relay and retry logic               |
-| `tests/test_matrix_utils_media.py`               | Image upload and media handling             |
-| `tests/test_matrix_utils_replies.py`             | Reply formatting and threading              |
-| `tests/test_matrix_utils_detection.py`           | Detection sensor packet handling            |
-| `tests/test_matrix_utils_connect.py`             | General connect/bootstrap/config behavior   |
-| `tests/test_matrix_utils_connect_sync.py`        | Initial sync and retry behavior             |
-| `tests/test_matrix_utils_connect_credentials.py` | Credentials reload/save during connect      |
-| `tests/test_matrix_utils_connect_rooms.py`       | Room/alias/displayname setup during connect |
-| `tests/test_matrix_utils_connect_e2ee.py`        | E2EE/device/whoami setup during connect     |
+| File                                          | Domain                                      |
+| --------------------------------------------- | ------------------------------------------- |
+| `tests/test_matrix_utils_invite.py`           | Room invite handling and alias matching     |
+| `tests/test_matrix_utils_auth_login.py`       | Login flow and discovery                    |
+| `tests/test_matrix_utils_auth_credentials.py` | Credential loading and storage              |
+| `tests/test_matrix_utils_auth_logout.py`      | Logout and cleanup                          |
+| `tests/test_matrix_utils_auth_e2ee.py`        | E2EE setup and decryption                   |
+| `tests/test_matrix_utils_core.py`             | Prefixes, config parsing, general utilities |
+| `tests/test_matrix_utils_room.py`             | Room mapping and discovery                  |
+| `tests/test_matrix_utils_error_handling.py`   | Error paths across Matrix operations        |
+
+| `tests/test_matrix_utils_bot.py` | Bot lifecycle and identity |
+| `tests/test_matrix_utils_errors.py` | Error classification and reporting |
+| `tests/test_matrix_utils_relay.py` | Message relay and retry logic |
+| `tests/test_matrix_utils_media.py` | Image upload and media handling |
+| `tests/test_matrix_utils_replies.py` | Reply formatting and threading |
+| `tests/test_matrix_utils_detection.py` | Detection sensor packet handling |
+| `tests/test_matrix_utils_connect.py` | General connect/bootstrap/config behavior |
+| `tests/test_matrix_utils_connect_sync.py` | Initial sync and retry behavior |
+| `tests/test_matrix_utils_connect_credentials.py` | Credentials reload/save during connect |
+| `tests/test_matrix_utils_connect_rooms.py` | Room/alias/displayname setup during connect |
+| `tests/test_matrix_utils_connect_e2ee.py` | E2EE/device/whoami setup during connect |
 
 If no existing file matches, create a new one following the `test_matrix_utils_<domain>.py` naming convention.
 

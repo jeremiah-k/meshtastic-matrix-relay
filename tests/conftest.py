@@ -286,7 +286,6 @@ def cleanup_asyncmock_objects(request):
         "test_matrix_utils",
         "test_matrix_utils_auth",
         "test_matrix_utils_core",
-        "test_matrix_utils_edge_cases",
         "test_matrix_utils_invite",
         "test_matrix_utils_media",
         "test_matrix_utils_relay",

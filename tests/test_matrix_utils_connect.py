@@ -267,3 +267,48 @@ async def test_connect_matrix_duplicate_caller_returns_existing_client():
         client2 = await connect_matrix(config)
         assert client2 is mock_client
         init_mock.assert_called_once()
+
+
+# ── Edge-case tests migrated from test_matrix_utils_edge_cases.py ──
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_no_config_returns_none():
+    """connect_matrix returns None and logs an error when config is None."""
+    with (
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch("mmrelay.matrix_utils.config", None),
+    ):
+        result = await connect_matrix(None)
+
+    assert result is None
+    mock_logger.error.assert_called_with(
+        "No configuration available. Cannot connect to Matrix."
+    )
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_ssl_context_failure_logs_warning():
+    """connect_matrix handles _create_ssl_context returning None by logging a warning and still returning a client."""
+    mock_client = AsyncMock()
+    mock_client.sync = AsyncMock(return_value=MagicMock())
+    mock_client.rooms = {}
+
+    config = {
+        "matrix": {
+            "homeserver": "https://matrix.org",
+            "access_token": "test_token",
+            "bot_user_id": "@test:matrix.org",
+        },
+        "matrix_rooms": [],
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client),
+        patch("mmrelay.matrix_utils._create_ssl_context", return_value=None),
+    ):
+        result = await connect_matrix(config)
+
+    assert result is not None
+    mock_logger.warning.assert_called()
