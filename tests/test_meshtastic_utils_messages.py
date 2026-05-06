@@ -1175,6 +1175,7 @@ class TestGetPortnumName(unittest.TestCase):
         self.assertEqual(result_list, "UNKNOWN (type=list)")
 
     def test_get_portnum_name_encrypted_with_packet(self):
+        """Test that encrypted packets return 'ENCRYPTED' portnum name."""
         result = _get_portnum_name(None, {"encrypted": True})
         self.assertEqual(result, "ENCRYPTED")
 

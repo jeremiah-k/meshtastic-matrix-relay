@@ -1700,9 +1700,6 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
                 f.set_result(result)
             except _PluginFailure as e:
                 f.set_exception(e)
-            finally:
-                if asyncio.iscoroutine(coro):
-                    coro.close()
             return f
 
         with (

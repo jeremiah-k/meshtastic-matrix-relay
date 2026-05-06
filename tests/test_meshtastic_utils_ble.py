@@ -760,13 +760,10 @@ class TestBleConnectShuttingDown:
                 mock_executor = Mock(spec=ThreadPoolExecutor)
                 mock_get_exec.return_value = mock_executor
 
-                call_count = [0]
-
                 def create_mock_future(*_args, **_kwargs):
                     mock_future = Mock(spec=Future)
                     mock_future.done.return_value = True
                     mock_future.result.return_value = mock_interface
-                    call_count[0] += 1
                     return mock_future
 
                 mock_executor.submit.side_effect = create_mock_future

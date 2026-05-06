@@ -77,7 +77,7 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
     except TypeError:
         try:
             result_fn()
-        except (*_DRAIN_EXCEPTIONS,):
+        except _DRAIN_EXCEPTIONS:
             return
         except Exception as exc:
             logger.debug(
@@ -85,7 +85,7 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
                 exc,
             )
             return
-    except (*_DRAIN_EXCEPTIONS,):
+    except _DRAIN_EXCEPTIONS:
         return
     except Exception as exc:
         logger.debug(

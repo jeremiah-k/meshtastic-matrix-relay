@@ -163,7 +163,7 @@ def test_startup_rollback_removes_ready_file(
 @patch("mmrelay.main._remove_ready_file")
 @patch("mmrelay.main.shutdown_plugins")
 @patch("mmrelay.main.stop_message_queue")
-def test_startup_rollback_shutdowns_plugins_when_loaded(
+def test_startup_rollback_shuts_down_plugins_when_loaded(
     _mock_stop_queue,
     mock_shutdown_plugins,
     _mock_remove_ready,

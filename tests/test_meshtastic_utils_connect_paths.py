@@ -1564,15 +1564,9 @@ class TestSerialPortExistsEdgeCases:
 
     def test_serial_port_exists_device_present_in_comports(self):
         """serial_port_exists returns True when device is listed in comports (port openability is checked by the caller)."""
-        with (
-            patch(
-                "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
-                return_value=[MagicMock(device="/dev/ttyUSB0")],
-            ),
-            patch(
-                "mmrelay.meshtastic_utils.serial.Serial",
-                side_effect=serial.SerialException("Device busy"),
-            ),
+        with patch(
+            "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
+            return_value=[MagicMock(device="/dev/ttyUSB0")],
         ):
             result = serial_port_exists("/dev/ttyUSB0")
             assert result is True

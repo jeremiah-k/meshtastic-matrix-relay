@@ -13,7 +13,6 @@ Tests the Meshtastic client functionality including:
 import asyncio
 import contextlib
 import threading
-import time
 import unittest
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from typing import Any, NoReturn
@@ -29,6 +28,7 @@ from mmrelay.constants.network import (
     STARTUP_PACKET_DRAIN_SECS,
 )
 from mmrelay.meshtastic_utils import (
+    MAX_TIMEOUT_RETRIES_INFINITE,
     _connect_meshtastic_impl,
     _rollback_connect_attempt_state,
     check_connection,
@@ -1726,7 +1726,7 @@ class TestInfiniteRetriesAbort:
         assert result is None
         mock_logger.exception.assert_called_with(
             "Connection timed out after %s attempts (unlimited retries); aborting",
-            6,
+            MAX_TIMEOUT_RETRIES_INFINITE + 1,
         )
 
 

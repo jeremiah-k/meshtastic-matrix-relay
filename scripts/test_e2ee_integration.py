@@ -30,6 +30,12 @@ except ImportError as e:
     IMPORTS_AVAILABLE = False
 
 
+class MatrixConnectionError(Exception):
+    """Raised when Matrix connection fails."""
+
+    pass
+
+
 class E2EEIntegrationTester:
     """Integration tester for E2EE functionality"""
 
@@ -64,7 +70,7 @@ class E2EEIntegrationTester:
             self.client = await connect_matrix(self.config)
 
             if not self.client:
-                raise Exception("Failed to connect to Matrix")
+                raise MatrixConnectionError("Failed to connect to Matrix")
 
             print("✅ Matrix connection successful")
 
@@ -96,7 +102,7 @@ class E2EEIntegrationTester:
             self.test_results["connection"] = {"success": False, "error": str(e)}
             return False
 
-    async def check_room_encryption_detection(self):
+    async def check_room_encryption_detection(self) -> bool:
         """
         Detect encryption status for rooms available on the configured Matrix client.
 
@@ -181,7 +187,7 @@ class E2EEIntegrationTester:
             self.test_results["room_detection"] = {"success": False, "error": str(e)}
             return False
 
-    async def check_message_sending_parameters(self):
+    async def check_message_sending_parameters(self) -> bool:
         """Test message sending parameter detection (without actually sending)"""
         print("\n🔍 Testing message sending parameters...")
 

@@ -7,7 +7,7 @@ and legacy config handling during Matrix connection establishment.
 from collections.abc import Generator
 from types import SimpleNamespace
 from typing import Generic, TypeVar
-from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -317,7 +317,7 @@ async def test_connect_matrix_ssl_context_failure_logs_warning():
         patch("mmrelay.matrix_utils._create_ssl_context", return_value=None),
         patch(
             "mmrelay.matrix_utils._resolve_aliases_in_mapping",
-            return_value={},
+            AsyncMock(return_value=None),
         ),
         patch("mmrelay.matrix_utils._display_room_channel_mappings", Mock()),
     ):
@@ -325,8 +325,8 @@ async def test_connect_matrix_ssl_context_failure_logs_warning():
 
     assert result is not None
     ssl_warnings = [
-        call.args[0]
-        for call in mock_logger.warning.call_args_list
-        if call.args and "ssl" in call.args[0].lower()
+        c.args[0]
+        for c in mock_logger.warning.call_args_list
+        if c.args and "ssl" in c.args[0].lower()
     ]
     assert ssl_warnings, "Expected at least one SSL-related warning to be logged"

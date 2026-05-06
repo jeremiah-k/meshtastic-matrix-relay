@@ -492,10 +492,10 @@ class TestRefreshNodeNameTablesInvalidInterval:
         ids=["boolean", "nan", "inf"],
     )
     async def test_refresh_node_name_tables_invalid_interval(
-        self, invalid_interval, expected_fallback
+        self, invalid_interval, expected_fallback, monkeypatch
     ):
         """Test with invalid interval defaults to configured interval."""
-        mu.config = {"meshtastic": {}}
+        monkeypatch.setattr(mu, "config", {"meshtastic": {}})
 
         with patch(
             "mmrelay.meshtastic.node_refresh.get_nodedb_refresh_interval_seconds",

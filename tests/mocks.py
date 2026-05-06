@@ -302,16 +302,14 @@ class MockLatLng:
         """
         Create a new instance representing the given latitude and longitude in degrees.
 
-        This is a stand-in/mock implementation used in tests. Parameters `lat` and `lng`
-        are expected to be numeric degrees but are not validated or stored by this mock;
-        the method simply returns a new instance of the class.
+        This is a stand-in/mock implementation used in tests.
 
         Parameters:
-            lat (float): Latitude in degrees (mock parameter, not stored).
-            lng (float): Longitude in degrees (mock parameter, not stored).
+            lat (float): Latitude in degrees.
+            lng (float): Longitude in degrees.
 
         Returns:
-            object: A new instance of the class (empty/mock).
+            MockLatLng: A new instance with the given coordinates.
         """
         return cls(lat, lng)
 
@@ -343,7 +341,7 @@ sys.modules["s2sphere"] = MockS2Module()  # type: ignore[assignment]
 
 
 class MockStaticmapsObject:
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Initialize the object and create an empty `data` dictionary for storing arbitrary key/value pairs.
         """

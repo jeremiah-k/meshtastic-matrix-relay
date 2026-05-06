@@ -256,15 +256,15 @@ class TestExecutorShutdown:
         mock_executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
         assert mu._metadata_executor is None
 
-    def test_shutdown_shared_executors_handles_type_error(self):
+    def test_shutdown_shared_executors_handles_type_error(self, monkeypatch):
         """Test executor shutdown handles TypeError on older Python."""
         mock_executor = Mock(spec=ThreadPoolExecutor)
         mock_executor._shutdown = False
         mock_executor.shutdown.side_effect = [TypeError("cancel_futures"), None]
-        mu._ble_executor = mock_executor
-        mu._ble_future = None
-        mu._metadata_executor = None
-        mu._metadata_future = None
+        monkeypatch.setattr(mu, "_ble_executor", mock_executor)
+        monkeypatch.setattr(mu, "_ble_future", None)
+        monkeypatch.setattr(mu, "_metadata_executor", None)
+        monkeypatch.setattr(mu, "_metadata_future", None)
 
         mu._shutdown_shared_executors()
 
