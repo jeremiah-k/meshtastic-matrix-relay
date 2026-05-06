@@ -1166,9 +1166,7 @@ class TestDuplicateSuppressionRetryLogic(unittest.TestCase):
 
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("mmrelay.meshtastic_utils.time.sleep")
-    def test_logs_debug_when_gate_reset_unavailable(
-        self, mock_sleep, mock_logger, monkeypatch
-    ):
+    def test_logs_debug_when_gate_reset_unavailable(self, mock_sleep, mock_logger):
         """Should log debug when gate reset hook is unavailable."""
         ble_address = "AA:BB:CC:DD:EE:FF"
         config = {
@@ -1179,30 +1177,35 @@ class TestDuplicateSuppressionRetryLogic(unittest.TestCase):
             }
         }
 
-        monkeypatch.setattr(mu, "_ble_gate_reset_callable", None, raising=False)
+        original_callable = mu._ble_gate_reset_callable
 
-        with patch(
-            "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
-            new=_SuppressedBLEInterface,
-        ):
-            result = connect_meshtastic(passed_config=config)
+        try:
+            mu._ble_gate_reset_callable = None
 
-        assert result is None
+            with patch(
+                "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+                new=_SuppressedBLEInterface,
+            ):
+                result = connect_meshtastic(passed_config=config)
 
-        suppression_calls = [
-            call
-            for call in mock_logger.warning.call_args_list
-            if call.args
-            and "Detected duplicate BLE connect suppression" in str(call.args[0])
-        ]
-        assert len(suppression_calls) > 0, "Expected suppression detection warning"
+            assert result is None
 
-        debug_calls = [
-            call
-            for call in mock_logger.debug.call_args_list
-            if call.args and "BLE gate reset hook unavailable" in str(call.args[0])
-        ]
-        assert len(debug_calls) > 0, "Expected debug about unavailable hook"
+            suppression_calls = [
+                call
+                for call in mock_logger.warning.call_args_list
+                if call.args
+                and "Detected duplicate BLE connect suppression" in str(call.args[0])
+            ]
+            assert len(suppression_calls) > 0, "Expected suppression detection warning"
+
+            debug_calls = [
+                call
+                for call in mock_logger.debug.call_args_list
+                if call.args and "BLE gate reset hook unavailable" in str(call.args[0])
+            ]
+            assert len(debug_calls) > 0, "Expected debug about unavailable hook"
+        finally:
+            mu._ble_gate_reset_callable = original_callable
 
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("mmrelay.meshtastic_utils.time.sleep")
