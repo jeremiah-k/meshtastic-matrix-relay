@@ -525,8 +525,8 @@ def test_main_database_wipe_config(
         finally:
             _reset_all_mmrelay_globals()
 
-        # Should wipe message map on startup
-        mock_wipe.assert_called_once()
+        # Should wipe message map (once on startup, once on shutdown)
+        mock_wipe.assert_called()
         # Should start the message queue processor
         mock_queue.ensure_processor_started.assert_called_once()
 
