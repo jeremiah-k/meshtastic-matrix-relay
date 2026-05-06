@@ -1588,6 +1588,7 @@ class TestConnectMeshtasticConfigAndRetryEdgeCases(unittest.TestCase):
             "meshtastic": {
                 "connection_type": CONNECTION_TYPE_TCP,
                 "host": "192.168.1.100",
+                "retries": 1,
             }
         }
 

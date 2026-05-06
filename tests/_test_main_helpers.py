@@ -12,8 +12,9 @@ import functools
 import inspect
 import sys
 import time
+from collections.abc import Callable
 from concurrent.futures import Future
-from typing import Any, Callable
+from typing import Any
 
 import pytest
 

@@ -166,6 +166,7 @@ def test_timeout_during_shutdown_cancels_task():
 
     async def _wait_for_side_effect(awaitable, timeout=None):
         if timeout == 5.0:
+            _close_coro_if_possible(awaitable)
             raise asyncio.TimeoutError()
         return await real_wait_for(awaitable, timeout=timeout)
 
@@ -207,7 +208,6 @@ def test_timeout_during_shutdown_cancels_task():
         mock_matrix_client.close.assert_awaited_once()
 
     # NOTE: Task introspection relies on CPython 3.10+ coroutine internals.
-    # If Python changes these, fallback to checking task names via get_name().
     check_conn_tasks = []
     observed_coro_names: list[str] = []
     for spy in created_tasks:
@@ -215,9 +215,6 @@ def test_timeout_during_shutdown_cancels_task():
         coro_name = getattr(getattr(coro, "cr_code", None), "co_name", "")
         observed_coro_names.append(coro_name)
         if "check_connection" in coro_name:
-            check_conn_tasks.append(spy)
-            continue
-        if coro_name == "_check_connection_wait":
             check_conn_tasks.append(spy)
 
     assert (
@@ -444,12 +441,14 @@ def test_cancelled_error_cancels_task_and_returns():
                         getattr(getattr(inner, "cr_code", None), "co_name", "")
                         == "_check_connection_wait"
                     ):
+                        _close_coro_if_possible(coro)
                         raise asyncio.CancelledError()
                     co_code = getattr(inner, "__code__", None)
                     if (
                         co_code
                         and getattr(co_code, "co_name", "") == "_check_connection_wait"
                     ):
+                        _close_coro_if_possible(coro)
                         raise asyncio.CancelledError()
             else:
                 code = getattr(candidate, "cr_code", None) or getattr(
@@ -457,6 +456,7 @@ def test_cancelled_error_cancels_task_and_returns():
                 )
                 name = getattr(code, "co_name", "")
                 if name == "_check_connection_wait":
+                    _close_coro_if_possible(coro)
                     raise asyncio.CancelledError()
         return await real_wait_for(coro, timeout=timeout)
 
@@ -496,7 +496,6 @@ def test_cancelled_error_cancels_task_and_returns():
         mock_matrix_client.close.assert_awaited_once()
 
     # NOTE: Task introspection relies on CPython 3.10+ coroutine internals.
-    # If Python changes these, fallback to checking task names via get_name().
     check_conn_tasks = []
     observed_coro_names: list[str] = []
     for spy in created_tasks:
@@ -504,9 +503,6 @@ def test_cancelled_error_cancels_task_and_returns():
         coro_name = getattr(getattr(coro, "cr_code", None), "co_name", "")
         observed_coro_names.append(coro_name)
         if "check_connection" in coro_name:
-            check_conn_tasks.append(spy)
-            continue
-        if coro_name == "_check_connection_wait":
             check_conn_tasks.append(spy)
 
     assert (

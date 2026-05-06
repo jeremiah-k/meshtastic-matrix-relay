@@ -1444,8 +1444,9 @@ class TestMessageHandlerEdgeCases:
         mu.config = {"meshtastic": {"meshnet_name": "test"}}
         mu.matrix_rooms = []
 
-        # Should not raise any exception
-        mu.on_meshtastic_message(packet, mock_interface)
+        with patch.object(mu, "_submit_coro") as mock_submit:
+            mu.on_meshtastic_message(packet, mock_interface)
+            mock_submit.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_check_connection_non_dict_health_config(self):

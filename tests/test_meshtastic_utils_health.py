@@ -215,19 +215,19 @@ def reset_meshtastic_state(monkeypatch):
 class TestExecutorShutdown:
     """Test executor shutdown paths."""
 
-    def test_shutdown_shared_executors_cancels_ble_future(self):
+    def test_shutdown_shared_executors_cancels_ble_future(self, monkeypatch):
         """Test BLE future cancellation during shutdown."""
         mock_future = Mock(spec=Future)
         mock_future.done.return_value = False
         mock_future.cancel.return_value = True
 
-        mu._ble_future = mock_future
-        mu._ble_future_address = TEST_BLE_MAC
-        mu._ble_timeout_counts[TEST_BLE_MAC] = 3
+        monkeypatch.setattr(mu, "_ble_future", mock_future)
+        monkeypatch.setattr(mu, "_ble_future_address", TEST_BLE_MAC)
+        monkeypatch.setattr(mu, "_ble_timeout_counts", {TEST_BLE_MAC: 3})
 
         mock_executor = Mock(spec=ThreadPoolExecutor)
         mock_executor._shutdown = False
-        mu._ble_executor = mock_executor
+        monkeypatch.setattr(mu, "_ble_executor", mock_executor)
 
         mu._shutdown_shared_executors()
 
@@ -236,18 +236,18 @@ class TestExecutorShutdown:
         mock_executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
         assert mu._ble_executor is None
 
-    def test_shutdown_shared_executors_cancels_metadata_future(self):
+    def test_shutdown_shared_executors_cancels_metadata_future(self, monkeypatch):
         """Test metadata future cancellation during shutdown."""
         mock_future = Mock(spec=Future)
         mock_future.done.return_value = False
         mock_future.cancel.return_value = True
 
-        mu._metadata_future = mock_future
-        mu._metadata_future_started_at = time.monotonic()
+        monkeypatch.setattr(mu, "_metadata_future", mock_future)
+        monkeypatch.setattr(mu, "_metadata_future_started_at", time.monotonic())
 
         mock_executor = Mock(spec=ThreadPoolExecutor)
         mock_executor._shutdown = False
-        mu._metadata_executor = mock_executor
+        monkeypatch.setattr(mu, "_metadata_executor", mock_executor)
 
         mu._shutdown_shared_executors()
 
@@ -322,7 +322,7 @@ class TestMetadataFutureCleanup:
         mock_future.done.return_value = False
         mu._metadata_future = mock_future
 
-        with patch("threading.Timer") as mock_timer_class:
+        with patch("mmrelay.meshtastic.executors.threading.Timer") as mock_timer_class:
             mock_timer = Mock()
             mock_timer.daemon = False
             mock_timer_class.return_value = mock_timer
@@ -758,7 +758,7 @@ class TestMetadataFutureCleanupPaths:
             patch(
                 "mmrelay.meshtastic_utils._reset_metadata_executor_for_stale_probe"
             ) as mock_reset,
-            patch("threading.Timer") as mock_timer,
+            patch("mmrelay.meshtastic.executors.threading.Timer") as mock_timer,
         ):
             mu._schedule_metadata_future_cleanup(mock_future, "test-reason")
             mock_future.add_done_callback.assert_called_once()
@@ -773,7 +773,7 @@ class TestMetadataFutureCleanupPaths:
         different_future = Mock(spec=Future)
         mu._metadata_future = different_future
 
-        with patch("threading.Timer") as mock_timer_class:
+        with patch("mmrelay.meshtastic.executors.threading.Timer") as mock_timer_class:
             mu._schedule_metadata_future_cleanup(mock_future, "test-reason")
             mock_timer_class.assert_called_once()
 

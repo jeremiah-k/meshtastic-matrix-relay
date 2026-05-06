@@ -56,11 +56,9 @@ class _ConnectionProvenance:
 
             class _TrackedConnection(base):
                 def close(self) -> None:
-                    try:
-                        super().close()
-                    finally:
-                        with tracker._registry_lock:
-                            registry.pop(id(self), None)
+                    super().close()
+                    with tracker._registry_lock:
+                        registry.pop(id(self), None)
 
             return _TrackedConnection
 

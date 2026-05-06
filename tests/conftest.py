@@ -992,7 +992,7 @@ def pytest_runtest_setup(item):
     This ensures connections created during setup/fixtures are attributed to the correct test,
     rather than inheriting a stale nodeid from a previous test.
     """
-    _conn_provenance._current_nodeid = item.nodeid
+    _conn_provenance.set_nodeid(item.nodeid)
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
