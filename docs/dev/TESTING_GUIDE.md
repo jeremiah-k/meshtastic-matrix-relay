@@ -325,6 +325,11 @@ broadly named supplements like `_coverage.py` or `_edge_cases.py`. Those
 satellite patterns exist only as a legacy of the pre-modernization layout and
 are being folded back into their domain files.
 
+> **Exception**: `tests/test_matrix_utils_edge_cases.py` remains as a temporary
+> legacy file. New Matrix edge-case tests should go in the appropriate
+> `test_matrix_utils_<domain>.py` domain file instead; this file will be
+> fully absorbed once its remaining tests are migrated.
+
 ### File Size Limit
 
 No test file should exceed 2,000 lines. When a domain file approaches that
