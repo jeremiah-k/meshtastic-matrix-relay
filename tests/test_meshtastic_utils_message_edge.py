@@ -19,7 +19,7 @@ import unittest
 from collections.abc import Callable
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
-from typing import Any, Callable, NoReturn
+from typing import Any, NoReturn
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import pytest

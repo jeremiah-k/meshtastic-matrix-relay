@@ -2,7 +2,7 @@
 
 # Decomposed from test_plugin_loader_core.py
 
-import subprocess
+import subprocess  # nosec B404 - tests mock subprocess behavior
 from unittest.mock import call, patch
 
 import mmrelay.plugin_loader as pl
