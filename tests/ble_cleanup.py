@@ -190,7 +190,8 @@ def cleanup_ble_future_state(module: Any) -> None:
 
     if isinstance(timeout_counts, dict) and ble_address is not None:
         timeout_counts.pop(ble_address, None)
-    module._ble_future = None
+    if hasattr(module, "_ble_future"):
+        module._ble_future = None
     if hasattr(module, "_ble_future_address"):
         module._ble_future_address = None
     if hasattr(module, "_ble_future_started_at"):

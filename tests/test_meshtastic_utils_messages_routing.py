@@ -172,7 +172,7 @@ def _patch_message_deps(
 
 
 class _DummyFuture:
-    """Helper class to simulate a future that records timeout values and raises an exception.
+    """Helper class to simulate a future that raises an exception.
 
     Parameters:
         exc (BaseException): The exception to raise when result() is called.
@@ -180,10 +180,8 @@ class _DummyFuture:
 
     def __init__(self, exc: BaseException) -> None:
         self.exc = exc
-        self.calls: list[float | None] = []
 
     def result(self, timeout: float | None = None) -> None:
-        self.calls.append(timeout)
         raise self.exc
 
 
@@ -1386,6 +1384,7 @@ def test_on_meshtastic_message_non_text_plugin_match_skips_remaining():
         mock_matrix_relay.assert_not_called()
 
 
+@pytest.mark.timeout(10)
 def test_on_meshtastic_message_large_node_list():
     """Handles packet when interface has a very large number of nodes.
 

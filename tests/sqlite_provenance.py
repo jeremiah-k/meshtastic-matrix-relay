@@ -32,7 +32,8 @@ class _ConnectionProvenance:
 
     def set_nodeid(self, nodeid: str) -> None:
         """Set the current test node identifier for provenance tracking."""
-        self._current_nodeid = nodeid
+        with self._registry_lock:
+            self._current_nodeid = nodeid
 
     def install(self) -> None:
         """

@@ -116,7 +116,9 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
             pl._global_scheduler_thread = original_thread
             pl._global_scheduler_stop_event = original_event
 
-        self.assertTrue(run_event.is_set())
+        self.assertTrue(
+            run_event.is_set(), "Scheduler did not call run_pending within timeout"
+        )
 
     @patch("mmrelay.plugin_loader.threading")
     @patch("mmrelay.plugin_loader.schedule", None)
@@ -211,8 +213,11 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
             result
         )  # Function should return False on git operation failures
         # Verify no "Invalid ref type" error was logged (commit ref type should be accepted)
-        for call_args in mock_logger.error.call_args_list:
-            self.assertNotIn("Invalid ref type", str(call_args))
+        error_messages = [str(c) for c in mock_logger.error.call_args_list]
+        self.assertTrue(
+            all("Invalid ref type" not in msg for msg in error_messages),
+            f"Unexpected 'Invalid ref type' error logged: {error_messages}",
+        )
 
     def test_validate_clone_inputs_valid_branch(self):
         """Test _validate_clone_inputs with valid branch ref."""
@@ -436,17 +441,21 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
         self, mock_logger, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with tag success."""
-        mock_run_git.side_effect = lambda *args, **_kwargs: (
-            subprocess.CompletedProcess(args[0], 0, stdout="some_commit\n", stderr="")
-            if "rev-parse" in args[0] and "HEAD" in args[0]
-            else (
-                subprocess.CompletedProcess(
-                    args[0], 0, stdout="tag_commit\n", stderr=""
+
+        def _mock_git_responses(cmd, **_kwargs):
+            """Return appropriate git responses based on command patterns."""
+            if "rev-parse" in cmd and "HEAD" in cmd:
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout="some_commit\n", stderr=""
                 )
-                if "rev-parse" in args[0]
-                else subprocess.CompletedProcess(args[0], 0, stdout="", stderr="")
-            )
-        )
+            elif "rev-parse" in cmd:
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout="tag_commit\n", stderr=""
+                )
+            else:
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        mock_run_git.side_effect = _mock_git_responses
         result = _clone_new_repo_to_branch_or_tag(
             "https://github.com/user/repo.git",
             self.temp_repo_path,

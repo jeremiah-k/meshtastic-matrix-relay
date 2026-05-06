@@ -1158,7 +1158,8 @@ async def test_check_connection_tracks_timed_out_probe_until_worker_finishes():
 
     executor = Mock()
     probe_future: Future[None] = Future()
-    assert probe_future.set_running_or_notify_cancel()
+    running = probe_future.set_running_or_notify_cancel()
+    assert running, "Future should transition to running state"
     executor.submit.return_value = probe_future
 
     sleep_handler = SleepAndShutdown(
@@ -1193,6 +1194,8 @@ async def test_check_connection_tracks_timed_out_probe_until_worker_finishes():
     )
 
     probe_future.set_result(None)
+    # NOTE: Future.done_callbacks execute synchronously when set_result() is called,
+    # so _metadata_future should already be cleared at this point.
     assert mu._metadata_future is None
 
 

@@ -94,10 +94,16 @@ def _close_coro_if_possible(coro: Any) -> None:
     return None
 
 
+class _TestError(Exception):
+    """Custom exception for testing error handling paths."""
+
+    pass
+
+
 def _mock_run_with_exception(coro: Any) -> None:
     """Close coroutine and raise test exception."""
     _close_coro_if_possible(coro)
-    raise Exception("Test error")
+    raise _TestError("Test error")
 
 
 def _mock_run_with_keyboard_interrupt(coro: Any) -> None:
@@ -405,7 +411,7 @@ class _ControlledExecutor:
         future = concurrent.futures.Future()
         try:
             result = func(*args, **kwargs)
-        except BaseException as exc:
+        except Exception as exc:
             future.set_exception(exc)
         else:
             future.set_result(result)

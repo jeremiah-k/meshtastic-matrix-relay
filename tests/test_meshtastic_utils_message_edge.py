@@ -1445,10 +1445,7 @@ class TestMessageHandlerEdgeCases:
         mu.matrix_rooms = []
 
         # Should not raise any exception
-        try:
-            mu.on_meshtastic_message(packet, mock_interface)
-        except Exception as e:
-            self.fail(f"on_meshtastic_message raised {type(e).__name__}: {e}")
+        mu.on_meshtastic_message(packet, mock_interface)
 
     @pytest.mark.asyncio
     async def test_check_connection_non_dict_health_config(self):

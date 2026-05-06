@@ -80,7 +80,10 @@ def temp_db_manager() -> Generator[DatabaseManager, None, None]:
         yield manager
     finally:
         manager.close()
-        os.unlink(db_path)
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
 
 
 # ========================================================================

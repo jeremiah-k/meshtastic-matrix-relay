@@ -217,6 +217,8 @@ def test_timeout_during_shutdown_cancels_task():
         mock_connect_matrix.assert_called_once()
         mock_matrix_client.close.assert_awaited_once()
 
+    # NOTE: Task introspection relies on CPython 3.10+ coroutine internals.
+    # If Python changes these, fallback to checking task names via get_name().
     check_conn_tasks = []
     observed_coro_names: list[str] = []
     for spy in created_tasks:
@@ -437,6 +439,8 @@ def test_cancelled_error_cancels_task_and_returns():
 
     async def mock_wait_for(coro, timeout=None):
         if timeout == 5.0:
+            # NOTE: Task introspection relies on CPython 3.10+ coroutine internals.
+            # If Python changes these, fallback to checking task names via get_name().
             # Peek inside asyncio wrappers (gather, etc.) to find the
             # target coroutine name using CPython internals with defensive
             # getattr fallbacks to reduce brittleness.
@@ -502,6 +506,8 @@ def test_cancelled_error_cancels_task_and_returns():
         mock_connect_matrix.assert_called_once()
         mock_matrix_client.close.assert_awaited_once()
 
+    # NOTE: Task introspection relies on CPython 3.10+ coroutine internals.
+    # If Python changes these, fallback to checking task names via get_name().
     check_conn_tasks = []
     observed_coro_names: list[str] = []
     for spy in created_tasks:
