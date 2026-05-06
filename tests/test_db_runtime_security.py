@@ -984,59 +984,48 @@ def test_write_lock_serialization(db_manager):
 
     def write_operation(thread_id):
         """
-        Attempt to increment a shared counter in the database with retries and record the outcome.
+        Attempt to increment a shared counter in the database and record the outcome.
 
-        Runs a write operation that ensures a single-row counter table exists, increments its value, and records the resulting count or any exception. Retries the write up to three times with brief exponential backoff on failure. On success appends (thread_id, count) to the shared `results` list; on final failure appends (thread_id, exception) to the shared `errors` list.
+        Runs a write operation that ensures a single-row counter table exists, increments its value, and records the resulting count or any exception. On success appends (thread_id, count) to the shared `results` list; on failure appends (thread_id, exception) to the shared `errors` list. Never retries — serialization failures are always recorded so regression in write-serialization is not masked.
 
         Parameters:
             thread_id (int): Identifier for the caller thread used when recording the result or error.
         """
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
+        try:
 
-                def write_func(cursor):
-                    # Create table if not exists
-                    """
-                    Increment the single-row counter stored in a table and return the updated count.
+            def write_func(cursor):
+                # Create table if not exists
+                """
+                Increment the single-row counter stored in a table and return the updated count.
 
-                    Parameters:
-                        cursor (sqlite3.Cursor): Database cursor used to execute SQL statements.
+                Parameters:
+                    cursor (sqlite3.Cursor): Database cursor used to execute SQL statements.
 
-                    Returns:
-                        int or None: The updated counter value after incrementing, or `None` if the row was not found.
-                    """
-                    cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS counter (
-                            id INTEGER PRIMARY KEY CHECK (id = 1),
-                            count INTEGER DEFAULT 0
-                        )
-                    """)
-                    # Insert initial row if not exists
-                    cursor.execute("""
-                        INSERT OR IGNORE INTO counter (id, count) VALUES (1, 0)
-                    """)
-                    # Increment counter
-                    cursor.execute("UPDATE counter SET count = count + 1 WHERE id = 1")
-                    # Get current count
-                    result = cursor.execute(
-                        "SELECT count FROM counter WHERE id = 1"
-                    ).fetchone()
-                    return result[0] if result else None
+                Returns:
+                    int or None: The updated counter value after incrementing, or `None` if the row was not found.
+                """
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS counter (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        count INTEGER DEFAULT 0
+                    )
+                """)
+                # Insert initial row if not exists
+                cursor.execute("""
+                    INSERT OR IGNORE INTO counter (id, count) VALUES (1, 0)
+                """)
+                # Increment counter
+                cursor.execute("UPDATE counter SET count = count + 1 WHERE id = 1")
+                # Get current count
+                result = cursor.execute(
+                    "SELECT count FROM counter WHERE id = 1"
+                ).fetchone()
+                return result[0] if result else None
 
-                result = manager.run_sync(write_func, write=True)
-                results.append((thread_id, result))
-                break  # Success, exit retry loop
-            except sqlite3.OperationalError as e:
-                message = str(e).lower()
-                if "locked" not in message and "busy" not in message:
-                    raise
-                if attempt == max_retries - 1:
-                    # Last attempt, record the error
-                    errors.append((thread_id, e))
-                else:
-                    # Brief sleep before retry to allow lock to clear
-                    time.sleep(0.01 * (attempt + 1))  # Exponential backoff
+            result = manager.run_sync(write_func, write=True)
+            results.append((thread_id, result))
+        except Exception as e:
+            errors.append((thread_id, e))
 
     # Run multiple threads writing simultaneously
     threads = []

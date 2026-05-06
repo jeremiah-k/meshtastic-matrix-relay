@@ -47,7 +47,7 @@ TEST_PACKET_RX_TIME = 1234567890
 class _SuppressedBLEInterface:
     """Test double that simulates duplicate connect suppression."""
 
-    def __init__(self, **_kwargs):
+    def __init__(self, **_kwargs: Any) -> None:
         raise RuntimeError("Connection suppressed: recently connected elsewhere")
 
 

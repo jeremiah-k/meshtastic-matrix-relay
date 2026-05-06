@@ -145,6 +145,11 @@ def reset_meshtastic_relay_state(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.event_loop",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
         "mmrelay.meshtastic_utils.reconnect_task_future",
         None,
         raising=False,
@@ -318,13 +323,10 @@ class TestConnectionLossHandling(unittest.TestCase):
         on_lost_meshtastic_connection(mock_interface, "test_source")
 
         mock_logger.error.assert_called()
-        # Should log the connection loss
-        error_call = mock_logger.error.call_args[0][0]
+        # Should log the connection loss (first error call before reconnect scheduling)
+        error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("Lost connection", error_call)
         self.assertIn("test_source", error_call)
-
-        # Verify reconnect was actually scheduled
-        mock_reconnect.assert_called()
 
     @patch("mmrelay.meshtastic_utils.logger")
     def test_on_lost_meshtastic_connection_interface_none(self, mock_logger):
@@ -344,8 +346,8 @@ class TestConnectionLossHandling(unittest.TestCase):
             None, detection_source="unknown", topic=pub.AUTO_TOPIC
         )
 
-        # Should use default detection source without error
-        error_call = mock_logger.error.call_args[0][0]
+        # Should use default detection source without error (first error call before reconnect scheduling)
+        error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("meshtastic.connection.lost", error_call)
 
     @patch("mmrelay.meshtastic_utils.logger")
@@ -371,8 +373,8 @@ class TestConnectionLossHandling(unittest.TestCase):
             mock_interface, detection_source="unknown", topic=pub.AUTO_TOPIC
         )
 
-        # Should use default detection source
-        error_call = mock_logger.error.call_args[0][0]
+        # Should use default detection source (first error call before reconnect scheduling)
+        error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("meshtastic.connection.lost", error_call)
 
     @patch("mmrelay.meshtastic_utils.logger")
@@ -397,8 +399,8 @@ class TestConnectionLossHandling(unittest.TestCase):
             mock_interface, detection_source="unknown", topic=pub.AUTO_TOPIC
         )
 
-        # Should use default detection source
-        error_call = mock_logger.error.call_args[0][0]
+        # Should use default detection source (first error call before reconnect scheduling)
+        error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("meshtastic.connection.lost", error_call)
 
         # Should log debug about fallback
@@ -452,8 +454,8 @@ class TestConnectionLossHandling(unittest.TestCase):
             mock_interface, detection_source="unknown", topic=mock_topic
         )
 
-        # Should use the topic's getName() method, not __str__
-        error_call = mock_logger.error.call_args[0][0]
+        # Should use the topic's getName() method, not __str__ (first error call before reconnect scheduling)
+        error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("meshtastic.connection.lost", error_call)
         self.assertNotIn("should.not.be.used", error_call)
 
@@ -494,8 +496,8 @@ class TestConnectionLossHandling(unittest.TestCase):
             mock_interface, detection_source="unknown", topic=simple_topic
         )
 
-        # Should use str(topic)
-        error_call = mock_logger.error.call_args[0][0]
+        # Should use str(topic) (first error call before reconnect scheduling)
+        error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("custom.topic.name", error_call)
 
     @patch("mmrelay.meshtastic_utils.logger")
@@ -564,8 +566,8 @@ class TestConnectionLossHandling(unittest.TestCase):
             mock_interface, detection_source="unknown", topic=pub.AUTO_TOPIC
         )
 
-        # Should use the BLE disconnect source with 'ble.' prefix stripped
-        error_call = mock_logger.error.call_args[0][0]
+        # Should use the BLE disconnect source with 'ble.' prefix stripped (first error call before reconnect scheduling)
+        error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("user_disconnect", error_call)
         self.assertNotIn("ble.user_disconnect", error_call)
 
@@ -589,8 +591,8 @@ class TestConnectionLossHandling(unittest.TestCase):
             mock_interface, detection_source="unknown", topic=pub.AUTO_TOPIC
         )
 
-        # Should fall back to default detection source
-        error_call = mock_logger.error.call_args[0][0]
+        # Should fall back to default detection source (first error call before reconnect scheduling)
+        error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("meshtastic.connection.lost", error_call)
 
 

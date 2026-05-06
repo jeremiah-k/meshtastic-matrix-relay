@@ -6,6 +6,7 @@ and ready-file/heartbeat tests in main.py.
 
 import asyncio
 import contextlib
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -495,9 +496,9 @@ def test_main_restores_loop_exception_handler_on_early_init_failure() -> None:
             "mmrelay.main.initialize_database",
             side_effect=RuntimeError("init failed"),
         ),
+        pytest.raises(RuntimeError, match="init failed"),
     ):
-        with pytest.raises(RuntimeError, match="init failed"):
-            asyncio.run(main(config))
+        asyncio.run(main(config))
 
     mock_loop.set_exception_handler.assert_called_with(previous_handler)
 
@@ -611,7 +612,7 @@ class TestReadyHeartbeatEnvVarParsing:
     """Tests for MMRELAY_READY_HEARTBEAT_SECONDS environment variable parsing."""
 
     @pytest.fixture(autouse=True)
-    def _reload_main_module(self):
+    def _reload_main_module(self) -> Iterator[None]:
         import importlib
 
         import mmrelay.main as main_module
@@ -619,7 +620,7 @@ class TestReadyHeartbeatEnvVarParsing:
         yield
         importlib.reload(main_module)
 
-    def test_invalid_ready_heartbeat_seconds_type_error(self):
+    def test_invalid_ready_heartbeat_seconds_type_error(self) -> None:
         """Invalid MMRELAY_READY_HEARTBEAT_SECONDS logs warning and uses default."""
         import importlib
 
@@ -628,21 +629,23 @@ class TestReadyHeartbeatEnvVarParsing:
 
         mock_logger = MagicMock()
 
-        with patch.dict(
-            "os.environ", {"MMRELAY_READY_HEARTBEAT_SECONDS": "not_a_number"}
+        with (
+            patch.dict(
+                "os.environ", {"MMRELAY_READY_HEARTBEAT_SECONDS": "not_a_number"}
+            ),
+            patch("mmrelay.log_utils.get_logger", return_value=mock_logger),
         ):
-            with patch("mmrelay.log_utils.get_logger", return_value=mock_logger):
-                importlib.reload(main_module)
+            importlib.reload(main_module)
 
-                mock_logger.warning.assert_called_once()
-                call_args = mock_logger.warning.call_args
-                assert "MMRELAY_READY_HEARTBEAT_SECONDS" in str(call_args)
-                assert (
-                    main_module._ready_heartbeat_seconds
-                    == app_constants.DEFAULT_READY_HEARTBEAT_SECONDS
-                )
+            mock_logger.warning.assert_called_once()
+            call_args = mock_logger.warning.call_args
+            assert "MMRELAY_READY_HEARTBEAT_SECONDS" in str(call_args)
+            assert (
+                main_module._ready_heartbeat_seconds
+                == app_constants.DEFAULT_READY_HEARTBEAT_SECONDS
+            )
 
-    def test_invalid_ready_heartbeat_seconds_value_error(self):
+    def test_invalid_ready_heartbeat_seconds_value_error(self) -> None:
         """Empty string MMRELAY_READY_HEARTBEAT_SECONDS logs warning and uses default."""
         import importlib
 
@@ -651,14 +654,16 @@ class TestReadyHeartbeatEnvVarParsing:
 
         mock_logger = MagicMock()
 
-        with patch.dict("os.environ", {"MMRELAY_READY_HEARTBEAT_SECONDS": ""}):
-            with patch("mmrelay.log_utils.get_logger", return_value=mock_logger):
-                importlib.reload(main_module)
+        with (
+            patch.dict("os.environ", {"MMRELAY_READY_HEARTBEAT_SECONDS": ""}),
+            patch("mmrelay.log_utils.get_logger", return_value=mock_logger),
+        ):
+            importlib.reload(main_module)
 
-                mock_logger.warning.assert_called_once()
-                call_args = mock_logger.warning.call_args
-                assert "MMRELAY_READY_HEARTBEAT_SECONDS" in str(call_args)
-                assert (
-                    main_module._ready_heartbeat_seconds
-                    == app_constants.DEFAULT_READY_HEARTBEAT_SECONDS
-                )
+            mock_logger.warning.assert_called_once()
+            call_args = mock_logger.warning.call_args
+            assert "MMRELAY_READY_HEARTBEAT_SECONDS" in str(call_args)
+            assert (
+                main_module._ready_heartbeat_seconds
+                == app_constants.DEFAULT_READY_HEARTBEAT_SECONDS
+            )

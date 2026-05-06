@@ -30,7 +30,7 @@ from tests.helpers import (
 )
 
 
-def _make_async_return(value: Any):
+def _make_async_return(value: Any) -> Callable[..., Any]:
     """
     Create an async function that always returns provided value.
 
@@ -41,7 +41,7 @@ def _make_async_return(value: Any):
         callable: An async function that ignores its arguments and returns `value` when awaited.
     """
 
-    async def _async_return(*_args, **_kwargs):
+    async def _async_return(*_args: Any, **_kwargs: Any) -> Any:
         return value
 
     return _async_return

@@ -248,7 +248,6 @@ This is already handled by `conftest.py:12-14`, so the per-file inserts are redu
 
 - 12 of 14 satellite files absorbed into domain files
 - Remaining 2 satellites (`_coverage.py`, `_edge_cases.py`) folded or justified
-- `test_meshtastic_utils_connect_paths.py` converted from TestCase to pytest
 - All tests pass with same coverage
 
 ### Phase 3 (Remaining)

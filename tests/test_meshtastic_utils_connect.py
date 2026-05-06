@@ -293,7 +293,7 @@ class _FakeEvent:
         return None
 
 
-def _reset_ble_inflight_state(module: Any) -> None:
+def _reset_ble_inflight_state(module) -> None:
     """
     Reset shared BLE in-flight tracking globals for test isolation.
     """
@@ -1679,7 +1679,7 @@ class TestConnectMeshtasticConfigAndRetryEdgeCases(unittest.TestCase):
                     self.assertIsNone(result)
 
     def test_timeout_breaks_on_shutdown(self):
-        def _timeout_then_shutdown(*_args: Any, **_kwargs: Any) -> NoReturn:
+        def _timeout_then_shutdown(*_args, **_kwargs) -> NoReturn:
             mu.shutting_down = True
             raise TimeoutError("timeout")
 
@@ -1735,7 +1735,7 @@ class TestStartupDrainRaceCondition:
             "user": {"shortName": "Node", "hwModel": "HW"}
         }
 
-        def _metadata_side_effect(_client: Any) -> dict[str, Any]:
+        def _metadata_side_effect(_client) -> dict[str, Any]:
             mu._startup_packet_drain_applied = True
             return {"firmware_version": "unknown", "success": False}
 
