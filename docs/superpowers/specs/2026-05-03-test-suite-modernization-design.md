@@ -14,7 +14,7 @@ Decomposed the three largest test files into domain-specific modules:
 
 | Original File              | Lines | Result                                                              | Tests |
 | -------------------------- | ----- | ------------------------------------------------------------------- | ----- |
-| `test_plugin_loader.py`    | 7,076 | 13 domain files + `_plugin_loader_helpers.py`                       | 290   |
+| `test_plugin_loader.py`    | 7,076 | 11 domain files + `_plugin_loader_helpers.py`                       | 290   |
 | `test_meshtastic_utils.py` | 5,797 | 9 domain files                                                      | 189   |
 | `test_main.py`             | 4,557 | 9 domain files + helpers (`test_main.py` retained as 831-line core) | 79    |
 
@@ -111,20 +111,24 @@ Three of the original four oversized files have been decomposed. `test_cli.py` (
 | `test_meshtastic_utils_coverage.py` | 2,160 | Satellite (Phase 2 target)               |
 | `test_migrate_coverage.py`          | 2,106 | Migration coverage supplement            |
 
-### Proposed decomposition: `test_plugin_loader.py` (7,076 lines)
+### Decomposition details: `test_plugin_loader.py` (7,076 lines) — Phase 1
 
-Split into 8 domain files:
+Split into 11 domain files:
 
-| File                              | Content                                                                          | Est. tests | Source classes                                                                          |
-| --------------------------------- | -------------------------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------- |
-| `test_plugin_loader_core.py`      | Core loading, directory discovery, scheduling                                    | ~65        | `TestPluginLoader` (loading portion), scheduler tests from `TestDependencyInstallation` |
-| `test_plugin_loader_git.py`       | All Git operations (clone, update, fetch, checkout)                              | ~56        | `TestGitOperations`, git tests from `TestPluginLoader` and `TestDependencyInstallation` |
-| `test_plugin_loader_deps.py`      | Dependency installation, requirements, target management                         | ~55        | `TestDependencyInstallation` (dep portion), `TestPluginLoader` (auto-install portion)   |
-| `test_plugin_loader_security.py`  | URL validation, host allowlisting, requirement filtering                         | ~41        | `TestURLValidation`, `TestPluginSecurityGuards`, `TestRequirementFiltering`             |
-| `test_plugin_loader_collect.py`   | Requirements collection/parsing                                                  | ~10        | `TestCollectRequirements`                                                               |
-| `test_plugin_loader_runner.py`    | Command runner, `_run` helper                                                    | ~11        | `TestCommandRunner` + standalone functions                                              |
-| `test_plugin_loader_cache.py`     | Python cache cleaning, namespace detection                                       | ~16        | `TestCleanPythonCache`, `TestIsNamespacePackageDirectory`                               |
-| `test_plugin_loader_community.py` | Community plugin security, state files, compare URLs, thread safety, exec module | ~18        | `TestCommunityPluginSecurityHelpers`, `TestExecPluginModuleThreadSafety`                |
+| File                                 | Content                                                                          | Source classes                                                                          |
+| ------------------------------------ | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `test_plugin_loader_core.py`         | Core loading, directory discovery                                                | `TestPluginLoader` (loading portion)                                                    |
+| `test_plugin_loader_git.py`          | Git operations (update, fetch, checkout)                                         | `TestGitOperations`, git tests from `TestPluginLoader` and `TestDependencyInstallation` |
+| `test_plugin_loader_clone.py`        | Git clone operations                                                             | `TestPluginLoaderClone` (from `TestPluginLoader` clone portion)                         |
+| `test_plugin_loader_deps.py`         | Dependency installation, target management                                       | `TestDependencyInstallation` (dep portion), `TestPluginLoader` (auto-install portion)   |
+| `test_plugin_loader_scheduler.py`    | Job scheduling infrastructure                                                    | `TestSchedulerAndCloneInfrastructure` (from `TestDependencyInstallation`)               |
+| `test_plugin_loader_requirements.py` | Requirements handling infrastructure                                             | `TestRequirementsInfrastructure` (from `TestDependencyInstallation`)                    |
+| `test_plugin_loader_security.py`     | URL validation, host allowlisting, requirement filtering                         | `TestURLValidation`, `TestPluginSecurityGuards`, `TestRequirementFiltering`             |
+| `test_plugin_loader_dirs.py`         | Plugin directory discovery and management                                        | `TestPluginDirectories` (from `TestPluginLoader`)                                       |
+| `test_plugin_loader_ref_priority.py` | Ref priority handling                                                            | `TestRefPriority` (from `TestPluginLoader`)                                             |
+| `test_plugin_loader_runner.py`       | Command runner, `_run` helper                                                    | `TestCommandRunner` + standalone functions                                              |
+| `test_plugin_loader_cache.py`        | Python cache cleaning, namespace detection                                       | `TestCleanPythonCache`, `TestIsNamespacePackageDirectory`                               |
+| `test_plugin_loader_community.py`    | Community plugin security, state files, compare URLs, thread safety, exec module | `TestCommunityPluginSecurityHelpers`, `TestExecPluginModuleThreadSafety`                |
 
 ### Decomposition: `test_meshtastic_utils.py` (5,797 lines) — Phase 1
 
@@ -143,6 +147,22 @@ Split into 9 domain files. Satellite file absorption is deferred to Phase 2.
 | `test_meshtastic_utils_connect_paths.py` | Connection path edge cases, reconnect                                                       | 26    | Reconnect and connection path tests                                                              |
 
 **Satellite files retained** (2 of 14 remain, ~3,594 lines): `test_meshtastic_utils_coverage.py`, `test_meshtastic_utils_edge_cases.py`. The other 12 have been absorbed into domain files (see Phase 2). Additionally, `test_meshtastic_utils_connect_paths.py` (1,445 lines) still uses `unittest.TestCase` and needs conversion.
+
+### Decomposition details: `test_main.py` (4,557 lines) — Phase 1
+
+Split into 9 domain files. `test_main.py` retained as an 831-line core.
+
+| File                               | Content                                              | Source classes                                              |
+| ---------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------- |
+| `test_main_async.py`               | Async event loop helpers, `_submit_coro` integration | Async helper functions from `TestMain`                      |
+| `test_main_check_connection.py`    | Connection check logic, `check_connection` function  | `TestMain` (connection check portion)                       |
+| `test_main_entry_point.py`         | Entry point, `main()` invocation via `runpy`         | `TestMain` (entry point portion)                            |
+| `test_main_run_main.py`            | `run_main` orchestration, banner printing            | `TestMain` (run_main portion)                               |
+| `test_main_ready_task_shutdown.py` | Ready task and shutdown coordination                 | `TestMain` (ready task / shutdown portion)                  |
+| `test_main_shutdown.py`            | Shutdown lifecycle handling                          | `TestMain` (shutdown portion)                               |
+| `test_main_shutdown_coverage.py`   | Shutdown edge-case coverage                          | Shutdown supplement tests                                   |
+| `test_main_startup_rollback.py`    | Startup rollback scenarios                           | `TestStartupRollback` (converted from TestCase)             |
+| `test_main_sync_error_handling.py` | Matrix sync loop error handling and retries          | `TestMatrixSyncLoopErrorHandling` (converted from TestCase) |
 
 ## Issue #2: TestCase + Pytest Incompatibility
 
@@ -222,7 +242,7 @@ This is already handled by `conftest.py:12-14`, so the per-file inserts are redu
 
 ## Implementation Order
 
-1. ~~**Decompose `test_plugin_loader.py`** (7,076 → ~13 files)~~ ✅ Phase 1 Complete
+1. ~~**Decompose `test_plugin_loader.py`** (7,076 → ~11 files)~~ ✅ Phase 1 Complete
 2. ~~**Decompose `test_meshtastic_utils.py`** (5,797 → ~9 files)~~ ✅ Phase 1 Complete
 3. ~~**Decompose `test_main.py`** (4,557 → ~9 files + core)~~ ✅ Phase 1 Complete
 4. ~~**Fix TestCase + pytest mix in `test_main.py`**~~ ✅ Done during decomposition
@@ -238,7 +258,7 @@ This is already handled by `conftest.py:12-14`, so the per-file inserts are redu
 
 ### Phase 1 (Complete)
 
-- `test_plugin_loader.py` decomposed into 13 domain files + helpers
+- `test_plugin_loader.py` decomposed into 11 domain files + helpers
 - `test_meshtastic_utils.py` decomposed into 9 domain files
 - `test_main.py` decomposed into 9 domain files + core
 - All tests pass with same coverage

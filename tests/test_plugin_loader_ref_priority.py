@@ -15,10 +15,8 @@ from tests._plugin_loader_helpers import BaseGitTest
 class TestRefPriority(BaseGitTest):
     """Test cases for plugin ref priority and dependency caching/loading."""
 
-    def setUp(self):
-        """
-        Prepare isolated plugin directories and reset plugin loader state.
-        """
+    def setUp(self) -> None:
+        """Prepare isolated plugin directories and reset plugin loader state."""
         super().setUp()
         self.test_dir = tempfile.mkdtemp()
         self.custom_dir = os.path.join(self.test_dir, "plugins", "custom")
@@ -43,10 +41,8 @@ class TestRefPriority(BaseGitTest):
             req_file.write(content)
         return repo_path
 
-    def tearDown(self):
-        """
-        Remove temporary directories and clean up resources.
-        """
+    def tearDown(self) -> None:
+        """Remove temporary directories and clean up resources."""
         shutil.rmtree(self.test_dir, ignore_errors=True)
         super().tearDown()
 

@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import mmrelay.meshtastic_utils as mu
 from mmrelay.main import main
 from tests._test_main_helpers import (
     _async_noop,
@@ -84,28 +85,11 @@ def test_startup_rollback_cancels_check_connection_task(
 
     def mock_check_conn() -> object:
         # Return a non-coroutine sentinel; create_task is patched below.
-        """
-        Provide the sentinel value representing a mocked connection check.
-
-        Returns:
-            object: The sentinel `check_conn_sentinel` used by the patched `asyncio.create_task` to identify the mocked check-connection invocation.
-        """
+        """Return sentinel for mocked connection check."""
         return check_conn_sentinel
 
     def mock_create_task(coro: object, *_args: object, **_kwargs: object) -> object:
-        """
-        Provide a test stub for asyncio.create_task that returns prebuilt mock tasks for recognized inputs and fails for anything unexpected.
-
-        Parameters:
-            coro: Either the special sentinel `check_conn_sentinel`, a coroutine object whose code name may match `_node_name_refresh_supervisor`, or another value passed where an asyncio task would normally be scheduled. Recognized inputs return corresponding mock task objects; coroutine objects that are not recognized are closed before failing.
-            *_args, **_kwargs: Ignored.
-
-        Returns:
-            The corresponding mock task object for the recognized sentinel or coroutine.
-
-        Raises:
-            AssertionError: If a coroutine is scheduled but its name is not expected, or if a non-coroutine, non-sentinel value is scheduled.
-        """
+        """Stub asyncio.create_task; returns mock tasks for recognized coroutines."""
         if coro is check_conn_sentinel:
             return mock_check_task
         if inspect.iscoroutine(coro):
@@ -408,8 +392,6 @@ def test_startup_rollback_closes_meshtastic_client(
     mock_meshtastic_client = MagicMock()
     mock_connect_meshtastic.return_value = mock_meshtastic_client
     mock_connect_matrix.side_effect = RuntimeError("After meshtastic client error")
-
-    import mmrelay.meshtastic_utils as mu
 
     original_client = mu.meshtastic_client
     try:

@@ -97,8 +97,6 @@ def _close_coro_if_possible(coro: Any) -> None:
 class _TestError(Exception):
     """Custom exception for testing error handling paths."""
 
-    pass
-
 
 def _mock_run_with_exception(coro: Any) -> None:
     """Close coroutine and raise test exception."""

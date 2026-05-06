@@ -755,12 +755,16 @@ class TestMetadataFutureCleanupPaths:
         mu._metadata_future = mock_future
 
         with (
-            patch("mmrelay.meshtastic_utils._reset_metadata_executor_for_stale_probe"),
+            patch(
+                "mmrelay.meshtastic_utils._reset_metadata_executor_for_stale_probe"
+            ) as mock_reset,
             patch("threading.Timer") as mock_timer,
         ):
             mu._schedule_metadata_future_cleanup(mock_future, "test-reason")
             mock_future.add_done_callback.assert_called_once()
             mock_timer.assert_called_once()
+            # Verify early return prevented reset
+            mock_reset.assert_not_called()
 
     def test_cleanup_early_return_when_should_clear_false(self):
         """Test that cleanup returns early when _metadata_future is different."""

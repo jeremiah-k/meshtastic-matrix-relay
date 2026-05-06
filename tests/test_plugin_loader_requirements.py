@@ -356,12 +356,7 @@ class TestCollectRequirements(unittest.TestCase):
     """Test cases for _collect_requirements function."""
 
     def setUp(self):
-        """
-        Create a temporary directory for the test and register its removal as cleanup.
-
-        The directory path is stored on self.temp_dir and will be removed after the test
-        via shutil.rmtree(self.temp_dir, ignore_errors=True).
-        """
+        """Set up temporary directory for requirements collection tests."""
         self.temp_dir = tempfile.mkdtemp()
         self.addCleanup(lambda: shutil.rmtree(self.temp_dir, ignore_errors=True))
 

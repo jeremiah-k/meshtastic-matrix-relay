@@ -281,6 +281,8 @@ def test_sync_connection_error_logs_exception():
 
     mock_logger = asyncio.run(run_test())
 
+    assert call_count[0] == 2  # first attempt + one retry
+
     assert any(
         "Matrix sync failed" in str(call)
         for call in mock_logger.exception.call_args_list

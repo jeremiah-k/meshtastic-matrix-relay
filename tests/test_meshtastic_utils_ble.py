@@ -771,34 +771,34 @@ class TestBleConnectShuttingDown:
 
                 mock_executor.submit.side_effect = create_mock_future
 
-                with patch(
-                    "mmrelay.meshtastic_utils._ble_interface_create_timeout_secs", 30.0
+                with (
+                    patch(
+                        "mmrelay.meshtastic_utils._ble_interface_create_timeout_secs",
+                        30.0,
+                    ),
+                    patch("mmrelay.meshtastic_utils.BLE_AVAILABLE", True),
+                    patch(
+                        "mmrelay.meshtastic_utils._ble_future_stale_grace_secs",
+                        1000.0,
+                    ),
+                    patch(
+                        "mmrelay.meshtastic_utils._ble_timeout_reset_threshold",
+                        3,
+                    ),
+                    patch(
+                        "mmrelay.meshtastic_utils._ble_future_watchdog_secs",
+                        60.0,
+                    ),
+                    patch("mmrelay.meshtastic_utils.meshtastic"),
+                    patch(
+                        "mmrelay.meshtastic_utils._sanitize_ble_address",
+                        return_value=TEST_BLE_MAC,
+                    ),
                 ):
-                    with patch("mmrelay.meshtastic_utils.BLE_AVAILABLE", True):
-                        with patch(
-                            "mmrelay.meshtastic_utils._ble_future_stale_grace_secs",
-                            1000.0,
-                        ):
-                            with patch(
-                                "mmrelay.meshtastic_utils._ble_timeout_reset_threshold",
-                                3,
-                            ):
-                                with patch(
-                                    "mmrelay.meshtastic_utils._ble_future_watchdog_secs",
-                                    60.0,
-                                ):
-                                    with patch("mmrelay.meshtastic_utils.meshtastic"):
-                                        with patch(
-                                            "mmrelay.meshtastic_utils._sanitize_ble_address",
-                                            return_value=TEST_BLE_MAC,
-                                        ):
-                                            mu.connect_meshtastic()
+                    mu.connect_meshtastic()
 
-                                            assert (
-                                                "interface creation"
-                                                in ensure_operations
-                                            )
-                                            assert "connect" in ensure_operations
+                    assert "interface creation" in ensure_operations
+                    assert "connect" in ensure_operations
 
     def test_ble_connect_busy_worker_raises_timeout(self, monkeypatch):
         """Test when BLE worker is busy during connect phase, raises TimeoutError."""
@@ -1141,7 +1141,7 @@ class TestDuplicateSuppressionRetryLogic(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.time.sleep")
     @patch("mmrelay.meshtastic_utils._ble_gate_reset_callable")
     def test_logs_warning_on_duplicate_suppression(
-        self, mock_gate_callable, mock_sleep, mock_logger
+        self, _mock_gate_callable, mock_sleep, mock_logger
     ):
         """Should log warning when duplicate suppression detected."""
         ble_address = "AA:BB:CC:DD:EE:FF"

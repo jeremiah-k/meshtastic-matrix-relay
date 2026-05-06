@@ -876,7 +876,6 @@ class TestMeshtasticUtils(unittest.TestCase):
         self, mock_serial, mock_port_exists
     ):
         """Startup packet drain window should apply on cold startup, not reconnect."""
-        import mmrelay.meshtastic_utils as mu
 
         mock_port_exists.return_value = True
         first_client = MagicMock()
@@ -933,7 +932,6 @@ class TestMeshtasticUtils(unittest.TestCase):
         self, mock_serial, mock_port_exists
     ):
         """Setup failure before node-info should not consume one-shot startup drain."""
-        import mmrelay.meshtastic_utils as mu
 
         mock_port_exists.return_value = True
 
@@ -993,7 +991,6 @@ class TestMeshtasticUtils(unittest.TestCase):
 
     def test_rollback_connect_attempt_marks_startup_drain_complete(self):
         """Rollback should set startup-drain completion state to avoid dead waits."""
-        import mmrelay.meshtastic_utils as mu
 
         mu._relay_startup_drain_complete_event.clear()
         mu._relay_startup_drain_expiry_timer = MagicMock()
@@ -1013,7 +1010,6 @@ class TestMeshtasticUtils(unittest.TestCase):
 
     def test_rollback_connect_attempt_none_event_is_safe_noop(self):
         """Rollback should not raise AttributeError when the drain event is None."""
-        import mmrelay.meshtastic_utils as mu
 
         mu._relay_startup_drain_expiry_timer = MagicMock()
         mu._relay_startup_drain_deadline_monotonic_secs = 123.0

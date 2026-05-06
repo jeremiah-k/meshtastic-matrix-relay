@@ -33,7 +33,7 @@ class TestPluginLoaderClone(BaseGitTest):
         # Result is False because _run_git always raises CalledProcessError
         # and both code paths return False on git failure
         # The important part is that validation passes (no "Invalid commit hash" error)
-        self.assertEqual(result, False)
+        self.assertFalse(result)
         # Check that no validation error was logged for the valid commit hash
         validation_errors = [
             log_call
@@ -227,15 +227,7 @@ class TestPluginLoaderClone(BaseGitTest):
         checkout_attempts = []
 
         def side_effect(*args, **_kwargs):
-            """
-            Simulate subprocess behavior for git commands used in tests.
-
-            Returns:
-                subprocess.CompletedProcess: A successful completed process with exit code 0 for commands that do not trigger error conditions.
-
-            Raises:
-                subprocess.CalledProcessError: If the command is a fetch for commit "cafebabe" in the test repository path (self.temp_repo_path) or if the command contains "cat-file".
-            """
+            """Simulate failing specific commit fetch and first checkout attempt."""
             if args[0] == [
                 "git",
                 "-C",
@@ -365,17 +357,7 @@ class TestPluginLoaderClone(BaseGitTest):
         checkout_attempts = []
 
         def side_effect(*args, **_kwargs):
-            """
-            Test helper that simulates subprocess responses for git commands in tests.
-
-            Simulates a failing `git fetch` for exact command ["git", "-C", self.temp_repo_path, "fetch", "origin", "cdef5678"] and a failing git "rev-parse" for target commit; for all other calls it returns a successful CompletedProcess with empty stdout/stderr.
-
-            Returns:
-                subprocess.CompletedProcess: Successful result for non-matching commands.
-
-            Raises:
-                subprocess.CalledProcessError: When the command matches the specific fetch case or rev-parse for target commit.
-            """
+            """Simulate failing specific commit fetch but succeeding fallback fetch."""
             if args[0] == [
                 "git",
                 "-C",
@@ -441,18 +423,7 @@ class TestPluginLoaderClone(BaseGitTest):
 
         # Configure mock to fail on both specific and fallback fetch
         def side_effect(*args, **_kwargs):
-            """
-            Simulate git subprocess behavior for tests by returning a successful CompletedProcess for most commands and raising CalledProcessError for specific failing invocations.
-
-            Raises:
-                subprocess.CalledProcessError: For these git invocations:
-                  - ["git", "-C", <temp_repo_path>, "fetch", "origin", "abcd1234"]
-                  - ["git", "-C", <temp_repo_path>, "fetch", "origin"]
-                  - any invocation whose argument list contains "cat-file"
-
-            Returns:
-                subprocess.CompletedProcess: A CompletedProcess with returncode 0 and empty stdout/stderr for commands that do not match the failing cases.
-            """
+            """Simulate failing both specific commit fetch and fallback fetch."""
             if args[0] == [
                 "git",
                 "-C",

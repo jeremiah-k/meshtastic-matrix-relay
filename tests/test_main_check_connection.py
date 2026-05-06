@@ -31,17 +31,6 @@ from tests.helpers import (
     make_patched_get_running_loop,
 )
 
-__all__ = [
-    "test_supervisor_runs_refresh_before_shutdown_signal",
-    "test_returns_early_when_task_is_none",
-    "test_timeout_during_shutdown_cancels_task",
-    "test_check_connection_exception_is_raised_after_cleanup",
-    "test_check_connection_unexpected_return_is_raised_after_cleanup",
-    "test_exception_during_shutdown_wait_logs_error",
-    "test_cancelled_error_cancels_task_and_returns",
-    "test_task_with_exception_result_logs_error",
-    "test_exception_during_ensure_processor_started_raised",
-]
 # =============================================================================
 # TestNodeNameRefreshSupervisor (converted from unittest.TestCase)
 # =============================================================================
@@ -596,7 +585,7 @@ def test_exception_during_ensure_processor_started_raised():
             "mmrelay.main.connect_matrix", new_callable=AsyncMock
         ) as mock_connect_matrix,
         patch("mmrelay.main.connect_meshtastic") as mock_connect_meshtastic,
-        patch("mmrelay.main.join_matrix_room"),
+        patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
         patch("mmrelay.main.get_message_queue") as mock_get_queue,
         patch("mmrelay.main.shutdown_plugins"),
         patch("mmrelay.main.stop_message_queue"),

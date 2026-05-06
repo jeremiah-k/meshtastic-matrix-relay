@@ -816,9 +816,10 @@ def test_exception_in_shutdown_step_logs_error():
         mock_stop_message_queue.assert_called_once()
         mock_matrix_client.close.assert_awaited_once()
 
-    assert any(
-        "Error while stopping" in str(call) for call in mock_logger.error.call_args_list
-    )
+        assert any(
+            "Error while stopping" in str(call)
+            for call in mock_logger.error.call_args_list
+        )
 
 
 def test_exception_in_stop_message_queue_logs_error() -> None:

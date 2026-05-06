@@ -15,7 +15,6 @@ import contextlib
 import inspect
 import sys
 import threading
-import unittest
 from collections.abc import Generator
 from typing import Any, NoReturn
 from unittest.mock import ANY, MagicMock, Mock, patch

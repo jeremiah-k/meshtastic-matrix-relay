@@ -248,7 +248,7 @@ sys.modules["nio.events.room_events"].RoomMemberEvent = MockRoomMemberEvent
 
 
 class MockPILImage:
-    def save(self, *args, **kwargs):
+    def save(self, *args, **kwargs) -> None:
         """
         No-op save method that accepts any positional and keyword arguments and does nothing.
 
@@ -294,7 +294,7 @@ sys.modules["bleak"].BleakDBusError = BleakDBusError  # type: ignore[attr-define
 
 class MockLatLng:
     @classmethod
-    def from_degrees(cls, lat, lng):
+    def from_degrees(cls, lat: float, lng: float) -> "MockLatLng":
         """
         Create a new instance representing the given latitude and longitude in degrees.
 
@@ -314,7 +314,7 @@ class MockLatLng:
 
 class MockLatLngRect:
     @classmethod
-    def from_point(cls, point):
+    def from_point(cls, point: MockLatLng) -> "MockLatLngRect":
         """
         Create a new instance from a point.
 
@@ -347,7 +347,7 @@ class MockStaticmapsObject:
 
 
 class MockStaticmapsContext:
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Create a lightweight test double for a Staticmaps rendering context.
 
@@ -360,7 +360,7 @@ class MockStaticmapsContext:
         self.tile_provider = None
         self.zoom = None
 
-    def set_tile_provider(self, provider):
+    def set_tile_provider(self, provider: object) -> None:
         """
         Assigns the map tile provider used by the rendering context.
 
@@ -369,7 +369,7 @@ class MockStaticmapsContext:
         """
         self.tile_provider = provider
 
-    def set_zoom(self, zoom):
+    def set_zoom(self, zoom: int | float) -> None:
         """
         Set the rendering zoom level for the context.
 
@@ -378,7 +378,7 @@ class MockStaticmapsContext:
         """
         self.zoom = zoom
 
-    def add_object(self, obj):
+    def add_object(self, obj: object) -> None:
         """
         Add a renderable object to the rendering context.
 
@@ -387,7 +387,7 @@ class MockStaticmapsContext:
         """
         self.objects.append(obj)
 
-    def render_pillow(self, _width, _height):
+    def render_pillow(self, _width: int, _height: int) -> MagicMock:
         """
         Render the map into a Pillow-compatible image (mock) for testing.
 
@@ -413,7 +413,7 @@ class MockStaticmapsModule:
     Circle = MagicMock
 
     @staticmethod
-    def create_latlng(lat, lon):
+    def create_latlng(lat: float, lon: float) -> MockLatLng:
         """
         Create a MockLatLng representing the given geographic coordinates.
 

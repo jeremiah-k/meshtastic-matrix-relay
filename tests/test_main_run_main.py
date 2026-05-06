@@ -439,12 +439,14 @@ def test_run_main_legacy_layout_warning(
     mock_args.data_dir = None
     mock_args.log_level = None
 
-    with patch("asyncio.run") as mock_asyncio_run:
+    with (
+        patch("asyncio.run") as mock_asyncio_run,
+        patch("mmrelay.main.get_logger") as mock_get_logger,
+    ):
         mock_asyncio_run.side_effect = _close_coro_if_possible
-        with patch("mmrelay.main.get_logger") as mock_get_logger:
-            mock_config_logger = MagicMock()
-            mock_get_logger.return_value = mock_config_logger
-            result = run_main(mock_args)
+        mock_config_logger = MagicMock()
+        mock_get_logger.return_value = mock_config_logger
+        result = run_main(mock_args)
 
     assert result == 0
     mock_config_logger.warning.assert_any_call(

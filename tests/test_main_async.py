@@ -24,20 +24,6 @@ from tests.helpers import (
     make_patched_get_running_loop,
 )
 
-__all__ = [
-    "test_main_async_initialization_sequence",
-    "test_main_async_with_multiple_rooms",
-    "test_main_signal_handler_sets_shutdown_flag",
-    "test_main_shutdown_signal_logging_is_idempotent",
-    "test_main_registers_sighup_handler",
-    "test_main_windows_keyboard_interrupt_triggers_shutdown",
-    "test_main_async_event_loop_setup",
-    "test_main_restores_loop_exception_handler_on_early_init_failure",
-    "test_main_shutdown_task_cancellation_coverage",
-    "test_ready_file_helpers",
-    "test_ready_file_noops_when_unset",
-]
-
 
 def test_main_async_initialization_sequence():
     """Verify that the asynchronous main() startup sequence invokes database initialization, plugin loading, message-queue startup, and both Matrix and Meshtastic connection routines.
