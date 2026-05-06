@@ -239,31 +239,19 @@ def _raise_no_client(connection_type: str) -> NoReturn:
 
 def serial_port_exists(port_name: str) -> bool:
     """
-    Determine whether a serial port with the given device name exists and is usable.
+    Determine whether a serial port with the given device name exists on the system.
 
     Parameters:
         port_name (str): Device name to check (e.g., '/dev/ttyUSB0' on Unix or 'COM3' on Windows).
 
     Returns:
-        `True` if a matching port device name is present and the port can be opened,
-        `False` otherwise.
+        `True` if a matching port device name is present, `False` otherwise.
     """
     try:
         ports = [p.device for p in facade.serial.tools.list_ports.comports()]
     except PermissionError:
         return False
-    if port_name not in ports:
-        return False
-    try:
-        port = facade.serial.Serial()
-        port.port = port_name
-        port.dtr = False
-        port.rts = False
-        port.open()
-        port.close()
-    except (PermissionError, facade.serial.SerialException):
-        return False
-    return True
+    return port_name in ports
 
 
 def _log_ble_shutdown_state(*, context: str) -> None:

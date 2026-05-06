@@ -579,6 +579,7 @@ class TestConnectionLossHandling(unittest.TestCase):
         mmrelay.meshtastic_utils.shutting_down = False
 
         mock_interface = MagicMock()
+        mock_interface._last_disconnect_source = "   "
         on_lost_meshtastic_connection(
             mock_interface, detection_source="unknown", topic=pub.AUTO_TOPIC
         )
