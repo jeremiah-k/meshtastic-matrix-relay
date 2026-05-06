@@ -295,9 +295,8 @@ def test_pragma_validation_string_values(value, db_path):
 )
 def test_pragma_validation_invalid_string_values(value, db_path):
     """Test that invalid string pragma values are rejected."""
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Invalid or unsafe pragma value"):
         DatabaseManager(db_path, extra_pragmas={"test_pragma": value})
-    assert "Invalid or unsafe pragma value" in str(cm.value)
 
 
 @pytest.mark.parametrize("value", [1000, 0, -1, 3.14, 2.718])
@@ -334,9 +333,8 @@ def test_pragma_validation_boolean_values(value, db_path):
 )
 def test_pragma_validation_invalid_numeric_types(value, db_path):
     """Test that invalid numeric pragma value types are rejected."""
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="Invalid pragma value type"):
         DatabaseManager(db_path, extra_pragmas={"test_pragma": value})
-    assert "Invalid pragma value type" in str(cm.value)
 
 
 # ========================================================================
