@@ -1082,8 +1082,9 @@ async def test_check_connection_uses_configured_probe_timeout():
         probe_future.set_result(None)
         return probe_future
 
-    async def _wait_for_passthrough(awaitable, _timeout):
+    async def _wait_for_passthrough(awaitable, timeout):
         # Intentionally ignore timeout - this is a passthrough for testing
+        _ = timeout
         return await awaitable
 
     executor.submit.side_effect = _submit

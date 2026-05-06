@@ -20,7 +20,7 @@ from collections.abc import Callable
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from typing import Any, NoReturn
-from unittest.mock import ANY, MagicMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from meshtastic import BROADCAST_NUM
@@ -1876,10 +1876,12 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
             ),
             patch(
                 "mmrelay.matrix_utils.matrix_relay",
-                Mock(return_value=None),
+                AsyncMock(return_value=None),
             ),
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
             patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+            patch("mmrelay.meshtastic_utils.get_longname", return_value=None),
+            patch("mmrelay.meshtastic_utils.get_shortname", return_value=None),
         ):
             import mmrelay.meshtastic_utils
 
