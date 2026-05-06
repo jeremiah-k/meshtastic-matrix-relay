@@ -202,15 +202,25 @@ ensure_builtins_not_mocked()
 
 
 @pytest.fixture(autouse=True)
-def meshtastic_loop_safety(monkeypatch):
+def meshtastic_loop_safety(monkeypatch, request):
     """
     Function-scoped pytest fixture that provides a dedicated asyncio event loop for tests that interact with mmrelay.meshtastic_utils.
 
     Creates a fresh event loop, assigns it to mmrelay.meshtastic_utils.event_loop for the duration of each test function, yields the loop to tests, and on teardown cancels any remaining tasks, awaits their completion, closes the loop, and clears the global event loop reference.
 
+    When the ``asyncio`` marker is present on the test (set automatically by
+    pytest-asyncio under ``asyncio_mode=auto``), this fixture yields ``None``
+    without creating or managing a loop so that pytest-asyncio owns the event
+    loop lifecycle for async tests.
+
     Yields:
-        asyncio.AbstractEventLoop: a new event loop isolated to each test function.
+        asyncio.AbstractEventLoop | None: a new event loop isolated to each
+        test function, or ``None`` when the test is async (asyncio marker set).
     """
+    if request.node.get_closest_marker("asyncio"):
+        yield
+        return
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     monkeypatch.setattr(mu, "event_loop", loop)

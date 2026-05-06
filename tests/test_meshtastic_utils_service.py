@@ -348,6 +348,23 @@ class TestSerialPortDetection(unittest.TestCase):
         result = serial_port_exists("/dev/ttyUSB0")
         self.assertFalse(result)
 
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("mmrelay.meshtastic_utils.serial.tools.list_ports.comports")
+    def test_serial_port_exists_permission_error(self, mock_comports, mock_logger):
+        """
+        Test that serial_port_exists catches PermissionError when enumerating ports,
+        logs a warning mentioning the port name, and returns False.
+        """
+        mock_comports.side_effect = PermissionError("Permission denied")
+
+        result = serial_port_exists("/dev/ttyUSB0")
+
+        self.assertFalse(result)
+        mock_logger.warning.assert_called_once()
+        warning_args = mock_logger.warning.call_args
+        self.assertIn("/dev/ttyUSB0", str(warning_args))
+        self.assertIn("PermissionError", str(warning_args))
+
 
 class TestCoercionFunctions:
     """Test coercion utility functions."""

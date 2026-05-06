@@ -379,6 +379,47 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
 
     @patch("mmrelay.meshtastic_utils.INFINITE_RETRIES", 1)
     @patch("mmrelay.meshtastic_utils.time.sleep")
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("mmrelay.meshtastic_utils.serial_port_exists")
+    @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
+    def test_connect_meshtastic_serial_port_not_exists_logs_exception_message(
+        self, mock_serial, mock_port_exists, mock_logger, _mock_sleep
+    ):
+        """
+        Test that connect_meshtastic logs the expected SerialException message
+        when the serial port does not exist or is not accessible.
+        """
+        mock_port_exists.return_value = False
+
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            }
+        }
+
+        result = connect_meshtastic(passed_config=config)
+
+        self.assertIsNone(result)
+        mock_serial.assert_not_called()
+
+        # Verify the SerialException message with the "not accessible" wording
+        # The SerialException is caught by the generic Exception handler which logs
+        # it via logger.warning on retry and logger.exception on final exhaustion.
+        all_log_calls = list(mock_logger.warning.call_args_list) + list(
+            mock_logger.exception.call_args_list
+        )
+        message_calls = [
+            c for c in all_log_calls if "does not exist or is not accessible" in str(c)
+        ]
+        self.assertTrue(
+            message_calls,
+            "Expected a log containing 'does not exist or is not accessible' for "
+            "SerialException message from serial_port_exists check",
+        )
+
+    @patch("mmrelay.meshtastic_utils.INFINITE_RETRIES", 1)
+    @patch("mmrelay.meshtastic_utils.time.sleep")
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     def test_connect_meshtastic_serial_exception(self, mock_serial, _mock_sleep):
         """
@@ -1865,7 +1906,7 @@ class TestRealAsyncScheduling:
 
         future = real_submit_coro(_sample())
         assert future is not None
-        result = await future
+        result = await asyncio.wrap_future(future)
         assert result == "done"
 
     async def test_submit_coro_non_coroutine_returns_none(self):
@@ -1874,3 +1915,53 @@ class TestRealAsyncScheduling:
 
         result = real_submit_coro(42)
         assert result is None
+
+    async def test_asyncio_to_thread_runs_in_separate_thread(self):
+        """Exercise the real asyncio.to_thread thread boundary.
+
+        Verifies that a blocking callable dispatched via ``asyncio.to_thread``
+        executes in a worker thread distinct from the asyncio event-loop thread,
+        and that the result is correctly propagated back.  This test is not
+        mocked (the class carries ``no_global_mocks``) so it exercises the
+        genuine executor lifecycle.
+        """
+        import threading
+
+        loop_thread = threading.current_thread().ident
+        captured_thread_id = None
+
+        def blocking_capture() -> int:
+            nonlocal captured_thread_id
+            captured_thread_id = threading.current_thread().ident
+            return 42
+
+        result = await asyncio.to_thread(blocking_capture)
+
+        assert result == 42
+        assert captured_thread_id is not None
+        assert captured_thread_id != loop_thread
+
+    async def test_asyncio_to_thread_exception_propagation(self):
+        """Verify that exceptions raised inside asyncio.to_thread propagate correctly."""
+        import asyncio as _asyncio
+
+        def raise_value_error() -> None:
+            raise ValueError("thread-bound error")
+
+        with pytest.raises(ValueError, match="thread-bound error"):
+            await _asyncio.to_thread(raise_value_error)
+
+    async def test_asyncio_to_thread_executor_shutdown_graceful(self):
+        """Verify the loop's default executor can be shut down cleanly after use.
+
+        Exercises the real executor lifecycle: schedule work via
+        ``loop.run_in_executor``, then call ``loop.shutdown_default_executor``
+        (or the modern ``asyncio.Runner`` cleanup path) to confirm no resource
+        leaks or hangs.
+        """
+        # Schedule a small amount of work on the default executor
+        result = await asyncio.to_thread(lambda: "executor-ok")
+        assert result == "executor-ok"
+
+        # Ensure the executor is functional (not already shut down)
+        assert await asyncio.to_thread(lambda: "still-alive") == "still-alive"

@@ -53,8 +53,16 @@ sys.modules["serial.tools"] = MagicMock()
 sys.modules["serial.tools.list_ports"] = MagicMock()
 
 sys.modules["bleak"] = MagicMock()
+
+# ── pubsub mock with explicit, patchable pub API ────────────────────────
+_pub_mock = MagicMock()
+_pub_mock.subscribe = MagicMock()
+_pub_mock.unsubscribe = MagicMock()
+_pub_mock.sendMessage = MagicMock()
+
 pubsub_mock = MagicMock()
 pubsub_mock.__path__ = ["/fake/pubsub"]  # type: ignore[attr-defined]
+pubsub_mock.pub = _pub_mock
 sys.modules["pubsub"] = pubsub_mock
 sys.modules["pubsub.core"] = MagicMock()
 sys.modules["pubsub.core"].__path__ = ["/fake/pubsub/core"]  # type: ignore[attr-defined]
