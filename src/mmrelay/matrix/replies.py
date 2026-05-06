@@ -37,6 +37,8 @@ def truncate_message(
     Returns:
         str: A string whose UTF-8 encoding is at most `max_bytes` bytes.
     """
+    if max_bytes <= 0:
+        return ""
     truncated_text = text.encode(facade.DEFAULT_TEXT_ENCODING)[:max_bytes].decode(
         facade.DEFAULT_TEXT_ENCODING, facade.ENCODING_ERROR_IGNORE
     )

@@ -53,7 +53,7 @@ def test_sync_timeout_logs_warning_and_retries():
         def sync_forever_side_effect(**kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
-                raise TimeoutError("Sync timeout")
+                raise asyncio.TimeoutError("Sync timeout")
             for event in created_events:
                 event.set()
             return None
