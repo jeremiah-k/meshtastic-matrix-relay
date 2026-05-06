@@ -175,15 +175,6 @@ def cleanup_ble_future_state(module: Any) -> None:
             try:
                 cancel_fn()
                 _drain_future_result_safely(ble_future, timeout=0.2)
-            except (
-                RuntimeError,
-                asyncio.InvalidStateError,
-                concurrent.futures.InvalidStateError,
-            ) as exc:
-                logging.getLogger(__name__).debug(
-                    "Suppressing BLE future cleanup exception: %s",
-                    exc,
-                )
             except Exception as exc:
                 logging.getLogger(__name__).debug(
                     "Suppressing BLE future cleanup exception: %s",

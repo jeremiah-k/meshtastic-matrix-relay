@@ -1548,8 +1548,8 @@ class TestSerialPortExistsEdgeCases(unittest.TestCase):
             result = serial_port_exists("/dev/ttyUSB0")
             assert result is False
 
-    def test_serial_port_exists_device_busy(self):
-        """serial_port_exists returns False when serial device is busy."""
+    def test_serial_port_exists_device_present_in_comports(self):
+        """serial_port_exists returns True when device is listed in comports (port openability is checked by the caller)."""
         with (
             patch(
                 "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
@@ -1561,4 +1561,4 @@ class TestSerialPortExistsEdgeCases(unittest.TestCase):
             ),
         ):
             result = serial_port_exists("/dev/ttyUSB0")
-            assert result is False
+            assert result is True

@@ -18,7 +18,7 @@ Decomposed the three largest test files into domain-specific modules:
 | `test_meshtastic_utils.py` | 5,797 | 9 domain files                                                      | 189   |
 | `test_main.py`             | 4,557 | 9 domain files + helpers (`test_main.py` retained as 831-line core) | 79    |
 
-All three original monoliths were decomposed into smaller modules; `test_main.py` remains as an 831-line core while its tests were refactored into 9 domain files + helpers and converted to pure pytest style.
+All three original monoliths were decomposed: tests were extracted into domain-specific modules, with `test_main.py` retaining an 831-line core while its 79 tests moved to 9 domain files + helpers (converted to pure pytest style).
 
 ### Phase 2 (In Progress): Absorb Satellite Files
 
