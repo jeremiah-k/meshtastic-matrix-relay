@@ -723,6 +723,9 @@ class TestMetadataExecutorResetTypeError:
         assert old_executor.shutdown.call_count == 2
         assert mu._metadata_executor is not old_executor
 
+        # Clean up the newly created executor
+        mu._metadata_executor.shutdown(wait=False)
+
 
 class TestMetadataFutureCleanupPaths:
     """Test all paths in _schedule_metadata_future_cleanup."""
