@@ -67,8 +67,6 @@ def _cancel_startup_drain_timer() -> None:
 def reset_meshtastic_relay_state(monkeypatch):
     """Reset all Meshtastic relay module globals to prevent cross-test leakage."""
 
-    import contextlib
-
     _cancel_startup_drain_timer()
     with contextlib.suppress(AttributeError, RuntimeError, TypeError):
         mu.shutdown_shared_executors()

@@ -155,11 +155,6 @@ def reset_meshtastic_relay_state(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr(
-        "mmrelay.meshtastic_utils.event_loop",
-        None,
-        raising=False,
-    )
-    monkeypatch.setattr(
         "mmrelay.meshtastic_utils._ble_future",
         None,
         raising=False,

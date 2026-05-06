@@ -745,7 +745,7 @@ class TestMetadataFutureCleanupPaths:
 
         with (
             patch("mmrelay.meshtastic_utils._reset_metadata_executor_for_stale_probe"),
-            patch("mmrelay.meshtastic.executors.threading.Timer") as mock_timer,
+            patch("threading.Timer") as mock_timer,
         ):
             mu._schedule_metadata_future_cleanup(mock_future, "test-reason")
             mock_future.add_done_callback.assert_called_once()

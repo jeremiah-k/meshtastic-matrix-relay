@@ -444,7 +444,8 @@ def test_cancelled_error_cancels_task_and_returns():
     async def mock_wait_for(coro, timeout=None):
         if timeout == 5.0:
             # Peek inside asyncio wrappers (gather, etc.) to find the
-            # target coroutine name without fragile CPython internals.
+            # target coroutine name using CPython internals with defensive
+            # getattr fallbacks to reduce brittleness.
             candidate = getattr(coro, "_coro", coro)
             gather_args = getattr(candidate, "_args", None)
             if gather_args:
