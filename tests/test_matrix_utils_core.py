@@ -912,8 +912,8 @@ def test_truncate_message_edge_cases():
 
     assert truncate_message("Hello", max_bytes=0) == ""
 
-    result = truncate_message("Hello", max_bytes=-1)
-    assert result == ""  # Negative limits should behave like zero
+    with pytest.raises(ValueError, match="max_bytes must be non-negative"):
+        truncate_message("Hello", max_bytes=-1)
 
 
 def test_validate_prefix_format_invalid_syntax_and_empty():

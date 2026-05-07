@@ -1943,13 +1943,12 @@ class TestRealAsyncScheduling:
 
     async def test_asyncio_to_thread_exception_propagation(self):
         """Verify that exceptions raised inside asyncio.to_thread propagate correctly."""
-        import asyncio as _asyncio
 
         def raise_value_error() -> None:
             raise ValueError("thread-bound error")
 
         with pytest.raises(ValueError, match="thread-bound error"):
-            await _asyncio.to_thread(raise_value_error)
+            await asyncio.to_thread(raise_value_error)
 
     async def test_asyncio_to_thread_executor_shutdown_graceful(self):
         """Verify the loop's default executor can be shut down cleanly after use.

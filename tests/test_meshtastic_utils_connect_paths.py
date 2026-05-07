@@ -20,7 +20,6 @@ from typing import Any, NoReturn
 from unittest.mock import ANY, MagicMock, Mock, patch
 
 import pytest
-import serial
 
 from mmrelay.constants.network import (
     BLE_CONNECT_TIMEOUT_SECS,

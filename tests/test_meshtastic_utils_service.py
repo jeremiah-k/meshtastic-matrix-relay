@@ -446,7 +446,7 @@ class TestCoerceBoolEdgeCases:
         assert result is False
 
     def test_coerce_bool_with_whitespace_string(self):
-        """Test _coerce_bool with whitespace-only string defaults to False."""
+        """Test _coerce_bool with whitespace-only string coerces to False (independent of default)."""
         result = _coerce_bool("   ", True, "test_setting")
         assert result is False
 

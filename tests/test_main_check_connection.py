@@ -610,5 +610,6 @@ def test_exception_during_ensure_processor_started_raised():
 
         with pytest.raises(RuntimeError) as exc_info:
             asyncio.run(main(config))
+        _reset_all_mmrelay_globals()
 
         assert "Queue processor failed" in str(exc_info.value)

@@ -483,7 +483,7 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
             ),
             # Check if already at the tag's commit
             call(
-                ["git", "-C", f"{self.temp_plugins_dir}/repo", "rev-parse", "HEAD"],
+                ["git", "-C", self.temp_repo_path, "rev-parse", "HEAD"],
                 capture_output=True,
             ),
             call(

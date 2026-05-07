@@ -16,8 +16,6 @@ from collections.abc import Callable
 from concurrent.futures import Future
 from typing import Any
 
-import pytest
-
 from mmrelay.constants.app import DEFAULT_READY_HEARTBEAT_SECONDS
 from tests.helpers import (
     reset_meshtastic_utils_globals,

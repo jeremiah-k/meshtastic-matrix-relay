@@ -1483,7 +1483,7 @@ class TestMessageHandlerEdgeCases:
 
         sleep_count = [0]
 
-        async def sleep_side_effect(delay):
+        async def sleep_side_effect(_delay: float) -> None:
             sleep_count[0] += 1
             if sleep_count[0] >= 2:
                 mu.shutting_down = True
@@ -1514,7 +1514,7 @@ class TestMessageHandlerEdgeCases:
 
         sleep_count = [0]
 
-        async def sleep_side_effect(delay):
+        async def sleep_side_effect(_delay: float) -> None:
             sleep_count[0] += 1
             if sleep_count[0] >= 2:
                 mu.shutting_down = True
@@ -1545,7 +1545,7 @@ class TestMessageHandlerEdgeCases:
 
         sleep_count = [0]
 
-        async def sleep_side_effect(delay):
+        async def sleep_side_effect(_delay: float) -> None:
             sleep_count[0] += 1
             if sleep_count[0] >= 2:
                 mu.shutting_down = True
@@ -1585,7 +1585,7 @@ class TestMessageHandlerEdgeCases:
 
         sleep_count = [0]
 
-        async def sleep_side_effect(delay):
+        async def sleep_side_effect(_delay: float) -> None:
             sleep_count[0] += 1
             if sleep_count[0] >= 2:
                 mu.shutting_down = True

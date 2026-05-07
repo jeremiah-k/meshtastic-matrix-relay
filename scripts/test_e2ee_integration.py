@@ -47,7 +47,9 @@ class E2EEIntegrationTester:
         print("🔧 Setting up test environment...")
 
         try:
-            self.config = load_config()
+            self.config = (
+                load_config()
+            )  # pyright: ignore[reportPossiblyUnboundVariable]
             if not self.config:
                 print("❌ Setup failed: Could not load config")
                 return False
@@ -64,7 +66,9 @@ class E2EEIntegrationTester:
         print("\n🔍 Testing Matrix connection...")
 
         try:
-            self.client = await connect_matrix(self.config)
+            self.client = await connect_matrix(
+                self.config
+            )  # pyright: ignore[reportPossiblyUnboundVariable]
         except Exception as e:
             print(f"❌ Connection failed: {e}")
             self.test_results["connection"] = {"success": False, "error": str(e)}
@@ -94,14 +98,16 @@ class E2EEIntegrationTester:
         print(f"   Store Path: {getattr(self.client, 'store_path', 'None')}")
         print(f"   Encryption Enabled: {encryption_enabled}")
 
+        e2ee_ready = has_device_id and has_store_path and encryption_enabled
+
         self.test_results["connection"] = {
-            "success": True,
+            "success": e2ee_ready,
             "has_device_id": has_device_id,
             "has_store_path": has_store_path,
             "encryption_enabled": encryption_enabled,
         }
 
-        return True
+        return e2ee_ready
 
     async def check_room_encryption_detection(self) -> bool:
         """

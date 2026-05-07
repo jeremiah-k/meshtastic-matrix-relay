@@ -65,7 +65,7 @@ def _base_config() -> dict[str, Any]:
     """
     return {
         "meshtastic": {
-            "connection_type": "serial",
+            "connection_type": CONNECTION_TYPE_SERIAL,
             CONFIG_KEY_MESHNET_NAME: "TestNet",
         },
         "matrix_rooms": [{"id": "!room:test", "meshtastic_channel": 0}],

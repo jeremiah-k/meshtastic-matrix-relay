@@ -75,8 +75,7 @@ def test_startup_rollback_cancels_check_connection_task(
     check_conn_sentinel = object()
 
     def mock_check_conn() -> object:
-        # Return a non-coroutine sentinel; create_task is patched below.
-        """Return sentinel for mocked connection check."""
+        """Return a non-coroutine sentinel; create_task is patched below."""
         return check_conn_sentinel
 
     def mock_create_task(coro: object, *_args: object, **_kwargs: object) -> object:

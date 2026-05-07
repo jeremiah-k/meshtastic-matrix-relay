@@ -775,9 +775,19 @@ class TestMetadataFutureCleanupPaths:
         different_future = Mock(spec=Future)
         mu._metadata_future = different_future
 
-        with patch("mmrelay.meshtastic.executors.threading.Timer") as mock_timer_class:
+        with (
+            patch("mmrelay.meshtastic.executors.threading.Timer") as mock_timer_class,
+            patch(
+                "mmrelay.meshtastic_utils._reset_metadata_executor_for_stale_probe"
+            ) as mock_reset,
+        ):
+            mock_timer = Mock()
+            mock_timer_class.return_value = mock_timer
             mu._schedule_metadata_future_cleanup(mock_future, "test-reason")
             mock_timer_class.assert_called_once()
+            cleanup_callback = mock_timer_class.call_args[0][1]
+            cleanup_callback()
+            mock_reset.assert_not_called()
 
 
 class TestGetDeviceMetadataIoError:

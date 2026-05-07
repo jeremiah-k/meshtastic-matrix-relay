@@ -656,7 +656,9 @@ def test_main_shutdown_uses_blocking_timeout_helper(
 
     import mmrelay.meshtastic_utils as mu
 
-    def _run_helper_side_effect(close_callable, *_args, **_kwargs):
+    def _run_helper_side_effect(
+        close_callable: Any, *_args: Any, **_kwargs: Any
+    ) -> None:
         close_callable()
         return None
 
@@ -737,7 +739,9 @@ def test_main_shutdown_success_logs_close_complete(
 
     import mmrelay.meshtastic_utils as mu
 
-    def _run_helper_side_effect(close_callable, *_args, **_kwargs):
+    def _run_helper_side_effect(
+        close_callable: Any, *_args: Any, **_kwargs: Any
+    ) -> None:
         close_callable()
         return None
 

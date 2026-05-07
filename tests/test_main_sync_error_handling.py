@@ -36,7 +36,7 @@ def test_sync_timeout_logs_warning_and_retries():
         "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
     }
 
-    call_count = [0]
+    call_count = 0
 
     async def run_test():
         mock_matrix_client = AsyncMock()
@@ -50,9 +50,10 @@ def test_sync_timeout_logs_warning_and_retries():
             created_events.append(event)
             return event
 
-        def sync_forever_side_effect(**kwargs):
-            call_count[0] += 1
-            if call_count[0] == 1:
+        def sync_forever_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
                 raise asyncio.TimeoutError("Sync timeout")
             for event in created_events:
                 event.set()
@@ -107,7 +108,7 @@ def test_sync_timeout_logs_warning_and_retries():
 
     mock_logger = asyncio.run(run_test())
 
-    assert call_count[0] == 2  # first attempt + one retry
+    assert call_count == 2  # first attempt + one retry
 
     assert any(
         "Matrix sync timed out" in str(call)
@@ -123,7 +124,7 @@ def test_sync_client_error_logs_warning_and_retries():
         "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
     }
 
-    call_count = [0]
+    call_count = 0
 
     async def run_test():
         mock_matrix_client = AsyncMock()
@@ -137,9 +138,10 @@ def test_sync_client_error_logs_warning_and_retries():
             created_events.append(event)
             return event
 
-        def sync_forever_side_effect(**kwargs):
-            call_count[0] += 1
-            if call_count[0] == 1:
+        def sync_forever_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
                 raise ClientError("Network error")
             for event in created_events:
                 event.set()
@@ -194,7 +196,7 @@ def test_sync_client_error_logs_warning_and_retries():
 
     mock_logger = asyncio.run(run_test())
 
-    assert call_count[0] == 2  # first attempt + one retry
+    assert call_count == 2  # first attempt + one retry
 
     assert any(
         "Matrix sync failed, retrying" in str(call)
@@ -210,7 +212,7 @@ def test_sync_connection_error_logs_exception():
         "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
     }
 
-    call_count = [0]
+    call_count = 0
 
     async def run_test():
         mock_matrix_client = AsyncMock()
@@ -224,9 +226,10 @@ def test_sync_connection_error_logs_exception():
             created_events.append(event)
             return event
 
-        def sync_forever_side_effect(**kwargs):
-            call_count[0] += 1
-            if call_count[0] == 1:
+        def sync_forever_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
                 raise ConnectionError("Connection lost")
             for event in created_events:
                 event.set()
@@ -281,7 +284,7 @@ def test_sync_connection_error_logs_exception():
 
     mock_logger = asyncio.run(run_test())
 
-    assert call_count[0] == 2  # first attempt + one retry
+    assert call_count == 2  # first attempt + one retry
 
     assert any(
         "Matrix sync failed" in str(call)

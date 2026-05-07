@@ -497,11 +497,12 @@ def test_on_meshtastic_message_range_test_app_plugin_only():
 
     assert mock_relay is not None
     mock_relay.assert_not_called()
-    plugin.handle_meshtastic_message.assert_called_once()
-    args = plugin.handle_meshtastic_message.call_args[0]
-    assert args[1] == "[p] Hello"
-    assert args[2] == "Long"
-    assert args[3] == "TestNet"
+    plugin.handle_meshtastic_message.assert_called_once_with(
+        packet,
+        formatted_message="[p] Hello",
+        longname="Long",
+        meshnet_name="TestNet",
+    )
 
 
 def test_on_meshtastic_message_detection_sensor_disabled():
@@ -1162,8 +1163,8 @@ def test_on_meshtastic_message_promoted_non_chat_malformed_channel_skips_relay()
 # ---------------------------------------------------------------------------
 
 
-def test_on_meshtastic_message_plugin_timeout_with_dm():
-    """Plugin timeout with DM prevents message from being relayed to Matrix."""
+def test_on_meshtastic_message_plugin_timeout_skips_relay():
+    """Plugin timeout prevents message from being relayed to Matrix."""
     packet = {
         "decoded": {"text": "!test", "portnum": PORTNUM_TEXT_MESSAGE_APP},
         "fromId": "!67890",

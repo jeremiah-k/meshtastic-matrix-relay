@@ -1061,7 +1061,7 @@ def test_connection_creation_error_cleanup(db_path):
     """Test that connection creation errors don't leak connections."""
     # Try to create a manager with invalid pragma that will fail
     # If __init__ raises, nothing to clean up
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Invalid pragma name"):
         DatabaseManager(db_path, extra_pragmas={"invalid;pragma": "value"})
 
     # Verify no connections were leaked (this is more of a sanity check)

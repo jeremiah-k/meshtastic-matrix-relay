@@ -32,12 +32,17 @@ def truncate_message(
 
     Parameters:
         text (str): Input text to truncate.
-        max_bytes (int): Maximum allowed size in bytes for the UTF-8 encoded result.
+        max_bytes (int): Maximum allowed size in bytes for the UTF-8 encoded result. Must be non-negative.
 
     Returns:
-        str: A string whose UTF-8 encoding is at most `max_bytes` bytes.
+        str: A string whose UTF-8 encoding is at most `max_bytes` bytes. Returns empty string if max_bytes is 0.
+
+    Raises:
+        ValueError: If max_bytes is negative.
     """
-    if max_bytes <= 0:
+    if max_bytes < 0:
+        raise ValueError(f"max_bytes must be non-negative, got {max_bytes}")
+    if max_bytes == 0:
         return ""
     truncated_text = text.encode(facade.DEFAULT_TEXT_ENCODING)[:max_bytes].decode(
         facade.DEFAULT_TEXT_ENCODING, facade.ENCODING_ERROR_IGNORE

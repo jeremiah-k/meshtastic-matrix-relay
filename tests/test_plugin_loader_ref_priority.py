@@ -44,6 +44,8 @@ class TestRefPriority(BaseGitTest):
     def tearDown(self) -> None:
         """Remove temporary directories and clean up resources."""
         shutil.rmtree(self.test_dir, ignore_errors=True)
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
         super().tearDown()
 
     @patch("mmrelay.plugin_loader.clone_or_update_repo")
@@ -52,15 +54,17 @@ class TestRefPriority(BaseGitTest):
     @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
+    @patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates")
     def test_load_plugins_commit_priority_over_tag_and_branch(
         self,
+        mock_update_check,
         mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
         mock_install_reqs,
         mock_clone_repo,
-    ):
+    ) -> None:
         """Test that commit ref takes priority over tag and branch in plugin config."""
 
         config = {
@@ -145,17 +149,19 @@ class TestRefPriority(BaseGitTest):
     @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
+    @patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates")
     @patch("mmrelay.plugin_loader.logger")
     def test_load_plugins_commit_with_tag_and_branch_warning(
         self,
         mock_logger,
+        mock_update_check,
         mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
         mock_install_reqs,
         mock_clone_repo,
-    ):
+    ) -> None:
         """Test that warning is logged when commit is specified with tag/branch."""
 
         config = {
@@ -452,15 +458,17 @@ class TestRefPriority(BaseGitTest):
     @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
+    @patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates")
     def test_load_plugins_skips_community_dep_installer_by_default(
         self,
+        mock_update_check,
         mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
         mock_install_reqs,
         mock_clone_repo,
-    ):
+    ) -> None:
         """Community dependency install should be skipped unless explicitly enabled."""
 
         config = {
@@ -479,10 +487,7 @@ class TestRefPriority(BaseGitTest):
         mock_clone_repo.return_value = True
         mock_load_from_dir.return_value = []
 
-        with patch(
-            "mmrelay.plugin_loader._check_commit_pin_for_upstream_updates"
-        ) as mock_update_check:
-            load_plugins(config)
+        load_plugins(config)
 
         mock_update_check.assert_called_once()
         mock_install_reqs.assert_not_called()

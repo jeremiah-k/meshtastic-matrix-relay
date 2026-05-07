@@ -87,9 +87,7 @@ class HTTPError(RequestException):
     pass
 
 
-class ConnectionError(
-    RequestException
-):  # noqa: A001 - intentionally shadows built-in to mirror requests library
+class RequestsConnectionError(RequestException):
     pass
 
 
@@ -100,7 +98,7 @@ class Timeout(RequestException):
 class MockRequestsExceptions:
     RequestException = RequestException
     HTTPError = HTTPError
-    ConnectionError = ConnectionError
+    ConnectionError = RequestsConnectionError
     Timeout = Timeout
 
 

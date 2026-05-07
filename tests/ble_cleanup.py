@@ -5,6 +5,8 @@ Provides best-effort helpers to cancel and drain in-flight BLE future/task state
 so that test teardown does not fail while clearing bookkeeping.
 """
 
+__all__ = ["cleanup_ble_future_state"]
+
 import asyncio
 import concurrent.futures
 import contextlib

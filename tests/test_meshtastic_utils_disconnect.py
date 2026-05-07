@@ -708,8 +708,10 @@ def test_on_lost_meshtastic_connection_detection_source_edge_cases():
             ),
             patch("mmrelay.meshtastic.events._schedule_reconnect_after_disconnect"),
             patch("time.sleep"),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
         ):
             on_lost_meshtastic_connection(mock_interface, detection_source=source)
+            assert mock_logger.error.called or mock_logger.debug.called
 
 
 @pytest.mark.asyncio

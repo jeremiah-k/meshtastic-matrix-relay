@@ -7,7 +7,7 @@ expected help text.  This guards against future import / path regressions
 while keeping the script itself outside the pytest suite.
 """
 
-import subprocess
+import subprocess  # nosec B404 — test calls script under test with hardcoded args
 import sys
 from pathlib import Path
 
@@ -22,7 +22,7 @@ def test_e2ee_integration_script_help_exits_zero():
         capture_output=True,
         text=True,
         timeout=15,
-    )
+    )  # nosec B603 — hardcoded args, no user input
 
     assert result.returncode == 0, (
         f"Script exited {result.returncode}.\n"
@@ -44,10 +44,14 @@ def test_e2ee_integration_script_help_no_credentials_required():
         capture_output=True,
         text=True,
         timeout=15,
-    )
+    )  # nosec B603 — hardcoded args, no user input
 
     # The help handler returns before any connection attempt.
     # If it tried to connect we'd see connection-related errors in stderr.
+    assert result.returncode == 0, (
+        f"Script exited {result.returncode}.\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
     assert (
         "connect" not in result.stderr.lower()
     ), f"Help path unexpectedly attempted a connection.\nstderr: {result.stderr}"

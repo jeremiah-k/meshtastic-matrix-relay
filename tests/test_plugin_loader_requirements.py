@@ -18,7 +18,7 @@ from mmrelay.plugin_loader import _collect_requirements
 class TestRequirementsInfrastructure(unittest.TestCase):
     """Test cases for requirements install target identity, validation, hashing, and temporary helpers."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         """Set up temporary directories for requirements tests."""
         self.temp_dir = tempfile.mkdtemp()
         self.addCleanup(lambda: shutil.rmtree(self.temp_dir, ignore_errors=True))
@@ -415,7 +415,6 @@ class TestCollectRequirements(unittest.TestCase):
             f.write("requests>=2.25.0\n")
 
         result = _collect_requirements(req_file)
-        # The function appears to include constraints in the output
         expected = ["requests<=2.30.0", "requests>=2.25.0"]
         self.assertEqual(result, expected)
 
@@ -471,6 +470,8 @@ class TestCollectRequirements(unittest.TestCase):
         self.assertIsInstance(result, list)
         self.assertIn("package1>=1.0.0", result)
         self.assertIn("package2>=1.0.0", result)
+        self.assertEqual(result.count("package1>=1.0.0"), 1)
+        self.assertEqual(result.count("package2>=1.0.0"), 1)
 
     @patch("mmrelay.plugin_loader.logger")
     def test_collect_requirements_malformed_requirement_directive(self, mock_logger):

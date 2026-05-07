@@ -169,6 +169,8 @@ async def test_join_matrix_room_non_string_input():
     mock_client = MagicMock()
 
     with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        # cast() is a runtime no-op; 123 (int) is intentionally passed to test
+        # the non-string guard without triggering a static-analysis type error.
         await join_matrix_room(mock_client, cast(str, 123))
 
     assert any(
