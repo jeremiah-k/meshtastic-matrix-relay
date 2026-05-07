@@ -449,20 +449,23 @@ def test_run_main_legacy_layout_warning(
     mock_args.data_dir = None
     mock_args.log_level = None
 
+    mock_rich_logger = MagicMock()
+    mock_rich_logger.info = MagicMock()
+
     with (
         patch("asyncio.run") as mock_asyncio_run,
-        patch("mmrelay.main.logger") as mock_config_logger,
+        patch("mmrelay.main.get_logger", return_value=mock_rich_logger),
     ):
         mock_asyncio_run.side_effect = _close_coro_if_possible
         result = run_main(mock_args)
 
     assert result == 0
-    mock_config_logger.warning.assert_any_call(
+    mock_rich_logger.warning.assert_any_call(
         "Legacy data layout detected (MMRELAY_HOME=%s, legacy_env_vars=%s, legacy_dirs=%s). This layout is deprecated and will be removed in a future release.",
         "/test/home/dir",
         "MMRELAY_DATA_DIR",
         "/test/legacy/dir",
     )
-    mock_config_logger.warning.assert_any_call(
+    mock_rich_logger.warning.assert_any_call(
         "To migrate to the new layout, see docs/DOCKER.md: Migrating to the New Layout."
     )
