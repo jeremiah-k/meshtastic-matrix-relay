@@ -660,7 +660,6 @@ def test_main_shutdown_uses_blocking_timeout_helper(
         close_callable: Any, *_args: Any, **_kwargs: Any
     ) -> None:
         close_callable()
-        return None
 
     mock_run_blocking_with_timeout.side_effect = _run_helper_side_effect
 

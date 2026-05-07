@@ -121,7 +121,9 @@ def test_run_main_exception_handling(mock_asyncio_run, mock_load_config, mock_co
     # Mock asyncio.run with coroutine cleanup and exception
     mock_asyncio_run.side_effect = _mock_run_with_exception
 
-    result = run_main(None)
+    mock_args = MagicMock()
+    mock_args.log_level = None
+    result = run_main(mock_args)
 
     # Should return 1 for error
     assert result == 1
@@ -139,7 +141,9 @@ def test_run_main_keyboard_interrupt(mock_asyncio_run, mock_load_config, mock_co
     # Mock asyncio.run with coroutine cleanup and KeyboardInterrupt
     mock_asyncio_run.side_effect = _mock_run_with_keyboard_interrupt
 
-    result = run_main(None)
+    mock_args = MagicMock()
+    mock_args.log_level = None
+    result = run_main(mock_args)
 
     # Should return 0 for graceful shutdown
     assert result == 0
@@ -376,8 +380,14 @@ def test_run_main_with_log_level(
 @patch("mmrelay.main.print_banner")
 @patch("mmrelay.config.load_config")
 @patch("mmrelay.config.load_credentials")
+@patch("mmrelay.config.set_config")
+@patch("mmrelay.log_utils.configure_component_debug_logging")
 def test_run_main_with_credentials_json(
-    mock_load_credentials, mock_load_config, _mock_print_banner
+    _mock_configure_logging,
+    _mock_set_config,
+    mock_load_credentials,
+    mock_load_config,
+    _mock_print_banner,
 ):
     """
     Test run_main with credentials.json present (different required keys).
@@ -441,11 +451,9 @@ def test_run_main_legacy_layout_warning(
 
     with (
         patch("asyncio.run") as mock_asyncio_run,
-        patch("mmrelay.main.get_logger") as mock_get_logger,
+        patch("mmrelay.main.logger") as mock_config_logger,
     ):
         mock_asyncio_run.side_effect = _close_coro_if_possible
-        mock_config_logger = MagicMock()
-        mock_get_logger.return_value = mock_config_logger
         result = run_main(mock_args)
 
     assert result == 0

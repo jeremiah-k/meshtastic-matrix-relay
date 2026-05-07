@@ -8,7 +8,7 @@ import os
 import shutil
 import tempfile
 import unittest
-from typing import Any, Optional
+from typing import Any
 from unittest.mock import patch
 
 import mmrelay.plugin_loader as pl
@@ -138,7 +138,7 @@ class TestRequirementsInfrastructure(unittest.TestCase):
         site_packages = os.path.join(prefix, "lib", "python3.12", "site-packages")
         os.makedirs(site_packages)
 
-        def fake_get_path(name: str, scheme: str, **_kwargs: Any) -> Optional[str]:
+        def fake_get_path(name: str, scheme: str, **_kwargs: Any) -> str | None:
             if name == "purelib" and scheme == "posix_prefix":
                 return site_packages
             return None
@@ -159,7 +159,7 @@ class TestRequirementsInfrastructure(unittest.TestCase):
         site_packages = os.path.join(prefix, "Lib", "site-packages")
         os.makedirs(site_packages)
 
-        def fake_get_path(name: str, scheme: str, **_kwargs: Any) -> Optional[str]:
+        def fake_get_path(name: str, scheme: str, **_kwargs: Any) -> str | None:
             if name == "purelib" and scheme == "nt":
                 return site_packages
             return None
@@ -237,6 +237,7 @@ class TestRequirementsInfrastructure(unittest.TestCase):
                 self.assertEqual(temp_file.read(), "requests==2.28.0\n")
 
         self.assertFalse(os.path.exists(temp_path))
+        mock_temp_file.assert_called_once()
         self.assertEqual(
             mock_temp_file.call_args.kwargs["encoding"], pl.DEFAULT_TEXT_ENCODING
         )
@@ -355,7 +356,7 @@ class TestRequirementsInfrastructure(unittest.TestCase):
 class TestCollectRequirements(unittest.TestCase):
     """Test cases for _collect_requirements function."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         """Set up temporary directory for requirements collection tests."""
         self.temp_dir = tempfile.mkdtemp()
         self.addCleanup(lambda: shutil.rmtree(self.temp_dir, ignore_errors=True))
@@ -496,7 +497,9 @@ class TestCollectRequirements(unittest.TestCase):
         with open(req_file, "w", encoding="utf-8") as f:
             f.write("requests==2.28.0\n")
 
-        with patch("builtins.open", side_effect=IOError("Permission denied")):
+        with patch(
+            "mmrelay.plugin_loader.open", side_effect=IOError("Permission denied")
+        ):
             result = _collect_requirements(req_file)
 
         # Should handle IOError gracefully

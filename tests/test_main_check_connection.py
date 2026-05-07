@@ -608,8 +608,11 @@ def test_exception_during_ensure_processor_started_raised():
 
         mock_connect_meshtastic.return_value = MagicMock()
 
-        with pytest.raises(RuntimeError) as exc_info:
-            asyncio.run(main(config))
         _reset_all_mmrelay_globals()
+        with pytest.raises(RuntimeError) as exc_info:
+            try:
+                asyncio.run(main(config))
+            finally:
+                _reset_all_mmrelay_globals()
 
         assert "Queue processor failed" in str(exc_info.value)

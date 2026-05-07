@@ -15,13 +15,17 @@ class TestPluginLoaderClone(BaseGitTest):
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("os.path.isdir")
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_or_update_repo_valid_short_commit_hash(
-        self, mock_logger, mock_is_allowed, mock_run_git
+        self, mock_logger, mock_isdir, mock_is_allowed, mock_run_git
     ):
         """Test clone with valid short commit hash (7 characters)."""
 
         mock_is_allowed.return_value = True
+        mock_isdir.return_value = (
+            False  # Repo doesn't exist, ensure clone path is taken
+        )
         # Mock git operations to fail by raising exception on first call
         mock_run_git.side_effect = subprocess.CalledProcessError(1, "git")
         ref = {"type": "commit", "value": "a1b2c3d"}
@@ -161,7 +165,7 @@ class TestPluginLoaderClone(BaseGitTest):
 
         # Verify sequence of git operations (optimized behavior)
         expected_calls = [
-            # Check current commit (fails)
+            # Check current HEAD (succeeds; returns value != target, so checkout proceeds)
             (
                 ["git", "-C", self.temp_repo_path, "rev-parse", "HEAD"],
                 {"capture_output": True},
@@ -256,9 +260,7 @@ class TestPluginLoaderClone(BaseGitTest):
         self.assertTrue(result)
 
         # Verify that both fetch attempts were made
-        fetch_calls = [
-            call for call in mock_run_git.call_args_list if "fetch" in call[0][0]
-        ]
+        fetch_calls = [c for c in mock_run_git.call_args_list if "fetch" in c[0][0]]
 
         self.assertEqual(
             len(fetch_calls), 2
@@ -340,73 +342,6 @@ class TestPluginLoaderClone(BaseGitTest):
         mock_run_git.assert_has_calls(
             [call(args, **kwargs) for args, kwargs in expected_calls],
             any_order=False,
-        )
-
-    @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("os.path.isdir")
-    def test_clone_or_update_repo_commit_fetch_fallback_success(
-        self, mock_isdir, mock_is_allowed, mock_run_git
-    ):
-        """Test commit fetch that fails specific but succeeds with fallback."""
-        mock_is_allowed.return_value = True
-        mock_isdir.return_value = True  # Repo exists
-        ref = {"type": "commit", "value": "cdef5678"}
-
-        # Configure mock to fail on specific commit fetch but succeed on fallback
-        checkout_attempts = []
-
-        def side_effect(*args, **_kwargs):
-            """Simulate failing specific commit fetch but succeeding fallback fetch."""
-            if args[0] == [
-                "git",
-                "-C",
-                self.temp_repo_path,
-                "fetch",
-                "--depth=1",
-                "origin",
-                "cdef5678",
-            ]:
-                raise subprocess.CalledProcessError(1, "git")
-            # Fail on rev-parse for target commit to trigger fetch
-            if "rev-parse" in args[0] and "cdef5678^{commit}" in args[0]:
-                raise subprocess.CalledProcessError(1, "git")
-            # Fail first checkout to trigger fetch, succeed second checkout
-            if args[0] == ["git", "-C", self.temp_repo_path, "checkout", "cdef5678"]:
-                checkout_attempts.append(1)
-                if len(checkout_attempts) == 1:
-                    raise subprocess.CalledProcessError(1, "git")
-            return subprocess.CompletedProcess(args[0], 0, "", "")
-
-        mock_run_git.side_effect = side_effect
-
-        result = clone_or_update_repo(
-            "https://github.com/user/repo.git", ref, self.temp_plugins_dir
-        )
-
-        self.assertTrue(result)
-
-        # Verify rev-parse check, failed specific fetch, successful fallback, and checkout
-        fetch_calls = [
-            call for call in mock_run_git.call_args_list if "fetch" in call[0][0]
-        ]
-
-        self.assertEqual(len(fetch_calls), 2)
-        self.assertEqual(
-            fetch_calls[0][0][0],
-            [
-                "git",
-                "-C",
-                self.temp_repo_path,
-                "fetch",
-                "--depth=1",
-                "origin",
-                "cdef5678",
-            ],
-        )
-        self.assertEqual(
-            fetch_calls[1][0][0],
-            ["git", "-C", self.temp_repo_path, "fetch", "origin"],
         )
 
     @patch("mmrelay.plugin_loader._run_git")

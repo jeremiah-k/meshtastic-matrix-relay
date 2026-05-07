@@ -50,13 +50,11 @@ def test_startup_rollback_cancels_check_connection_task(
 ):
     """Exception during startup should cancel check_connection_task."""
     mock_check_task = MagicMock()
-    mock_check_task.cancel = MagicMock()
     mock_check_task.done = MagicMock(return_value=False)
     mock_check_task.add_done_callback = MagicMock(
         side_effect=RuntimeError("Callback error")
     )
     mock_supervisor_task = MagicMock()
-    mock_supervisor_task.cancel = MagicMock()
     mock_supervisor_task.done = MagicMock(return_value=False)
     mock_supervisor_task.add_done_callback = MagicMock()
 
@@ -64,10 +62,7 @@ def test_startup_rollback_cancels_check_connection_task(
     mock_matrix_client.add_event_callback = MagicMock()
     mock_matrix_client.close = AsyncMock()
 
-    async def mock_connect_matrix_fn(*args, **kwargs):
-        return mock_matrix_client
-
-    mock_connect_matrix.side_effect = mock_connect_matrix_fn
+    mock_connect_matrix.return_value = mock_matrix_client
     mock_connect_meshtastic.return_value = MagicMock()
 
     config = {"matrix_rooms": [{"id": "!room:matrix.org"}]}
@@ -92,6 +87,9 @@ def test_startup_rollback_cancels_check_connection_task(
         raise AssertionError(f"Unexpected non-coroutine scheduled: {coro!r}")
 
     async def mock_gather(*args, **kwargs):
+        for arg in args:
+            if inspect.iscoroutine(arg):
+                arg.close()
         return [None] * len(args)
 
     with (
@@ -306,10 +304,7 @@ def test_startup_rollback_closes_matrix_client(
     mock_matrix_client.add_event_callback = MagicMock()
     mock_matrix_client.close = AsyncMock()
 
-    async def mock_connect_matrix_fn(*args, **kwargs):
-        return mock_matrix_client
-
-    mock_connect_matrix.side_effect = mock_connect_matrix_fn
+    mock_connect_matrix.return_value = mock_matrix_client
     mock_connect_meshtastic.return_value = MagicMock()
 
     config = {"matrix_rooms": [{"id": "!room:matrix.org"}]}
@@ -339,6 +334,9 @@ def test_startup_rollback_closes_matrix_client(
         return task
 
     async def mock_gather(*args, **kwargs):
+        for arg in args:
+            if inspect.iscoroutine(arg):
+                arg.close()
         return [None] * len(args)
 
     with (

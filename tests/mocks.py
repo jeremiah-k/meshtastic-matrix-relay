@@ -107,7 +107,7 @@ sys.modules["requests"].exceptions = MockRequestsExceptions()  # type: ignore[at
 # Add top-level aliases for code that uses requests.RequestException directly
 sys.modules["requests"].RequestException = RequestException  # type: ignore[attr-defined]
 sys.modules["requests"].HTTPError = HTTPError  # type: ignore[attr-defined]
-sys.modules["requests"].ConnectionError = ConnectionError  # type: ignore[attr-defined]
+sys.modules["requests"].ConnectionError = RequestsConnectionError  # type: ignore[attr-defined]
 sys.modules["requests"].Timeout = Timeout  # type: ignore[attr-defined]
 sys.modules["markdown"] = MagicMock()
 sys.modules["haversine"] = MagicMock()
@@ -169,7 +169,7 @@ class MockSyncError(Exception):
         status_code: str | None = None,
         retry_after_ms: int | None = None,
         soft_logout: bool = False,
-    ):
+    ) -> None:
         """
         Create a mock SyncError carrying the attributes used by matrix-nio for tests.
 

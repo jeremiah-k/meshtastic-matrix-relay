@@ -803,6 +803,5 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
             list(DEFAULT_BRANCHES),
         )
 
-        # Should return False when all operations fail
         self.assertFalse(result)
         mock_logger.warning.assert_called()

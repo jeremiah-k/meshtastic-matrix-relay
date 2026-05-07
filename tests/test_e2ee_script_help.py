@@ -11,24 +11,36 @@ import subprocess  # nosec B404 — test calls script under test with hardcoded 
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT_PATH = REPO_ROOT / "scripts" / "test_e2ee_integration.py"
 
+if not SCRIPT_PATH.exists():
+    pytest.skip(
+        f"Integration script not found: {SCRIPT_PATH}",
+        allow_module_level=True,
+    )
 
-def test_e2ee_integration_script_help_exits_zero():
-    """``--help`` should exit 0 and print usage information."""
-    result = subprocess.run(
+
+@pytest.fixture(scope="module")
+def help_result():
+    return subprocess.run(
         [sys.executable, str(SCRIPT_PATH), "--help"],
         capture_output=True,
         text=True,
         timeout=15,
-    )  # nosec B603 — hardcoded args, no user input
+    )  # nosec B603
+
+
+def test_e2ee_integration_script_help_exits_zero(help_result):
+    """``--help`` should exit 0 and print usage information."""
+    result = help_result
 
     assert result.returncode == 0, (
         f"Script exited {result.returncode}.\n"
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
-    # Help header printed by the manual --help handler.
     assert (
         "E2EE Integration Test" in result.stdout
     ), f"Missing expected help header in stdout.\nstdout: {result.stdout}"
@@ -37,21 +49,14 @@ def test_e2ee_integration_script_help_exits_zero():
     ), f"Missing 'Usage' section in stdout.\nstdout: {result.stdout}"
 
 
-def test_e2ee_integration_script_help_no_credentials_required():
+def test_e2ee_integration_script_help_no_credentials_required(help_result):
     """The ``--help`` path must not attempt a Matrix connection."""
-    result = subprocess.run(
-        [sys.executable, str(SCRIPT_PATH), "--help"],
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )  # nosec B603 — hardcoded args, no user input
+    result = help_result
 
-    # The help handler returns before any connection attempt.
-    # If it tried to connect we'd see connection-related errors in stderr.
     assert result.returncode == 0, (
         f"Script exited {result.returncode}.\n"
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
     assert (
-        "connect" not in result.stderr.lower()
-    ), f"Help path unexpectedly attempted a connection.\nstderr: {result.stderr}"
+        result.stderr == ""
+    ), f"Help path produced unexpected stderr output.\nstderr: {result.stderr}"

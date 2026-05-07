@@ -1260,6 +1260,7 @@ def test_on_meshtastic_message_non_text_plugin_timeout_prevents_relay():
             [{"meshtastic_channel": 0, "id": "!room:matrix"}],
         ),
         patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+        patch("mmrelay.matrix_utils.matrix_relay", Mock()) as mock_matrix_relay,
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,
     ):
         on_meshtastic_message(packet, interface)
@@ -1273,6 +1274,7 @@ def test_on_meshtastic_message_non_text_plugin_timeout_prevents_relay():
         mock_logger.debug.assert_any_call(
             "Processed %s with plugin %s", "TELEMETRY_APP", "telemetry_plugin"
         )
+        mock_matrix_relay.assert_not_called()
 
 
 def test_on_meshtastic_message_non_text_plugin_no_match_continues():
@@ -1411,6 +1413,12 @@ def test_on_meshtastic_message_large_node_list():
             }
         }
     mock_interface.nodes = large_nodes
+    mock_interface.myInfo.my_node_num = 99999
+
+    config = {
+        "meshtastic": {"meshnet_name": "test", "connection_type": "serial"},
+        "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
+    }
 
     def _done_future(coro, **_kwargs):
         if asyncio.iscoroutine(coro):
@@ -1423,6 +1431,15 @@ def test_on_meshtastic_message_large_node_list():
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
         patch("mmrelay.meshtastic_utils.logger"),
         patch("mmrelay.meshtastic_utils._submit_coro", side_effect=_done_future),
+        patch("mmrelay.meshtastic_utils.config", config),
+        patch("mmrelay.meshtastic_utils.matrix_rooms", config["matrix_rooms"]),
+        patch("mmrelay.meshtastic_utils.get_longname", return_value="Node 0"),
+        patch("mmrelay.meshtastic_utils.get_shortname", return_value="N0"),
+        patch(
+            "mmrelay.matrix_utils.get_interaction_settings",
+            return_value={"reactions": False, "replies": False},
+        ),
+        patch("mmrelay.matrix_utils.get_matrix_prefix", return_value=""),
         patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
         patch("mmrelay.matrix_utils.matrix_client", None),
         patch("mmrelay.matrix_utils.matrix_relay", Mock(return_value=None)),

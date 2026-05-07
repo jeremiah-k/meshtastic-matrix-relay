@@ -361,9 +361,10 @@ class TestSerialPortDetection(unittest.TestCase):
 
         self.assertFalse(result)
         mock_logger.warning.assert_called_once()
-        warning_args = mock_logger.warning.call_args
-        self.assertIn("/dev/ttyUSB0", str(warning_args))
-        self.assertIn("PermissionError", str(warning_args))
+        call_args, call_kwargs = mock_logger.warning.call_args
+        formatted = call_args[0] % call_args[1:] if len(call_args) > 1 else call_args[0]
+        self.assertIn("/dev/ttyUSB0", formatted)
+        self.assertIn("PermissionError", formatted)
 
 
 class TestCoercionFunctions:
@@ -548,7 +549,11 @@ class TestRefreshNodeNameTablesInvalidInterval:
                         "Invalid NodeDB name-cache refresh interval override" in call
                         for call in warning_calls
                     )
-                    assert any(str(expected_fallback) in call for call in warning_calls)
+                    all_warning_text = " ".join(warning_calls)
+                    assert (
+                        str(expected_fallback) in all_warning_text
+                        or str(int(expected_fallback)) in all_warning_text
+                    )
 
 
 # ---------------------------------------------------------------------------
@@ -559,11 +564,10 @@ class TestRefreshNodeNameTablesInvalidInterval:
 class TestIsRunningAsServiceEdgeCases(unittest.TestCase):
     """Edge case tests for is_running_as_service."""
 
+    @patch.dict(os.environ, {}, clear=True)
     def test_is_running_as_service_detection_failure(self):
         """is_running_as_service returns bool when process detection fails."""
-        with patch("os.getppid", side_effect=OSError("Cannot get parent PID")):
-            with patch(
-                "psutil.Process", side_effect=Exception("Process info unavailable")
-            ):
-                result = is_running_as_service()
-                self.assertIsInstance(result, bool)
+        with patch("builtins.open", side_effect=PermissionError("Permission denied")):
+            result = is_running_as_service()
+            self.assertIsInstance(result, bool)
+            self.assertFalse(result)

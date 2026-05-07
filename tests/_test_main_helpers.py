@@ -385,8 +385,8 @@ class _ControlledExecutor:
             target = func.func
         target_name = getattr(target, "__name__", "")
         target_qualname = getattr(target, "__qualname__", "")
-        is_close = "_close_meshtastic" in target_name or "_close_meshtastic" in (
-            target_qualname
+        is_close = (
+            "_close_meshtastic" in target_name or "_close_meshtastic" in target_qualname
         )
         if is_close and (self.submit_timeout or self.close_future_factory is not None):
             if self.close_future is None:
@@ -417,7 +417,7 @@ class _ControlledExecutor:
                 to simulate older Python behavior, passing `True` raises a `TypeError`.
         """
         self.calls.append((wait, cancel_futures))
-        if self.shutdown_typeerror and cancel_futures is True:
+        if self.shutdown_typeerror and cancel_futures:
             # Simulate older Python versions that do not accept cancel_futures.
             raise TypeError()
 

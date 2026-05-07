@@ -1950,13 +1950,12 @@ class TestRealAsyncScheduling:
         with pytest.raises(ValueError, match="thread-bound error"):
             await asyncio.to_thread(raise_value_error)
 
-    async def test_asyncio_to_thread_executor_shutdown_graceful(self):
-        """Verify the loop's default executor can be shut down cleanly after use.
+    async def test_asyncio_to_thread_executor_remains_functional(self):
+        """Verify the loop's default executor stays functional across calls.
 
-        Exercises the real executor lifecycle: schedule work via
-        ``loop.run_in_executor``, then call ``loop.shutdown_default_executor``
-        (or the modern ``asyncio.Runner`` cleanup path) to confirm no resource
-        leaks or hangs.
+        Exercises the real executor lifecycle: schedules work via
+        ``asyncio.to_thread`` multiple times to confirm the executor
+        doesn't degrade after use.
         """
         # Schedule a small amount of work on the default executor
         result = await asyncio.to_thread(lambda: "executor-ok")

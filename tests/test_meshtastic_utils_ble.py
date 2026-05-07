@@ -802,6 +802,7 @@ class TestBleConnectShuttingDown:
         mock_future = Mock(spec=Future)
         mock_future.done.return_value = False
         monkeypatch.setattr(mu, "_ble_future", mock_future, raising=False)
+        monkeypatch.setattr(mu, "_ble_future_address", TEST_BLE_MAC, raising=False)
         monkeypatch.setattr(
             mu, "_ble_future_started_at", time.monotonic(), raising=False
         )

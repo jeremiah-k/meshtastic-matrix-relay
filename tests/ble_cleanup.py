@@ -10,9 +10,10 @@ __all__ = ["cleanup_ble_future_state"]
 import asyncio
 import concurrent.futures
 import contextlib
-import logging
 
-logger = logging.getLogger(__name__)
+from mmrelay import log_utils
+
+logger = log_utils.get_logger(__name__)
 
 _DRAIN_EXCEPTIONS = (
     TimeoutError,

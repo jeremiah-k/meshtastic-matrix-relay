@@ -599,7 +599,7 @@ class TestProbeAckHandling:
         client.localNode.nodeNum = 12345
         client.sendData = Mock(return_value=Mock(id=999))
         client._acknowledgment = None
-        del client.waitForAckNak
+        delattr(client, "waitForAckNak")
 
         with pytest.raises(RuntimeError, match="cannot wait for metadata probe ACK"):
             mu._probe_device_connection(client, 1.0)
@@ -899,15 +899,17 @@ class TestBleExecutorDegradedState:
         }
         mu._ble_executor_degraded_addresses = set()
 
-        with patch("mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 3):
-            with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
-                mu._maybe_reset_ble_executor(ble_address, timeout_count=5)
+        with (
+            patch("mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 3),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            mu._maybe_reset_ble_executor(ble_address, timeout_count=5)
 
-                assert ble_address in mu._ble_executor_degraded_addresses
-                assert mock_logger.error.called
-                error_msg = str(mock_logger.error.call_args)
-                assert "DEGRADED" in error_msg
-                assert ble_address in error_msg
+            assert ble_address in mu._ble_executor_degraded_addresses
+            assert mock_logger.error.called
+            error_msg = str(mock_logger.error.call_args)
+            assert "DEGRADED" in error_msg
+            assert ble_address in error_msg
 
     def test_ble_executor_refuses_reset_when_degraded(self):
         """Test that degraded BLE executor refuses to reset for that address."""

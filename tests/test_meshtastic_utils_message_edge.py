@@ -1663,6 +1663,34 @@ class TestOnMeshtasticMessageOldPacketFiltering:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Helpers for tests absorbed from edge_cases
+# ---------------------------------------------------------------------------
+
+
+async def _plugin_return_false(*args: Any, **kwargs: Any) -> bool:
+    """Async helper that returns False — used as Mock side_effect for plugin handlers."""
+    return False
+
+
+def _make_plugin(name: str) -> MagicMock:
+    """Create a MagicMock plugin with the given name and async handle_meshtastic_message."""
+    plugin = MagicMock()
+    plugin.plugin_name = name
+    plugin.handle_meshtastic_message = Mock(side_effect=_plugin_return_false)
+    return plugin
+
+
+def _make_submit_side_effect(future: Any) -> Callable[[Any], Any]:
+
+    def _submit(coro: Any, **_kwargs: Any) -> Any:
+        if asyncio.iscoroutine(coro):
+            coro.close()
+        return future
+
+    return _submit
+
+
 class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
     """Edge case tests for on_meshtastic_message."""
 
@@ -1695,18 +1723,14 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
         class _PluginFailure(RuntimeError):
             """Test-specific plugin failure."""
 
-        def _submit_coro_mock(coro: Any, loop: Any = None) -> Future[Any]:
-            f = Future()
-            try:
-                result = asyncio.run(coro)
-                f.set_result(result)
-            except _PluginFailure as e:
-                f.set_exception(e)
-            return f
+        future = _DummyFuture(_PluginFailure("Plugin failed"))
 
         with (
             patch("mmrelay.plugin_loader.load_plugins") as mock_load_plugins,
-            patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+            patch(
+                "mmrelay.meshtastic_utils._submit_coro",
+                side_effect=_make_submit_side_effect(future),
+            ),
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
             patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
         ):
@@ -1716,7 +1740,6 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
                 side_effect=_PluginFailure("Plugin failed")
             )
             mock_load_plugins.return_value = [mock_plugin]
-            mock_submit_coro.side_effect = _submit_coro_mock
 
             import mmrelay.meshtastic_utils
 
@@ -1728,7 +1751,7 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
                 },
             }
             mmrelay.meshtastic_utils.matrix_rooms = [
-                {"meshtastic_channel": 0, "matrix_room_id": "!test:example.com"}
+                {"meshtastic_channel": 0, "id": "!test:example.com"}
             ]
             mock_interface.myInfo.my_node_num = 999999
 
@@ -1950,31 +1973,3 @@ class TestOnMeshtasticMessageEdgeCases(unittest.TestCase):
             )
             mock_matrix_relay.assert_not_called()
             mock_logger.debug.assert_any_call("Processed by plugin %s", "test_plugin")
-
-
-# ---------------------------------------------------------------------------
-# Helpers for tests absorbed from edge_cases
-# ---------------------------------------------------------------------------
-
-
-async def _plugin_return_false(*args: Any, **kwargs: Any) -> bool:
-    """Async helper that returns False — used as Mock side_effect for plugin handlers."""
-    return False
-
-
-def _make_plugin(name: str) -> MagicMock:
-    """Create a MagicMock plugin with the given name and async handle_meshtastic_message."""
-    plugin = MagicMock()
-    plugin.plugin_name = name
-    plugin.handle_meshtastic_message = Mock(side_effect=_plugin_return_false)
-    return plugin
-
-
-def _make_submit_side_effect(future: Any) -> Callable[[Any], Any]:
-
-    def _submit(coro: Any, **_kwargs: Any) -> Any:
-        if asyncio.iscoroutine(coro):
-            coro.close()
-        return future
-
-    return _submit

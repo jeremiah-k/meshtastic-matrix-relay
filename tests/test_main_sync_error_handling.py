@@ -45,7 +45,7 @@ def test_sync_timeout_logs_warning_and_retries():
         created_events: list[asyncio.Event] = []
         real_event_cls = asyncio.Event
 
-        def _capture_shutdown_event(*_args, **_kwargs) -> asyncio.Event:
+        def _capture_event(*_args, **_kwargs) -> asyncio.Event:
             event = real_event_cls()
             created_events.append(event)
             return event
@@ -96,7 +96,7 @@ def test_sync_timeout_logs_warning_and_retries():
             patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.matrix_logger") as mock_logger,
             patch("mmrelay.main.asyncio.sleep"),
-            patch("mmrelay.main.asyncio.Event", side_effect=_capture_shutdown_event),
+            patch("mmrelay.main.asyncio.Event", side_effect=_capture_event),
         ):
             mock_queue = MagicMock()
             mock_queue.ensure_processor_started = MagicMock()
@@ -111,7 +111,7 @@ def test_sync_timeout_logs_warning_and_retries():
     assert call_count == 2  # first attempt + one retry
 
     assert any(
-        "Matrix sync timed out" in str(call)
+        "Matrix sync timed out" in call.args[0]
         for call in mock_logger.warning.call_args_list
     )
 
@@ -199,7 +199,7 @@ def test_sync_client_error_logs_warning_and_retries():
     assert call_count == 2  # first attempt + one retry
 
     assert any(
-        "Matrix sync failed, retrying" in str(call)
+        "Matrix sync failed, retrying" in call.args[0]
         for call in mock_logger.warning.call_args_list
     )
 
@@ -287,6 +287,6 @@ def test_sync_connection_error_logs_exception():
     assert call_count == 2  # first attempt + one retry
 
     assert any(
-        "Matrix sync failed" in str(call)
+        "Matrix sync failed" in call.args[0]
         for call in mock_logger.exception.call_args_list
     )

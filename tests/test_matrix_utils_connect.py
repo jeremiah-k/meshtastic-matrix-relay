@@ -294,7 +294,9 @@ async def test_connect_matrix_ssl_context_failure_logs_warning():
     mock_client = MagicMock()
     mock_client.sync = AsyncMock(return_value=MagicMock())
     mock_client.rooms = {}
-    mock_client.get_displayname = AsyncMock(return_value=None)
+    mock_client.get_displayname = AsyncMock(
+        return_value=MagicMock(displayname="Test Bot")
+    )
     mock_client.close = AsyncMock()
     mock_client.whoami = AsyncMock(return_value=MagicMock(user_id="@test:matrix.org"))
     mock_client.room_resolve_alias = AsyncMock(

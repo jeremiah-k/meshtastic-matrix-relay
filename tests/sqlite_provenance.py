@@ -8,6 +8,7 @@ records creation metadata so leaked connections are reported on test failure.
 import sqlite3
 import threading
 import traceback
+import weakref
 from typing import Any
 
 
@@ -52,18 +53,21 @@ class _ConnectionProvenance:
 
         Replaces the module-level sqlite3.connect with a tracked wrapper (no-op if already installed). Each call to the tracked connect stores a metadata dictionary in self._registry keyed by id(connection) containing: "conn_id", "db_path", "test_nodeid", "thread_name", "thread_id", and "creation_stack".
         """
-        if self._patched:
-            return
+        with self._registry_lock:
+            if self._patched:
+                return
+            self._patched = True
         real_connect = self._real_connect
         registry = self._registry
         tracker = self
 
+        _class_cache: dict[type[sqlite3.Connection], type[sqlite3.Connection]] = {}
+
         def _make_tracked_class(
             base: type[sqlite3.Connection],
         ) -> type[sqlite3.Connection]:
-            """
-            Create a tracked connection subclass that deregisters from the provenance registry on close.
-            """
+            if base in _class_cache:
+                return _class_cache[base]
 
             class _TrackedConnection(base):
                 def close(self) -> None:
@@ -71,6 +75,7 @@ class _ConnectionProvenance:
                     with tracker._registry_lock:
                         registry.pop(id(self), None)
 
+            _class_cache[base] = _TrackedConnection
             return _TrackedConnection
 
         def _tracked_connect(*args: Any, **kwargs: Any) -> sqlite3.Connection:
@@ -108,6 +113,9 @@ class _ConnectionProvenance:
                     "thread_id": threading.current_thread().ident,
                     "creation_stack": "".join(traceback.format_stack()),
                 }
+            # Guard against id() reuse: if the connection is GC'd without close(),
+            # the finalizer removes the stale registry entry before its address is reused.
+            weakref.finalize(conn, registry.pop, conn_id, None)
             return conn
 
         sqlite3.connect = _tracked_connect
@@ -131,7 +139,7 @@ class _ConnectionProvenance:
             list[dict[str, Any]]: A list of metadata dictionaries for each connection currently recorded in the provenance registry. Each dictionary contains the provenance information captured when the connection was created.
         """
         with self._registry_lock:
-            return list(self._registry.values())
+            return [dict(v) for v in self._registry.values()]
 
     def clear(self) -> None:
         """
@@ -149,11 +157,11 @@ class _ConnectionProvenance:
 
         If the provenance patch is not currently installed, this is a no-op. After calling this, the object is marked as unpatched and any stored connection metadata is removed.
         """
-        if not self._patched:
-            return
-        sqlite3.connect = self._real_connect
-        self._patched = False
         with self._registry_lock:
+            if not self._patched:
+                return
+            sqlite3.connect = self._real_connect
+            self._patched = False
             self._registry.clear()
 
 

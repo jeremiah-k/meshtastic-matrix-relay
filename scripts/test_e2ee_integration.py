@@ -19,19 +19,8 @@ from typing import Any
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-try:
-    from mmrelay.config import load_config
-    from mmrelay.matrix_utils import connect_matrix
-
-    IMPORTS_AVAILABLE = True
-except ImportError as e:
-    print(f"❌ Import error: {e}")
-    print("Make sure you're running from the project root directory")
-    IMPORTS_AVAILABLE = False
-
-
-class MatrixConnectionError(Exception):
-    """Raised when Matrix connection fails."""
+from mmrelay.config import load_config
+from mmrelay.matrix_utils import connect_matrix
 
 
 class E2EEIntegrationTester:
@@ -47,9 +36,7 @@ class E2EEIntegrationTester:
         print("🔧 Setting up test environment...")
 
         try:
-            self.config = (
-                load_config()
-            )  # pyright: ignore[reportPossiblyUnboundVariable]
+            self.config = load_config()
             if not self.config:
                 print("❌ Setup failed: Could not load config")
                 return False
@@ -66,9 +53,7 @@ class E2EEIntegrationTester:
         print("\n🔍 Testing Matrix connection...")
 
         try:
-            self.client = await connect_matrix(
-                self.config
-            )  # pyright: ignore[reportPossiblyUnboundVariable]
+            self.client = await connect_matrix(self.config)
         except Exception as e:
             print(f"❌ Connection failed: {e}")
             self.test_results["connection"] = {"success": False, "error": str(e)}
@@ -354,23 +339,25 @@ class E2EEIntegrationTester:
         print("4. Test with matrix-nio-send to compare behavior")
 
 
+def _print_help() -> None:
+    print("E2EE Integration Test")
+    print("====================")
+    print("Tests actual E2EE behavior with real Matrix client")
+    print()
+    print("Usage:")
+    print("  python scripts/test_e2ee_integration.py        # Run integration tests")
+    print("  python scripts/test_e2ee_integration.py --help # Show this help")
+    print()
+    print("Requirements:")
+    print("- Valid MMRelay configuration")
+    print("- Matrix credentials (credentials.json)")
+    print("- Network access to Matrix homeserver")
+
+
 async def main():
     """Main test runner"""
     if len(sys.argv) > 1 and sys.argv[1] == "--help":
-        print("E2EE Integration Test")
-        print("====================")
-        print("Tests actual E2EE behavior with real Matrix client")
-        print()
-        print("Usage:")
-        print(
-            "  python scripts/test_e2ee_integration.py        # Run integration tests"
-        )
-        print("  python scripts/test_e2ee_integration.py --help # Show this help")
-        print()
-        print("Requirements:")
-        print("- Valid MMRelay configuration")
-        print("- Matrix credentials (credentials.json)")
-        print("- Network access to Matrix homeserver")
+        _print_help()
         return
 
     tester = E2EEIntegrationTester()
@@ -381,8 +368,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    if IMPORTS_AVAILABLE:
-        asyncio.run(main())
-    else:
-        print("❌ Required imports not available, skipping integration test")
-        sys.exit(1)
+    if len(sys.argv) > 1 and sys.argv[1] == "--help":
+        _print_help()
+        sys.exit(0)
+
+    asyncio.run(main())

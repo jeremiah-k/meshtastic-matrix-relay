@@ -345,7 +345,7 @@ def test_main_sync_failure_before_drain_does_not_publish_ready(
     mock_write_ready.assert_not_called()
     assert readiness_calls == []
     assert any(
-        "Matrix sync failed" in str(call)
+        "Matrix sync failed" in call.args[0]
         for call in mock_matrix_logger.exception.call_args_list
     )
 
@@ -457,7 +457,11 @@ def test_nodedb_refresh_interval_invalid_defaults(raw_value):
 @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
 @patch("mmrelay.main.connect_meshtastic")
 @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+@patch("mmrelay.main.meshtastic_utils.refresh_node_name_tables", new_callable=AsyncMock)
+@patch("mmrelay.main.stop_message_queue")
 def test_main_database_wipe_config(
+    mock_stop_queue,
+    _mock_refresh_node_names,
     mock_join,
     mock_connect_mesh,
     mock_connect_matrix,
@@ -537,7 +541,11 @@ def test_main_database_wipe_config(
 @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
 @patch("mmrelay.main.connect_meshtastic")
 @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+@patch("mmrelay.main.meshtastic_utils.refresh_node_name_tables", new_callable=AsyncMock)
+@patch("mmrelay.main.stop_message_queue")
 def test_main_database_wipe_preferred_false_wins_over_legacy_true(
+    mock_stop_queue,
+    _mock_refresh_node_names,
     mock_join,
     mock_connect_mesh,
     mock_connect_matrix,
@@ -612,8 +620,7 @@ def test_coerce_config_bool_unexpected_type_list(mock_logger):
     result = _coerce_config_bool([1, 2, 3])
     assert not result
     mock_logger.debug.assert_called_once()
-    call_args = mock_logger.debug.call_args
-    assert "Unexpected config value type" in call_args[0][0]
+    assert "Unexpected config value type" in mock_logger.debug.call_args.args[0]
 
 
 @patch("mmrelay.main.logger")

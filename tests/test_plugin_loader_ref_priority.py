@@ -797,9 +797,13 @@ class TestRefPriority(BaseGitTest):
 
         mock_install_reqs.assert_not_called()
         self.assertEqual(pl._load_plugin_state(repo_path), {})
-        self.assertFalse(
-            os.path.exists(pl._requirements_install_marker_path(repo_path, "repo"))
-        )
+
+        deps_dir = os.path.join(self.test_dir, "plugins", "deps")
+        os.makedirs(deps_dir, exist_ok=True)
+        with patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir):
+            self.assertFalse(
+                os.path.exists(pl._requirements_install_marker_path(repo_path, "repo"))
+            )
         mock_load_from_dir.assert_called()
         mock_logger.debug.assert_any_call(
             "Skipping requirements install for community plugin %s; no %s found",
@@ -877,8 +881,10 @@ class TestRefPriority(BaseGitTest):
     @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
-    def test_load_plugins_matching_commit_empty_deps_reinstalls_requirements(
+    @patch("mmrelay.plugin_loader.logger")
+    def test_load_plugins_matching_commit_missing_marker_reinstalls_requirements(
         self,
+        mock_logger,
         mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
@@ -886,7 +892,7 @@ class TestRefPriority(BaseGitTest):
         mock_install_reqs,
         mock_clone_repo,
     ):
-        """Matching state should not skip install when the target is invalid."""
+        """Matching state should still reinstall when the install marker file is absent."""
         repo_path = self._write_community_requirements()
         deps_dir = os.path.join(self.test_dir, "plugins", "deps")
         os.makedirs(deps_dir, exist_ok=True)
@@ -920,7 +926,6 @@ class TestRefPriority(BaseGitTest):
 
         with (
             patch.object(pl, "_PLUGIN_DEPS_DIR", deps_dir),
-            patch("mmrelay.plugin_loader.logger") as mock_logger,
             patch("mmrelay.plugin_loader._check_commit_pin_for_upstream_updates"),
             patch(
                 "mmrelay.plugin_loader._resolve_local_head_commit",

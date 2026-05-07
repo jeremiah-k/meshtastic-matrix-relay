@@ -330,8 +330,8 @@ def test_pragma_validation_boolean_values(value, db_path):
         None,
     ],
 )
-def test_pragma_validation_invalid_numeric_types(value, db_path):
-    """Test that invalid numeric pragma value types are rejected."""
+def test_pragma_validation_invalid_value_types(value, db_path):
+    """Test that non-primitive pragma value types are rejected."""
     with pytest.raises(TypeError, match="Invalid pragma value type"):
         DatabaseManager(db_path, extra_pragmas={"test_pragma": value})
 
@@ -724,13 +724,8 @@ def test_run_async_queued_work_completes_during_close(db_manager):
     result1, result2 = asyncio.run(run_test())
     assert (result1, result2) == ("first", "second")
 
-    with (
-        contextlib.closing(sqlite3.connect(db_path)) as conn,
-        conn as managed_conn,
-    ):
-        count = managed_conn.execute(
-            "SELECT COUNT(*) FROM test_async_close"
-        ).fetchone()[0]
+    with (contextlib.closing(sqlite3.connect(db_path)) as conn,):
+        count = conn.execute("SELECT COUNT(*) FROM test_async_close").fetchone()[0]
     assert count == 2
 
 
