@@ -444,7 +444,8 @@ class TestPerformanceStress:
                     patch("mmrelay.meshtastic_utils._wait_for_result") as mock_wait,
                     patch("mmrelay.meshtastic_utils.shutting_down", False),
                     patch(
-                        "mmrelay.meshtastic_utils.event_loop", meshtastic_loop_safety
+                        "mmrelay.meshtastic_utils.event_loop",
+                        asyncio.get_running_loop(),
                     ),
                 ):
                     fast_submit, fast_wait = fast_async_helpers

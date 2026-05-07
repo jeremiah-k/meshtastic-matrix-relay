@@ -499,9 +499,9 @@ def test_on_meshtastic_message_range_test_app_plugin_only():
     mock_relay.assert_not_called()
     plugin.handle_meshtastic_message.assert_called_once_with(
         packet,
-        formatted_message="[p] Hello",
-        longname="Long",
-        meshnet_name="TestNet",
+        "[p] Hello",
+        "Long",
+        "TestNet",
     )
 
 
