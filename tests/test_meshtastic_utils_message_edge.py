@@ -1464,9 +1464,9 @@ class TestMessageHandlerEdgeCases:
             await mu.check_connection()
 
             mock_logger.warning.assert_not_called()
-            mock_logger.info.assert_called()
-            call_args = mock_logger.info.call_args[0]
-            assert "disabled" in call_args[0]
+            mock_logger.info.assert_called_once()
+            assert mock_logger.info.call_args is not None
+            assert "disabled" in mock_logger.info.call_args[0][0]
 
     @pytest.mark.asyncio
     async def test_check_connection_probe_submission_fails(self):

@@ -20,7 +20,7 @@ from tests._test_main_helpers import (
 )
 
 
-def _rendered_warnings(mock_logger) -> list[str]:
+def _rendered_warnings(mock_logger: MagicMock) -> list[str]:
     """Format warning call args into rendered strings."""
     rendered = []
     for args in mock_logger.warning.call_args_list:
@@ -439,8 +439,8 @@ def test_run_main_with_credentials_json(
 @patch("mmrelay.log_utils.configure_component_debug_logging")
 @patch("mmrelay.config.set_config")
 def test_run_main_legacy_layout_warning(
-    mock_configure_logging,
     mock_set_config,
+    mock_configure_logging,
     mock_get_log_dir,
     mock_get_home_dir,
     mock_get_legacy_dirs,

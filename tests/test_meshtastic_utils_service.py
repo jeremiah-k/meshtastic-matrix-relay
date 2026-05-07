@@ -542,17 +542,17 @@ class TestRefreshNodeNameTablesInvalidInterval:
                         with contextlib.suppress(asyncio.CancelledError):
                             await shutdown_task
 
-                    warning_calls = [
-                        str(call) for call in mock_logger.warning.call_args_list
+                    matched = [
+                        c
+                        for c in mock_logger.warning.call_args_list
+                        if "Invalid NodeDB name-cache refresh interval override"
+                        in str(c.args[0])
                     ]
-                    assert any(
-                        "Invalid NodeDB name-cache refresh interval override" in call
-                        for call in warning_calls
-                    )
-                    all_warning_text = " ".join(warning_calls)
+                    assert matched, "Expected warning not emitted"
+                    all_args_text = " ".join(str(a) for c in matched for a in c.args)
                     assert (
-                        str(expected_fallback) in all_warning_text
-                        or str(int(expected_fallback)) in all_warning_text
+                        str(expected_fallback) in all_args_text
+                        or str(int(expected_fallback)) in all_args_text
                     )
 
 

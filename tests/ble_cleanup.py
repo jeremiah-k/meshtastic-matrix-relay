@@ -76,8 +76,11 @@ def _drain_future_result_safely(future: object, timeout: float) -> None:
         return
 
     try:
-        result_fn(timeout=timeout)
+        result_fn(
+            timeout=timeout
+        )  # concurrent.futures.Future accepts timeout; asyncio.Future does not
     except TypeError:
+        # asyncio.Future.result() takes no arguments; fall back to the no-timeout call.
         try:
             result_fn()
         except _DRAIN_EXCEPTIONS:
@@ -96,6 +99,14 @@ def _drain_future_result_safely(future: object, timeout: float) -> None:
             exc,
         )
         return
+
+
+def _consume_task_result(done_task: asyncio.Task[object]) -> None:
+    with contextlib.suppress(
+        asyncio.CancelledError,
+        asyncio.InvalidStateError,
+    ):
+        done_task.exception()
 
 
 def cleanup_ble_future_state(module: object) -> None:
@@ -119,14 +130,6 @@ def cleanup_ble_future_state(module: object) -> None:
 
     if callable(cancel_fn) and not is_done:
         if isinstance(ble_future, asyncio.Task):
-
-            def _consume_task_result(done_task: asyncio.Task[object]) -> None:
-                with contextlib.suppress(
-                    asyncio.CancelledError,
-                    asyncio.InvalidStateError,
-                ):
-                    done_task.exception()
-
             try:
                 loop = ble_future.get_loop()
                 if not loop.is_closed():

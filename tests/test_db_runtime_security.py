@@ -563,32 +563,15 @@ def test_run_sync_write_operation(db_manager):
         assert result[0] == "sync_test"
 
 
-def test_run_async_operation(db_manager):
+@pytest.mark.asyncio
+async def test_run_async_operation(db_manager):
     """Test run_async for async operations with proper mocking."""
     manager, _ = db_manager
 
-    async def test_async():
-        def async_func(_):
-            """
-            A simple test operation that yields a fixed result used in async tests.
+    def async_func(_):
+        return "async_result"
 
-            Parameters:
-                _: A DB-API cursor object (unused).
-
-            Returns:
-                str: The literal string "async_result".
-            """
-            return "async_result"
-
-        result = await manager.run_async(async_func, write=False)
-        return result
-
-    # Run in an isolated loop to avoid interference from global loop fixtures.
-    loop = asyncio.new_event_loop()
-    try:
-        result = loop.run_until_complete(test_async())
-    finally:
-        loop.close()
+    result = await manager.run_async(async_func, write=False)
     assert result == "async_result"
 
 

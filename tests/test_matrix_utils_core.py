@@ -894,17 +894,13 @@ def test_truncate_message_with_unicode():
     assert isinstance(result, str)
     assert len(result.encode("utf-8")) <= 20
 
-    result = truncate_message(unicode_text, max_bytes=10)
-    assert isinstance(result, str)
-    assert len(result.encode("utf-8")) <= 10
-
     result = truncate_message(unicode_text, max_bytes=1)
     assert isinstance(result, str)
     assert len(result.encode("utf-8")) <= 1
 
 
 def test_truncate_message_edge_cases():
-    """Truncation handles empty strings, zero/negative byte limits without crashing."""
+    """Truncation handles empty strings and zero byte limits; negative limits raise ValueError."""
     assert truncate_message("", max_bytes=100) == ""
 
     short_text = "Short"

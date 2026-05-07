@@ -67,6 +67,10 @@ def test_sync_failure_logs_and_retries(
             call_count += 1
             if call_count == 1:
                 raise raised_exc
+            if not created_events:
+                raise RuntimeError(
+                    "No asyncio.Event was captured; main() may not create one before sync_forever"
+                )
             for event in created_events:
                 event.set()
 

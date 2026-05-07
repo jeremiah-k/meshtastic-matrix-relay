@@ -35,7 +35,7 @@ def help_result() -> subprocess.CompletedProcess[str]:
     )  # nosec B603
 
 
-def test_e2ee_integration_script_help_exits_zero(help_result):
+def test_e2ee_integration_script_help_exits_zero(help_result) -> None:
     """``--help`` should exit 0 and print usage information."""
     result = help_result
 
@@ -51,14 +51,10 @@ def test_e2ee_integration_script_help_exits_zero(help_result):
     ), f"Missing 'Usage' section in stdout.\nstdout: {result.stdout}"
 
 
-def test_e2ee_integration_script_help_no_credentials_required(help_result):
+def test_e2ee_integration_script_help_no_credentials_required(help_result) -> None:
     """The ``--help`` path must not attempt a Matrix connection."""
     result = help_result
 
-    assert result.returncode == 0, (
-        f"Script exited {result.returncode}.\n"
-        f"stdout: {result.stdout}\nstderr: {result.stderr}"
-    )
     forbidden = (
         "credentials.json",
         "access_token",

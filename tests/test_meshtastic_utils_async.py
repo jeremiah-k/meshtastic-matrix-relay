@@ -396,7 +396,6 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
     def test_submit_coro_with_no_event_loop_no_running_loop(self):
         """Test _submit_coro with no event loop and no running loop - uses a temporary loop."""
-        from concurrent.futures import Future
 
         async def test_coro():
             """
@@ -421,7 +420,6 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
     def test_submit_coro_with_no_event_loop_no_running_loop_exception(self):
         """Test _submit_coro exception handling when coroutine execution fails."""
-        from concurrent.futures import Future
 
         async def failing_coro():
             """
@@ -529,7 +527,6 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
     def test_submit_coro_accepts_non_coroutine_awaitable(self):
         """Test _submit_coro handles non-coroutine awaitables by awaiting them."""
-        from concurrent.futures import Future
 
         class DummyAwaitable:
             def __await__(self):

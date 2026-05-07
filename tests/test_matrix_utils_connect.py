@@ -292,6 +292,7 @@ async def test_connect_matrix_no_config_returns_none():
 async def test_connect_matrix_ssl_context_failure_logs_warning():
     """connect_matrix handles _create_ssl_context returning None by logging a warning and still returning a client."""
     mock_client = MagicMock()
+    mock_client.should_upload_keys = False
     mock_client.sync = AsyncMock(return_value=MagicMock())
     mock_client.rooms = {}
     mock_client.get_displayname = AsyncMock(
@@ -309,7 +310,7 @@ async def test_connect_matrix_ssl_context_failure_logs_warning():
             "access_token": "test_token",
             "bot_user_id": "@test:matrix.org",
         },
-        "matrix_rooms": [],
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
     }
 
     with (

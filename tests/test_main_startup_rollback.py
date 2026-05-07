@@ -73,6 +73,8 @@ def test_startup_rollback_cancels_check_connection_task(
         """Return a non-coroutine sentinel; create_task is patched below."""
         return check_conn_sentinel
 
+    # NOTE: mock_create_task and mock_gather are duplicated across tests;
+    # extracting to a fixture was deemed too risky for this pass.
     def mock_create_task(coro: object, *_args: object, **_kwargs: object) -> object:
         """Stub asyncio.create_task; returns mock tasks for recognized coroutines."""
         if coro is check_conn_sentinel:

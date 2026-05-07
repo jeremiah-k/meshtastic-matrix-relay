@@ -161,7 +161,6 @@ def test_returns_early_when_task_is_none():
         asyncio.run(main(config))
     # Test passes if main() completes without raising an exception,
     # indicating None tasks were handled gracefully during shutdown
-    assert True
 
 
 def test_timeout_during_shutdown_cancels_task():

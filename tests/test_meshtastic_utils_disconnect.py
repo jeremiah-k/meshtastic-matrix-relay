@@ -323,10 +323,7 @@ class TestConnectionLossHandling(unittest.TestCase):
             None, detection_source="unknown", topic=pub.AUTO_TOPIC
         )
 
-        self.assertTrue(
-            mock_logger.error.call_args_list,
-            "Expected at least one logger.error call",
-        )
+        mock_logger.error.assert_called()
         # Should use default detection source without error (first error call before reconnect scheduling)
         error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("meshtastic.connection.lost", error_call)
@@ -645,8 +642,6 @@ def test_on_lost_meshtastic_connection_reconnection_failure():
 
     def _schedule_and_run_reconnect():
         """Run the real reconnect() coroutine to exercise its failure branch."""
-        import asyncio
-
         original_backoff = mmrelay.meshtastic_utils.DEFAULT_BACKOFF_TIME
         mmrelay.meshtastic_utils.DEFAULT_BACKOFF_TIME = 0
         try:

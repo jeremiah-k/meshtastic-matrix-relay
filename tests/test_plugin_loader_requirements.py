@@ -34,7 +34,10 @@ class TestRequirementsInfrastructure(unittest.TestCase):
             patch.dict(os.environ, {}, clear=True),
             patch("sys.prefix", "/fake/prefix"),
             patch("sys.base_prefix", "/fake/prefix"),
-            patch("site.getusersitepackages", side_effect=AttributeError),
+            patch(
+                "mmrelay.plugin_loader.site.getusersitepackages",
+                side_effect=AttributeError,
+            ),
         ):
             self.assertEqual(pl._requirements_install_target_identity(), "user:unknown")
 
@@ -86,7 +89,9 @@ class TestRequirementsInfrastructure(unittest.TestCase):
             patch.dict(os.environ, {}, clear=True),
             patch("sys.prefix", "/fake/prefix"),
             patch("sys.base_prefix", "/fake/prefix"),
-            patch("site.getusersitepackages", return_value=user_site),
+            patch(
+                "mmrelay.plugin_loader.site.getusersitepackages", return_value=user_site
+            ),
         ):
             target = pl._requirements_install_target()
 
@@ -104,7 +109,9 @@ class TestRequirementsInfrastructure(unittest.TestCase):
             patch.dict(os.environ, {}, clear=True),
             patch("sys.prefix", "/fake/prefix"),
             patch("sys.base_prefix", "/fake/prefix"),
-            patch("site.getusersitepackages", return_value=user_site),
+            patch(
+                "mmrelay.plugin_loader.site.getusersitepackages", return_value=user_site
+            ),
         ):
             before = pl._requirements_install_target_identity()
             pl._write_requirements_install_marker(
@@ -123,7 +130,9 @@ class TestRequirementsInfrastructure(unittest.TestCase):
             patch.dict(os.environ, {}, clear=True),
             patch("sys.prefix", "/fake/prefix"),
             patch("sys.base_prefix", "/fake/prefix"),
-            patch("site.getusersitepackages", return_value=user_site),
+            patch(
+                "mmrelay.plugin_loader.site.getusersitepackages", return_value=user_site
+            ),
             patch("mmrelay.plugin_loader._is_writable_directory", return_value=False),
         ):
             marker_path = pl._requirements_install_marker_path(
@@ -145,7 +154,7 @@ class TestRequirementsInfrastructure(unittest.TestCase):
 
         with (
             patch("sys.platform", "linux"),
-            patch("site.getsitepackages", return_value=[]),
+            patch("mmrelay.plugin_loader.site.getsitepackages", return_value=[]),
             patch(
                 "mmrelay.plugin_loader.sysconfig.get_path",
                 side_effect=fake_get_path,
@@ -166,7 +175,7 @@ class TestRequirementsInfrastructure(unittest.TestCase):
 
         with (
             patch("sys.platform", "win32"),
-            patch("site.getsitepackages", return_value=[]),
+            patch("mmrelay.plugin_loader.site.getsitepackages", return_value=[]),
             patch(
                 "mmrelay.plugin_loader.sysconfig.get_path",
                 side_effect=fake_get_path,
@@ -503,7 +512,7 @@ class TestCollectRequirements(unittest.TestCase):
         ):
             result = _collect_requirements(req_file)
 
-        # Should handle IOError gracefully
+        # Should handle PermissionError (OSError subclass) gracefully
         self.assertEqual(result, [])
 
     def test_collect_requirements_empty_file(self):

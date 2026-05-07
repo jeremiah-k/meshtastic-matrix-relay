@@ -42,7 +42,7 @@ class TestPluginLoaderClone(BaseGitTest):
         validation_errors = [
             log_call
             for log_call in mock_logger.error.call_args_list
-            if "Invalid commit hash" in str(log_call)
+            if log_call.args and "Invalid commit hash" in log_call.args[0]
         ]
         self.assertEqual(len(validation_errors), 0)
 
@@ -58,7 +58,9 @@ class TestPluginLoaderClone(BaseGitTest):
         mock_isdir.return_value = False  # Repo doesn't exist
         ref = {"type": "commit", "value": "a1b2c3d4"}
 
-        def mock_git_func(*args, **_kwargs):
+        def mock_git_func(
+            *args: object, **_kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
             if "rev-parse" in args[0]:
                 if "HEAD" in args[0]:
                     return subprocess.CompletedProcess(
@@ -285,10 +287,10 @@ class TestPluginLoaderClone(BaseGitTest):
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("os.path.isdir")
-    def test_clone_or_update_repo_commit_fetch_success_no_fallback(
+    def test_clone_or_update_repo_already_at_target_commit_skips_fetch(
         self, mock_isdir, mock_is_allowed, mock_run_git
     ):
-        """Test successful commit fetch without fallback."""
+        """Test that no fetch or checkout is performed when HEAD is already at the target commit."""
 
         mock_is_allowed.return_value = True
         mock_isdir.return_value = True  # Repo exists
@@ -342,6 +344,16 @@ class TestPluginLoaderClone(BaseGitTest):
         mock_run_git.assert_has_calls(
             [call(args, **kwargs) for args, kwargs in expected_calls],
             any_order=False,
+        )
+
+        # Verify no fetch or checkout was performed (already at target)
+        extra_calls = [
+            c
+            for c in mock_run_git.call_args_list
+            if any(op in c[0][0] for op in ("fetch", "checkout"))
+        ]
+        self.assertEqual(
+            extra_calls, [], "Expected no fetch/checkout when already at target commit"
         )
 
     @patch("mmrelay.plugin_loader._run_git")

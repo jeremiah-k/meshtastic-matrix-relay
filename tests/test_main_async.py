@@ -578,6 +578,9 @@ def test_ready_file_helpers(tmp_path, monkeypatch) -> None:
     assert ready_path.exists()
 
     previous_mtime = ready_path.stat().st_mtime
+    import time
+
+    time.sleep(0.01)  # Ensure filesystem has time to update mtime
     main_module._touch_ready_file()
     assert ready_path.stat().st_mtime >= previous_mtime
 

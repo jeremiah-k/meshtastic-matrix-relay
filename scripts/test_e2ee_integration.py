@@ -115,6 +115,10 @@ class E2EEIntegrationTester:
 
         if not self.client:
             print("❌ No client available")
+            self.test_results["room_detection"] = {
+                "success": False,
+                "error": "No client available",
+            }
             return False
 
         try:
@@ -207,13 +211,17 @@ class E2EEIntegrationTester:
 
             if not test_room_id:
                 print("⚠️  No rooms available for testing")
+                self.test_results["message_parameters"] = {
+                    "success": False,
+                    "error": "No rooms available",
+                }
                 return False
 
             print(f"   Test room: {test_room_id}")
             print(f"   Room encrypted: {test_room_encrypted}")
 
             # Simulate the parameter detection logic from matrix_relay
-            room = self.client.rooms.get(test_room_id)
+            room = rooms.get(test_room_id)
             if room:
                 detected_encrypted = getattr(room, "encrypted", "unknown")
                 print(f"   Detected encryption status: {detected_encrypted}")
@@ -246,7 +254,7 @@ class E2EEIntegrationTester:
             }
             return False
 
-    async def run_full_integration_test(self):
+    async def run_full_integration_test(self) -> bool:
         """
         Run the full E2EE integration test suite and return overall success.
 
@@ -313,7 +321,7 @@ class E2EEIntegrationTester:
 
         return failed == 0
 
-    def generate_recommendations(self):
+    def generate_recommendations(self) -> None:
         """Generate recommendations based on test results"""
         print("\n💡 RECOMMENDATIONS:")
         print("=" * 30)
@@ -354,12 +362,8 @@ def _print_help() -> None:
     print("- Network access to Matrix homeserver")
 
 
-async def main():
+async def main() -> None:
     """Main test runner"""
-    if len(sys.argv) > 1 and sys.argv[1] == "--help":
-        _print_help()
-        return
-
     tester = E2EEIntegrationTester()
     success = await tester.run_full_integration_test()
     tester.generate_recommendations()

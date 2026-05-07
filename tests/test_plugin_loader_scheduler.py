@@ -76,6 +76,7 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
             # Event should be called since schedule is available (mocked)
             mock_threading.Event.assert_called_once()
             mock_threading.Thread.assert_called_once()
+            self.assertTrue(mock_thread.daemon)
             mock_thread.start.assert_called_once()
         finally:
             pl._global_scheduler_thread = original_thread
@@ -601,6 +602,10 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
         mock_run_git.side_effect = [
             subprocess.CalledProcessError(1, "git"),  # clone --branch fails
             None,  # clone without branch succeeds
+            subprocess.CompletedProcess(
+                [], 0, stdout="HEAD_commit\n"
+            ),  # rev-parse HEAD
+            subprocess.CompletedProcess([], 0, stdout="tag_commit\n"),  # rev-parse tag
             subprocess.CalledProcessError(1, "git"),  # fetch tag fails
             subprocess.CalledProcessError(1, "git"),  # alt fetch fails
             subprocess.CalledProcessError(1, "git"),  # fetch as branch fails
