@@ -193,7 +193,7 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
-    @patch("os.path.isdir")
+    @patch("mmrelay.plugin_loader.os.path.isdir")
     def test_clone_or_update_repo_commit_ref_type_validation(
         self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
     ):
@@ -487,20 +487,14 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
                 capture_output=True,
             ),
             call(
-                [
-                    "git",
-                    "-C",
-                    f"{self.temp_plugins_dir}/repo",
-                    "rev-parse",
-                    "v1.0.0^{commit}",
-                ],
+                ["git", "-C", self.temp_repo_path, "rev-parse", "v1.0.0^{commit}"],
                 capture_output=True,
             ),
             call(
                 [
                     "git",
                     "-C",
-                    f"{self.temp_plugins_dir}/repo",
+                    self.temp_repo_path,
                     "fetch",
                     "origin",
                     "refs/tags/v1.0.0",
@@ -510,7 +504,7 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
                 retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
             ),
             call(
-                ["git", "-C", f"{self.temp_plugins_dir}/repo", "checkout", "v1.0.0"],
+                ["git", "-C", self.temp_repo_path, "checkout", "v1.0.0"],
                 timeout=TEST_GIT_TIMEOUT,
             ),
         ]
@@ -682,33 +676,6 @@ class TestSchedulerAndCloneInfrastructure(BaseGitTest):
         mock_run_git.side_effect = [
             subprocess.CompletedProcess([], 0),  # fetch succeeds
             subprocess.CompletedProcess([], 0),  # checkout succeeds
-            subprocess.CompletedProcess([], 0),  # pull succeeds
-        ]
-
-        result = _update_existing_repo_to_branch_or_tag(
-            self.temp_repo_path,
-            "branch",
-            "main",
-            "repo",
-            True,  # is_default_branch
-            list(DEFAULT_BRANCHES),
-        )
-
-        self.assertTrue(result)
-        mock_logger.info.assert_called_with(
-            "Updated repository %s to %s %s", "repo", "branch", "main"
-        )
-
-    @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_update_existing_repo_to_branch_or_tag_default_branch_switch(
-        self, mock_logger, mock_run_git
-    ):
-        """Test switching to a different default branch."""
-        # Mock fetch, checkout, and pull sequence
-        mock_run_git.side_effect = [
-            subprocess.CompletedProcess([], 0),  # fetch succeeds
-            subprocess.CompletedProcess([], 0),  # checkout main succeeds
             subprocess.CompletedProcess([], 0),  # pull succeeds
         ]
 

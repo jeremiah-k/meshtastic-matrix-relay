@@ -125,6 +125,7 @@ def test_run_main_exception_handling(mock_asyncio_run, mock_load_config, mock_co
     mock_args.log_level = None
     result = run_main(mock_args)
 
+    mock_asyncio_run.assert_called_once()
     # Should return 1 for error
     assert result == 1
 
@@ -145,6 +146,7 @@ def test_run_main_keyboard_interrupt(mock_asyncio_run, mock_load_config, mock_co
     mock_args.log_level = None
     result = run_main(mock_args)
 
+    mock_asyncio_run.assert_called_once()
     # Should return 0 for graceful shutdown
     assert result == 0
 
@@ -212,9 +214,6 @@ def test_run_main_missing_config_keys(
     mock_config = {"matrix": {"homeserver": "https://matrix.org"}}  # Missing keys
     mock_load_config.return_value = mock_config
 
-    # Mock asyncio.run with coroutine cleanup to prevent warnings
-    mock_asyncio_run.side_effect = _close_coro_if_possible
-
     mock_args = MagicMock()
     mock_args.data_dir = None
     mock_args.log_level = None
@@ -222,6 +221,7 @@ def test_run_main_missing_config_keys(
     result = run_main(mock_args)
 
     assert result == 1  # Should return error code
+    mock_asyncio_run.assert_not_called()  # Should exit before reaching asyncio.run
 
 
 @patch("asyncio.run")
@@ -257,6 +257,7 @@ def test_run_main_keyboard_interrupt_with_args(
 
     result = run_main(mock_args)
 
+    mock_asyncio_run.assert_called_once()
     assert result == 0  # Should return success on keyboard interrupt
 
 

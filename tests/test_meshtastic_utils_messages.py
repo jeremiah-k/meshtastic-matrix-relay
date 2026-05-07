@@ -1326,19 +1326,20 @@ class TestTextReplyFunctionality(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("stable_relay_start_time")
 class TestOnMeshtasticMessageDatabaseError(unittest.TestCase):
     """Test database error handling in on_meshtastic_message."""
 
     def test_on_meshtastic_message_database_error(self):
         """Handles database utility exceptions without raising unhandled errors."""
-        from meshtastic import BROADCAST_NUM
-
         packet = {
             "decoded": {"text": "test message", "portnum": TEXT_MESSAGE_APP},
             "fromId": "!12345678",
             "from": 0x12345678,
             "to": BROADCAST_NUM,
             "channel": 0,
+            "id": TEST_PACKET_ID,
+            "rxTime": TEST_PACKET_RX_TIME,
         }
 
         mock_interface = MagicMock()

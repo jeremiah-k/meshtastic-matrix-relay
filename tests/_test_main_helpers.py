@@ -180,7 +180,7 @@ def _reset_all_mmrelay_globals() -> None:
         module.bot_user_name = None  # type: ignore[attr-defined]
         module.matrix_client = None  # type: ignore[attr-defined]
 
-        module.bot_start_time = int(time.time() * 1000)  # type: ignore[attr-defined]
+        module.bot_start_time = 1704067200000  # type: ignore[attr-defined]  # Fixed epoch: 2024-01-01
 
     if "mmrelay.main" in sys.modules:
         module = sys.modules["mmrelay.main"]

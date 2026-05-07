@@ -512,7 +512,6 @@ def test_main_database_wipe_config(
             "mmrelay.main.meshtastic_utils.check_connection", new_callable=AsyncMock
         ) as mock_check_conn,
         patch("mmrelay.main.shutdown_plugins") as mock_shutdown_plugins,
-        patch("mmrelay.main.stop_message_queue") as mock_stop_queue,
         patch("mmrelay.main.wipe_message_map") as mock_wipe,
     ):
         mock_queue = MagicMock()
@@ -520,7 +519,6 @@ def test_main_database_wipe_config(
         mock_get_queue.return_value = mock_queue
         mock_check_conn.return_value = True
         mock_shutdown_plugins.return_value = None
-        mock_stop_queue.return_value = None
 
         _reset_all_mmrelay_globals()
         try:
@@ -586,7 +584,6 @@ def test_main_database_wipe_preferred_false_wins_over_legacy_true(
             "mmrelay.main.meshtastic_utils.check_connection", new_callable=AsyncMock
         ) as mock_check_conn,
         patch("mmrelay.main.shutdown_plugins") as mock_shutdown_plugins,
-        patch("mmrelay.main.stop_message_queue") as mock_stop_queue,
         patch("mmrelay.main.wipe_message_map") as mock_wipe,
     ):
         mock_queue = MagicMock()
@@ -594,7 +591,6 @@ def test_main_database_wipe_preferred_false_wins_over_legacy_true(
         mock_get_queue.return_value = mock_queue
         mock_check_conn.return_value = True
         mock_shutdown_plugins.return_value = None
-        mock_stop_queue.return_value = None
 
         _reset_all_mmrelay_globals()
         try:

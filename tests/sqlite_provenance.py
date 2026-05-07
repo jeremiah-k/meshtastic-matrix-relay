@@ -53,10 +53,7 @@ class _ConnectionProvenance:
 
         Replaces the module-level sqlite3.connect with a tracked wrapper (no-op if already installed). Each call to the tracked connect stores a metadata dictionary in self._registry keyed by id(connection) containing: "conn_id", "db_path", "test_nodeid", "thread_name", "thread_id", and "creation_stack".
         """
-        with self._registry_lock:
-            if self._patched:
-                return
-            self._patched = True
+        # Build closures before taking the lock so the critical section is minimal.
         real_connect = self._real_connect
         registry = self._registry
         tracker = self
@@ -71,9 +68,11 @@ class _ConnectionProvenance:
 
             class _TrackedConnection(base):
                 def close(self) -> None:
-                    super().close()
-                    with tracker._registry_lock:
-                        registry.pop(id(self), None)
+                    try:
+                        super().close()
+                    finally:
+                        with tracker._registry_lock:
+                            registry.pop(id(self), None)
 
             _class_cache[base] = _TrackedConnection
             return _TrackedConnection
@@ -113,13 +112,21 @@ class _ConnectionProvenance:
                     "thread_id": threading.current_thread().ident,
                     "creation_stack": "".join(traceback.format_stack()),
                 }
+
             # Guard against id() reuse: if the connection is GC'd without close(),
             # the finalizer removes the stale registry entry before its address is reused.
-            weakref.finalize(conn, registry.pop, conn_id, None)
+            def _finalizer(cid: int = conn_id) -> None:
+                with tracker._registry_lock:
+                    registry.pop(cid, None)
+
+            weakref.finalize(conn, _finalizer)
             return conn
 
-        sqlite3.connect = _tracked_connect
-        self._patched = True
+        with self._registry_lock:
+            if self._patched:
+                return
+            sqlite3.connect = _tracked_connect
+            self._patched = True
 
     def remove(self, conn: sqlite3.Connection) -> None:
         """

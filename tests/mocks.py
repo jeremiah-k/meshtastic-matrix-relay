@@ -289,6 +289,9 @@ class BleakExcModule:
     BleakError = BleakError
     BleakDBusError = BleakDBusError
 
+    def __getattr__(self, name: str) -> MagicMock:
+        return MagicMock()
+
 
 sys.modules["bleak.exc"] = BleakExcModule()  # type: ignore[assignment]
 sys.modules["bleak"].BleakError = BleakError  # type: ignore[attr-defined]
@@ -298,10 +301,24 @@ sys.modules["bleak"].BleakDBusError = BleakDBusError  # type: ignore[attr-define
 # ── S2Sphere mocks ────────────────────────────────────────────────────
 
 
+class MockAngle:
+    def __init__(self, degrees: float) -> None:
+        self.degrees = degrees
+
+    def __call__(self) -> "MockAngle":
+        return self
+
+
 class MockLatLng:
     def __init__(self, lat: float = 0.0, lng: float = 0.0) -> None:
-        self.lat = lat
-        self.lng = lng
+        self._lat = MockAngle(lat)
+        self._lng = MockAngle(lng)
+
+    def lat(self) -> MockAngle:
+        return self._lat
+
+    def lng(self) -> MockAngle:
+        return self._lng
 
     @classmethod
     def from_degrees(cls, lat: float, lng: float) -> "MockLatLng":

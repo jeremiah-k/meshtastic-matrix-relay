@@ -20,6 +20,7 @@ _DRAIN_EXCEPTIONS = (
     asyncio.CancelledError,
     asyncio.InvalidStateError,
     concurrent.futures.CancelledError,
+    concurrent.futures.TimeoutError,
     concurrent.futures.InvalidStateError,
 )
 

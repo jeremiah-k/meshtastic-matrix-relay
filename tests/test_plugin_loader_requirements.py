@@ -498,7 +498,8 @@ class TestCollectRequirements(unittest.TestCase):
             f.write("requests==2.28.0\n")
 
         with patch(
-            "mmrelay.plugin_loader.open", side_effect=IOError("Permission denied")
+            "mmrelay.plugin_loader.open",
+            side_effect=PermissionError("Permission denied"),
         ):
             result = _collect_requirements(req_file)
 
