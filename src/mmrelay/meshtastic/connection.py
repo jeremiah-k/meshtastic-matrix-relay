@@ -251,11 +251,12 @@ def serial_port_exists(port_name: str) -> bool:
         ports = [p.device for p in facade.serial.tools.list_ports.comports()]
     except OSError as exc:
         facade.logger.warning(
-            "OSError enumerating serial ports; cannot verify %s exists: %s",
+            "%s enumerating serial ports; cannot verify %s exists: %s",
+            type(exc).__name__,
             port_name,
             exc,
         )
-        return True
+        return False
     return port_name in ports
 
 
