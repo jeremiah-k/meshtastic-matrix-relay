@@ -236,8 +236,6 @@ def reset_meshtastic_relay_state(monkeypatch):
 
     yield
 
-    import mmrelay.meshtastic_utils as mu
-
     with contextlib.suppress(AttributeError, RuntimeError, TypeError):
         mu.shutdown_shared_executors()
 

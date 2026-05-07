@@ -1,6 +1,5 @@
 import asyncio
 from types import SimpleNamespace
-from typing import cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -135,7 +134,7 @@ async def test_join_matrix_room_rejects_non_string_identifier(mock_logger):
     mock_client.rooms = {}
     mock_client.join = AsyncMock()
 
-    await join_matrix_room(mock_client, cast(str, 12345))
+    await join_matrix_room(mock_client, 12345)  # type: ignore[arg-type]
 
     mock_client.join.assert_not_called()
     mock_logger.error.assert_called_with(

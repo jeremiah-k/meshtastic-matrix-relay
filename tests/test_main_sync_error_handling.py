@@ -38,7 +38,9 @@ from tests.helpers import (
     ],
     ids=["timeout", "client_error", "connection_error"],
 )
-def test_sync_failure_logs_and_retries(raised_exc, logger_method, expected_substr):
+def test_sync_failure_logs_and_retries(
+    raised_exc: Exception, logger_method: str, expected_substr: str
+) -> None:
     """Sync failures log warnings/errors and retry."""
     config = {
         "matrix_rooms": [{"id": "!room:matrix.org"}],
@@ -120,4 +122,4 @@ def test_sync_failure_logs_and_retries(raised_exc, logger_method, expected_subst
     assert call_count == 2  # first attempt + one retry
 
     method_calls = getattr(mock_logger, logger_method).call_args_list
-    assert any(expected_substr in c.args[0] for c in method_calls)
+    assert any(c.args and expected_substr in c.args[0] for c in method_calls)

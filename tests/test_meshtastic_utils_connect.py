@@ -851,7 +851,7 @@ class TestEnsureCallbacksSubscribed:
     def test_subscribe_resets_tearing_down_flag(self, monkeypatch):
         monkeypatch.setattr(mu, "_callbacks_tearing_down", True, raising=False)
 
-        with patch("mmrelay.meshtastic_utils.pub.subscribe") as mock_subscribe:
+        with patch("mmrelay.meshtastic_utils.pub.subscribe"):
             ensure_meshtastic_callbacks_subscribed()
 
         assert mu._callbacks_tearing_down is False
@@ -1933,8 +1933,6 @@ class TestRealAsyncScheduling:
         mocked (the class carries ``no_global_mocks``) so it exercises the
         genuine executor lifecycle.
         """
-        import threading
-
         loop_thread = threading.current_thread().ident
         captured_thread_id = None
 

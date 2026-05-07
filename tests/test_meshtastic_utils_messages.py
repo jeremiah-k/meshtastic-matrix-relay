@@ -1359,9 +1359,6 @@ class TestOnMeshtasticMessageDatabaseError(unittest.TestCase):
 
         mock_get_longname.assert_called()
         self.assertTrue(
-            mock_logger.debug.called
-            or mock_logger.exception.called
-            or mock_logger.error.called
-            or mock_logger.warning.called,
-            "Expected the TypeError from get_longname to be logged at an appropriate level",
+            mock_logger.exception.called or mock_logger.error.called,
+            "Expected the TypeError from get_longname to be logged at exception or error level",
         )

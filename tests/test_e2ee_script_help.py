@@ -24,7 +24,7 @@ if not SCRIPT_PATH.exists():
 
 
 @pytest.fixture(scope="module")
-def help_result():
+def help_result() -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(SCRIPT_PATH), "--help"],
         capture_output=True,

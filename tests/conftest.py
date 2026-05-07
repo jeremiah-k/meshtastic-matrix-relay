@@ -29,7 +29,7 @@ from unittest.mock import MagicMock
 import pytest
 from pubsub import pub
 
-import tests.mocks  # noqa: F401  # Must be imported before pubsub to install mocks
+import tests.mocks  # noqa: F401  # Must be imported before application imports to install mocks
 
 # Mock all external dependencies before any application imports can occur.
 from tests.ble_cleanup import (  # noqa: E402

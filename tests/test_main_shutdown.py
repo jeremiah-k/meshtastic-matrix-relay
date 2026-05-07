@@ -166,7 +166,11 @@ def test_main_closes_meshtastic_client_on_shutdown(
         mock_queue = MagicMock()
         mock_queue.ensure_processor_started = MagicMock()
         mock_get_queue.return_value = mock_queue
-        asyncio.run(main(mock_config))
+
+        try:
+            asyncio.run(main(mock_config))
+        finally:
+            _reset_all_mmrelay_globals()
 
     mock_meshtastic_client.close.assert_called_once()
 
@@ -692,13 +696,15 @@ def test_main_shutdown_uses_blocking_timeout_helper(
             asyncio.run(main(mock_config))
 
         mock_run_blocking_with_timeout.assert_called_once()
-        args, kwargs = mock_run_blocking_with_timeout.call_args
-        close_callable = args[0]
+        _args, kwargs = mock_run_blocking_with_timeout.call_args
+        close_callable = _args[0]
         assert callable(close_callable)
         mock_meshtastic_client.close.assert_called_once()
-        assert kwargs.get("timeout") == timeout_sentinel
-        assert kwargs.get("label") == "meshtastic-client-close-shutdown"
-        assert kwargs.get("timeout_log_level") is None
+        assert kwargs == {
+            "timeout": timeout_sentinel,
+            "label": "meshtastic-client-close-shutdown",
+            "timeout_log_level": None,
+        }
     finally:
         mu.meshtastic_client = original_client
         mu.meshtastic_iface = original_iface

@@ -208,6 +208,7 @@ class MockSyncError(Exception):
         message: str = "Sync error",
         status_code: str | None = None,
         retry_after_ms: int | None = None,
+        *,
         soft_logout: bool = False,
     ) -> None:
         """
@@ -294,7 +295,7 @@ sys.modules["nio.events.room_events"].RoomMemberEvent = MockRoomMemberEvent
 
 
 class MockPILImage:
-    def save(self, *args, **kwargs) -> None:
+    def save(self, *args: object, **kwargs: object) -> None:
         """
         No-op save method that accepts any positional and keyword arguments and does nothing.
 
@@ -325,15 +326,10 @@ class BleakDBusError(BleakError):
     pass
 
 
-class BleakExcModule:
-    BleakError = BleakError
-    BleakDBusError = BleakDBusError
-
-    def __getattr__(self, name: str) -> MagicMock:
-        return MagicMock()
-
-
-sys.modules["bleak.exc"] = BleakExcModule()  # type: ignore[assignment]
+bleak_exc_mock = _MockModule("bleak.exc")
+bleak_exc_mock.BleakError = BleakError
+bleak_exc_mock.BleakDBusError = BleakDBusError
+sys.modules["bleak.exc"] = bleak_exc_mock
 sys.modules["bleak"].BleakError = BleakError  # type: ignore[attr-defined]
 sys.modules["bleak"].BleakDBusError = BleakDBusError  # type: ignore[attr-defined]
 

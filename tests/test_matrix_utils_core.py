@@ -940,9 +940,11 @@ def test_get_matrix_prefix_with_none_values():
 
     result = get_matrix_prefix(config, None, None, None)
     assert isinstance(result, str)
+    assert result != ""
 
     result = get_matrix_prefix(config, "", "", "")
     assert isinstance(result, str)
+    assert result != ""
 
 
 def test_get_meshtastic_prefix_with_malformed_user_id():

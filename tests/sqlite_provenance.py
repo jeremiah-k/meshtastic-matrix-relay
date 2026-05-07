@@ -110,7 +110,7 @@ class _ConnectionProvenance:
                     "test_nodeid": tracker._current_nodeid,
                     "thread_name": threading.current_thread().name,
                     "thread_id": threading.current_thread().ident,
-                    "creation_stack": "".join(traceback.format_stack()),
+                    "creation_stack": "".join(traceback.format_stack()[:-2]),
                 }
 
             # Guard against id() reuse: if the connection is GC'd without close(),

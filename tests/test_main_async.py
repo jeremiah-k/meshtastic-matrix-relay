@@ -7,6 +7,7 @@ and ready-file/heartbeat tests in main.py.
 import asyncio
 import contextlib
 from collections.abc import Iterator
+from typing import Any, Callable, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -142,7 +143,7 @@ def test_main_signal_handler_sets_shutdown_flag():
     captured_handlers = []
     real_get_running_loop = asyncio.get_running_loop
 
-    def _patched_get_running_loop():
+    def _patched_get_running_loop() -> asyncio.AbstractEventLoop:
         """
         Provide the current running event loop with its signal-handler registration patched so registered handlers are captured and invoked immediately.
 
@@ -156,7 +157,9 @@ def test_main_signal_handler_sets_shutdown_flag():
             loop = InlineExecutorLoop(loop)
         if not hasattr(loop, "_signal_handler_patched"):
 
-            def _fake_add_signal_handler(_sig, handler):
+            def _fake_add_signal_handler(
+                _sig: object, handler: Callable[..., Any]
+            ) -> None:
                 """
                 Record and invoke a signal handler for tests.
 
@@ -170,7 +173,7 @@ def test_main_signal_handler_sets_shutdown_flag():
 
             loop.add_signal_handler = _fake_add_signal_handler  # type: ignore[attr-defined]
             loop._signal_handler_patched = True  # type: ignore[attr-defined]
-        return loop
+        return cast(asyncio.AbstractEventLoop, loop)
 
     with (
         patch(
@@ -226,19 +229,21 @@ def test_main_shutdown_signal_logging_is_idempotent():
 
     real_get_running_loop = asyncio.get_running_loop
 
-    def _patched_get_running_loop():
+    def _patched_get_running_loop() -> asyncio.AbstractEventLoop:
         loop = real_get_running_loop()
         if not isinstance(loop, InlineExecutorLoop):
             loop = InlineExecutorLoop(loop)
         if not hasattr(loop, "_signal_handler_patched"):
 
-            def _fake_add_signal_handler(_sig, handler):
+            def _fake_add_signal_handler(
+                _sig: object, handler: Callable[..., Any]
+            ) -> None:
                 handler()
                 handler()
 
             loop.add_signal_handler = _fake_add_signal_handler  # type: ignore[attr-defined]
             loop._signal_handler_patched = True  # type: ignore[attr-defined]
-        return loop
+        return cast(asyncio.AbstractEventLoop, loop)
 
     with (
         patch(
@@ -300,7 +305,7 @@ def test_main_registers_sighup_handler():
     captured_signals = []
     real_get_running_loop = asyncio.get_running_loop
 
-    def _patched_get_running_loop():
+    def _patched_get_running_loop() -> asyncio.AbstractEventLoop:
         """
         Return the running loop with captured signal registration and inline executor behavior.
 
@@ -317,7 +322,9 @@ def test_main_registers_sighup_handler():
         base_loop = loop._loop if isinstance(loop, InlineExecutorLoop) else loop
         if not hasattr(base_loop, "_signal_capture_patched"):
 
-            def _fake_add_signal_handler(sig, _handler):
+            def _fake_add_signal_handler(
+                sig: object, _handler: Callable[..., Any]
+            ) -> None:
                 """
                 Record a signal identifier into the module-level `captured_signals` list for tests.
 
@@ -330,8 +337,8 @@ def test_main_registers_sighup_handler():
             base_loop.add_signal_handler = _fake_add_signal_handler  # type: ignore[attr-defined]
             base_loop._signal_capture_patched = True  # type: ignore[attr-defined]
         if isinstance(loop, InlineExecutorLoop):
-            return loop
-        return InlineExecutorLoop(base_loop)
+            return cast(asyncio.AbstractEventLoop, loop)
+        return cast(asyncio.AbstractEventLoop, InlineExecutorLoop(base_loop))
 
     import mmrelay.main as main_module
 
@@ -513,12 +520,14 @@ def test_main_shutdown_task_cancellation_coverage() -> None:
             loop = InlineExecutorLoop(loop)
         if not hasattr(loop, "_signal_handler_patched"):
 
-            def _fake_add_signal_handler(_sig, handler):
+            def _fake_add_signal_handler(
+                _sig: object, handler: Callable[..., Any]
+            ) -> None:
                 handler()
 
             loop.add_signal_handler = _fake_add_signal_handler  # type: ignore[attr-defined]
             loop._signal_handler_patched = True  # type: ignore[attr-defined]
-        return loop
+        return cast(asyncio.AbstractEventLoop, loop)
 
     with (
         patch(

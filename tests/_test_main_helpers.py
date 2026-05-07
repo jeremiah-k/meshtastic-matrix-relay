@@ -11,7 +11,6 @@ import contextlib
 import functools
 import inspect
 import sys
-import time
 from collections.abc import Callable
 from concurrent.futures import Future
 from typing import Any
@@ -121,9 +120,9 @@ class _TaskSpy:
         self._task = task
         self.cancel_called = False
 
-    def cancel(self) -> bool:
+    def cancel(self, msg: object = None) -> bool:
         self.cancel_called = True
-        return self._task.cancel()
+        return self._task.cancel(msg)
 
     def __await__(self) -> Any:
         return self._task.__await__()
@@ -132,12 +131,12 @@ class _TaskSpy:
         return getattr(self._task, name)
 
 
-def _make_async_raise(exc: Exception) -> Callable[..., Any]:
+def _make_async_raise(exc: BaseException) -> Callable[..., Any]:
     """
     Create an async callable that always raises provided exception when awaited.
 
     Parameters:
-        exc (Exception): The exception instance to raise when the returned coroutine is awaited.
+        exc (BaseException): The exception instance to raise when the returned coroutine is awaited.
 
     Returns:
         Callable[..., Coroutine]: An async function that, when called and awaited, raises `exc`.
@@ -338,7 +337,7 @@ class _ErrorCloseFuture(_CloseFutureBase):
         raise ValueError("boom")
 
 
-class _ControlledExecutor:
+class _ControlledExecutor(concurrent.futures.Executor):
     """Executor that runs normal tasks immediately and can override close behavior."""
 
     def __init__(
@@ -364,7 +363,7 @@ class _ControlledExecutor:
         self.submit_timeout = submit_timeout
         self.shutdown_typeerror = shutdown_typeerror
         self.close_future = None
-        self.calls: list[Any] = []
+        self.shutdown_calls: list[Any] = []
 
     def submit(self, func: Any, *args: Any, **kwargs: Any) -> Future:
         """
@@ -416,7 +415,7 @@ class _ControlledExecutor:
             cancel_futures (bool): Whether to cancel pending futures; when the executor is configured
                 to simulate older Python behavior, passing `True` raises a `TypeError`.
         """
-        self.calls.append((wait, cancel_futures))
+        self.shutdown_calls.append((wait, cancel_futures))
         if self.shutdown_typeerror and cancel_futures:
             # Simulate older Python versions that do not accept cancel_futures.
             raise TypeError()

@@ -276,7 +276,7 @@ async def test_connect_matrix_duplicate_caller_returns_existing_client():
 async def test_connect_matrix_no_config_returns_none():
     """connect_matrix returns None and logs an error when config is None."""
     with (
-        patch("mmrelay.matrix_utils.matrix_client", None, create=True),
+        patch("mmrelay.matrix_utils.matrix_client", None),
         patch("mmrelay.matrix_utils.logger") as mock_logger,
         patch("mmrelay.matrix_utils.config", None, create=True),
     ):

@@ -15,7 +15,6 @@ Tests edge cases and error handling including:
 import os
 import sqlite3
 import tempfile
-from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -326,10 +325,10 @@ class TestDBUtilsEdgeCases:
         Test that update_longnames handles None and empty list inputs without error.
         """
         # Should handle None gracefully
-        update_longnames(cast(Any, None))
+        update_longnames(None)  # type: ignore[arg-type]
 
         # Should handle empty list gracefully
-        update_longnames(cast(Any, []))
+        update_longnames([])  # type: ignore[arg-type]
 
     def test_update_shortnames_malformed_node_data(self):
         """

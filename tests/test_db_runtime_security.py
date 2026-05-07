@@ -724,7 +724,7 @@ def test_run_async_queued_work_completes_during_close(db_manager):
     result1, result2 = asyncio.run(run_test())
     assert (result1, result2) == ("first", "second")
 
-    with (contextlib.closing(sqlite3.connect(db_path)) as conn,):
+    with contextlib.closing(sqlite3.connect(db_path)) as conn:
         count = conn.execute("SELECT COUNT(*) FROM test_async_close").fetchone()[0]
     assert count == 2
 
@@ -859,8 +859,8 @@ def test_close_rejected_during_active_database_operation(db_manager):
         manager.run_sync(close_inside_operation, write=False)
 
 
-def test_close_handles_connection_errors(db_path):
-    """Test close method handles connection errors gracefully."""
+def test_close_cleans_up_connection(db_path):
+    """Test that close method removes connections from the tracking set."""
     # Create a manager and get a connection
     test_manager = DatabaseManager(db_path)
     conn = test_manager._get_connection()
