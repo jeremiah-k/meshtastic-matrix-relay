@@ -833,10 +833,9 @@ def test_none_startup_drain_event_is_safe_noop(reset_meshtastic_globals):
 
 
 class TestEnsureCallbacksSubscribed:
-    def test_subscribes_to_both_topics(self):
-        mu.subscribed_to_messages = False
-        mu.subscribed_to_connection_lost = False
-        mu._callbacks_tearing_down = True
+    def test_subscribes_to_both_topics(self, monkeypatch):
+        monkeypatch.setattr(mu, "subscribed_to_messages", False, raising=False)
+        monkeypatch.setattr(mu, "subscribed_to_connection_lost", False, raising=False)
 
         with patch("mmrelay.meshtastic_utils.pub.subscribe") as mock_subscribe:
             ensure_meshtastic_callbacks_subscribed()
@@ -848,11 +847,18 @@ class TestEnsureCallbacksSubscribed:
         )
         assert mu.subscribed_to_messages is True
         assert mu.subscribed_to_connection_lost is True
+
+    def test_subscribe_resets_tearing_down_flag(self, monkeypatch):
+        monkeypatch.setattr(mu, "_callbacks_tearing_down", True, raising=False)
+
+        with patch("mmrelay.meshtastic_utils.pub.subscribe") as mock_subscribe:
+            ensure_meshtastic_callbacks_subscribed()
+
         assert mu._callbacks_tearing_down is False
 
-    def test_idempotent_does_not_double_subscribe(self):
-        mu.subscribed_to_messages = False
-        mu.subscribed_to_connection_lost = False
+    def test_idempotent_does_not_double_subscribe(self, monkeypatch):
+        monkeypatch.setattr(mu, "subscribed_to_messages", False, raising=False)
+        monkeypatch.setattr(mu, "subscribed_to_connection_lost", False, raising=False)
 
         with patch("mmrelay.meshtastic_utils.pub.subscribe") as mock_subscribe:
             ensure_meshtastic_callbacks_subscribed()
@@ -860,18 +866,18 @@ class TestEnsureCallbacksSubscribed:
 
         assert mock_subscribe.call_count == 2
 
-    def test_skips_already_subscribed_topics(self):
-        mu.subscribed_to_messages = True
-        mu.subscribed_to_connection_lost = True
+    def test_skips_already_subscribed_topics(self, monkeypatch):
+        monkeypatch.setattr(mu, "subscribed_to_messages", True, raising=False)
+        monkeypatch.setattr(mu, "subscribed_to_connection_lost", True, raising=False)
 
         with patch("mmrelay.meshtastic_utils.pub.subscribe") as mock_subscribe:
             ensure_meshtastic_callbacks_subscribed()
 
         mock_subscribe.assert_not_called()
 
-    def test_partial_subscription_only_subscribes_missing(self):
-        mu.subscribed_to_messages = True
-        mu.subscribed_to_connection_lost = False
+    def test_partial_subscription_only_subscribes_missing(self, monkeypatch):
+        monkeypatch.setattr(mu, "subscribed_to_messages", True, raising=False)
+        monkeypatch.setattr(mu, "subscribed_to_connection_lost", False, raising=False)
 
         with patch("mmrelay.meshtastic_utils.pub.subscribe") as mock_subscribe:
             ensure_meshtastic_callbacks_subscribed()
@@ -885,10 +891,10 @@ class TestEnsureCallbacksSubscribed:
 
 
 class TestUnsubscribeCallbacks:
-    def test_unsubscribes_from_both_topics_when_subscribed(self):
-        mu.subscribed_to_messages = True
-        mu.subscribed_to_connection_lost = True
-        mu._callbacks_tearing_down = False
+    def test_unsubscribes_from_both_topics_when_subscribed(self, monkeypatch):
+        monkeypatch.setattr(mu, "subscribed_to_messages", True, raising=False)
+        monkeypatch.setattr(mu, "subscribed_to_connection_lost", True, raising=False)
+        monkeypatch.setattr(mu, "_callbacks_tearing_down", False, raising=False)
 
         with patch("mmrelay.meshtastic_utils.pub.unsubscribe") as mock_unsubscribe:
             unsubscribe_meshtastic_callbacks()
@@ -902,9 +908,9 @@ class TestUnsubscribeCallbacks:
         assert mu.subscribed_to_connection_lost is False
         assert mu._callbacks_tearing_down is True
 
-    def test_suppresses_exception_from_unsubscribe_messages(self):
-        mu.subscribed_to_messages = True
-        mu.subscribed_to_connection_lost = False
+    def test_suppresses_exception_from_unsubscribe_messages(self, monkeypatch):
+        monkeypatch.setattr(mu, "subscribed_to_messages", True, raising=False)
+        monkeypatch.setattr(mu, "subscribed_to_connection_lost", False, raising=False)
 
         with patch(
             "mmrelay.meshtastic_utils.pub.unsubscribe",
@@ -914,9 +920,9 @@ class TestUnsubscribeCallbacks:
 
         assert mu.subscribed_to_messages is True
 
-    def test_suppresses_exception_from_unsubscribe_connection_lost(self):
-        mu.subscribed_to_messages = False
-        mu.subscribed_to_connection_lost = True
+    def test_suppresses_exception_from_unsubscribe_connection_lost(self, monkeypatch):
+        monkeypatch.setattr(mu, "subscribed_to_messages", False, raising=False)
+        monkeypatch.setattr(mu, "subscribed_to_connection_lost", True, raising=False)
 
         with patch(
             "mmrelay.meshtastic_utils.pub.unsubscribe",
@@ -926,9 +932,9 @@ class TestUnsubscribeCallbacks:
 
         assert mu.subscribed_to_connection_lost is True
 
-    def test_suppresses_exception_from_both_unsubscribes(self):
-        mu.subscribed_to_messages = True
-        mu.subscribed_to_connection_lost = True
+    def test_suppresses_exception_from_both_unsubscribes(self, monkeypatch):
+        monkeypatch.setattr(mu, "subscribed_to_messages", True, raising=False)
+        monkeypatch.setattr(mu, "subscribed_to_connection_lost", True, raising=False)
 
         with patch(
             "mmrelay.meshtastic_utils.pub.unsubscribe",
@@ -939,18 +945,18 @@ class TestUnsubscribeCallbacks:
         assert mu.subscribed_to_messages is True
         assert mu.subscribed_to_connection_lost is True
 
-    def test_idempotent_when_already_unsubscribed(self):
-        mu.subscribed_to_messages = False
-        mu.subscribed_to_connection_lost = False
+    def test_idempotent_when_already_unsubscribed(self, monkeypatch):
+        monkeypatch.setattr(mu, "subscribed_to_messages", False, raising=False)
+        monkeypatch.setattr(mu, "subscribed_to_connection_lost", False, raising=False)
 
         with patch("mmrelay.meshtastic_utils.pub.unsubscribe") as mock_unsubscribe:
             unsubscribe_meshtastic_callbacks()
 
         mock_unsubscribe.assert_not_called()
 
-    def test_unsubscribes_only_subscribed_topics(self):
-        mu.subscribed_to_messages = True
-        mu.subscribed_to_connection_lost = False
+    def test_unsubscribes_only_subscribed_topics(self, monkeypatch):
+        monkeypatch.setattr(mu, "subscribed_to_messages", True, raising=False)
+        monkeypatch.setattr(mu, "subscribed_to_connection_lost", False, raising=False)
 
         with patch("mmrelay.meshtastic_utils.pub.unsubscribe") as mock_unsubscribe:
             unsubscribe_meshtastic_callbacks()
@@ -962,9 +968,11 @@ class TestUnsubscribeCallbacks:
 
 
 class TestConnectMeshtasticShutdownGuard:
-    def test_returns_none_when_shutting_down_while_waiting_for_connect(self):
-        mu._connect_attempt_in_progress = True
-        mu.shutting_down = True
+    def test_returns_none_when_shutting_down_while_waiting_for_connect(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(mu, "_connect_attempt_in_progress", True, raising=False)
+        monkeypatch.setattr(mu, "shutting_down", True, raising=False)
 
         result = connect_meshtastic(passed_config=None)
 
@@ -972,26 +980,26 @@ class TestConnectMeshtasticShutdownGuard:
 
 
 class TestConnectMeshtasticImplGuards:
-    def test_returns_none_when_shutting_down(self):
-        mu.shutting_down = True
+    def test_returns_none_when_shutting_down(self, monkeypatch):
+        monkeypatch.setattr(mu, "shutting_down", True, raising=False)
 
         result = _connect_meshtastic_impl(passed_config=None, force_connect=False)
 
         assert result is None
 
-    def test_returns_none_when_reconnecting_and_not_force_connect(self):
-        mu.reconnecting = True
-        mu.shutting_down = False
+    def test_returns_none_when_reconnecting_and_not_force_connect(self, monkeypatch):
+        monkeypatch.setattr(mu, "reconnecting", True, raising=False)
+        monkeypatch.setattr(mu, "shutting_down", False, raising=False)
 
         result = _connect_meshtastic_impl(passed_config=None, force_connect=False)
 
         assert result is None
 
-    def test_proceeds_when_reconnecting_but_force_connect_is_true(self):
-        mu.reconnecting = True
-        mu.shutting_down = False
-        mu.meshtastic_client = None
-        mu.config = None
+    def test_proceeds_when_reconnecting_but_force_connect_is_true(self, monkeypatch):
+        monkeypatch.setattr(mu, "reconnecting", True, raising=False)
+        monkeypatch.setattr(mu, "shutting_down", False, raising=False)
+        monkeypatch.setattr(mu, "meshtastic_client", None, raising=False)
+        monkeypatch.setattr(mu, "config", None, raising=False)
 
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             result = _connect_meshtastic_impl(passed_config=None, force_connect=True)
@@ -1182,7 +1190,7 @@ class TestCleanupFailedAssignedClient:
         config = _ble_config()
 
         class _FakeBLEFailsNodeInfo(_FakeBLEInterfaceCompat):
-            def getMyNodeInfo(self) -> dict[str, dict[str, str]]:
+            def getMyNodeInfo(self) -> NoReturn:
                 raise RuntimeError("node info failed")
 
         with (
@@ -1210,7 +1218,7 @@ class TestCleanupFailedAssignedClient:
 
         other_client = MagicMock()
 
-        def _change_client_side_effect() -> dict[str, dict[str, str]]:
+        def _change_client_side_effect() -> NoReturn:
             mu.meshtastic_client = other_client
             mu._relay_active_client_id = id(other_client)
             raise RuntimeError("trigger cleanup")
@@ -1268,7 +1276,7 @@ class TestCleanupFailedAssignedClient:
         config = _ble_config()
 
         class _FakeBLEFailsNodeInfo(_FakeBLEInterfaceCompat):
-            def getMyNodeInfo(self) -> dict[str, dict[str, str]]:
+            def getMyNodeInfo(self) -> NoReturn:
                 raise RuntimeError("node info failed")
 
         with (

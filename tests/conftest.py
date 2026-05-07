@@ -218,6 +218,7 @@ def meshtastic_loop_safety(monkeypatch, request):
         test function, or ``None`` when the test is async (asyncio marker set).
     """
     if request.node.get_closest_marker("asyncio"):
+        monkeypatch.setattr(mu, "event_loop", None, raising=False)
         yield
         return
 

@@ -16,6 +16,7 @@ from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
 from mmrelay.main import main
 from tests._test_main_helpers import (
     _async_noop,
+    _close_coro_if_possible,
     _ImmediateEvent,
     _make_async_return,
 )
@@ -238,6 +239,7 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
                 nonlocal wait_for_call_count
                 wait_for_call_count += 1
                 if wait_for_call_count >= 2:
+                    _close_coro_if_possible(coro)
                     raise asyncio.TimeoutError()
                 return await original_wait_for(coro, timeout)
 

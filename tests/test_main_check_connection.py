@@ -31,6 +31,25 @@ from tests.helpers import (
     make_patched_get_running_loop,
 )
 
+
+def _find_check_conn_tasks(
+    created_tasks: list,
+) -> tuple[list, list[str]]:
+    """Find check_connection tasks from a list of _TaskSpy objects.
+
+    NOTE: Task introspection relies on CPython 3.10+ coroutine internals.
+    """
+    check_conn_tasks = []
+    observed_coro_names: list[str] = []
+    for spy in created_tasks:
+        coro = getattr(spy._task, "get_coro", lambda: None)()
+        coro_name = getattr(getattr(coro, "cr_code", None), "co_name", "")
+        observed_coro_names.append(coro_name)
+        if "check_connection" in coro_name:
+            check_conn_tasks.append(spy)
+    return check_conn_tasks, observed_coro_names
+
+
 # =============================================================================
 # TestNodeNameRefreshSupervisor (converted from unittest.TestCase)
 # =============================================================================
@@ -209,15 +228,7 @@ def test_timeout_during_shutdown_cancels_task():
         mock_connect_matrix.assert_called_once()
         mock_matrix_client.close.assert_awaited_once()
 
-    # NOTE: Task introspection relies on CPython 3.10+ coroutine internals.
-    check_conn_tasks = []
-    observed_coro_names: list[str] = []
-    for spy in created_tasks:
-        coro = getattr(spy._task, "get_coro", lambda: None)()
-        coro_name = getattr(getattr(coro, "cr_code", None), "co_name", "")
-        observed_coro_names.append(coro_name)
-        if "check_connection" in coro_name:
-            check_conn_tasks.append(spy)
+    check_conn_tasks, observed_coro_names = _find_check_conn_tasks(created_tasks)
 
     assert (
         check_conn_tasks
@@ -497,15 +508,7 @@ def test_cancelled_error_cancels_task_and_returns():
         mock_connect_matrix.assert_called_once()
         mock_matrix_client.close.assert_awaited_once()
 
-    # NOTE: Task introspection relies on CPython 3.10+ coroutine internals.
-    check_conn_tasks = []
-    observed_coro_names: list[str] = []
-    for spy in created_tasks:
-        coro = getattr(spy._task, "get_coro", lambda: None)()
-        coro_name = getattr(getattr(coro, "cr_code", None), "co_name", "")
-        observed_coro_names.append(coro_name)
-        if "check_connection" in coro_name:
-            check_conn_tasks.append(spy)
+    check_conn_tasks, observed_coro_names = _find_check_conn_tasks(created_tasks)
 
     assert (
         check_conn_tasks
@@ -609,10 +612,10 @@ def test_exception_during_ensure_processor_started_raised():
         mock_connect_meshtastic.return_value = MagicMock()
 
         _reset_all_mmrelay_globals()
-        with pytest.raises(RuntimeError) as exc_info:
-            try:
+        try:
+            with pytest.raises(RuntimeError) as exc_info:
                 asyncio.run(main(config))
-            finally:
-                _reset_all_mmrelay_globals()
+        finally:
+            _reset_all_mmrelay_globals()
 
         assert "Queue processor failed" in str(exc_info.value)

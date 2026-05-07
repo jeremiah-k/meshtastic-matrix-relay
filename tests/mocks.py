@@ -7,50 +7,90 @@ Intended to be imported by tests/conftest.py (which re-exports symbols).
 """
 
 import sys
+from types import ModuleType
 from unittest.mock import MagicMock
+
+
+class _MockModule(ModuleType):
+    """A ModuleType subclass that returns MagicMock for undefined attributes."""
+
+    def __getattr__(self, name: str) -> MagicMock:
+        mock = MagicMock()
+        object.__setattr__(self, name, mock)
+        return mock
+
+    def __setattr__(self, name: str, value: object) -> None:
+        object.__setattr__(self, name, value)
+
 
 # ── sys.modules mocking ───────────────────────────────────────────────
 # Mock all external dependencies before any imports can occur
 
-meshtastic_mock = MagicMock()
+meshtastic_mock = _MockModule("meshtastic")
+meshtastic_mock.__path__ = []  # type: ignore[attr-defined]
 sys.modules["meshtastic"] = meshtastic_mock
-sys.modules["meshtastic.protobuf"] = MagicMock()
+meshtastic_protobuf = MagicMock()
+sys.modules["meshtastic.protobuf"] = meshtastic_protobuf
+meshtastic_mock.protobuf = meshtastic_protobuf  # type: ignore[attr-defined]
 sys.modules["meshtastic.protobuf.portnums_pb2"] = MagicMock()
 sys.modules["meshtastic.protobuf.portnums_pb2"].PortNum = MagicMock()  # type: ignore[attr-defined]
 sys.modules["meshtastic.protobuf.portnums_pb2"].PortNum.DETECTION_SENSOR_APP = 1
+meshtastic_protobuf.portnums_pb2 = sys.modules["meshtastic.protobuf.portnums_pb2"]
 sys.modules["meshtastic.protobuf.mesh_pb2"] = MagicMock()
-sys.modules["meshtastic.ble_interface"] = MagicMock()
-sys.modules["meshtastic.serial_interface"] = MagicMock()
-sys.modules["meshtastic.tcp_interface"] = MagicMock()
-sys.modules["meshtastic.mesh_interface"] = MagicMock()
-meshtastic_mock.BROADCAST_ADDR = "^all"
-meshtastic_mock.BROADCAST_NUM = 4294967295
+meshtastic_protobuf.mesh_pb2 = sys.modules["meshtastic.protobuf.mesh_pb2"]
+meshtastic_ble_interface = MagicMock()
+sys.modules["meshtastic.ble_interface"] = meshtastic_ble_interface
+meshtastic_mock.ble_interface = meshtastic_ble_interface  # type: ignore[attr-defined]
+meshtastic_serial_interface = MagicMock()
+sys.modules["meshtastic.serial_interface"] = meshtastic_serial_interface
+meshtastic_mock.serial_interface = meshtastic_serial_interface  # type: ignore[attr-defined]
+meshtastic_tcp_interface = MagicMock()
+sys.modules["meshtastic.tcp_interface"] = meshtastic_tcp_interface
+meshtastic_mock.tcp_interface = meshtastic_tcp_interface  # type: ignore[attr-defined]
+meshtastic_mesh_interface = MagicMock()
+sys.modules["meshtastic.mesh_interface"] = meshtastic_mesh_interface
+meshtastic_mock.mesh_interface = meshtastic_mesh_interface  # type: ignore[attr-defined]
+meshtastic_mock.BROADCAST_ADDR = "^all"  # type: ignore[attr-defined]
+meshtastic_mock.BROADCAST_NUM = 4294967295  # type: ignore[attr-defined]
 sys.modules["meshtastic.mesh_interface"].BROADCAST_NUM = 4294967295  # type: ignore[attr-defined]
 sys.modules["meshtastic.mesh_interface"].BROADCAST_ADDR = "^all"  # type: ignore[attr-defined]
 
-nio_mock = MagicMock()
+nio_mock = _MockModule("nio")
+nio_mock.__path__ = []  # type: ignore[attr-defined]
 sys.modules["nio"] = nio_mock
-sys.modules["nio.events"] = MagicMock()
-sys.modules["nio.events.room_events"] = MagicMock()
-sys.modules["nio.event_builders"] = MagicMock()
+nio_events = MagicMock()
+sys.modules["nio.events"] = nio_events
+nio_mock.events = nio_events  # type: ignore[attr-defined]
+nio_events_room_events = MagicMock()
+sys.modules["nio.events.room_events"] = nio_events_room_events
+nio_events.room_events = nio_events_room_events
+nio_event_builders = MagicMock()
+sys.modules["nio.event_builders"] = nio_event_builders
+nio_mock.event_builders = nio_event_builders  # type: ignore[attr-defined]
 
-pil_mock = MagicMock()
+pil_mock = _MockModule("PIL")
+pil_mock.__path__ = []  # type: ignore[attr-defined]
 pil_image_mock = MagicMock()
 pil_imagedraw_mock = MagicMock()
 sys.modules["PIL"] = pil_mock
 sys.modules["PIL.Image"] = pil_image_mock
+pil_mock.Image = pil_image_mock  # type: ignore[attr-defined]
 sys.modules["PIL.ImageDraw"] = pil_imagedraw_mock
-pil_mock.Image = pil_image_mock
-pil_mock.ImageDraw = pil_imagedraw_mock
+pil_mock.ImageDraw = pil_imagedraw_mock  # type: ignore[attr-defined]
 
 certifi_mock = MagicMock()
 certifi_mock.where.return_value = "/fake/cert/path.pem"
 sys.modules["certifi"] = certifi_mock
 
-serial_mock = MagicMock()
+serial_mock = _MockModule("serial")
+serial_mock.__path__ = []  # type: ignore[attr-defined]
 sys.modules["serial"] = serial_mock
-sys.modules["serial.tools"] = MagicMock()
-sys.modules["serial.tools.list_ports"] = MagicMock()
+serial_tools = MagicMock()
+sys.modules["serial.tools"] = serial_tools
+serial_mock.tools = serial_tools  # type: ignore[attr-defined]
+serial_tools_list_ports = MagicMock()
+sys.modules["serial.tools.list_ports"] = serial_tools_list_ports
+serial_tools.list_ports = serial_tools_list_ports
 
 sys.modules["bleak"] = MagicMock()
 

@@ -11,6 +11,7 @@ Covers:
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from aiohttp import ClientError
 
 from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
@@ -28,8 +29,17 @@ from tests.helpers import (
 # =============================================================================
 
 
-def test_sync_timeout_logs_warning_and_retries():
-    """TimeoutError from sync_task.result() logs warning and retries."""
+@pytest.mark.parametrize(
+    "raised_exc, logger_method, expected_substr",
+    [
+        (asyncio.TimeoutError("Sync timeout"), "warning", "Matrix sync timed out"),
+        (ClientError("Network error"), "warning", "Matrix sync failed, retrying"),
+        (ConnectionError("Connection lost"), "exception", "Matrix sync failed"),
+    ],
+    ids=["timeout", "client_error", "connection_error"],
+)
+def test_sync_failure_logs_and_retries(raised_exc, logger_method, expected_substr):
+    """Sync failures log warnings/errors and retry."""
     config = {
         "matrix_rooms": [{"id": "!room:matrix.org"}],
         "matrix": {"homeserver": "https://matrix.org"},
@@ -50,14 +60,13 @@ def test_sync_timeout_logs_warning_and_retries():
             created_events.append(event)
             return event
 
-        def sync_forever_side_effect(*args, **kwargs):
+        def sync_forever_side_effect(*_args, **_kwargs) -> None:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                raise asyncio.TimeoutError("Sync timeout")
+                raise raised_exc
             for event in created_events:
                 event.set()
-            return None
 
         mock_matrix_client.sync_forever = AsyncMock(
             side_effect=sync_forever_side_effect
@@ -110,183 +119,5 @@ def test_sync_timeout_logs_warning_and_retries():
 
     assert call_count == 2  # first attempt + one retry
 
-    assert any(
-        "Matrix sync timed out" in call.args[0]
-        for call in mock_logger.warning.call_args_list
-    )
-
-
-def test_sync_client_error_logs_warning_and_retries():
-    """ClientError from sync_task.result() logs warning and retries."""
-    config = {
-        "matrix_rooms": [{"id": "!room:matrix.org"}],
-        "matrix": {"homeserver": "https://matrix.org"},
-        "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
-    }
-
-    call_count = 0
-
-    async def run_test():
-        mock_matrix_client = AsyncMock()
-        mock_matrix_client.add_event_callback = MagicMock()
-        mock_matrix_client.close = AsyncMock()
-        created_events: list[asyncio.Event] = []
-        real_event_cls = asyncio.Event
-
-        def _capture_event(*_args, **_kwargs) -> asyncio.Event:
-            event = real_event_cls()
-            created_events.append(event)
-            return event
-
-        def sync_forever_side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise ClientError("Network error")
-            for event in created_events:
-                event.set()
-            return None
-
-        mock_matrix_client.sync_forever = AsyncMock(
-            side_effect=sync_forever_side_effect
-        )
-
-        with (
-            patch("mmrelay.main.initialize_database"),
-            patch("mmrelay.main.load_plugins"),
-            patch("mmrelay.main.start_message_queue"),
-            patch(
-                "mmrelay.main.connect_matrix",
-                new_callable=AsyncMock,
-                return_value=mock_matrix_client,
-            ),
-            patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
-            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
-            patch("mmrelay.main.get_message_queue") as mock_get_queue,
-            patch(
-                "mmrelay.main.meshtastic_utils.get_nodedb_refresh_interval_seconds",
-                return_value=0.0,
-            ),
-            patch(
-                "mmrelay.main.meshtastic_utils.check_connection",
-                side_effect=_async_noop,
-            ),
-            patch(
-                "mmrelay.main.meshtastic_utils.refresh_node_name_tables",
-                side_effect=_async_noop,
-            ),
-            patch("mmrelay.main.shutdown_plugins"),
-            patch("mmrelay.main.stop_message_queue"),
-            patch(
-                "mmrelay.main.asyncio.get_running_loop",
-                side_effect=make_patched_get_running_loop(),
-            ),
-            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
-            patch("mmrelay.main.matrix_logger") as mock_logger,
-            patch("mmrelay.main.asyncio.sleep"),
-            patch("mmrelay.main.asyncio.Event", side_effect=_capture_event),
-        ):
-            mock_queue = MagicMock()
-            mock_queue.ensure_processor_started = MagicMock()
-            mock_get_queue.return_value = mock_queue
-
-            await main(config)
-
-        return mock_logger
-
-    mock_logger = asyncio.run(run_test())
-
-    assert call_count == 2  # first attempt + one retry
-
-    assert any(
-        "Matrix sync failed, retrying" in call.args[0]
-        for call in mock_logger.warning.call_args_list
-    )
-
-
-def test_sync_connection_error_logs_exception():
-    """ConnectionError from sync logs exception."""
-    config = {
-        "matrix_rooms": [{"id": "!room:matrix.org"}],
-        "matrix": {"homeserver": "https://matrix.org"},
-        "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
-    }
-
-    call_count = 0
-
-    async def run_test():
-        mock_matrix_client = AsyncMock()
-        mock_matrix_client.add_event_callback = MagicMock()
-        mock_matrix_client.close = AsyncMock()
-        created_events: list[asyncio.Event] = []
-        real_event_cls = asyncio.Event
-
-        def _capture_event(*_args, **_kwargs) -> asyncio.Event:
-            event = real_event_cls()
-            created_events.append(event)
-            return event
-
-        def sync_forever_side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise ConnectionError("Connection lost")
-            for event in created_events:
-                event.set()
-            return None
-
-        mock_matrix_client.sync_forever = AsyncMock(
-            side_effect=sync_forever_side_effect
-        )
-
-        with (
-            patch("mmrelay.main.initialize_database"),
-            patch("mmrelay.main.load_plugins"),
-            patch("mmrelay.main.start_message_queue"),
-            patch(
-                "mmrelay.main.connect_matrix",
-                new_callable=AsyncMock,
-                return_value=mock_matrix_client,
-            ),
-            patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
-            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
-            patch("mmrelay.main.get_message_queue") as mock_get_queue,
-            patch(
-                "mmrelay.main.meshtastic_utils.get_nodedb_refresh_interval_seconds",
-                return_value=0.0,
-            ),
-            patch(
-                "mmrelay.main.meshtastic_utils.check_connection",
-                side_effect=_async_noop,
-            ),
-            patch(
-                "mmrelay.main.meshtastic_utils.refresh_node_name_tables",
-                side_effect=_async_noop,
-            ),
-            patch("mmrelay.main.shutdown_plugins"),
-            patch("mmrelay.main.stop_message_queue"),
-            patch(
-                "mmrelay.main.asyncio.get_running_loop",
-                side_effect=make_patched_get_running_loop(),
-            ),
-            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
-            patch("mmrelay.main.matrix_logger") as mock_logger,
-            patch("mmrelay.main.asyncio.sleep"),
-            patch("mmrelay.main.asyncio.Event", side_effect=_capture_event),
-        ):
-            mock_queue = MagicMock()
-            mock_queue.ensure_processor_started = MagicMock()
-            mock_get_queue.return_value = mock_queue
-
-            await main(config)
-
-        return mock_logger
-
-    mock_logger = asyncio.run(run_test())
-
-    assert call_count == 2  # first attempt + one retry
-
-    assert any(
-        "Matrix sync failed" in call.args[0]
-        for call in mock_logger.exception.call_args_list
-    )
+    method_calls = getattr(mock_logger, logger_method).call_args_list
+    assert any(expected_substr in c.args[0] for c in method_calls)

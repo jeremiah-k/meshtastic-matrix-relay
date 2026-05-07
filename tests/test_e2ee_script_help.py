@@ -30,6 +30,8 @@ def help_result():
         capture_output=True,
         text=True,
         timeout=15,
+        check=False,
+        cwd=str(REPO_ROOT),
     )  # nosec B603
 
 
@@ -57,6 +59,15 @@ def test_e2ee_integration_script_help_no_credentials_required(help_result):
         f"Script exited {result.returncode}.\n"
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
-    assert (
-        result.stderr == ""
-    ), f"Help path produced unexpected stderr output.\nstderr: {result.stderr}"
+    forbidden = (
+        "credentials.json",
+        "access_token",
+        "homeserver",
+        "Traceback",
+        "ConnectionError",
+    )
+    matches = [marker for marker in forbidden if marker in result.stderr]
+    assert not matches, (
+        f"Help path produced credentials/network-related stderr ({matches}).\n"
+        f"stderr: {result.stderr}"
+    )

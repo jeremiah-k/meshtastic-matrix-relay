@@ -556,7 +556,7 @@ class TestEnsureBleWorkerAvailableStaleWorker:
         )
         monkeypatch.setattr(mu, "_ble_future_timeout_secs", 30.0, raising=False)
 
-        def _simulate_reset(*_args, **_kwargs):
+        def _simulate_reset(*_args: object, **_kwargs: object) -> None:
             monkeypatch.setattr(mu, "_ble_future", None, raising=False)
             monkeypatch.setattr(mu, "_ble_future_address", None, raising=False)
             monkeypatch.setattr(mu, "_ble_future_started_at", None, raising=False)
@@ -738,9 +738,8 @@ class TestBleConnectShuttingDown:
 
         ensure_operations: list[str] = []
 
-        def mock_ensure(address, *, operation):
+        def mock_ensure(address: str, *, operation: str) -> None:
             ensure_operations.append(operation)
-            return None
 
         mock_interface = Mock()
         mock_interface.auto_reconnect = True
@@ -760,8 +759,8 @@ class TestBleConnectShuttingDown:
                 mock_executor = Mock(spec=ThreadPoolExecutor)
                 mock_get_exec.return_value = mock_executor
 
-                def create_mock_future(*_args, **_kwargs):
-                    mock_future = Mock(spec=Future)
+                def create_mock_future(*_args: object, **_kwargs: object) -> Mock:
+                    mock_future: Mock = Mock(spec=Future)
                     mock_future.done.return_value = True
                     mock_future.result.return_value = mock_interface
                     return mock_future
@@ -841,7 +840,7 @@ class TestBleInterfaceImport:
         try:
             real_import_module = importlib.import_module
 
-            def _raising_import(name, package=None):
+            def _raising_import(name: str, package: str | None = None) -> object:
                 if name == "meshtastic.ble_interface":
                     raise ImportError("no ble interface")
                 return real_import_module(name, package)
@@ -883,7 +882,7 @@ class TestBleInterfaceImport:
         try:
             real_import_module = importlib.import_module
 
-            def _raising_import(name, package=None):
+            def _raising_import(name: str, package: str | None = None) -> object:
                 if name == MESHTASTIC_BLE_GATING_MODULE_PATH:
                     raise RuntimeError("gating boom")
                 return real_import_module(name, package)
@@ -927,7 +926,7 @@ class TestBleInterfaceImport:
         try:
             real_import_module = importlib.import_module
 
-            def _fake_import(name, package=None):
+            def _fake_import(name: str, package: str | None = None) -> object:
                 if name == MESHTASTIC_BLE_GATING_MODULE_PATH:
                     return fake_module
                 return real_import_module(name, package)
@@ -972,7 +971,7 @@ class TestBleInterfaceImport:
         try:
             real_import_module = importlib.import_module
 
-            def _fake_import(name, package=None):
+            def _fake_import(name: str, package: str | None = None) -> object:
                 if name == MESHTASTIC_BLE_GATING_MODULE_PATH:
                     return fake_module
                 return real_import_module(name, package)
@@ -1079,7 +1078,7 @@ class TestBLEGateResetCallable:
     def test_reset_handles_callable_exception(self, monkeypatch):
         """Should handle exceptions from _ble_gate_reset_callable gracefully."""
 
-        def _raising_callable():
+        def _raising_callable() -> None:
             raise RuntimeError("Gate reset failed")
 
         monkeypatch.setattr(
@@ -1094,7 +1093,7 @@ class TestBLEGateResetCallable:
         """Should return True when callable succeeds."""
         call_count = [0]
 
-        def _successful_callable():
+        def _successful_callable() -> None:
             call_count[0] += 1
 
         monkeypatch.setattr(
@@ -1220,7 +1219,7 @@ class TestDuplicateSuppressionRetryLogic(unittest.TestCase):
 
         original_callable = mu._ble_gate_reset_callable
 
-        def _successful_reset():
+        def _successful_reset() -> None:
             pass
 
         try:

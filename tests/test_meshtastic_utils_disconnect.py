@@ -176,6 +176,11 @@ def reset_meshtastic_relay_state(monkeypatch):
         0,
         raising=False,
     )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.config",
+        None,
+        raising=False,
+    )
 
     yield
 

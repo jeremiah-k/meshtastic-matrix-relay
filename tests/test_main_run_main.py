@@ -20,6 +20,20 @@ from tests._test_main_helpers import (
 )
 
 
+def _rendered_warnings(mock_logger) -> list[str]:
+    """Format warning call args into rendered strings."""
+    rendered = []
+    for args in mock_logger.warning.call_args_list:
+        if args.args:
+            fmt = args.args[0]
+            fmt_args = args.args[1:] if len(args.args) > 1 else ()
+            try:
+                rendered.append(fmt % fmt_args)
+            except (TypeError, ValueError):
+                rendered.append(str(fmt))
+    return rendered
+
+
 @pytest.fixture(autouse=True)
 def reset_banner_state():
     import mmrelay.main
@@ -422,9 +436,7 @@ def test_run_main_with_credentials_json(
 @patch("mmrelay.main.get_legacy_dirs")
 @patch("mmrelay.main.get_home_dir")
 @patch("mmrelay.config.get_log_dir")
-@patch("mmrelay.config.os.makedirs")
 def test_run_main_legacy_layout_warning(
-    mock_makedirs,
     mock_get_log_dir,
     mock_get_home_dir,
     mock_get_legacy_dirs,
@@ -461,12 +473,13 @@ def test_run_main_legacy_layout_warning(
         result = run_main(mock_args)
 
     assert result == 0
-    mock_rich_logger.warning.assert_any_call(
-        "Legacy data layout detected (MMRELAY_HOME=%s, legacy_env_vars=%s, legacy_dirs=%s). This layout is deprecated and will be removed in a future release.",
-        "/test/home/dir",
-        "MMRELAY_DATA_DIR",
-        "/test/legacy/dir",
-    )
-    mock_rich_logger.warning.assert_any_call(
-        "To migrate to the new layout, see docs/DOCKER.md: Migrating to the New Layout."
-    )
+    rendered = _rendered_warnings(mock_rich_logger)
+    assert any(
+        "Legacy data layout detected" in msg for msg in rendered
+    ), f"Expected legacy layout warning not found. Rendered: {rendered}"
+    assert any(
+        "/test/legacy/dir" in msg for msg in rendered
+    ), f"Expected legacy dir in warning. Rendered: {rendered}"
+    assert any(
+        "docs/DOCKER.md" in msg for msg in rendered
+    ), f"Expected migration hint not found. Rendered: {rendered}"

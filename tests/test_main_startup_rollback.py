@@ -90,6 +90,10 @@ def test_startup_rollback_cancels_check_connection_task(
         for arg in args:
             if inspect.iscoroutine(arg):
                 arg.close()
+            elif isinstance(arg, (asyncio.Task, asyncio.Future)):
+                raise AssertionError(
+                    f"mock_gather in main() received unexpected Task/Future: {arg!r}"
+                )
         return [None] * len(args)
 
     with (
@@ -337,6 +341,10 @@ def test_startup_rollback_closes_matrix_client(
         for arg in args:
             if inspect.iscoroutine(arg):
                 arg.close()
+            elif isinstance(arg, (asyncio.Task, asyncio.Future)):
+                raise AssertionError(
+                    f"mock_gather in main() received unexpected Task/Future: {arg!r}"
+                )
         return [None] * len(args)
 
     with (
