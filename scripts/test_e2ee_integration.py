@@ -4,58 +4,42 @@ E2EE Integration Test
 
 This test can verify actual E2EE behavior by inspecting the real Matrix client
 state and message sending behavior without requiring manual room testing.
+
+Usage:
+  python scripts/test_e2ee_integration.py        # Run integration tests
+  python scripts/test_e2ee_integration.py --help  # Show help
 """
 
 import asyncio
 import json
 import sys
 from pathlib import Path
-from typing import Any, Type
+from typing import Any
 
 # Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-_ImportedE2EEDebugUtilities: Type[Any] | None = None
-
-try:
-    from mmrelay.config import load_config
-    from mmrelay.matrix_utils import connect_matrix
-
-    from .test_e2ee_encryption import E2EEDebugUtilities as _ImportedE2EEDebugUtilities
-
-    IMPORTS_AVAILABLE = True
-except ImportError as e:
-    print(f"❌ Import error: {e}")
-    print("Make sure you're running from the project root directory")
-    IMPORTS_AVAILABLE = False
-
-    # Create dummy classes to prevent further import errors
-    class _FallbackE2EEDebugUtilities:
-        pass
-
-
-E2EEDebugUtilities = (
-    _ImportedE2EEDebugUtilities if IMPORTS_AVAILABLE else _FallbackE2EEDebugUtilities
-)
+from mmrelay.config import load_config
+from mmrelay.matrix_utils import connect_matrix
 
 
 class E2EEIntegrationTester:
     """Integration tester for E2EE functionality"""
 
-    def __init__(self):
-        self.config = None
-        self.client = None
-        self.test_results = {}
+    def __init__(self) -> None:
+        self.config: dict[str, Any] | None = None
+        self.client: Any | None = None
+        self.test_results: dict[str, dict[str, Any]] = {}
 
-    async def setup_test_environment(self):
+    def setup_test_environment(self) -> bool:
         """Set up test environment with real config"""
         print("🔧 Setting up test environment...")
 
         try:
-            # Load real config
             self.config = load_config()
             if not self.config:
-                raise Exception("Could not load config")
+                print("❌ Setup failed: Could not load config")
+                return False
 
             print("✅ Config loaded successfully")
             return True
@@ -64,48 +48,53 @@ class E2EEIntegrationTester:
             print(f"❌ Setup failed: {e}")
             return False
 
-    async def check_matrix_connection(self):
+    async def check_matrix_connection(self) -> bool:
         """Test Matrix connection with E2EE"""
         print("\n🔍 Testing Matrix connection...")
 
         try:
-            # Attempt to connect (but don't start sync loop)
             self.client = await connect_matrix(self.config)
-
-            if not self.client:
-                raise Exception("Failed to connect to Matrix")
-
-            print("✅ Matrix connection successful")
-
-            # Check E2EE setup
-            has_device_id = bool(getattr(self.client, "device_id", None))
-            has_store_path = bool(getattr(self.client, "store_path", None))
-            encryption_enabled = False
-
-            if hasattr(self.client, "config") and self.client.config:
-                encryption_enabled = getattr(
-                    self.client.config, "encryption_enabled", False
-                )
-
-            print(f"   Device ID: {getattr(self.client, 'device_id', 'None')}")
-            print(f"   Store Path: {getattr(self.client, 'store_path', 'None')}")
-            print(f"   Encryption Enabled: {encryption_enabled}")
-
-            self.test_results["connection"] = {
-                "success": True,
-                "has_device_id": has_device_id,
-                "has_store_path": has_store_path,
-                "encryption_enabled": encryption_enabled,
-            }
-
-            return True
-
         except Exception as e:
             print(f"❌ Connection failed: {e}")
             self.test_results["connection"] = {"success": False, "error": str(e)}
             return False
 
-    async def check_room_encryption_detection(self):
+        if not self.client:
+            print("❌ Connection failed: Failed to connect to Matrix")
+            self.test_results["connection"] = {
+                "success": False,
+                "error": "Failed to connect to Matrix",
+            }
+            return False
+
+        print("✅ Matrix connection successful")
+
+        # Check E2EE setup
+        has_device_id = bool(getattr(self.client, "device_id", None))
+        has_store_path = bool(getattr(self.client, "store_path", None))
+        encryption_enabled = False
+
+        if hasattr(self.client, "config") and self.client.config:
+            encryption_enabled = getattr(
+                self.client.config, "encryption_enabled", False
+            )
+
+        print(f"   Device ID: {getattr(self.client, 'device_id', 'None')}")
+        print(f"   Store Path: {getattr(self.client, 'store_path', 'None')}")
+        print(f"   Encryption Enabled: {encryption_enabled}")
+
+        e2ee_ready = has_device_id and has_store_path and encryption_enabled
+
+        self.test_results["connection"] = {
+            "success": e2ee_ready,
+            "has_device_id": has_device_id,
+            "has_store_path": has_store_path,
+            "encryption_enabled": encryption_enabled,
+        }
+
+        return e2ee_ready
+
+    async def check_room_encryption_detection(self) -> bool:
         """
         Detect encryption status for rooms available on the configured Matrix client.
 
@@ -126,6 +115,10 @@ class E2EEIntegrationTester:
 
         if not self.client:
             print("❌ No client available")
+            self.test_results["room_detection"] = {
+                "success": False,
+                "error": "No client available",
+            }
             return False
 
         try:
@@ -190,7 +183,7 @@ class E2EEIntegrationTester:
             self.test_results["room_detection"] = {"success": False, "error": str(e)}
             return False
 
-    async def check_message_sending_parameters(self):
+    async def check_message_sending_parameters(self) -> bool:
         """Test message sending parameter detection (without actually sending)"""
         print("\n🔍 Testing message sending parameters...")
 
@@ -218,13 +211,17 @@ class E2EEIntegrationTester:
 
             if not test_room_id:
                 print("⚠️  No rooms available for testing")
+                self.test_results["message_parameters"] = {
+                    "success": False,
+                    "error": "No rooms available",
+                }
                 return False
 
             print(f"   Test room: {test_room_id}")
             print(f"   Room encrypted: {test_room_encrypted}")
 
             # Simulate the parameter detection logic from matrix_relay
-            room = self.client.rooms.get(test_room_id)
+            room = rooms.get(test_room_id)
             if room:
                 detected_encrypted = getattr(room, "encrypted", "unknown")
                 print(f"   Detected encryption status: {detected_encrypted}")
@@ -257,7 +254,7 @@ class E2EEIntegrationTester:
             }
             return False
 
-    async def run_full_integration_test(self):
+    async def run_full_integration_test(self) -> bool:
         """
         Run the full E2EE integration test suite and return overall success.
 
@@ -274,7 +271,7 @@ class E2EEIntegrationTester:
         print("=" * 50)
 
         # Setup
-        if not await self.setup_test_environment():
+        if not self.setup_test_environment():
             return False
 
         # Run tests
@@ -324,7 +321,7 @@ class E2EEIntegrationTester:
 
         return failed == 0
 
-    def generate_recommendations(self):
+    def generate_recommendations(self) -> None:
         """Generate recommendations based on test results"""
         print("\n💡 RECOMMENDATIONS:")
         print("=" * 30)
@@ -350,23 +347,23 @@ class E2EEIntegrationTester:
         print("4. Test with matrix-nio-send to compare behavior")
 
 
-async def main():
-    """Main test runner"""
-    if len(sys.argv) > 1 and sys.argv[1] == "--help":
-        print("E2EE Integration Test")
-        print("====================")
-        print("Tests actual E2EE behavior with real Matrix client")
-        print()
-        print("Usage:")
-        print("  python test_e2ee_integration.py        # Run integration tests")
-        print("  python test_e2ee_integration.py --help # Show this help")
-        print()
-        print("Requirements:")
-        print("- Valid MMRelay configuration")
-        print("- Matrix credentials (credentials.json)")
-        print("- Network access to Matrix homeserver")
-        return
+def _print_help() -> None:
+    print("E2EE Integration Test")
+    print("====================")
+    print("Tests actual E2EE behavior with real Matrix client")
+    print()
+    print("Usage:")
+    print("  python scripts/test_e2ee_integration.py        # Run integration tests")
+    print("  python scripts/test_e2ee_integration.py --help # Show this help")
+    print()
+    print("Requirements:")
+    print("- Valid MMRelay configuration")
+    print("- Matrix credentials (credentials.json)")
+    print("- Network access to Matrix homeserver")
 
+
+async def main() -> None:
+    """Main test runner"""
     tester = E2EEIntegrationTester()
     success = await tester.run_full_integration_test()
     tester.generate_recommendations()
@@ -375,8 +372,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    if IMPORTS_AVAILABLE:
-        asyncio.run(main())
-    else:
-        print("❌ Required imports not available, skipping integration test")
-        sys.exit(1)
+    if len(sys.argv) > 1 and sys.argv[1] == "--help":
+        _print_help()
+        sys.exit(0)
+
+    asyncio.run(main())

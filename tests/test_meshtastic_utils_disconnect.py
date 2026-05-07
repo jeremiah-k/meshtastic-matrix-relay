@@ -12,20 +12,36 @@ Tests the Meshtastic client functionality including:
 
 import asyncio
 import contextlib
+import sys
 import threading
+import time
+import types
 import unittest
+from concurrent.futures import Future
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from typing import Any
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
+import mmrelay.meshtastic_utils as mu
 from mmrelay.meshtastic_utils import (
     on_lost_meshtastic_connection,
+    reconnect,
 )
 from tests.conftest import cleanup_ble_future_state
 
 TEST_PACKET_RX_TIME = 1234567890
+
+
+def _submit_done_reconnect_future(coro: object, _loop: object) -> Future[None]:
+    """Create and return an already-completed Future after optionally closing a coroutine-like object."""
+    close = getattr(coro, "close", None)
+    if callable(close):
+        close()
+    done_future: Future[None] = Future()
+    done_future.set_result(None)
+    return done_future
 
 
 def _cancel_startup_drain_timer() -> None:
@@ -106,6 +122,63 @@ def reset_meshtastic_relay_state(monkeypatch):
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._health_probe_request_deadlines",
         {},
+        raising=False,
+    )
+    monkeypatch.setattr("mmrelay.meshtastic_utils.reconnecting", False)
+    monkeypatch.setattr("mmrelay.meshtastic_utils.shutting_down", False)
+    monkeypatch.setattr("mmrelay.meshtastic_utils.meshtastic_client", None)
+    monkeypatch.setattr("mmrelay.meshtastic_utils.meshtastic_iface", None)
+    monkeypatch.setattr("mmrelay.meshtastic_utils.event_loop", None)
+    monkeypatch.setattr("mmrelay.meshtastic_utils.reconnect_task_future", None)
+    monkeypatch.setattr("mmrelay.meshtastic_utils.reconnect_task", None)
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future_address",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future_started_at",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_future_timeout_secs",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_timeout_counts",
+        {},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_executor_degraded_addresses",
+        set(),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_executor_orphaned_workers_by_address",
+        {},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._metadata_executor_degraded",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._metadata_executor_orphaned_workers",
+        0,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.config",
+        None,
         raising=False,
     )
 
@@ -227,13 +300,10 @@ class TestConnectionLossHandling(unittest.TestCase):
         on_lost_meshtastic_connection(mock_interface, "test_source")
 
         mock_logger.error.assert_called()
-        # Should log the connection loss
-        error_call = mock_logger.error.call_args[0][0]
+        # Should log the connection loss (first error call before reconnect scheduling)
+        error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("Lost connection", error_call)
         self.assertIn("test_source", error_call)
-
-        # Verify reconnect was actually scheduled
-        mock_reconnect.assert_called()
 
     @patch("mmrelay.meshtastic_utils.logger")
     def test_on_lost_meshtastic_connection_interface_none(self, mock_logger):
@@ -253,8 +323,9 @@ class TestConnectionLossHandling(unittest.TestCase):
             None, detection_source="unknown", topic=pub.AUTO_TOPIC
         )
 
-        # Should use default detection source without error
-        error_call = mock_logger.error.call_args[0][0]
+        mock_logger.error.assert_called()
+        # Should use default detection source without error (first error call before reconnect scheduling)
+        error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("meshtastic.connection.lost", error_call)
 
     @patch("mmrelay.meshtastic_utils.logger")
@@ -280,8 +351,8 @@ class TestConnectionLossHandling(unittest.TestCase):
             mock_interface, detection_source="unknown", topic=pub.AUTO_TOPIC
         )
 
-        # Should use default detection source
-        error_call = mock_logger.error.call_args[0][0]
+        # Should use default detection source (first error call before reconnect scheduling)
+        error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("meshtastic.connection.lost", error_call)
 
     @patch("mmrelay.meshtastic_utils.logger")
@@ -306,8 +377,12 @@ class TestConnectionLossHandling(unittest.TestCase):
             mock_interface, detection_source="unknown", topic=pub.AUTO_TOPIC
         )
 
-        # Should use default detection source
-        error_call = mock_logger.error.call_args[0][0]
+        self.assertTrue(
+            mock_logger.error.call_args_list,
+            "Expected at least one logger.error call",
+        )
+        # Should use default detection source (first error call before reconnect scheduling)
+        error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("meshtastic.connection.lost", error_call)
 
         # Should log debug about fallback
@@ -361,8 +436,12 @@ class TestConnectionLossHandling(unittest.TestCase):
             mock_interface, detection_source="unknown", topic=mock_topic
         )
 
-        # Should use the topic's getName() method, not __str__
-        error_call = mock_logger.error.call_args[0][0]
+        self.assertTrue(
+            mock_logger.error.call_args_list,
+            "Expected at least one logger.error call",
+        )
+        # Should use the topic's getName() method, not __str__ (first error call before reconnect scheduling)
+        error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("meshtastic.connection.lost", error_call)
         self.assertNotIn("should.not.be.used", error_call)
 
@@ -403,8 +482,12 @@ class TestConnectionLossHandling(unittest.TestCase):
             mock_interface, detection_source="unknown", topic=simple_topic
         )
 
-        # Should use str(topic)
-        error_call = mock_logger.error.call_args[0][0]
+        self.assertTrue(
+            mock_logger.error.call_args_list,
+            "Expected at least one logger.error call",
+        )
+        # Should use str(topic) (first error call before reconnect scheduling)
+        error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("custom.topic.name", error_call)
 
     @patch("mmrelay.meshtastic_utils.logger")
@@ -473,8 +556,12 @@ class TestConnectionLossHandling(unittest.TestCase):
             mock_interface, detection_source="unknown", topic=pub.AUTO_TOPIC
         )
 
-        # Should use the BLE disconnect source with 'ble.' prefix stripped
-        error_call = mock_logger.error.call_args[0][0]
+        self.assertTrue(
+            mock_logger.error.call_args_list,
+            "Expected at least one logger.error call",
+        )
+        # Should use the BLE disconnect source with 'ble.' prefix stripped (first error call before reconnect scheduling)
+        error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("user_disconnect", error_call)
         self.assertNotIn("ble.user_disconnect", error_call)
 
@@ -493,12 +580,430 @@ class TestConnectionLossHandling(unittest.TestCase):
         mmrelay.meshtastic_utils.shutting_down = False
 
         mock_interface = MagicMock()
-        mock_interface._last_disconnect_source = "   "  # Whitespace only
-
+        mock_interface._last_disconnect_source = "   "
         on_lost_meshtastic_connection(
             mock_interface, detection_source="unknown", topic=pub.AUTO_TOPIC
         )
 
-        # Should fall back to default detection source
-        error_call = mock_logger.error.call_args[0][0]
+        self.assertTrue(
+            mock_logger.error.call_args_list,
+            "Expected at least one logger.error call",
+        )
+        # Should fall back to default detection source (first error call before reconnect scheduling)
+        error_call = mock_logger.error.call_args_list[0][0][0]
         self.assertIn("meshtastic.connection.lost", error_call)
+
+
+# ---------------------------------------------------------------------------
+# Helpers for reconnect tests (absorbed from reconnect + reconnect_paths)
+# ---------------------------------------------------------------------------
+
+
+def _mark_shutdown(*_args, **_kwargs) -> None:
+    """Set the shutting_down flag. Suitable for side_effect or direct call."""
+    mu.shutting_down = True
+
+
+class _DummyColumn:
+    def __init__(self, *args, **kwargs):
+        pass
+
+
+class _FailedExecutorLoop:
+    def __init__(self, future):
+        self._future = future
+
+    def run_in_executor(self, *_args, **_kwargs):
+        return self._future
+
+
+# ---------------------------------------------------------------------------
+# Reconnect tests absorbed from test_meshtastic_utils_reconnect.py
+# ---------------------------------------------------------------------------
+
+
+def test_on_lost_meshtastic_connection_reconnection_failure():
+    """Exercises the reconnect failure path when connect_meshtastic returns None."""
+    mock_interface = MagicMock()
+
+    import mmrelay.meshtastic_utils
+
+    mmrelay.meshtastic_utils.reconnecting = False
+    mmrelay.meshtastic_utils.shutting_down = False
+
+    _connect_call_count = [0]
+
+    def _connect_side_effect(*_args, **_kwargs):
+        """Return None. On second call, signal shutdown to stop the retry loop."""
+        _connect_call_count[0] += 1
+        if _connect_call_count[0] >= 2:
+            mmrelay.meshtastic_utils.shutting_down = True
+        return None
+
+    def _schedule_and_run_reconnect():
+        """Run the real reconnect() coroutine to exercise its failure branch."""
+        original_backoff = mmrelay.meshtastic_utils.DEFAULT_BACKOFF_TIME
+        mmrelay.meshtastic_utils.DEFAULT_BACKOFF_TIME = 0
+        try:
+            reconnect_coro = mmrelay.meshtastic_utils.reconnect()
+            asyncio.run(reconnect_coro)
+        finally:
+            mmrelay.meshtastic_utils.DEFAULT_BACKOFF_TIME = original_backoff
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.connect_meshtastic",
+            side_effect=_connect_side_effect,
+        ),
+        patch(
+            "mmrelay.meshtastic.events._schedule_reconnect_after_disconnect",
+            side_effect=_schedule_and_run_reconnect,
+        ),
+        patch(
+            "mmrelay.meshtastic_utils.is_running_as_service",
+            return_value=True,
+        ),
+        patch("mmrelay.meshtastic_utils.config", {}),
+        patch("time.sleep"),
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    ):
+        on_lost_meshtastic_connection(mock_interface)
+
+        # Verify reconnect was invoked
+        mock_logger.info.assert_any_call(
+            "Reconnection attempt starting in 0 seconds..."
+        )
+
+        # Verify the reconnect failure branch was exercised
+        mock_logger.warning.assert_any_call(
+            "Reconnection attempt did not produce a client; backing off"
+        )
+
+
+def test_on_lost_meshtastic_connection_detection_source_edge_cases():
+    """Handles unusual detection_source values without raising exceptions."""
+    mock_interface = MagicMock()
+
+    import mmrelay.meshtastic_utils
+
+    mmrelay.meshtastic_utils.reconnecting = False
+
+    detection_sources = [
+        "unknown_source",
+        None,
+        123,
+        "",
+    ]
+
+    for source in detection_sources:
+        mmrelay.meshtastic_utils.reconnecting = False
+        with (
+            patch(
+                "mmrelay.meshtastic_utils.connect_meshtastic",
+                return_value=MagicMock(),
+            ),
+            patch("mmrelay.meshtastic.events._schedule_reconnect_after_disconnect"),
+            patch("time.sleep"),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            on_lost_meshtastic_connection(mock_interface, detection_source=source)
+            assert mock_logger.error.called or mock_logger.debug.called
+
+
+@pytest.mark.asyncio
+class TestReconnectSuccess:
+    async def test_reconnect_succeeds_and_clears_future_and_flag(self):
+        mock_client = MagicMock()
+        mu.reconnecting = True
+        mu.shutting_down = False
+        mu.reconnect_task_future = None
+
+        def _connect_side_effect(_cfg, _force):
+            mu.meshtastic_client = mock_client
+            return mock_client
+
+        with (
+            patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
+            patch(
+                "mmrelay.meshtastic_utils.connect_meshtastic",
+                side_effect=_connect_side_effect,
+            ),
+            patch("mmrelay.meshtastic_utils.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            await reconnect()
+
+        assert mu.meshtastic_client is mock_client
+        assert mu.reconnecting is False
+        assert mu.reconnect_task_future is None
+
+    async def test_reconnect_success_does_not_republish_client_global(self):
+        mock_client = MagicMock()
+        mu.reconnecting = True
+        mu.shutting_down = False
+        mu.reconnect_task_future = None
+        mu.meshtastic_client = None
+
+        with (
+            patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
+            patch(
+                "mmrelay.meshtastic_utils.connect_meshtastic", return_value=mock_client
+            ),
+            patch("mmrelay.meshtastic_utils.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            await reconnect()
+
+        assert mu.reconnect_task_future is None
+        assert mu.reconnecting is False
+        assert mu.meshtastic_client is None
+
+
+@pytest.mark.asyncio
+class TestReconnectCancellation:
+    async def test_reconnect_cancellation_logs_and_clears_state(self):
+        mu.reconnecting = True
+        mu.shutting_down = False
+        mu.reconnect_task_future = None
+
+        with (
+            patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.sleep",
+                new_callable=AsyncMock,
+                side_effect=asyncio.CancelledError,
+            ),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            await reconnect()
+
+        mock_logger.info.assert_any_call("Reconnection task was cancelled.")
+        assert mu.reconnecting is False
+        assert mu.reconnect_task_future is None
+
+
+class TestConnectionLostHandlerClearingStaleBleFuture:
+    """Test connection lost handler clearing stale BLE future."""
+
+    def test_on_lost_meshtastic_connection_clears_ble_future_globals(self):
+        """Test that _ble_future, _ble_future_address, _ble_future_started_at, _ble_future_timeout_secs are cleared."""
+        mock_future = Mock(spec=Future)
+        mock_future.done.return_value = False
+        mu._ble_future = mock_future
+        mu._ble_future_address = "AA:BB:CC:DD:EE:FF"
+        mu._ble_future_started_at = time.monotonic()
+        mu._ble_future_timeout_secs = 30.0
+        mu._ble_timeout_counts["AA:BB:CC:DD:EE:FF"] = 5
+        mu.meshtastic_client = Mock()
+        mu.event_loop = Mock()
+        mu.event_loop.is_closed.return_value = False
+        mu.reconnecting = False
+
+        with (
+            patch("mmrelay.meshtastic_utils.reconnect"),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
+                side_effect=_submit_done_reconnect_future,
+            ),
+            patch("mmrelay.meshtastic_utils.logger"),
+        ):
+            mu.on_lost_meshtastic_connection(None, detection_source="test source")
+
+            assert mu._ble_future is None
+            assert mu._ble_future_address is None
+            assert mu._ble_future_started_at is None
+            assert mu._ble_future_timeout_secs is None
+            assert "AA:BB:CC:DD:EE:FF" not in mu._ble_timeout_counts
+
+    def test_on_lost_meshtastic_connection_clears_ble_timeout_counts(self):
+        """Test _ble_timeout_counts is popped for the address."""
+        mock_future = Mock(spec=Future)
+        mock_future.done.return_value = False
+        mu._ble_future = mock_future
+        mu._ble_future_address = "11:22:33:44:55:66"
+        mu._ble_future_started_at = time.monotonic()
+        mu._ble_future_timeout_secs = 30.0
+        mu._ble_timeout_counts["11:22:33:44:55:66"] = 10
+        mu._ble_timeout_counts["OTHER:ADDRESS"] = 3
+        mu.meshtastic_client = Mock()
+        mu.event_loop = Mock()
+        mu.event_loop.is_closed.return_value = False
+        mu.reconnecting = False
+
+        with (
+            patch("mmrelay.meshtastic_utils.reconnect"),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
+                side_effect=_submit_done_reconnect_future,
+            ),
+            patch("mmrelay.meshtastic_utils.logger"),
+        ):
+            mu.on_lost_meshtastic_connection(None, detection_source="test source")
+
+            assert "11:22:33:44:55:66" not in mu._ble_timeout_counts
+            assert mu._ble_timeout_counts["OTHER:ADDRESS"] == 3
+
+
+@pytest.mark.asyncio
+class TestReconnectShutdownAbort:
+    async def test_shutdown_during_backoff_aborts_reconnect(self):
+        mu.reconnecting = True
+        mu.shutting_down = False
+        mu.reconnect_task_future = None
+
+        with (
+            patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.sleep",
+                new_callable=AsyncMock,
+                side_effect=_mark_shutdown,
+            ),
+            patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            await reconnect()
+
+        mock_connect.assert_not_called()
+        mock_logger.debug.assert_any_call(
+            "Shutdown in progress. Aborting reconnection attempts."
+        )
+        assert mu.reconnecting is False
+
+
+@pytest.mark.asyncio
+class TestReconnectFailureBackoff:
+    async def test_connect_failure_logs_exception_and_clears_state(self):
+        mu.reconnecting = True
+        mu.shutting_down = False
+        mu.reconnect_task_future = None
+        attempt_count = 0
+
+        def _connect_side_effect(_cfg, _force):
+            nonlocal attempt_count
+            attempt_count += 1
+            if attempt_count >= 2:
+                mu.shutting_down = True
+            raise ConnectionError("connection refused")
+
+        with (
+            patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
+            patch(
+                "mmrelay.meshtastic_utils.connect_meshtastic",
+                side_effect=_connect_side_effect,
+            ),
+            patch("mmrelay.meshtastic_utils.asyncio.sleep", new_callable=AsyncMock),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            await reconnect()
+
+        assert attempt_count == 2
+        assert any(
+            "Reconnection attempt failed" in str(c.args)
+            for c in mock_logger.exception.call_args_list
+        )
+        assert mu.reconnecting is False
+        assert mu.reconnect_task_future is None
+
+    async def test_reconnect_task_future_cleared_after_failure(self):
+        mu.reconnecting = True
+        mu.shutting_down = False
+        mu.reconnect_task_future = None
+        attempt_count = 0
+
+        def _connect_side_effect(_cfg, _force):
+            nonlocal attempt_count
+            attempt_count += 1
+            if attempt_count >= 2:
+                mu.shutting_down = True
+            raise RuntimeError("unexpected error")
+
+        with (
+            patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
+            patch(
+                "mmrelay.meshtastic_utils.connect_meshtastic",
+                side_effect=_connect_side_effect,
+            ),
+            patch("mmrelay.meshtastic_utils.asyncio.sleep", new_callable=AsyncMock),
+            patch("mmrelay.meshtastic_utils.logger"),
+        ):
+            await reconnect()
+
+        assert attempt_count == 2
+        assert mu.reconnect_task_future is None
+        assert mu.reconnecting is False
+
+
+# ---------------------------------------------------------------------------
+# Reconnect path tests absorbed from test_meshtastic_utils_reconnect_paths.py
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_reconnect_rich_progress_breaks_on_shutdown():
+    mock_progress_instance = MagicMock()
+    mock_progress_class = MagicMock()
+    mock_progress_class.return_value.__enter__.return_value = mock_progress_instance
+
+    fake_rich = types.ModuleType("rich")
+    fake_progress = types.ModuleType("rich.progress")
+    fake_progress.Progress = mock_progress_class
+    fake_progress.BarColumn = _DummyColumn
+    fake_progress.TextColumn = _DummyColumn
+    fake_progress.TimeRemainingColumn = _DummyColumn
+    fake_rich.progress = fake_progress
+
+    with (
+        patch.dict(sys.modules, {"rich": fake_rich, "rich.progress": fake_progress}),
+        patch("mmrelay.meshtastic_utils.DEFAULT_BACKOFF_TIME", 1),
+        patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=False),
+        patch(
+            "mmrelay.meshtastic_utils.asyncio.sleep",
+            new_callable=AsyncMock,
+            side_effect=_mark_shutdown,
+        ),
+        patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    ):
+        await reconnect()
+
+    mock_connect.assert_not_called()
+    mock_progress_instance.update.assert_called_once()
+    mock_logger.debug.assert_any_call(
+        "Shutdown in progress. Aborting reconnection attempts."
+    )
+
+
+@pytest.mark.asyncio
+async def test_reconnect_logs_exception_and_backs_off():
+    running_loop = asyncio.get_running_loop()
+    failed_future = running_loop.create_future()
+    failed_future.set_exception(RuntimeError("boom"))
+    loop = _FailedExecutorLoop(failed_future)
+
+    with (
+        patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
+        patch(
+            "mmrelay.meshtastic_utils.asyncio.get_running_loop",
+            return_value=loop,
+        ),
+        patch("mmrelay.meshtastic_utils.asyncio.sleep", new_callable=AsyncMock),
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    ):
+        mock_logger.exception.side_effect = _mark_shutdown
+        await reconnect()
+
+    mock_logger.exception.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_reconnect_logs_cancelled():
+    with (
+        patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
+        patch(
+            "mmrelay.meshtastic_utils.asyncio.sleep",
+            new_callable=AsyncMock,
+            side_effect=asyncio.CancelledError,
+        ),
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    ):
+        await reconnect()
+
+    mock_logger.info.assert_any_call("Reconnection task was cancelled.")

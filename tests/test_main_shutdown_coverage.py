@@ -9,11 +9,17 @@ Covers:
 
 import asyncio
 import unittest
-from collections.abc import Awaitable, Callable, Generator
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 from mmrelay.constants.network import CONNECTION_TYPE_SERIAL
 from mmrelay.main import main
+from tests._test_main_helpers import (
+    _async_noop,
+    _close_coro_if_possible,
+    _ImmediateEvent,
+    _make_async_return,
+)
 from tests.constants import (
     TEST_BOT_USER_ID,
     TEST_MATRIX_HOMESERVER,
@@ -25,25 +31,6 @@ from tests.helpers import (
     make_patched_get_running_loop,
     reset_meshtastic_utils_globals,
 )
-
-_make_patched_get_running_loop = make_patched_get_running_loop
-
-
-def _make_async_return(value: object) -> Callable[..., Awaitable[object]]:
-    """
-    Create an async function that ignores its arguments and always returns the given value.
-
-    Parameters:
-        value: The value the created async function will return when awaited.
-
-    Returns:
-        Callable[..., Awaitable[object]]: An async function that accepts any arguments and returns `value` when awaited.
-    """
-
-    async def _async_return(*_args: object, **_kwargs: object) -> object:
-        return value
-
-    return _async_return
 
 
 class _ImmediateAwaitable:
@@ -83,30 +70,6 @@ def _make_matrix_client_with_awaitable_close() -> MagicMock:
     client = MagicMock()
     client.close = MagicMock(return_value=_ImmediateAwaitable(None))
     return client
-
-
-async def _async_noop(*_args: object, **_kwargs: object) -> None:
-    """
-    Immediately completes without performing any action.
-
-    Returns:
-        None: Always returns None.
-    """
-    return None
-
-
-class _ImmediateEvent:
-    def __init__(self) -> None:
-        self._set = True
-
-    def is_set(self) -> bool:
-        return self._set
-
-    def set(self) -> None:
-        self._set = True
-
-    async def wait(self) -> None:
-        return None
 
 
 def _reset_all_mmrelay_globals() -> None:
@@ -215,7 +178,7 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
                 patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
                 patch(
                     "mmrelay.main.asyncio.get_running_loop",
-                    side_effect=_make_patched_get_running_loop(),
+                    side_effect=make_patched_get_running_loop(),
                 ),
                 patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
                 patch(
@@ -276,6 +239,7 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
                 nonlocal wait_for_call_count
                 wait_for_call_count += 1
                 if wait_for_call_count >= 2:
+                    _close_coro_if_possible(coro)
                     raise asyncio.TimeoutError()
                 return await original_wait_for(coro, timeout)
 
@@ -306,7 +270,7 @@ class TestAwaitBackgroundTaskShutdownErrorPaths(unittest.TestCase):
                 patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
                 patch(
                     "mmrelay.main.asyncio.get_running_loop",
-                    side_effect=_make_patched_get_running_loop(),
+                    side_effect=make_patched_get_running_loop(),
                 ),
                 patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
                 patch(
@@ -435,7 +399,7 @@ class TestShutdownWithReconnectTaskFuture(unittest.TestCase):
                 patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
                 patch(
                     "mmrelay.main.asyncio.get_running_loop",
-                    side_effect=_make_patched_get_running_loop(),
+                    side_effect=make_patched_get_running_loop(),
                 ),
                 patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
                 patch(

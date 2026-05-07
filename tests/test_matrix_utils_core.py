@@ -1,3 +1,4 @@
+from typing import cast
 from unittest.mock import patch
 
 import pytest
@@ -133,7 +134,8 @@ def test_get_interaction_settings_none_config():
 def test_get_interaction_settings_invalid_top_level_config_type() -> None:
     """Non-dict top-level config values should disable interactions."""
     with patch("mmrelay.matrix_utils.logger") as mock_logger:
-        result = get_interaction_settings(True)  # type: ignore[arg-type]
+        invalid_value = True
+        result = get_interaction_settings(cast(dict, invalid_value))
 
     assert result == {"reactions": False, "replies": False}
     mock_logger.warning.assert_called_once()
@@ -879,3 +881,93 @@ def test_update_room_id_in_mapping_unsupported_type():
     result = _update_room_id_in_mapping(mapping, "#old:example.com", "!new:example.com")
 
     assert result is False
+
+
+# ── Edge-case tests migrated from test_matrix_utils_edge_cases.py ──
+
+
+def test_truncate_message_with_unicode():
+    """Truncation handles multi-byte characters (emoji, CJK) without splitting and respects byte limits down to 1 byte."""
+    unicode_text = "Hello 🌍 世界 🚀 Testing"
+
+    result = truncate_message(unicode_text, max_bytes=20)
+    assert isinstance(result, str)
+    assert len(result.encode("utf-8")) <= 20
+
+    result = truncate_message(unicode_text, max_bytes=1)
+    assert isinstance(result, str)
+    assert len(result.encode("utf-8")) <= 1
+
+
+def test_truncate_message_edge_cases():
+    """Truncation handles empty strings and zero byte limits; negative limits raise ValueError."""
+    assert truncate_message("", max_bytes=100) == ""
+
+    short_text = "Short"
+    assert truncate_message(short_text, max_bytes=100) == short_text
+
+    assert truncate_message("Hello", max_bytes=0) == ""
+
+    with pytest.raises(ValueError, match="max_bytes must be non-negative"):
+        truncate_message("Hello", max_bytes=-1)
+
+
+def test_validate_prefix_format_invalid_syntax_and_empty():
+    """validate_prefix_format handles invalid syntax, empty strings, and static text."""
+    # Invalid syntax (unclosed brace)
+    is_valid, error = validate_prefix_format("{display: ", {"display": "Test"})
+    assert not is_valid
+    assert error is not None
+
+    # Empty format string is valid (no variables to substitute)
+    is_valid, error = validate_prefix_format("", {"display": "Test"})
+    assert is_valid
+    assert error is None
+
+    # Static text with no variables is valid
+    is_valid, error = validate_prefix_format("Static text: ", {"display": "Test"})
+    assert is_valid
+    assert error is None
+
+
+def test_get_matrix_prefix_with_none_values():
+    """get_matrix_prefix returns a string when user/mesh names are None or empty."""
+    config = {"matrix": {"prefix_enabled": True}}
+
+    result = get_matrix_prefix(config, None, None, None)
+    assert isinstance(result, str)
+    assert result != ""
+
+    result = get_matrix_prefix(config, "", "", "")
+    assert isinstance(result, str)
+    assert result != ""
+
+
+def test_get_meshtastic_prefix_with_malformed_user_id():
+    """get_meshtastic_prefix handles malformed, empty, or None user IDs without errors."""
+    config = {"meshtastic": {"prefix_enabled": True}}
+
+    result = get_meshtastic_prefix(config, "TestUser", "malformed_id")
+    assert isinstance(result, str)
+
+    result = get_meshtastic_prefix(config, "TestUser", "@malformed")
+    assert isinstance(result, str)
+
+    result = get_meshtastic_prefix(config, "TestUser", "")
+    assert isinstance(result, str)
+
+    result = get_meshtastic_prefix(config, "TestUser", None)
+    assert isinstance(result, str)
+
+
+def test_prefix_generation_with_extreme_lengths():
+    """Prefix generation handles extremely long (1000-char) input strings without errors."""
+    very_long_name = "A" * 1000
+
+    config = {"matrix": {"prefix_enabled": True}}
+    result = get_matrix_prefix(config, very_long_name, "short", "mesh")
+    assert isinstance(result, str)
+
+    config = {"meshtastic": {"prefix_enabled": True}}
+    result = get_meshtastic_prefix(config, very_long_name)
+    assert isinstance(result, str)

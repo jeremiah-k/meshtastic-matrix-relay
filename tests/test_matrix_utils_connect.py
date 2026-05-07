@@ -267,3 +267,69 @@ async def test_connect_matrix_duplicate_caller_returns_existing_client():
         client2 = await connect_matrix(config)
         assert client2 is mock_client
         init_mock.assert_called_once()
+
+
+# ── Edge-case tests migrated from test_matrix_utils_edge_cases.py ──
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_no_config_returns_none():
+    """connect_matrix returns None and logs an error when config is None."""
+    with (
+        patch("mmrelay.matrix_utils.matrix_client", None),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch("mmrelay.matrix_utils.config", None, create=True),
+    ):
+        result = await connect_matrix(None)
+
+    assert result is None
+    mock_logger.error.assert_any_call(
+        "No configuration available. Cannot connect to Matrix."
+    )
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_ssl_context_failure_logs_warning():
+    """connect_matrix handles _create_ssl_context returning None by logging a warning and still returning a client."""
+    mock_client = MagicMock()
+    mock_client.should_upload_keys = False
+    mock_client.sync = AsyncMock(return_value=MagicMock())
+    mock_client.rooms = {}
+    mock_client.get_displayname = AsyncMock(
+        return_value=MagicMock(displayname="Test Bot")
+    )
+    mock_client.close = AsyncMock()
+    mock_client.whoami = AsyncMock(return_value=MagicMock(user_id="@test:matrix.org"))
+    mock_client.room_resolve_alias = AsyncMock(
+        return_value=MagicMock(room_id="!room:matrix.org")
+    )
+
+    config = {
+        "matrix": {
+            "homeserver": "https://matrix.org",
+            "access_token": "test_token",
+            "bot_user_id": "@test:matrix.org",
+        },
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.matrix_client", None),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client),
+        patch("mmrelay.matrix_utils._create_ssl_context", return_value=None),
+        patch(
+            "mmrelay.matrix_utils._resolve_aliases_in_mapping",
+            AsyncMock(return_value=None),
+        ),
+        patch("mmrelay.matrix_utils._display_room_channel_mappings", Mock()),
+    ):
+        result = await connect_matrix(config)
+
+    assert result is not None
+    ssl_warnings = [
+        c.args[0]
+        for c in mock_logger.warning.call_args_list
+        if c.args and "ssl" in c.args[0].lower()
+    ]
+    assert ssl_warnings, "Expected at least one SSL-related warning to be logged"

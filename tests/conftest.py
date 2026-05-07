@@ -14,16 +14,13 @@ sys.path.insert(
 )
 
 import asyncio
-import concurrent.futures
 import contextlib
 import gc
 import inspect
 import logging
 import queue
-import sqlite3
 import threading
 import time
-import traceback
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any, Generator
@@ -32,90 +29,15 @@ from unittest.mock import MagicMock
 import pytest
 from pubsub import pub
 
-# Mock all external dependencies before any imports can occur
-# This prevents ImportError and allows tests to run in isolation
-meshtastic_mock = MagicMock()
-sys.modules["meshtastic"] = meshtastic_mock
-sys.modules["meshtastic.protobuf"] = MagicMock()
-sys.modules["meshtastic.protobuf.portnums_pb2"] = MagicMock()
-sys.modules["meshtastic.protobuf.portnums_pb2"].PortNum = MagicMock()  # type: ignore[attr-defined]
-sys.modules["meshtastic.protobuf.portnums_pb2"].PortNum.DETECTION_SENSOR_APP = 1
-sys.modules["meshtastic.protobuf.mesh_pb2"] = MagicMock()
-sys.modules["meshtastic.ble_interface"] = MagicMock()
-sys.modules["meshtastic.serial_interface"] = MagicMock()
-sys.modules["meshtastic.tcp_interface"] = MagicMock()
-sys.modules["meshtastic.mesh_interface"] = MagicMock()
-meshtastic_mock.BROADCAST_ADDR = "^all"
-meshtastic_mock.BROADCAST_NUM = 4294967295
-sys.modules["meshtastic.mesh_interface"].BROADCAST_NUM = 4294967295  # type: ignore[attr-defined]
-sys.modules["meshtastic.mesh_interface"].BROADCAST_ADDR = "^all"  # type: ignore[attr-defined]
+import tests.mocks  # noqa: F401  # Must be imported before application imports to install mocks
 
-nio_mock = MagicMock()
-sys.modules["nio"] = nio_mock
-sys.modules["nio.events"] = MagicMock()
-sys.modules["nio.events.room_events"] = MagicMock()
-sys.modules["nio.event_builders"] = MagicMock()
-
-pil_mock = MagicMock()
-pil_image_mock = MagicMock()
-pil_imagedraw_mock = MagicMock()
-sys.modules["PIL"] = pil_mock
-sys.modules["PIL.Image"] = pil_image_mock
-sys.modules["PIL.ImageDraw"] = pil_imagedraw_mock
-pil_mock.Image = pil_image_mock
-pil_mock.ImageDraw = pil_imagedraw_mock
-
-certifi_mock = MagicMock()
-certifi_mock.where.return_value = "/fake/cert/path.pem"
-sys.modules["certifi"] = certifi_mock
-
-serial_mock = MagicMock()
-sys.modules["serial"] = serial_mock
-sys.modules["serial.tools"] = MagicMock()
-sys.modules["serial.tools.list_ports"] = MagicMock()
-
-sys.modules["bleak"] = MagicMock()
-sys.modules["pubsub"] = MagicMock()
-sys.modules["matplotlib"] = MagicMock()
-sys.modules["matplotlib.pyplot"] = MagicMock()
-sys.modules["requests"] = MagicMock()
-
-
-class RequestException(Exception):
-    pass
-
-
-class HTTPError(RequestException):
-    pass
-
-
-class ConnectionError(RequestException):
-    pass
-
-
-class Timeout(RequestException):
-    pass
-
-
-class MockRequestsExceptions:
-    RequestException = RequestException
-    HTTPError = HTTPError
-    ConnectionError = ConnectionError
-    Timeout = Timeout
-
-
-sys.modules["requests"].exceptions = MockRequestsExceptions()  # type: ignore[attr-defined]
-
-# Add top-level aliases for code that uses requests.RequestException directly
-sys.modules["requests"].RequestException = RequestException  # type: ignore[attr-defined]
-sys.modules["requests"].HTTPError = HTTPError  # type: ignore[attr-defined]
-sys.modules["requests"].ConnectionError = ConnectionError  # type: ignore[attr-defined]
-sys.modules["requests"].Timeout = Timeout  # type: ignore[attr-defined]
-sys.modules["markdown"] = MagicMock()
-sys.modules["haversine"] = MagicMock()
-sys.modules["schedule"] = MagicMock()
-sys.modules["platformdirs"] = MagicMock()
-sys.modules["py_staticmaps"] = MagicMock()
+# Mock all external dependencies before any application imports can occur.
+from tests.ble_cleanup import (  # noqa: E402
+    _drain_future_result_safely,
+    _safe_is_done,
+    cleanup_ble_future_state,
+)
+from tests.sqlite_provenance import _conn_provenance  # noqa: E402
 
 # AsyncMock cleanup tuning:
 # Full generation-2 gc.collect() is relatively expensive on newer CPython runtimes
@@ -124,308 +46,6 @@ sys.modules["py_staticmaps"] = MagicMock()
 # to reclaim cyclic coroutine objects before they leak into unrelated tests.
 _ASYNCMOCK_FULL_GC_INTERVAL = 25
 _asyncmock_cleanup_invocations = 0
-
-
-class _ConnectionProvenance:
-    """Track every sqlite3.connect() call with creation metadata."""
-
-    def __init__(self) -> None:
-        """
-        Initialize the connection provenance tracker state.
-
-        Sets up internal registry and bookkeeping used to record metadata for sqlite3 connections:
-        - _registry: mapping from connection id to metadata dict (db path, creation stack, thread info, etc.).
-        - _current_nodeid: test node identifier used when reporting leaked connections.
-        - _real_connect: reference to the original sqlite3.connect function before patching.
-        - _patched: boolean flag indicating whether sqlite3.connect has been replaced.
-        """
-        self._registry: dict[int, dict[str, Any]] = {}
-        self._current_nodeid: str = ""
-        self._real_connect = sqlite3.connect
-        self._patched: bool = False
-
-    def install(self) -> None:
-        """
-        Install a connection tracker that intercepts sqlite3.connect and records provenance for each new connection.
-
-        Replaces the module-level sqlite3.connect with a tracked wrapper (no-op if already installed). Each call to the tracked connect stores a metadata dictionary in self._registry keyed by id(connection) containing: "conn_id", "db_path", "test_nodeid", "thread_name", "thread_id", and "creation_stack".
-        """
-        if self._patched:
-            return
-        real_connect = self._real_connect
-        registry = self._registry
-        tracker = self
-
-        def _make_tracked_class(
-            base: type[sqlite3.Connection],
-        ) -> type[sqlite3.Connection]:
-            """
-            Create a tracked connection subclass that deregisters from the provenance registry on close.
-            """
-
-            class _TrackedConnection(base):
-                def close(self) -> None:
-                    try:
-                        super().close()
-                    finally:
-                        registry.pop(id(self), None)
-
-            return _TrackedConnection
-
-        def _tracked_connect(*args: Any, **kwargs: Any) -> sqlite3.Connection:
-            """
-            Proxy for sqlite3.connect that records provenance metadata for each created connection.
-
-            Records metadata (connection id, database path, current test nodeid, thread name/id, and creation stack) in the tracker registry keyed by the connection object's id.
-
-            Parameters:
-                *args: Positional arguments forwarded to sqlite3.connect (first positional arg is the database path).
-                **kwargs: Keyword arguments forwarded to sqlite3.connect (may include "database").
-
-            Returns:
-                sqlite3.Connection: The connection object returned by the underlying sqlite3.connect call.
-            """
-            caller_factory = kwargs.get("factory", None)
-            if caller_factory is not None and (
-                isinstance(caller_factory, type)
-                and issubclass(caller_factory, sqlite3.Connection)
-            ):
-                tracked_cls = _make_tracked_class(caller_factory)
-            else:
-                tracked_cls = _make_tracked_class(sqlite3.Connection)
-            kwargs["factory"] = tracked_cls
-
-            conn = real_connect(*args, **kwargs)
-            db_path = args[0] if args else kwargs.get("database", "?")
-            conn_id = id(conn)
-            registry[conn_id] = {
-                "conn_id": conn_id,
-                "db_path": str(db_path),
-                "test_nodeid": tracker._current_nodeid,
-                "thread_name": threading.current_thread().name,
-                "thread_id": threading.current_thread().ident,
-                "creation_stack": "".join(traceback.format_stack()),
-            }
-            return conn
-
-        sqlite3.connect = _tracked_connect
-        self._patched = True
-
-    def remove(self, conn: sqlite3.Connection) -> None:
-        """
-        Stop tracking the given SQLite connection by removing its provenance entry from the internal registry.
-
-        Parameters:
-            conn (sqlite3.Connection): The connection object to remove from tracking.
-        """
-        self._registry.pop(id(conn), None)
-
-    def report_open(self) -> list[dict[str, Any]]:
-        """
-        Retrieve metadata for all currently tracked SQLite connections.
-
-        Returns:
-            list[dict[str, Any]]: A list of metadata dictionaries for each connection currently recorded in the provenance registry. Each dictionary contains the provenance information captured when the connection was created.
-        """
-        return list(self._registry.values())
-
-    def clear(self) -> None:
-        """
-        Remove all recorded sqlite3 connection provenance entries.
-
-        This clears the internal registry of tracked connection metadata so subsequent
-        calls will behave as if no connections have been recorded.
-        """
-        self._registry.clear()
-
-    def uninstall(self) -> None:
-        """
-        Restore the original sqlite3.connect function and clear the registry of tracked connections.
-
-        If the provenance patch is not currently installed, this is a no-op. After calling this, the object is marked as unpatched and any stored connection metadata is removed.
-        """
-        if not self._patched:
-            return
-        sqlite3.connect = self._real_connect
-        self._patched = False
-        self._registry.clear()
-
-
-_conn_provenance = _ConnectionProvenance()
-
-
-def _safe_is_done(future: Any) -> bool:
-    """
-    Determine whether a future-like object reports it is completed.
-
-    Parameters:
-        future (Any): Object expected to provide a callable `done()` method.
-
-    Returns:
-        bool: `True` if `future.done()` exists and returns a truthy value; `False` otherwise (including when `done()` is absent or raises known invalid-state errors).
-    """
-    done_fn = getattr(future, "done", None)
-    if not callable(done_fn):
-        return False
-    with contextlib.suppress(
-        RuntimeError,
-        asyncio.InvalidStateError,
-        concurrent.futures.InvalidStateError,
-    ):
-        return bool(done_fn())
-    return False
-
-
-def _drain_future_result_safely(future: Any, timeout: float) -> None:
-    """
-    Drain a future/task result best-effort so teardown does not leak exceptions.
-    """
-    exception_fn = getattr(future, "exception", None)
-    is_done = _safe_is_done(future)
-    if is_done and callable(exception_fn):
-        # For completed futures/tasks, consume stored exceptions without re-raising.
-        with contextlib.suppress(
-            TimeoutError,
-            asyncio.TimeoutError,
-            asyncio.CancelledError,
-            asyncio.InvalidStateError,
-            concurrent.futures.TimeoutError,
-            concurrent.futures.CancelledError,
-            concurrent.futures.InvalidStateError,
-        ):
-            exception_fn()
-        return
-
-    result_fn = getattr(future, "result", None)
-    if not callable(result_fn):
-        return
-
-    try:
-        result_fn(timeout=timeout)
-    except TypeError:
-        try:
-            result_fn()
-        except (
-            TimeoutError,
-            asyncio.TimeoutError,
-            asyncio.CancelledError,
-            asyncio.InvalidStateError,
-            concurrent.futures.TimeoutError,
-            concurrent.futures.CancelledError,
-            concurrent.futures.InvalidStateError,
-        ):
-            return
-        except Exception as exc:
-            logging.getLogger(__name__).debug(
-                "Suppressing future-drain exception during teardown: %s",
-                exc,
-            )
-            return
-    except (
-        TimeoutError,
-        asyncio.TimeoutError,
-        asyncio.CancelledError,
-        asyncio.InvalidStateError,
-        concurrent.futures.TimeoutError,
-        concurrent.futures.CancelledError,
-        concurrent.futures.InvalidStateError,
-    ):
-        return
-    except Exception as exc:
-        logging.getLogger(__name__).debug(
-            "Suppressing future-drain exception during teardown: %s",
-            exc,
-        )
-        return
-
-
-def cleanup_ble_future_state(module: Any) -> None:
-    """
-    Best-effort cancel and drain BLE in-flight future/task state on a module.
-
-    This helper intentionally swallows expected timeout/cancellation/state errors
-    because test teardown should not fail while clearing in-flight bookkeeping.
-    """
-    ble_future = getattr(module, "_ble_future", None)
-    ble_address = getattr(module, "_ble_future_address", None)
-    timeout_counts = getattr(module, "_ble_timeout_counts", None)
-    if ble_future is None:
-        if isinstance(timeout_counts, dict) and ble_address is not None:
-            timeout_counts.pop(ble_address, None)
-        if hasattr(module, "_ble_future"):
-            module._ble_future = None
-        if hasattr(module, "_ble_future_address"):
-            module._ble_future_address = None
-        if hasattr(module, "_ble_future_started_at"):
-            module._ble_future_started_at = None
-        if hasattr(module, "_ble_future_timeout_secs"):
-            module._ble_future_timeout_secs = None
-        return
-
-    cancel_fn = getattr(ble_future, "cancel", None)
-    is_done = _safe_is_done(ble_future)
-
-    if callable(cancel_fn) and not is_done:
-        if isinstance(ble_future, asyncio.Task):
-
-            def _consume_task_result(done_task: asyncio.Task[Any]) -> None:
-                with contextlib.suppress(
-                    asyncio.CancelledError,
-                    asyncio.InvalidStateError,
-                ):
-                    done_task.exception()
-
-            try:
-                loop = ble_future.get_loop()
-                if not loop.is_closed():
-                    if loop.is_running():
-                        same_loop = False
-                        with contextlib.suppress(RuntimeError):
-                            same_loop = asyncio.get_running_loop() is loop
-                        if same_loop:
-                            ble_future.cancel()
-                            ble_future.add_done_callback(_consume_task_result)
-                        else:
-                            loop.call_soon_threadsafe(ble_future.cancel)
-                            cleanup_future = asyncio.run_coroutine_threadsafe(
-                                asyncio.wait_for(ble_future, 0.2),
-                                loop,
-                            )
-                            cleanup_future.result(timeout=0.5)
-                    else:
-                        ble_future.cancel()
-                        loop.run_until_complete(asyncio.wait_for(ble_future, 0.2))
-            except (
-                asyncio.TimeoutError,
-                asyncio.CancelledError,
-                RuntimeError,
-                asyncio.InvalidStateError,
-                concurrent.futures.TimeoutError,
-                concurrent.futures.CancelledError,
-                concurrent.futures.InvalidStateError,
-            ) as exc:
-                logging.getLogger(__name__).debug(
-                    "Expected BLE Task cleanup exception: %s",
-                    exc,
-                )
-        else:
-            cancel_fn()
-            _drain_future_result_safely(ble_future, timeout=0.2)
-
-    # Drain completed-task exceptions as well (prevents "exception was never retrieved").
-    is_done_now = _safe_is_done(ble_future)
-    if is_done_now:
-        _drain_future_result_safely(ble_future, timeout=0.1)
-
-    if isinstance(timeout_counts, dict) and ble_address is not None:
-        timeout_counts.pop(ble_address, None)
-    module._ble_future = None
-    if hasattr(module, "_ble_future_address"):
-        module._ble_future_address = None
-    if hasattr(module, "_ble_future_started_at"):
-        module._ble_future_started_at = None
-    if hasattr(module, "_ble_future_timeout_secs"):
-        module._ble_future_timeout_secs = None
 
 
 def _drain_awaitable_result_safely(awaitable: Any, timeout: float = 0.2) -> None:
@@ -536,7 +156,15 @@ def _cancel_and_join_timer_like(timer_obj: Any, *, timeout: float = 0.2) -> None
 
 # Now that mocks are in place, we can import the application code
 import mmrelay.meshtastic_utils as mu  # noqa: E402
-from tests.constants import TEST_BOT_USER_ID, TEST_ROOM_ID, TEST_USER_ID  # noqa: E402
+from mmrelay.constants.network import CONNECTION_TYPE_SERIAL  # noqa: E402
+from tests.constants import (  # noqa: E402
+    TEST_BOT_USER_ID,
+    TEST_MATRIX_HOMESERVER,
+    TEST_ROOM_ID,
+    TEST_ROOM_ID_1,
+    TEST_ROOM_ID_2,
+    TEST_USER_ID,
+)
 
 # Store references to prevent accidental mocking
 _BUILTIN_MODULES = {
@@ -569,317 +197,31 @@ def ensure_builtins_not_mocked():
         sys.modules["logging"] = _BUILTIN_MODULES["logging"]
 
 
-# Create proper mock classes that can be used with isinstance()
-class MockMatrixRoom:
-    pass
-
-
-class MockReactionEvent:
-    pass
-
-
-class MockRoomMessageEmote:
-    pass
-
-
-class MockRoomMessageNotice:
-    pass
-
-
-class MockRoomMessageText:
-    pass
-
-
-class MockRoomEncryptionEvent:
-    pass
-
-
-class MockMegolmEvent:
-    pass
-
-
-class MockWhoamiError(Exception):
-    def __init__(self, message: str = "Whoami error") -> None:
-        """
-        Create a Whoami error carrying a human-readable message.
-
-        Parameters:
-            message (str): Error message describing the condition. Defaults to "Whoami error".
-
-        Attributes:
-            message (str): The provided error message (also available as the exception's first argument).
-        """
-        super().__init__(message)
-        self.message: str = message
-
-
-class MockSyncError(Exception):
-    def __init__(
-        self,
-        message: str = "Sync error",
-        status_code: str | None = None,
-        retry_after_ms: int | None = None,
-        soft_logout: bool = False,
-    ):
-        """
-        Create a mock SyncError carrying the attributes used by matrix-nio for tests.
-
-        Parameters:
-            message (str): Human-readable error message.
-            status_code (str | None): Optional error status code returned by the server.
-            retry_after_ms (int | None): Optional suggested retry delay in milliseconds.
-            soft_logout (bool): Whether the error indicates a soft logout condition.
-        """
-        super().__init__(message)
-        self.message = message
-        self.status_code = status_code
-        self.retry_after_ms = retry_after_ms
-        self.soft_logout = soft_logout
-
-
-nio_mock.AsyncClientConfig = MagicMock()
-nio_mock.MatrixRoom = MockMatrixRoom
-nio_mock.ReactionEvent = MockReactionEvent
-nio_mock.RoomMessageEmote = MockRoomMessageEmote
-nio_mock.RoomMessageNotice = MockRoomMessageNotice
-nio_mock.RoomMessageText = MockRoomMessageText
-nio_mock.RoomEncryptionEvent = MockRoomEncryptionEvent
-nio_mock.MegolmEvent = MockMegolmEvent
-nio_mock.UploadResponse = MagicMock()
-nio_mock.WhoamiError = MockWhoamiError
-nio_mock.SyncError = MockSyncError
-
-
-class MockRoomSendError(Exception):
-    def __init__(
-        self, message: str = "Room send error", status_code: str | None = None
-    ) -> None:
-        super().__init__(message)
-        self.message = message
-        self.status_code = status_code
-
-
-nio_mock.RoomSendError = MockRoomSendError
-
-
-# Mock ToDevice response classes for isinstance checks
-class MockToDeviceResponse:
-    """Mock ToDeviceResponse for testing."""
-
-    pass
-
-
-class MockToDeviceError:
-    """Mock ToDeviceError for testing."""
-
-    def __init__(self, message: str = "Error") -> None:
-        """
-        Initialize the MockToDeviceError with a human-readable message.
-
-        Parameters:
-            message (str): Error message stored on the instance and returned by `__str__`.
-        """
-        self.message: str = message
-
-    def __str__(self) -> str:
-        """
-        Provide the exception's message as its string representation.
-
-        @returns
-            str: The error message stored on the exception.
-        """
-        return self.message
-
-
-nio_mock.ToDeviceResponse = MockToDeviceResponse
-nio_mock.ToDeviceError = MockToDeviceError
-sys.modules["nio.events.room_events"].RoomMemberEvent = MagicMock()  # type: ignore[attr-defined]
-
-
-class MockPILImage:
-    def save(self, *args, **kwargs):
-        """
-        No-op save method that accepts any positional and keyword arguments and does nothing.
-
-        This placeholder satisfies interfaces that expect a `save` method (for example, objects that persist state or files)
-        but intentionally performs no action. It accepts arbitrary arguments for compatibility and always returns None.
-        """
-        pass
-
-
-pil_image_mock.Image = MockPILImage
-
-
-class SerialException(Exception):
-    pass
-
-
-serial_mock.SerialException = SerialException
-
-
-class BleakError(Exception):
-    pass
-
-
-class BleakDBusError(BleakError):
-    pass
-
-
-class BleakExcModule:
-    BleakError = BleakError
-    BleakDBusError = BleakDBusError
-
-
-sys.modules["bleak.exc"] = BleakExcModule()  # type: ignore[assignment]
-sys.modules["bleak"].BleakError = BleakError  # type: ignore[attr-defined]
-sys.modules["bleak"].BleakDBusError = BleakDBusError  # type: ignore[attr-defined]
-
-
-class MockLatLng:
-    @classmethod
-    def from_degrees(cls, lat, lng):
-        """
-        Create a new instance representing the given latitude and longitude in degrees.
-
-        This is a stand-in/mock implementation used in tests. Parameters `lat` and `lng`
-        are expected to be numeric degrees but are not validated or stored by this mock;
-        the method simply returns a new instance of the class.
-
-        Parameters:
-            lat (float): Latitude in degrees (mock parameter, not stored).
-            lng (float): Longitude in degrees (mock parameter, not stored).
-
-        Returns:
-            object: A new instance of the class (empty/mock).
-        """
-        return cls()
-
-
-class MockLatLngRect:
-    @classmethod
-    def from_point(cls, point):
-        """
-        Create a new instance from a point.
-
-        This stand-in implementation ignores the provided `point` and returns a default instance of the class.
-        Parameters:
-            point: The input point (ignored by this implementation).
-        Returns:
-            An instance of `cls`.
-        """
-        return cls()
-
-
-class MockS2Module:
-    LatLng = MockLatLng
-    LatLngRect = MockLatLngRect
-
-
-sys.modules["s2sphere"] = MockS2Module()  # type: ignore[assignment]
-
-
-class MockStaticmapsObject:
-    def __init__(self):
-        """
-        Initialize the object and create an empty `data` dictionary for storing arbitrary key/value pairs.
-        """
-        self.data = {}
-
-
-class MockStaticmapsContext:
-    def __init__(self):
-        """
-        Create a lightweight test double for a Staticmaps rendering context.
-
-        Sets attributes used by tests:
-        - objects: list collecting objects added with add_object.
-        - tile_provider: configured tile provider or None.
-        - zoom: current zoom level or None.
-        """
-        self.objects = []
-        self.tile_provider = None
-        self.zoom = None
-
-    def set_tile_provider(self, provider):
-        """
-        Assigns the map tile provider used by the rendering context.
-
-        Parameters:
-            provider: A tile-provider callable or an object implementing the renderer's provider interface. If a callable, it is expected to accept tile coordinates and zoom (commonly `x, y, z`) and return the tile data (for example image bytes or an image-like object).
-        """
-        self.tile_provider = provider
-
-    def set_zoom(self, zoom):
-        """
-        Set the rendering zoom level for the context.
-
-        Parameters:
-            zoom (int|float): Zoom level to apply; stored on the context as the `zoom` attribute.
-        """
-        self.zoom = zoom
-
-    def add_object(self, obj):
-        """
-        Add a renderable object to the rendering context.
-
-        Parameters:
-            obj: A renderable object compatible with the context's rendering API; it will be appended to the context's internal `objects` list for later rendering.
-        """
-        self.objects.append(obj)
-
-    def render_pillow(self, _width, _height):
-        """
-        Render the map into a Pillow-compatible image (mock) for testing.
-
-        Parameters:
-            _width (int): Output image width in pixels (unused in mock).
-            _height (int): Output image height in pixels (unused in mock).
-
-        Returns:
-            PIL.Image.Image (MagicMock): A MagicMock that mimics a Pillow Image object (suitable for tests that call image methods like `save`).
-        """
-        return MagicMock()
-
-
-class MockStaticmapsModule:
-    Object = MockStaticmapsObject
-    Context = MockStaticmapsContext
-    PillowRenderer = MagicMock
-    CairoRenderer = MagicMock
-    SvgRenderer = MagicMock
-    PixelBoundsT = tuple
-    tile_provider_OSM = object()
-    Color = MagicMock
-    Circle = MagicMock
-
-    @staticmethod
-    def create_latlng(lat, lon):
-        """
-        Create a MockLatLng representing the given geographic coordinates.
-
-        Parameters:
-            lat (float): Latitude in degrees.
-            lon (float): Longitude in degrees.
-
-        Returns:
-            MockLatLng: A mock LatLng object for the supplied coordinates.
-        """
-        return MockLatLng.from_degrees(lat, lon)
-
-
-sys.modules["staticmaps"] = MockStaticmapsModule()  # type: ignore[assignment]
+# Ensure built-in modules are not accidentally mocked
+ensure_builtins_not_mocked()
 
 
 @pytest.fixture(autouse=True)
-def meshtastic_loop_safety(monkeypatch):
+def meshtastic_loop_safety(monkeypatch, request):
     """
     Function-scoped pytest fixture that provides a dedicated asyncio event loop for tests that interact with mmrelay.meshtastic_utils.
 
     Creates a fresh event loop, assigns it to mmrelay.meshtastic_utils.event_loop for the duration of each test function, yields the loop to tests, and on teardown cancels any remaining tasks, awaits their completion, closes the loop, and clears the global event loop reference.
 
+    When the ``asyncio`` marker is present on the test (set automatically by
+    pytest-asyncio under ``asyncio_mode=auto``), this fixture yields ``None``
+    without creating or managing a loop so that pytest-asyncio owns the event
+    loop lifecycle for async tests.
+
     Yields:
-        asyncio.AbstractEventLoop: a new event loop isolated to each test function.
+        asyncio.AbstractEventLoop | None: a new event loop isolated to each
+        test function, or ``None`` when the test is async (asyncio marker set).
     """
+    if request.node.get_closest_marker("asyncio"):
+        monkeypatch.setattr(mu, "event_loop", None, raising=False)
+        yield
+        return
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     monkeypatch.setattr(mu, "event_loop", loop)
@@ -912,6 +254,28 @@ def reset_plugin_loader_cache():
     pl._reset_caches_for_tests()
 
 
+@pytest.fixture
+def mock_config():
+    """Default mock configuration used by TestMain tests."""
+    return {
+        "matrix": {
+            "homeserver": TEST_MATRIX_HOMESERVER,
+            "access_token": "test_token",
+            "bot_user_id": TEST_BOT_USER_ID,
+        },
+        "matrix_rooms": [
+            {"id": TEST_ROOM_ID_1, "meshtastic_channel": 0},
+            {"id": TEST_ROOM_ID_2, "meshtastic_channel": 1},
+        ],
+        "meshtastic": {
+            "connection_type": CONNECTION_TYPE_SERIAL,
+            "serial_port": "/dev/ttyUSB0",
+            "message_delay": 2.0,
+        },
+        "database": {"msg_map": {"wipe_on_restart": False}},
+    }
+
+
 @pytest.fixture(autouse=True)
 def cleanup_asyncmock_objects(request):
     """
@@ -933,7 +297,6 @@ def cleanup_asyncmock_objects(request):
         "test_matrix_utils",
         "test_matrix_utils_auth",
         "test_matrix_utils_core",
-        "test_matrix_utils_edge_cases",
         "test_matrix_utils_invite",
         "test_matrix_utils_media",
         "test_matrix_utils_relay",
@@ -969,12 +332,19 @@ def cleanup_asyncmock_objects(request):
 
 
 @pytest.fixture(autouse=True)
-def mock_submit_coro(monkeypatch):
+def mock_submit_coro(monkeypatch, request):
     """
     Replace mmrelay.meshtastic_utils._submit_coro with a test helper that ensures passed coroutines are executed and awaited so AsyncMock coroutines run to completion.
 
     This pytest fixture patches the module-level _submit_coro to a mock implementation that schedules a coroutine on an available running event loop when possible, otherwise runs it synchronously in a temporary loop. It yields control to the test and restores the original function on teardown.
+
+    When the ``no_global_mocks`` marker is applied to the test, this fixture does nothing,
+    allowing tests to exercise real async scheduling and thread boundaries.
     """
+    if request.node.get_closest_marker("no_global_mocks"):
+        yield
+        return
+
     import asyncio
     import inspect
 
@@ -1076,10 +446,6 @@ def done_future():
     f = Future()
     f.set_result(None)
     return f
-
-
-# Ensure built-in modules are not accidentally mocked
-ensure_builtins_not_mocked()
 
 
 @pytest.fixture(autouse=True)
@@ -1458,14 +824,20 @@ def comprehensive_cleanup():
 
 
 @pytest.fixture(autouse=True)
-def mock_to_thread(monkeypatch):
+def mock_to_thread(monkeypatch, request):
     """
     Mock asyncio.to_thread to run synchronously for tests.
 
     This avoids creating separate threads during testing, ensuring that code designed to run
     in a thread (via asyncio.to_thread) executes immediately in the main thread. This simplifies
     testing with mocks (which are often not thread-safe) and ensures deterministic execution.
+
+    When the ``no_global_mocks`` marker is applied to the test, this fixture does nothing,
+    allowing tests to exercise real async scheduling and thread boundaries.
     """
+    if request.node.get_closest_marker("no_global_mocks"):
+        yield
+        return
 
     async def _to_thread(func, *args, **kwargs):
         """
@@ -1482,6 +854,7 @@ def mock_to_thread(monkeypatch):
         return func(*args, **kwargs)
 
     monkeypatch.setattr(asyncio, "to_thread", _to_thread)
+    yield
 
 
 @pytest.fixture
@@ -1632,7 +1005,7 @@ def pytest_runtest_setup(item):
     This ensures connections created during setup/fixtures are attributed to the correct test,
     rather than inheriting a stale nodeid from a previous test.
     """
-    _conn_provenance._current_nodeid = item.nodeid
+    _conn_provenance.set_nodeid(item.nodeid)
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
@@ -1671,9 +1044,4 @@ def pytest_runtest_makereport(item, call):
                 )
             )
     if report.when == "teardown":
-        nodeid = item.nodeid
-        _conn_provenance._registry = {
-            cid: meta
-            for cid, meta in _conn_provenance._registry.items()
-            if meta.get("test_nodeid") != nodeid
-        }
+        _conn_provenance.clear_by_nodeid(item.nodeid)

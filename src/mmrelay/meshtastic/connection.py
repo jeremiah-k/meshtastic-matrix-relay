@@ -247,7 +247,16 @@ def serial_port_exists(port_name: str) -> bool:
     Returns:
         `True` if a matching port device name is present, `False` otherwise.
     """
-    ports = [p.device for p in facade.serial.tools.list_ports.comports()]
+    try:
+        ports = [p.device for p in facade.serial.tools.list_ports.comports()]
+    except OSError as exc:
+        facade.logger.warning(
+            "%s enumerating serial ports; cannot verify %s exists: %s",
+            type(exc).__name__,
+            port_name,
+            exc,
+        )
+        return False
     return port_name in ports
 
 
@@ -791,7 +800,7 @@ def _connect_meshtastic_impl(
                 # Check if serial port exists before connecting
                 if not facade.serial_port_exists(serial_port):
                     raise facade.serial.SerialException(
-                        f"Serial port {serial_port} does not exist."
+                        f"Serial port {serial_port} does not exist or is not accessible."
                     )
 
                 client = facade.meshtastic.serial_interface.SerialInterface(

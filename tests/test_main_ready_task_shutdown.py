@@ -4,6 +4,7 @@
 import asyncio
 import contextlib
 from collections.abc import Callable
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -189,7 +190,7 @@ async def test_main_cleans_up_ready_task_on_shutdown(tmp_path, monkeypatch) -> N
     async def _capture_ready_heartbeat(event: _ControllableEvent) -> None:
         nonlocal captured_ready_event
         captured_ready_event = event
-        await real_ready_heartbeat(event)  # type: ignore[arg-type]
+        await real_ready_heartbeat(cast(asyncio.Event, event))
 
     mock_matrix_client.sync_forever = AsyncMock(side_effect=_sync_forever_wait)
 

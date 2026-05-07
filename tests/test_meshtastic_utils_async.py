@@ -15,13 +15,22 @@ import contextlib
 import threading
 import unittest
 from collections.abc import Callable
-from typing import Any
+from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 # Capture the real _submit_coro before any test patches are applied.
 import mmrelay.meshtastic_utils as _mu_real
+import mmrelay.meshtastic_utils as mu
+from mmrelay.meshtastic_utils import (
+    _get_name_safely,
+    _make_awaitable,
+    _wait_for_future_result_with_shutdown,
+    _wait_for_result,
+)
 
 _REAL_SUBMIT_CORO = _mu_real._submit_coro
 
@@ -108,6 +117,31 @@ def reset_meshtastic_relay_state(monkeypatch):
         {},
         raising=False,
     )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.shutting_down",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.reconnecting",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.config",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.meshtastic_client",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.meshtastic_iface",
+        None,
+        raising=False,
+    )
 
     yield
 
@@ -192,7 +226,7 @@ class TestAsyncHelperUtilities(unittest.TestCase):
         from mmrelay.meshtastic_utils import _fire_and_forget
 
         with patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit:
-            _fire_and_forget("not-a-coro")  # type: ignore[arg-type]
+            _fire_and_forget(cast(Any, "not-a-coro"))
 
         mock_submit.assert_not_called()
 
@@ -362,7 +396,6 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
     def test_submit_coro_with_no_event_loop_no_running_loop(self):
         """Test _submit_coro with no event loop and no running loop - uses a temporary loop."""
-        from concurrent.futures import Future
 
         async def test_coro():
             """
@@ -387,7 +420,6 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
     def test_submit_coro_with_no_event_loop_no_running_loop_exception(self):
         """Test _submit_coro exception handling when coroutine execution fails."""
-        from concurrent.futures import Future
 
         async def failing_coro():
             """
@@ -495,7 +527,6 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
     def test_submit_coro_accepts_non_coroutine_awaitable(self):
         """Test _submit_coro handles non-coroutine awaitables by awaiting them."""
-        from concurrent.futures import Future
 
         class DummyAwaitable:
             def __await__(self):
@@ -558,3 +589,246 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         finally:
             if hasattr(coro, "cr_frame") and coro.cr_frame is not None:
                 coro.close()
+
+
+# ---------------------------------------------------------------------------
+# Helpers for async utility tests (absorbed from test_meshtastic_utils_async_helpers.py)
+# ---------------------------------------------------------------------------
+
+
+class _DummyLoop:
+    def is_closed(self):
+        return False
+
+    def is_running(self):
+        """
+        Indicates that this dummy loop is always considered running.
+
+        Returns:
+            True, since the dummy loop is always treated as running.
+        """
+        return True
+
+    def create_task(self, _coro):
+        """
+        Simulate scheduling a coroutine by closing it and returning a MagicMock representing the created task.
+
+        Parameters:
+            _coro: A coroutine object which will be closed.
+
+        Returns:
+            MagicMock: A mock object standing in for the scheduled task.
+        """
+        _coro.close()
+        return MagicMock()
+
+
+def _make_threadsafe_runner(result_value):
+    """
+    Create a fake thread-safe runner that closes a coroutine and returns a mock future.
+
+    Parameters:
+        result_value: Value that the returned mock future's `result()` method will return.
+
+    Returns:
+        A callable with signature `(coro, _loop)` that closes `coro` and returns a MagicMock whose `result()` returns `result_value`.
+    """
+    result_future = MagicMock()
+    result_future.result.return_value = result_value
+
+    def _fake_threadsafe(coro, _loop):
+        coro.close()
+        return result_future
+
+    return _fake_threadsafe
+
+
+# ---------------------------------------------------------------------------
+# Tests for async utility helpers (absorbed from test_meshtastic_utils_async_helpers.py)
+# ---------------------------------------------------------------------------
+
+
+def test_make_awaitable_wraps_future(meshtastic_loop_safety):
+    future = Future()
+    wrapped = _make_awaitable(future, loop=meshtastic_loop_safety)
+
+    future.set_result("ok")
+    result = meshtastic_loop_safety.run_until_complete(wrapped)
+
+    assert wrapped is not future
+    assert result == "ok"
+
+
+def test_wait_for_result_none_returns_false():
+    assert _wait_for_result(None, timeout=0.1) is False
+
+
+def test_wait_for_result_asyncio_future_uses_loop(meshtastic_loop_safety):
+    future = meshtastic_loop_safety.create_future()
+    future.set_result("done")
+
+    result = _wait_for_result(future, timeout=0.1, loop=meshtastic_loop_safety)
+
+    assert result == "done"
+
+
+def test_wait_for_result_result_method_typeerror_fallback():
+    class ResultOnly:
+        def result(self):
+            """
+            Retrieve the object's result value.
+
+            Returns:
+                str: The result string "value".
+            """
+            return "value"
+
+    result = _wait_for_result(ResultOnly(), timeout=0.1)
+
+    assert result == "value"
+
+
+def test_wait_for_result_target_loop_running_uses_threadsafe():
+    loop = asyncio.new_event_loop()
+    try:
+        future = loop.create_future()
+        future.set_result("done")
+
+        with (
+            patch.object(loop, "is_running", return_value=True),
+            patch.object(loop, "is_closed", return_value=False),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
+                side_effect=_make_threadsafe_runner("threadsafe"),
+            ),
+        ):
+            result = _wait_for_result(future, timeout=0.1, loop=loop)
+    finally:
+        loop.close()
+
+    assert result == "threadsafe"
+
+
+def test_wait_for_result_running_loop_skips_threadsafe_without_explicit_loop():
+    """Returns False when running loop is present without explicit loop argument."""
+    loop = asyncio.new_event_loop()
+    try:
+        future = loop.create_future()
+        future.set_result("done")
+        with (
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.get_running_loop",
+                return_value=_DummyLoop(),
+            ),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
+                side_effect=_make_threadsafe_runner("running"),
+            ) as mock_threadsafe,
+        ):
+            result = _wait_for_result(future, timeout=0.1)
+    finally:
+        loop.close()
+
+    assert result is False
+    mock_threadsafe.assert_not_called()
+
+
+def test_wait_for_result_running_loop_not_running():
+    """
+    Verifies that _wait_for_result executes a coroutine on a loop returned by get_running_loop when that loop is not running and returns the coroutine's result.
+
+    Patches asyncio.get_running_loop to return a newly created (not running) event loop, calls _wait_for_result with a coroutine that returns "sync-loop", and asserts the observed result is "sync-loop".
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        with patch(
+            "mmrelay.meshtastic_utils.asyncio.get_running_loop", return_value=loop
+        ):
+
+            async def _sample():
+                """
+                Provide the literal string "sync-loop".
+
+                Returns:
+                    str: The string "sync-loop".
+                """
+                return "sync-loop"
+
+            result = _wait_for_result(_sample(), timeout=0.1)
+    finally:
+        loop.close()
+
+    assert result == "sync-loop"
+
+
+def test_wait_for_result_new_loop_path():
+    async def _sample():
+        """
+        Return the literal string "new-loop".
+
+        Returns:
+            result (str): The string "new-loop".
+        """
+        return "new-loop"
+
+    result = _wait_for_result(_sample(), timeout=0.1)
+
+    assert result == "new-loop"
+
+
+def test_get_name_safely_returns_sender_on_exception():
+    def _bad_lookup(_sender):
+        """
+        Raise a TypeError to simulate a failing name lookup.
+
+        Parameters:
+            _sender: Ignored; present only to match the expected callable signature.
+
+        Raises:
+            TypeError: always raised with message "boom".
+        """
+        raise TypeError("boom")
+
+    assert _get_name_safely(_bad_lookup, 123) == "123"
+
+
+def test_wait_for_future_result_with_shutdown_returns_result():
+    future = Future()
+    future.set_result("ok")
+
+    result = _wait_for_future_result_with_shutdown(
+        future,
+        timeout_seconds=0.1,
+        poll_seconds=0.01,
+    )
+
+    assert result == "ok"
+
+
+def test_wait_for_future_result_with_shutdown_aborts_when_shutting_down():
+    future = MagicMock()
+
+    with patch.object(mu, "shutting_down", True):
+        with pytest.raises(TimeoutError, match="Shutdown in progress"):
+            _wait_for_future_result_with_shutdown(
+                future,
+                timeout_seconds=0.5,
+                poll_seconds=0.01,
+            )
+
+    future.result.assert_not_called()
+
+
+def test_wait_for_future_result_with_shutdown_raises_futures_timeout():
+    future = MagicMock()
+    future.result.side_effect = FuturesTimeoutError
+
+    with patch.object(mu, "shutting_down", False):
+        with pytest.raises(FuturesTimeoutError):
+            _wait_for_future_result_with_shutdown(
+                future,
+                timeout_seconds=0.02,
+                poll_seconds=0.005,
+            )
+
+    assert future.result.call_count >= 1

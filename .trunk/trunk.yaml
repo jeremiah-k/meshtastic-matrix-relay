@@ -21,7 +21,7 @@ lint:
     - renovate@43.150.0
     - shellcheck@0.11.0
     - shfmt@3.6.0
-    - mypy@1.20.2
+    - mypy@2.0.0
     - pyright@1.1.409
     - dotenv-linter@4.0.0
     - hadolint@2.14.0
@@ -29,7 +29,7 @@ lint:
     - actionlint@1.7.12
     - bandit@1.9.4
     - black@26.3.1
-    - checkov@3.2.526
+    - checkov@3.2.527
     - git-diff-check
     - isort@8.0.1
     - markdownlint@0.48.0

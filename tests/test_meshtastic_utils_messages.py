@@ -22,7 +22,11 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 from meshtastic import BROADCAST_NUM
 
-from mmrelay.constants.formats import TEXT_MESSAGE_APP
+import mmrelay.meshtastic_utils as mu
+from mmrelay.constants.config import CONFIG_KEY_MESHNET_NAME
+from mmrelay.constants.formats import (
+    TEXT_MESSAGE_APP,
+)
 from mmrelay.constants.network import (
     BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
     CONNECTION_TYPE_BLE,
@@ -48,6 +52,24 @@ from tests.constants import (
 )
 
 TEST_PACKET_RX_TIME = 1234567890
+
+
+def _base_config() -> dict[str, Any]:
+    """
+    Return a minimal base configuration used by tests.
+
+    Returns:
+        dict: Configuration with:
+            - "meshtastic": dict containing "connection_type" set to "serial" and the meshnet name under CONFIG_KEY_MESHNET_NAME (value "TestNet").
+            - "matrix_rooms": list with a single room dict containing "id" set to "!room:test" and "meshtastic_channel" set to 0.
+    """
+    return {
+        "meshtastic": {
+            "connection_type": CONNECTION_TYPE_SERIAL,
+            CONFIG_KEY_MESHNET_NAME: "TestNet",
+        },
+        "matrix_rooms": [{"id": "!room:test", "meshtastic_channel": 0}],
+    }
 
 
 def _cancel_startup_drain_timer() -> None:
@@ -128,6 +150,21 @@ def reset_meshtastic_relay_state(monkeypatch):
     monkeypatch.setattr(
         "mmrelay.meshtastic_utils._health_probe_request_deadlines",
         {},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.config",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.matrix_rooms",
+        [],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.meshtastic_client",
+        None,
         raising=False,
     )
 
@@ -839,7 +876,6 @@ class TestMeshtasticUtils(unittest.TestCase):
         self, mock_serial, mock_port_exists
     ):
         """Startup packet drain window should apply on cold startup, not reconnect."""
-        import mmrelay.meshtastic_utils as mu
 
         mock_port_exists.return_value = True
         first_client = MagicMock()
@@ -896,7 +932,6 @@ class TestMeshtasticUtils(unittest.TestCase):
         self, mock_serial, mock_port_exists
     ):
         """Setup failure before node-info should not consume one-shot startup drain."""
-        import mmrelay.meshtastic_utils as mu
 
         mock_port_exists.return_value = True
 
@@ -956,7 +991,6 @@ class TestMeshtasticUtils(unittest.TestCase):
 
     def test_rollback_connect_attempt_marks_startup_drain_complete(self):
         """Rollback should set startup-drain completion state to avoid dead waits."""
-        import mmrelay.meshtastic_utils as mu
 
         mu._relay_startup_drain_complete_event.clear()
         mu._relay_startup_drain_expiry_timer = MagicMock()
@@ -976,7 +1010,6 @@ class TestMeshtasticUtils(unittest.TestCase):
 
     def test_rollback_connect_attempt_none_event_is_safe_noop(self):
         """Rollback should not raise AttributeError when the drain event is None."""
-        import mmrelay.meshtastic_utils as mu
 
         mu._relay_startup_drain_expiry_timer = MagicMock()
         mu._relay_startup_drain_deadline_monotonic_secs = 123.0
@@ -1141,6 +1174,11 @@ class TestGetPortnumName(unittest.TestCase):
         result_list = _get_portnum_name([])
         self.assertEqual(result_list, "UNKNOWN (type=list)")
 
+    def test_get_portnum_name_encrypted_with_packet(self):
+        """Test that encrypted packets return 'ENCRYPTED' portnum name."""
+        result = _get_portnum_name(None, {"encrypted": True})
+        self.assertEqual(result, "ENCRYPTED")
+
 
 class TestGetPacketDetails(unittest.TestCase):
     """Test cases for _get_packet_details helper function."""
@@ -1261,3 +1299,66 @@ class TestTextReplyFunctionality(unittest.TestCase):
 
         # Function should exist and be callable
         self.assertTrue(callable(send_text_reply))
+
+    def test_send_text_reply_no_client(self):
+        """send_text_reply returns None and logs error when no client is set."""
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            result = send_text_reply(None, "test message", 12345)
+            self.assertIsNone(result)
+            mock_logger.error.assert_any_call(
+                "No Meshtastic interface available for sending reply"
+            )
+
+    def test_send_text_reply_client_send_failure(self):
+        """send_text_reply returns None when client's send operation raises."""
+        mock_client = MagicMock()
+        mock_client._generatePacketId.return_value = 12345
+        mock_client._sendPacket.side_effect = RuntimeError("Send failed")
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            result = send_text_reply(mock_client, "test message", 12345)
+            self.assertIsNone(result)
+            mock_logger.exception.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# Tests absorbed from test_meshtastic_utils_edge_cases.py (message/DB domain)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("stable_relay_start_time")
+class TestOnMeshtasticMessageDatabaseError(unittest.TestCase):
+    """Test database error handling in on_meshtastic_message."""
+
+    def test_on_meshtastic_message_database_error(self):
+        """Handles database utility exceptions without raising unhandled errors."""
+        packet = {
+            "decoded": {"text": "test message", "portnum": TEXT_MESSAGE_APP},
+            "fromId": "!12345678",
+            "from": 0x12345678,
+            "to": BROADCAST_NUM,
+            "channel": 0,
+            "id": TEST_PACKET_ID,
+            "rxTime": TEST_PACKET_RX_TIME,
+        }
+
+        mock_interface = MagicMock()
+        mock_interface.myInfo.my_node_num = 99999
+
+        config = _base_config()
+        with (
+            patch("mmrelay.meshtastic_utils.config", config),
+            patch("mmrelay.meshtastic_utils.matrix_rooms", config["matrix_rooms"]),
+            patch(
+                "mmrelay.meshtastic_utils.get_longname",
+                side_effect=TypeError("Database error"),
+            ) as mock_get_longname,
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            on_meshtastic_message(packet, mock_interface)
+
+        mock_get_longname.assert_called()
+        self.assertTrue(
+            mock_logger.exception.called or mock_logger.error.called,
+            "Expected the TypeError from get_longname to be logged at exception or error level",
+        )

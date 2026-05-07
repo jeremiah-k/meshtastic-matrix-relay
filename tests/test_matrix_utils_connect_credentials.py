@@ -6,6 +6,7 @@ reload/save operations during Matrix connection establishment.
 
 import json
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -335,6 +336,7 @@ async def test_connect_matrix_auto_login_load_credentials_failure():
 
     with (
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.matrix_client", None),
         patch("mmrelay.matrix_utils.login_matrix_bot", return_value=True),
         patch(
             "mmrelay.matrix_utils.async_load_credentials",
@@ -362,6 +364,7 @@ async def test_connect_matrix_auto_login_failure():
 
     with (
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.matrix_client", None),
         patch("mmrelay.matrix_utils.login_matrix_bot", return_value=False),
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
@@ -407,8 +410,8 @@ async def test_resolve_and_load_credentials_rejects_non_mapping_config():
         ),
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
-        result = await matrix_utils_module._resolve_and_load_credentials(  # type: ignore[arg-type]
-            config_data=123,
+        result = await matrix_utils_module._resolve_and_load_credentials(
+            config_data=cast(dict, 123),
             matrix_section=None,
         )
 

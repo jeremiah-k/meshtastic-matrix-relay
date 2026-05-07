@@ -1,29 +1,44 @@
+#!/usr/bin/env python3
+"""
+Test suite for Meshtastic packet routing and plugin dispatch in MMRelay.
+
+Tests packet routing, portnum classification, plugin dispatch, and related
+message filtering behavior within the Meshtastic-to-Matrix relay path.
+"""
+
+import asyncio
+import contextlib
+import threading
 from collections.abc import Iterator
+from concurrent.futures import Future as FuturesFuture
+from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from contextlib import ExitStack, contextmanager
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from meshtastic import BROADCAST_NUM
 
 import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.config import CONFIG_KEY_MESHNET_NAME
-from mmrelay.constants.formats import (
-    EMOJI_FLAG_VALUE,
-    TEXT_MESSAGE_APP,
-)
+from mmrelay.constants.formats import EMOJI_FLAG_VALUE, TEXT_MESSAGE_APP
 from mmrelay.constants.messages import (
     PORTNUM_DETECTION_SENSOR_APP,
     PORTNUM_TEXT_MESSAGE_APP,
 )
+from mmrelay.constants.network import DEFAULT_PLUGIN_TIMEOUT_SECS
 from mmrelay.meshtastic.packet_routing import (
     PacketAction,
     _get_packet_routing_overrides,
-    _get_portnum_name,
     _resolve_portnum_set,
     classify_packet,
 )
 from mmrelay.meshtastic_utils import on_meshtastic_message
+
+# ---------------------------------------------------------------------------
+# Test helpers (functionally identical to those in
+# test_meshtastic_utils_messages.py to keep each file self-contained)
+# ---------------------------------------------------------------------------
 
 
 def _base_config():
@@ -32,8 +47,10 @@ def _base_config():
 
     Returns:
         dict: Configuration with:
-            - "meshtastic": dict containing "connection_type" set to "serial" and the meshnet name under CONFIG_KEY_MESHNET_NAME (value "TestNet").
-            - "matrix_rooms": list with a single room dict containing "id" set to "!room:test" and "meshtastic_channel" set to 0.
+            - "meshtastic": dict containing "connection_type" set to "serial"
+              and the meshnet name under CONFIG_KEY_MESHNET_NAME (value "TestNet").
+            - "matrix_rooms": list with a single room dict containing "id" set
+              to "!room:test" and "meshtastic_channel" set to 0.
     """
     return {
         "meshtastic": {
@@ -71,10 +88,12 @@ def _make_interface(node_id=999, nodes=None):
 
     Parameters:
         node_id (int): The node number to assign to interface.myInfo.my_node_num.
-        nodes (dict | None): Mapping of node IDs to node info objects to attach to interface.nodes; uses an empty dict if None.
+        nodes (dict | None): Mapping of node IDs to node info objects to attach
+            to interface.nodes; uses an empty dict if None.
 
     Returns:
-        MagicMock: A mock interface with `myInfo.my_node_num` and `nodes` set as provided.
+        MagicMock: A mock interface with `myInfo.my_node_num` and `nodes` set
+        as provided.
     """
     interface = MagicMock()
     interface.myInfo.my_node_num = node_id
@@ -86,8 +105,8 @@ def _set_globals(config):
     """
     Assign the provided configuration to meshtastic_utils module globals.
 
-    Set mu.config to the given config and mu.matrix_rooms to the value of the config's
-    "matrix_rooms" key or an empty list if that key is missing.
+    Set mu.config to the given config and mu.matrix_rooms to the value of the
+    config's "matrix_rooms" key or an empty list if that key is missing.
 
     Parameters:
         config (dict): Configuration mapping to apply to mmrelay.meshtastic_utils.
@@ -152,7 +171,177 @@ def _patch_message_deps(
         yield mock_logger, mock_relay
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
+class _DummyFuture:
+    """Helper class to simulate a future that raises an exception.
+
+    Parameters:
+        exc (BaseException): The exception to raise when result() is called.
+    """
+
+    def __init__(self, exc: BaseException) -> None:
+        self.exc = exc
+
+    def result(self, timeout: float | None = None) -> None:
+        raise self.exc
+
+
+def _make_submit_side_effect(future):
+    """Return a side effect function that closes coroutines and returns the given future."""
+
+    def _submit(coro, **_kwargs):
+        if asyncio.iscoroutine(coro):
+            coro.close()
+        return future
+
+    return _submit
+
+
+def _base_config_with_routing(
+    chat_portnums: list[Any] | str | None = None,
+    disabled_portnums: list[Any] | str | None = None,
+    encrypted_action: str | None = None,
+) -> dict[str, Any]:
+    config = _base_config()
+    routing: dict[str, Any] = {}
+    if chat_portnums is not None:
+        routing["chat_portnums"] = chat_portnums
+    if disabled_portnums is not None:
+        routing["disabled_portnums"] = disabled_portnums
+    if encrypted_action is not None:
+        routing["encrypted_action"] = encrypted_action
+    if routing:
+        config["meshtastic"]["packet_routing"] = routing
+    return config
+
+
+# ---------------------------------------------------------------------------
+# Autouse fixture -- mirrors the one in test_meshtastic_utils_messages.py
+# so that isolated test state is guaranteed regardless of which file a given
+# test lives in.
+# ---------------------------------------------------------------------------
+
+
+def _cancel_startup_drain_timer() -> None:
+    """Best-effort cancellation and join of the startup-drain expiry timer."""
+    import mmrelay.meshtastic_utils as _mu
+
+    _timer = getattr(_mu, "_relay_startup_drain_expiry_timer", None)
+    if _timer is None:
+        return
+    with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+        _timer.cancel()
+    _join = getattr(_timer, "join", None)
+    if callable(_join):
+        with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+            _join(0.2)
+    with contextlib.suppress(AttributeError):
+        _mu._relay_startup_drain_expiry_timer = None
+
+
+@pytest.fixture(autouse=True)
+def reset_meshtastic_relay_state(monkeypatch):
+    """Reset all Meshtastic relay module globals to prevent cross-test leakage."""
+
+    _cancel_startup_drain_timer()
+
+    startup_drain_complete_event = threading.Event()
+    startup_drain_complete_event.set()
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_active_client_id",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_rx_time_clock_skew_secs",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_startup_drain_deadline_monotonic_secs",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_startup_drain_expiry_timer",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_startup_drain_complete_event",
+        startup_drain_complete_event,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._startup_packet_drain_applied",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._relay_connection_started_monotonic_secs",
+        0.0,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.subscribed_to_messages",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.subscribed_to_connection_lost",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._health_probe_request_deadlines",
+        {},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.config",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.matrix_rooms",
+        [],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.meshtastic_client",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.meshtastic_iface",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.shutting_down",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.reconnecting",
+        False,
+        raising=False,
+    )
+
+    yield
+
+    _cancel_startup_drain_timer()
+
+
+# ---------------------------------------------------------------------------
+# Test functions -- plugin dispatch / packet routing / portnum classification
+# ---------------------------------------------------------------------------
+
+
 def test_on_meshtastic_message_filters_reaction_when_disabled():
     config = _base_config()
     _set_globals(config)
@@ -173,7 +362,6 @@ def test_on_meshtastic_message_filters_reaction_when_disabled():
     )
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_does_not_filter_plain_emoji_message_when_reactions_disabled():
     config = _base_config()
     _set_globals(config)
@@ -190,7 +378,6 @@ def test_on_meshtastic_message_does_not_filter_plain_emoji_message_when_reaction
     mock_relay.assert_awaited_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_reaction_missing_original():
     """Test that reactions with missing originals are relayed as normal messages."""
     config = _base_config()
@@ -204,18 +391,15 @@ def test_on_meshtastic_message_reaction_missing_original():
         on_meshtastic_message(packet, _make_interface())
 
     assert mock_logger is not None
-    # Should warn about missing original but still relay as normal message
     mock_logger.warning.assert_any_call(
         "Original message for reaction (replyId=%s) not found in DB. "
         "Relaying as normal message instead.",
         42,
     )
-    # Message should be relayed as normal text message
     assert mock_relay is not None
     mock_relay.assert_awaited_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_reply_missing_original():
     """Test that replies with missing originals are relayed as normal messages."""
     config = _base_config()
@@ -229,18 +413,15 @@ def test_on_meshtastic_message_reply_missing_original():
         on_meshtastic_message(packet, _make_interface())
 
     assert mock_logger is not None
-    # Should warn about missing original but still relay as normal message
     mock_logger.warning.assert_any_call(
         "Original message for reply (replyId=%s) not found in DB. "
         "Relaying as normal message instead.",
         77,
     )
-    # Message should be relayed as normal text message
     assert mock_relay is not None
     mock_relay.assert_awaited_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_channel_fallback_numeric_portnum():
     config = _base_config()
     _set_globals(config)
@@ -255,7 +436,6 @@ def test_on_meshtastic_message_channel_fallback_numeric_portnum():
     mock_relay.assert_awaited_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_unknown_portnum_plugin_only():
     config = _base_config()
     _set_globals(config)
@@ -278,7 +458,6 @@ def test_on_meshtastic_message_unknown_portnum_plugin_only():
     plugin.handle_meshtastic_message.assert_called_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_unknown_numeric_portnum_plugin_only():
     config = _base_config()
     _set_globals(config)
@@ -300,7 +479,6 @@ def test_on_meshtastic_message_unknown_numeric_portnum_plugin_only():
     plugin.handle_meshtastic_message.assert_called_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_range_test_app_plugin_only():
     config = _base_config()
     _set_globals(config)
@@ -319,14 +497,14 @@ def test_on_meshtastic_message_range_test_app_plugin_only():
 
     assert mock_relay is not None
     mock_relay.assert_not_called()
-    plugin.handle_meshtastic_message.assert_called_once()
-    args = plugin.handle_meshtastic_message.call_args[0]
-    assert args[1] == "[p] Hello"
-    assert args[2] == "Long"
-    assert args[3] == "TestNet"
+    plugin.handle_meshtastic_message.assert_called_once_with(
+        packet,
+        "[p] Hello",
+        "Long",
+        "TestNet",
+    )
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_detection_sensor_disabled():
     config = _base_config()
     config["meshtastic"]["detection_sensor"] = False
@@ -349,7 +527,6 @@ def test_on_meshtastic_message_detection_sensor_disabled():
     plugin.handle_meshtastic_message.assert_called_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_detection_sensor_enabled_relays():
     config = _base_config()
     config["meshtastic"]["detection_sensor"] = True
@@ -364,7 +541,6 @@ def test_on_meshtastic_message_detection_sensor_enabled_relays():
     mock_relay.assert_awaited_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_saves_node_names_from_interface():
     config = _base_config()
     _set_globals(config)
@@ -391,7 +567,6 @@ def test_on_meshtastic_message_saves_node_names_from_interface():
     mock_save_short.assert_called_once_with(123, "ML")
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_falls_back_to_sender_id():
     config = _base_config()
     _set_globals(config)
@@ -415,7 +590,6 @@ def test_on_meshtastic_message_falls_back_to_sender_id():
     mock_logger.debug.assert_any_call("Node info for sender 123 not available yet.")
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_direct_message_skips_relay():
     config = _base_config()
     _set_globals(config)
@@ -434,7 +608,6 @@ def test_on_meshtastic_message_direct_message_skips_relay():
     )
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_ignores_messages_for_other_nodes():
     config = _base_config()
     _set_globals(config)
@@ -453,16 +626,10 @@ def test_on_meshtastic_message_ignores_messages_for_other_nodes():
     )
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_logs_when_matrix_rooms_falsy():
     class FalsyRooms(list):
         def __bool__(self):
-            """
-            Indicates that instances of this class are always considered false in boolean contexts.
-
-            Returns:
-                bool: `False` always.
-            """
+            """Make list instances always falsy in boolean context."""
             return False
 
     config = _base_config()
@@ -475,15 +642,12 @@ def test_on_meshtastic_message_logs_when_matrix_rooms_falsy():
         on_meshtastic_message(packet, _make_interface())
 
     assert mock_logger is not None
-    # Empty matrix_rooms now logs as warning before relay attempt with descriptive message
     assert any(
         "matrix_rooms is empty" in str(call)
-        and call[0][0].startswith("matrix_rooms is empty")
         for call in mock_logger.warning.call_args_list
     ), f"Expected warning about empty matrix_rooms, got: {mock_logger.warning.call_args_list}"
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_skips_non_dict_rooms():
     config = _base_config()
     _set_globals(config)
@@ -506,7 +670,6 @@ def test_on_meshtastic_message_skips_non_dict_rooms():
     mock_relay.assert_awaited_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_non_text_plugin_returns_none():
     config = _base_config()
     _set_globals(config)
@@ -532,7 +695,6 @@ def test_on_meshtastic_message_non_text_plugin_returns_none():
     )
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_non_text_plugin_exception():
     config = _base_config()
     _set_globals(config)
@@ -556,25 +718,6 @@ def test_on_meshtastic_message_non_text_plugin_exception():
     mock_logger.exception.assert_any_call("Plugin %s failed", "boom")
 
 
-def _base_config_with_routing(
-    chat_portnums: list[Any] | str | None = None,
-    disabled_portnums: list[Any] | str | None = None,
-    encrypted_action: str | None = None,
-) -> dict[str, Any]:
-    config = _base_config()
-    routing: dict[str, Any] = {}
-    if chat_portnums is not None:
-        routing["chat_portnums"] = chat_portnums
-    if disabled_portnums is not None:
-        routing["disabled_portnums"] = disabled_portnums
-    if encrypted_action is not None:
-        routing["encrypted_action"] = encrypted_action
-    if routing:
-        config["meshtastic"]["packet_routing"] = routing
-    return config
-
-
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_chat_portnums_override_promotes_range_test():
     config = _base_config_with_routing(chat_portnums=["RANGE_TEST_APP"])
     _set_globals(config)
@@ -591,7 +734,6 @@ def test_on_meshtastic_message_chat_portnums_override_promotes_range_test():
     mock_relay.assert_awaited_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_chat_portnums_override_promotes_via_numeric_config():
     RANGE_TEST_NUM = 70
     config = _base_config_with_routing(chat_portnums=[RANGE_TEST_NUM])
@@ -615,7 +757,6 @@ def test_on_meshtastic_message_chat_portnums_override_promotes_via_numeric_confi
     mock_relay.assert_awaited_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_chat_portnums_string_value():
     config = _base_config_with_routing(chat_portnums="RANGE_TEST_APP")
     _set_globals(config)
@@ -632,7 +773,6 @@ def test_on_meshtastic_message_chat_portnums_string_value():
     mock_relay.assert_awaited_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_disabled_portnums_drops_packet():
     config = _base_config_with_routing(disabled_portnums=["RANGE_TEST_APP"])
     _set_globals(config)
@@ -654,7 +794,6 @@ def test_on_meshtastic_message_disabled_portnums_drops_packet():
     plugin.handle_meshtastic_message.assert_not_called()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_disabled_portnums_does_not_affect_text_message():
     config = _base_config_with_routing(disabled_portnums=["RANGE_TEST_APP"])
     _set_globals(config)
@@ -670,7 +809,6 @@ def test_on_meshtastic_message_disabled_portnums_does_not_affect_text_message():
     mock_relay.assert_awaited_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_disabled_portnums_takes_precedence_over_chat():
     config = _base_config_with_routing(
         chat_portnums=["RANGE_TEST_APP"],
@@ -695,7 +833,6 @@ def test_on_meshtastic_message_disabled_portnums_takes_precedence_over_chat():
     plugin.handle_meshtastic_message.assert_not_called()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_chat_portnums_detection_sensor_still_gated():
     config = _base_config_with_routing(chat_portnums=["DETECTION_SENSOR_APP"])
     config["meshtastic"]["detection_sensor"] = False
@@ -769,7 +906,6 @@ def test_get_packet_routing_overrides_with_values():
     assert disabled == frozenset({"TELEMETRY_APP"})
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_non_chat_text_with_no_channel_reaches_plugins():
     config = _base_config()
     _set_globals(config)
@@ -793,7 +929,6 @@ def test_on_meshtastic_message_non_chat_text_with_no_channel_reaches_plugins():
     plugin.handle_meshtastic_message.assert_called_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_disabled_text_message_reaction_does_not_relay():
     config = _base_config_with_routing(disabled_portnums=["TEXT_MESSAGE_APP"])
     _set_globals(config)
@@ -816,7 +951,6 @@ def test_on_meshtastic_message_disabled_text_message_reaction_does_not_relay():
     plugin.handle_meshtastic_message.assert_not_called()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_disabled_text_message_reply_does_not_relay():
     config = _base_config_with_routing(disabled_portnums=["TEXT_MESSAGE_APP"])
     _set_globals(config)
@@ -839,7 +973,6 @@ def test_on_meshtastic_message_disabled_text_message_reply_does_not_relay():
     plugin.handle_meshtastic_message.assert_not_called()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_plugin_only_packet_with_replyId_does_not_leak_to_matrix():
     config = _base_config()
     _set_globals(config)
@@ -864,7 +997,6 @@ def test_on_meshtastic_message_plugin_only_packet_with_replyId_does_not_leak_to_
     plugin.handle_meshtastic_message.assert_called_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_classify_packet_encrypted_default_is_plugin_only():
     config = _base_config()
     packet = {"encrypted": True}
@@ -872,7 +1004,6 @@ def test_classify_packet_encrypted_default_is_plugin_only():
     assert action == PacketAction.PLUGIN_ONLY
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_classify_packet_encrypted_action_drop():
     config = _base_config_with_routing(encrypted_action="drop")
     packet = {"encrypted": True}
@@ -880,7 +1011,6 @@ def test_classify_packet_encrypted_action_drop():
     assert action == PacketAction.DROP
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_classify_packet_encrypted_action_plugin_only():
     config = _base_config_with_routing(encrypted_action="plugin_only")
     packet = {"encrypted": True}
@@ -888,7 +1018,6 @@ def test_classify_packet_encrypted_action_plugin_only():
     assert action == PacketAction.PLUGIN_ONLY
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_classify_packet_encrypted_never_relays():
     config = _base_config_with_routing(
         chat_portnums=["ENCRYPTED"],
@@ -899,7 +1028,6 @@ def test_classify_packet_encrypted_never_relays():
     assert action == PacketAction.PLUGIN_ONLY
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_classify_packet_encrypted_ignores_disabled_portnums():
     config = _base_config_with_routing(
         disabled_portnums=["ENCRYPTED"],
@@ -910,14 +1038,12 @@ def test_classify_packet_encrypted_ignores_disabled_portnums():
     assert action == PacketAction.PLUGIN_ONLY
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_classify_packet_without_packet_kwarg_still_works():
     config = _base_config()
     action = classify_packet(TEXT_MESSAGE_APP, config)
     assert action == PacketAction.RELAY
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_chat_portnums_promoted_no_channel_runs_plugins():
     config = _base_config_with_routing(chat_portnums=["RANGE_TEST_APP"])
     _set_globals(config)
@@ -941,7 +1067,6 @@ def test_on_meshtastic_message_chat_portnums_promoted_no_channel_runs_plugins():
     plugin.handle_meshtastic_message.assert_called_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_encrypted_action_drop_drops_before_plugins():
     config = _base_config_with_routing(encrypted_action="drop")
     _set_globals(config)
@@ -967,7 +1092,6 @@ def test_on_meshtastic_message_encrypted_action_drop_drops_before_plugins():
     plugin.handle_meshtastic_message.assert_not_called()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_encrypted_default_runs_plugins():
     config = _base_config()
     _set_globals(config)
@@ -993,17 +1117,6 @@ def test_on_meshtastic_message_encrypted_default_runs_plugins():
     plugin.handle_meshtastic_message.assert_called_once()
 
 
-def test_get_portnum_name_encrypted_with_packet():
-    result = _get_portnum_name(None, {"encrypted": True})
-    assert result == "ENCRYPTED"
-
-
-def test_get_portnum_name_none_without_packet():
-    result = _get_portnum_name(None)
-    assert result == "UNKNOWN (None)"
-
-
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_text_app_malformed_channel_defaults_to_zero():
     config = _base_config()
     _set_globals(config)
@@ -1017,7 +1130,6 @@ def test_on_meshtastic_message_text_app_malformed_channel_defaults_to_zero():
     mock_relay.assert_awaited_once()
 
 
-@pytest.mark.usefixtures("reset_meshtastic_globals")
 def test_on_meshtastic_message_promoted_non_chat_malformed_channel_skips_relay():
     config = _base_config_with_routing(chat_portnums=["RANGE_TEST_APP"])
     _set_globals(config)
@@ -1044,3 +1156,301 @@ def test_on_meshtastic_message_promoted_non_chat_malformed_channel_skips_relay()
         "str",
         "RANGE_TEST_APP",
     )
+
+
+# ---------------------------------------------------------------------------
+# Tests absorbed from test_meshtastic_utils_edge_cases.py (routing/plugin/DM domain)
+# ---------------------------------------------------------------------------
+
+
+def test_on_meshtastic_message_plugin_timeout_skips_relay():
+    """Plugin timeout prevents message from being relayed to Matrix."""
+    packet = {
+        "decoded": {"text": "!test", "portnum": PORTNUM_TEXT_MESSAGE_APP},
+        "fromId": "!67890",
+        "channel": 0,
+        "to": BROADCAST_NUM,
+    }
+    interface = MagicMock()
+    interface.nodes = {"!67890": {"user": {"id": "!67890", "longName": "TestNode"}}}
+    interface.myInfo = MagicMock()
+    interface.myInfo.my_node_num = 99999
+
+    future = _DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
+
+    with (
+        patch(
+            "mmrelay.plugin_loader.load_plugins",
+            return_value=[_make_plugin_routing("test_plugin")],
+        ),
+        patch(
+            "mmrelay.meshtastic_utils._submit_coro",
+            side_effect=_make_submit_side_effect(future),
+        ),
+        patch(
+            "mmrelay.meshtastic_utils.config",
+            {
+                "meshtastic": {"meshnet_name": "test"},
+                "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
+            },
+        ),
+        patch(
+            "mmrelay.meshtastic_utils.matrix_rooms",
+            [{"meshtastic_channel": 0, "id": "!room:matrix"}],
+        ),
+        patch("mmrelay.meshtastic_utils.get_longname", return_value="TestNode"),
+        patch("mmrelay.meshtastic_utils.get_shortname", return_value="TN"),
+        patch("mmrelay.matrix_utils.get_matrix_prefix", return_value=""),
+        patch("mmrelay.matrix_utils.matrix_relay", Mock()) as mock_matrix_relay,
+        patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    ):
+        on_meshtastic_message(packet, interface)
+
+        mock_logger.warning.assert_any_call(
+            "Plugin %s did not respond within %ss: %s",
+            "test_plugin",
+            DEFAULT_PLUGIN_TIMEOUT_SECS,
+            ANY,
+        )
+        mock_matrix_relay.assert_not_called()
+
+
+def test_on_meshtastic_message_non_text_plugin_timeout_prevents_relay():
+    """Non-text plugin timeout prevents relaying telemetry to Matrix."""
+    packet = {
+        "decoded": {
+            "portnum": "TELEMETRY_APP",
+            "telemetry": {
+                "deviceMetrics": {
+                    "batteryLevel": 85,
+                    "voltage": 4.1,
+                },
+            },
+        },
+        "fromId": "!12345678",
+        "channel": 0,
+        "to": BROADCAST_NUM,
+    }
+    interface = MagicMock()
+    interface.nodes = {
+        "!12345678": {"user": {"id": "!12345678", "longName": "TestNode"}}
+    }
+
+    future = _DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
+
+    with (
+        patch(
+            "mmrelay.plugin_loader.load_plugins",
+            return_value=[_make_plugin_routing("telemetry_plugin", handled=True)],
+        ),
+        patch(
+            "mmrelay.meshtastic_utils._submit_coro",
+            side_effect=_make_submit_side_effect(future),
+        ),
+        patch(
+            "mmrelay.meshtastic_utils.config",
+            {
+                "meshtastic": {"meshnet_name": "test"},
+                "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
+            },
+        ),
+        patch(
+            "mmrelay.meshtastic_utils.matrix_rooms",
+            [{"meshtastic_channel": 0, "id": "!room:matrix"}],
+        ),
+        patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+        patch("mmrelay.matrix_utils.matrix_relay", Mock()) as mock_matrix_relay,
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    ):
+        on_meshtastic_message(packet, interface)
+
+        mock_logger.warning.assert_any_call(
+            "Plugin %s did not respond within %ss: %s",
+            "telemetry_plugin",
+            DEFAULT_PLUGIN_TIMEOUT_SECS,
+            ANY,
+        )
+        mock_logger.debug.assert_any_call(
+            "Processed %s with plugin %s", "TELEMETRY_APP", "telemetry_plugin"
+        )
+        mock_matrix_relay.assert_not_called()
+
+
+def test_on_meshtastic_message_non_text_plugin_no_match_continues():
+    """Non-text message continues to subsequent plugins when first does not handle."""
+    packet = {
+        "decoded": {
+            "portnum": "POSITION_APP",
+            "position": {
+                "latitudeI": 377711000,
+                "longitudeI": -1224200000,
+            },
+        },
+        "fromId": "!12345678",
+        "channel": 0,
+        "to": BROADCAST_NUM,
+    }
+    interface = MagicMock()
+    interface.nodes = {
+        "!12345678": {"user": {"id": "!12345678", "longName": "TestNode"}}
+    }
+
+    plugin1 = MagicMock()
+    plugin1.plugin_name = "first_plugin"
+    plugin1.handle_meshtastic_message = Mock(return_value=False)
+
+    plugin2 = MagicMock()
+    plugin2.plugin_name = "second_plugin"
+    plugin2.handle_meshtastic_message = Mock(return_value=True)
+
+    with (
+        patch(
+            "mmrelay.plugin_loader.load_plugins",
+            return_value=[plugin1, plugin2],
+        ),
+        patch(
+            "mmrelay.meshtastic_utils.config",
+            {
+                "meshtastic": {"meshnet_name": "test"},
+                "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
+            },
+        ),
+        patch(
+            "mmrelay.meshtastic_utils.matrix_rooms",
+            [{"meshtastic_channel": 0, "id": "!room:matrix"}],
+        ),
+        patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+        patch("mmrelay.matrix_utils.matrix_relay", Mock()) as mock_matrix_relay,
+    ):
+        on_meshtastic_message(packet, interface)
+
+        plugin1.handle_meshtastic_message.assert_called_once()
+        plugin2.handle_meshtastic_message.assert_called_once()
+        mock_matrix_relay.assert_not_called()
+
+
+def test_on_meshtastic_message_non_text_plugin_match_skips_remaining():
+    """Non-text message handled by first plugin skips remaining plugins."""
+    packet = {
+        "decoded": {
+            "portnum": "POSITION_APP",
+            "position": {
+                "latitudeI": 377711000,
+                "longitudeI": -1224200000,
+            },
+        },
+        "fromId": "!12345678",
+        "channel": 0,
+        "to": BROADCAST_NUM,
+    }
+    interface = MagicMock()
+    interface.nodes = {
+        "!12345678": {"user": {"id": "!12345678", "longName": "TestNode"}}
+    }
+
+    plugin1 = MagicMock()
+    plugin1.plugin_name = "position_plugin"
+    plugin1.handle_meshtastic_message = Mock(return_value=True)
+
+    plugin2 = MagicMock()
+    plugin2.plugin_name = "other_plugin"
+    plugin2.handle_meshtastic_message = Mock(return_value=False)
+
+    with (
+        patch(
+            "mmrelay.plugin_loader.load_plugins",
+            return_value=[plugin1, plugin2],
+        ),
+        patch(
+            "mmrelay.meshtastic_utils.config",
+            {
+                "meshtastic": {"meshnet_name": "test"},
+                "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
+            },
+        ),
+        patch(
+            "mmrelay.meshtastic_utils.matrix_rooms",
+            [{"meshtastic_channel": 0, "id": "!room:matrix"}],
+        ),
+        patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+        patch("mmrelay.matrix_utils.matrix_relay", Mock()) as mock_matrix_relay,
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    ):
+        on_meshtastic_message(packet, interface)
+
+        plugin1.handle_meshtastic_message.assert_called_once()
+        plugin2.handle_meshtastic_message.assert_not_called()
+        mock_logger.debug.assert_any_call(
+            "Processed %s with plugin %s", "POSITION_APP", "position_plugin"
+        )
+        mock_matrix_relay.assert_not_called()
+
+
+@pytest.mark.timeout(10)
+def test_on_meshtastic_message_large_node_list():
+    """Handles packet when interface has a very large number of nodes.
+
+    This test verifies the function completes without error or timeout when
+    processing messages with a large node list in the interface.
+    """
+    packet = {
+        "decoded": {"text": "test message", "portnum": PORTNUM_TEXT_MESSAGE_APP},
+        "fromId": "!12345678",
+        "channel": 0,
+        "to": BROADCAST_NUM,
+        "id": 999,
+    }
+
+    mock_interface = MagicMock()
+    large_nodes = {}
+    for i in range(10000):
+        large_nodes[f"node_{i}"] = {
+            "user": {
+                "id": f"!{i:08x}",
+                "longName": f"Node {i}",
+                "shortName": f"N{i}",
+            }
+        }
+    mock_interface.nodes = large_nodes
+    mock_interface.myInfo.my_node_num = 99999
+
+    config = {
+        "meshtastic": {"meshnet_name": "test", "connection_type": "serial"},
+        "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
+    }
+
+    def _done_future(coro, **_kwargs):
+        if asyncio.iscoroutine(coro):
+            coro.close()
+        f = FuturesFuture()
+        f.set_result(None)
+        return f
+
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch("mmrelay.meshtastic_utils.logger"),
+        patch("mmrelay.meshtastic_utils._submit_coro", side_effect=_done_future),
+        patch("mmrelay.meshtastic_utils.config", config),
+        patch("mmrelay.meshtastic_utils.matrix_rooms", config["matrix_rooms"]),
+        patch("mmrelay.meshtastic_utils.get_longname", return_value="Node 0"),
+        patch("mmrelay.meshtastic_utils.get_shortname", return_value="N0"),
+        patch(
+            "mmrelay.matrix_utils.get_interaction_settings",
+            return_value={"reactions": False, "replies": False},
+        ),
+        patch("mmrelay.matrix_utils.get_matrix_prefix", return_value=""),
+        patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
+        patch("mmrelay.matrix_utils.matrix_client", None),
+        patch("mmrelay.matrix_utils.matrix_relay", Mock(return_value=None)),
+    ):
+        # Primary assertion: function completes without exception for 10,000 nodes
+        on_meshtastic_message(packet, mock_interface)
+
+
+def _make_plugin_routing(name, handled=False):
+    """Create a MagicMock plugin for routing tests."""
+    plugin = MagicMock()
+    plugin.plugin_name = name
+    plugin.handle_meshtastic_message = AsyncMock(return_value=handled)
+    return plugin
