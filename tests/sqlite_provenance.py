@@ -26,7 +26,7 @@ class _ConnectionProvenance:
         - _patched: boolean flag indicating whether sqlite3.connect has been replaced.
         """
         self._registry: dict[int, dict[str, Any]] = {}
-        self._registry_lock = threading.Lock()
+        self._registry_lock = threading.RLock()
         self._current_nodeid: str = ""
         self._real_connect = sqlite3.connect
         self._patched: bool = False
