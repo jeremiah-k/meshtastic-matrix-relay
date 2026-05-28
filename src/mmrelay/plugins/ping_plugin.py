@@ -162,6 +162,12 @@ class Plugin(BasePlugin):
             self.plugin_name,
         )
 
+        # Append hop count suffix if enabled
+        if self.config.get("display_hops", False):
+            hops = packet.get("hopStart", 0) - packet.get("hopLimit", 0)
+            if hops > 0:
+                reply_message = f"{reply_message} {hops} 🦘"
+
         await asyncio.sleep(self.get_response_delay())
 
         reply_id = packet.get("id")
@@ -175,6 +181,7 @@ class Plugin(BasePlugin):
             )
         else:
             self.send_message(text=reply_message, channel=channel, reply_id=reply_id)
+
         return True
 
     def get_matrix_commands(self) -> list[str]:
