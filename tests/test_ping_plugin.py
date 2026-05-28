@@ -1000,6 +1000,405 @@ class TestPingPluginMatrixHandling(unittest.TestCase):
         asyncio.run(run_test())
 
 
+class TestDisplayHops(unittest.TestCase):
+    """Tests for the display_hops config option (lines 165-169)."""
+
+    def setUp(self):
+        self.plugin = Plugin()
+        self.plugin.logger = MagicMock()
+        self.plugin.is_channel_enabled = MagicMock(return_value=True)
+        self.plugin.get_response_delay = MagicMock(return_value=1.0)
+        self.plugin.send_message = MagicMock()
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_display_hops_enabled_broadcast_with_hops(self, mock_sleep, mock_connect):
+        """display_hops=True appends hop count to broadcast pong."""
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+        self.plugin.config = {"display_hops": True}
+
+        packet = {
+            "decoded": {"text": "!ping"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+            "hopStart": 3,
+            "hopLimit": 1,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            self.plugin.send_message.assert_called_once_with(
+                text="pong! (2 hops 🦘)", channel=0, reply_id=None
+            )
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_display_hops_enabled_direct_message_with_hops(
+        self, mock_sleep, mock_connect
+    ):
+        """display_hops=True appends hop count to DM pong."""
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+        self.plugin.config = {"display_hops": True}
+
+        packet = {
+            "decoded": {"text": "!ping"},
+            "channel": 1,
+            "fromId": "!12345678",
+            "to": 123456789,
+            "hopStart": 5,
+            "hopLimit": 2,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            self.plugin.send_message.assert_called_once_with(
+                text="pong! (3 hops 🦘)",
+                channel=1,
+                destination_id="!12345678",
+                reply_id=None,
+            )
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_display_hops_enabled_zero_hops_shows_direct(
+        self, mock_sleep, mock_connect
+    ):
+        """Direct connection (hopStart==hopLimit) produces 0 hops — shows "0 hops 🦘"."""
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+        self.plugin.config = {"display_hops": True}
+
+        packet = {
+            "decoded": {"text": "!ping"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+            "hopStart": 3,
+            "hopLimit": 3,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            self.plugin.send_message.assert_called_once_with(
+                text="pong! (0 hops 🦘)", channel=0, reply_id=None
+            )
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_display_hops_enabled_negative_hops_no_suffix(
+        self, mock_sleep, mock_connect
+    ):
+        """Pre-2.3 firmware: hopStart missing → 0 - hopLimit = negative → no suffix."""
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+        self.plugin.config = {"display_hops": True}
+
+        packet = {
+            "decoded": {"text": "!ping"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+            "hopLimit": 2,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            self.plugin.send_message.assert_called_once_with(
+                text="pong!", channel=0, reply_id=None
+            )
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_display_hops_enabled_both_fields_missing_no_suffix(
+        self, mock_sleep, mock_connect
+    ):
+        """Neither hopStart nor hopLimit present → 0 - 0 = 0 → no suffix."""
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+        self.plugin.config = {"display_hops": True}
+
+        packet = {
+            "decoded": {"text": "!ping"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            self.plugin.send_message.assert_called_once_with(
+                text="pong!", channel=0, reply_id=None
+            )
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_display_hops_disabled_no_suffix(self, mock_sleep, mock_connect):
+        """display_hops=False (explicit) does not append suffix."""
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+        self.plugin.config = {"display_hops": False}
+
+        packet = {
+            "decoded": {"text": "!ping"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+            "hopStart": 3,
+            "hopLimit": 1,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            self.plugin.send_message.assert_called_once_with(
+                text="pong!", channel=0, reply_id=None
+            )
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_display_hops_absent_config_no_suffix(self, mock_sleep, mock_connect):
+        """display_hops not in config → defaults to False → no suffix."""
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+        self.plugin.config = {}
+
+        packet = {
+            "decoded": {"text": "!ping"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+            "hopStart": 3,
+            "hopLimit": 1,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            self.plugin.send_message.assert_called_once_with(
+                text="pong!", channel=0, reply_id=None
+            )
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_display_hops_with_mimic_mode(self, mock_sleep, mock_connect):
+        """display_hops works with mimic_mode — suffix appended to mimic response."""
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+        self.plugin.config = {"mimic_mode": True, "display_hops": True}
+
+        packet = {
+            "decoded": {"text": "PiNg!?!"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+            "hopStart": 4,
+            "hopLimit": 2,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            self.plugin.send_message.assert_called_once_with(
+                text="PoNg!?! (2 hops 🦘)", channel=0, reply_id=None
+            )
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_display_hops_with_fallback_response(self, mock_sleep, mock_connect):
+        """display_hops appends to fallback response (Pong...) when punctuation exceeds max."""
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+        self.plugin.config = {"mimic_mode": True, "display_hops": True}
+
+        packet = {
+            "decoded": {"text": "!!!!!!PING?"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+            "hopStart": 3,
+            "hopLimit": 1,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            self.plugin.send_message.assert_called_once_with(
+                text="Pong... (2 hops 🦘)", channel=0, reply_id=None
+            )
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_display_hops_max_hops(self, mock_sleep, mock_connect):
+        """display_hops with maximum possible hops (7 - 0 = 7)."""
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+        self.plugin.config = {"display_hops": True}
+
+        packet = {
+            "decoded": {"text": "!ping"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+            "hopStart": 7,
+            "hopLimit": 0,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            self.plugin.send_message.assert_called_once_with(
+                text="pong! (7 hops 🦘)", channel=0, reply_id=None
+            )
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_display_hops_one_hop(self, mock_sleep, mock_connect):
+        """display_hops with exactly 1 hop (hopStart=2, hopLimit=1)."""
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+        self.plugin.config = {"display_hops": True}
+
+        packet = {
+            "decoded": {"text": "!ping"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+            "hopStart": 2,
+            "hopLimit": 1,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            self.plugin.send_message.assert_called_once_with(
+                text="pong! (1 hop 🦘)", channel=0, reply_id=None
+            )
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_display_hops_hoplimit_greater_than_hopstart(
+        self, mock_sleep, mock_connect
+    ):
+        """Malformed packet (hopLimit > hopStart) produces negative → shows (0 hops 🦘)."""
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+        self.plugin.config = {"display_hops": True}
+
+        packet = {
+            "decoded": {"text": "!ping"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+            "hopStart": 1,
+            "hopLimit": 3,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            self.plugin.send_message.assert_called_once_with(
+                text="pong! (0 hops 🦘)", channel=0, reply_id=None
+            )
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("asyncio.sleep")
+    def test_display_hops_hopstart_present_hoplimit_missing_no_suffix(
+        self, mock_sleep, mock_connect
+    ):
+        """hopStart present but hopLimit missing → guarded, no suffix."""
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+        self.plugin.config = {"display_hops": True}
+
+        packet = {
+            "decoded": {"text": "!ping"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+            "hopStart": 3,
+        }
+
+        async def run_test() -> None:
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+            self.plugin.send_message.assert_called_once_with(
+                text="pong!", channel=0, reply_id=None
+            )
+
+        asyncio.run(run_test())
+
+
 class TestPingPluginEdgeCases(unittest.TestCase):
     def setUp(self):
         self.plugin = Plugin()
