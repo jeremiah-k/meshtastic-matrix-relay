@@ -119,7 +119,7 @@ plugins:
     # When false (default): responds only to explicit !ping.
     # When true: responds to bare mesh-side "ping" messages with "pong".
     #mimic_mode: false
-    # When true (default: false): appends the hop count to mesh ping responses (e.g., "Pong?!? 2 🦘").
+    # When true (default: false): appends the hop count to mesh ping responses (e.g., "Pong?!? (2 hops 🦘)").
     # Only visible when the ping came from the LoRa network; direct and MQTT messages are unaffected.
     #display_hops: false
   weather:
