@@ -164,9 +164,12 @@ class Plugin(BasePlugin):
 
         # Append hop count suffix if enabled
         if self.config.get("display_hops", False):
-            hops = packet.get("hopStart", 0) - packet.get("hopLimit", 0)
-            if hops > 0:
-                reply_message = f"{reply_message} {hops} 🦘"
+            hop_start = packet.get("hopStart")
+            hop_limit = packet.get("hopLimit")
+            if hop_start is not None and hop_limit is not None:
+                hops = hop_start - hop_limit
+                if hops > 0:
+                    reply_message += f" {hops} 🦘"
 
         await asyncio.sleep(self.get_response_delay())
 
