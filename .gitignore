@@ -21,6 +21,7 @@ src/mmrelay.egg-info/
 .commandcode/
 .sisyphus/
 coderabbit_actionable_items.md
+.omo/
 
 # Build and test outputs
 /build/
