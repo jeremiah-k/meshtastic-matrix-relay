@@ -1034,7 +1034,7 @@ class TestDisplayHops(unittest.TestCase):
             )
             self.assertTrue(result)
             self.plugin.send_message.assert_called_once_with(
-                text="pong! 2 🦘", channel=0, reply_id=None
+                text="pong! (2 hops 🦘)", channel=0, reply_id=None
             )
 
         asyncio.run(run_test())
@@ -1065,7 +1065,7 @@ class TestDisplayHops(unittest.TestCase):
             )
             self.assertTrue(result)
             self.plugin.send_message.assert_called_once_with(
-                text="pong! 3 🦘",
+                text="pong! (3 hops 🦘)",
                 channel=1,
                 destination_id="!12345678",
                 reply_id=None,
@@ -1075,8 +1075,10 @@ class TestDisplayHops(unittest.TestCase):
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("asyncio.sleep")
-    def test_display_hops_enabled_zero_hops_no_suffix(self, mock_sleep, mock_connect):
-        """Direct connection (hopStart==hopLimit) produces 0 hops — no suffix."""
+    def test_display_hops_enabled_zero_hops_shows_direct(
+        self, mock_sleep, mock_connect
+    ):
+        """Direct connection (hopStart==hopLimit) produces 0 hops — shows "0 hops 🦘"."""
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
         mock_connect.return_value = mock_client
@@ -1097,7 +1099,7 @@ class TestDisplayHops(unittest.TestCase):
             )
             self.assertTrue(result)
             self.plugin.send_message.assert_called_once_with(
-                text="pong!", channel=0, reply_id=None
+                text="pong! (0 hops 🦘)", channel=0, reply_id=None
             )
 
         asyncio.run(run_test())
@@ -1243,7 +1245,7 @@ class TestDisplayHops(unittest.TestCase):
             )
             self.assertTrue(result)
             self.plugin.send_message.assert_called_once_with(
-                text="PoNg!?! 2 🦘", channel=0, reply_id=None
+                text="PoNg!?! (2 hops 🦘)", channel=0, reply_id=None
             )
 
         asyncio.run(run_test())
@@ -1272,7 +1274,7 @@ class TestDisplayHops(unittest.TestCase):
             )
             self.assertTrue(result)
             self.plugin.send_message.assert_called_once_with(
-                text="Pong... 2 🦘", channel=0, reply_id=None
+                text="Pong... (2 hops 🦘)", channel=0, reply_id=None
             )
 
         asyncio.run(run_test())
@@ -1301,7 +1303,7 @@ class TestDisplayHops(unittest.TestCase):
             )
             self.assertTrue(result)
             self.plugin.send_message.assert_called_once_with(
-                text="pong! 7 🦘", channel=0, reply_id=None
+                text="pong! (7 hops 🦘)", channel=0, reply_id=None
             )
 
         asyncio.run(run_test())
@@ -1330,17 +1332,17 @@ class TestDisplayHops(unittest.TestCase):
             )
             self.assertTrue(result)
             self.plugin.send_message.assert_called_once_with(
-                text="pong! 1 🦘", channel=0, reply_id=None
+                text="pong! (1 hop 🦘)", channel=0, reply_id=None
             )
 
         asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("asyncio.sleep")
-    def test_display_hops_hoplimit_greater_than_hopstart_no_suffix(
+    def test_display_hops_hoplimit_greater_than_hopstart(
         self, mock_sleep, mock_connect
     ):
-        """Malformed packet (hopLimit > hopStart) produces negative → no suffix."""
+        """Malformed packet (hopLimit > hopStart) produces negative → shows (0 hops 🦘)."""
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
         mock_connect.return_value = mock_client
@@ -1361,7 +1363,7 @@ class TestDisplayHops(unittest.TestCase):
             )
             self.assertTrue(result)
             self.plugin.send_message.assert_called_once_with(
-                text="pong!", channel=0, reply_id=None
+                text="pong! (0 hops 🦘)", channel=0, reply_id=None
             )
 
         asyncio.run(run_test())

@@ -168,8 +168,12 @@ class Plugin(BasePlugin):
             hop_limit = packet.get("hopLimit")
             if hop_start is not None and hop_limit is not None:
                 hops = hop_start - hop_limit
-                if hops > 0:
-                    reply_message += f" {hops} 🦘"
+                suffix = (
+                    f" ({hops} hop{'s' if hops > 1 else ''} 🦘)"
+                    if hops > 0
+                    else " (0 hops 🦘)"
+                )
+                reply_message += suffix
 
         await asyncio.sleep(self.get_response_delay())
 
