@@ -340,11 +340,11 @@ async def test_matrix_relay_markdown_processing(
     }
 
     fake_markdown = SimpleNamespace(markdown=lambda _text: "<strong>bold</strong>")
-    fake_bleach = SimpleNamespace(clean=lambda raw_html, **_kwargs: raw_html)
+    fake_nh3 = SimpleNamespace(clean=lambda raw_html, **_kwargs: raw_html)
 
     with (
         patch("mmrelay.matrix_utils.config", config),
-        patch.dict("sys.modules", {"markdown": fake_markdown, "bleach": fake_bleach}),
+        patch.dict("sys.modules", {"markdown": fake_markdown, "nh3": fake_nh3}),
     ):
         await matrix_relay(
             room_id="!room:matrix.org",
@@ -384,7 +384,7 @@ async def test_matrix_relay_importerror_fallback(
     real_import = builtins.__import__
 
     def fake_import(name, *args, **kwargs):
-        if name in ("markdown", "bleach"):
+        if name in ("markdown", "nh3"):
             raise ImportError("missing")
         return real_import(name, *args, **kwargs)
 
