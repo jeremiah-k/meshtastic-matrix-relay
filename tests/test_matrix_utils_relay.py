@@ -340,7 +340,13 @@ async def test_matrix_relay_markdown_processing(
     }
 
     fake_markdown = SimpleNamespace(markdown=lambda _text: "<strong>bold</strong>")
-    fake_nh3 = SimpleNamespace(clean=lambda raw_html, **_kwargs: raw_html)
+    clean_kwargs: dict = {}
+
+    def fake_clean(raw_html, **kwargs):
+        clean_kwargs.update(kwargs)
+        return raw_html
+
+    fake_nh3 = SimpleNamespace(clean=fake_clean)
 
     with (
         patch("mmrelay.matrix_utils.config", config),
@@ -358,15 +364,32 @@ async def test_matrix_relay_markdown_processing(
     content = mock_client.room_send.call_args.kwargs["content"]
     assert content["formatted_body"] == "<strong>bold</strong>"
     assert content["body"] == "**bold**"
+    assert clean_kwargs["tags"] == {
+        "a",
+        "b",
+        "blockquote",
+        "br",
+        "code",
+        "em",
+        "i",
+        "li",
+        "ol",
+        "p",
+        "pre",
+        "strong",
+        "ul",
+    }
+    assert clean_kwargs["attributes"] == {"a": {"href"}}
 
 
+@pytest.mark.parametrize("missing_module", ["markdown", "nh3"])
 @patch("mmrelay.matrix_utils.connect_matrix")
 @patch("mmrelay.matrix_utils.get_interaction_settings")
 @patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False)
 async def test_matrix_relay_importerror_fallback(
-    _mock_storage_enabled, mock_get_interactions, mock_connect_matrix
+    _mock_storage_enabled, mock_get_interactions, mock_connect_matrix, missing_module
 ):
-    """Markdown import errors should fall back to escaped HTML."""
+    """Import errors (either markdown or nh3) should fall back to escaped HTML."""
     mock_get_interactions.return_value = {"reactions": False, "replies": False}
 
     mock_client = MagicMock()
@@ -384,7 +407,7 @@ async def test_matrix_relay_importerror_fallback(
     real_import = builtins.__import__
 
     def fake_import(name, *args, **kwargs):
-        if name in ("markdown", "nh3"):
+        if name == missing_module:
             raise ImportError("missing")
         return real_import(name, *args, **kwargs)
 
