@@ -30,7 +30,7 @@ dependencies = [
   "matplotlib==3.10.9",
   "requests==2.34.2",
   "markdown==3.10.2",
-  "bleach==6.4.0",
+  "nh3==0.3.5",
   "haversine==2.9.0",
   "schedule==1.2.2",
   "platformdirs==4.10.0",
