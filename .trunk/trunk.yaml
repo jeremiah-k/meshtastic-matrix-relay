@@ -7,7 +7,7 @@ cli:
 plugins:
   sources:
     - id: trunk
-      ref: v1.8.0
+      ref: v1.10.2
       uri: https://github.com/trunk-io/plugins
 # Many linters and tools depend on runtimes - configure them here. (https://docs.trunk.io/runtimes)
 runtimes:
@@ -18,25 +18,26 @@ runtimes:
 # This is the section where you manage your linters. (https://docs.trunk.io/check/configuration)
 lint:
   enabled:
-    - renovate@43.150.0
+    - pinact@4.0.0
+    - renovate@43.214.4
     - shellcheck@0.11.0
     - shfmt@3.6.0
-    - mypy@2.0.0
-    - pyright@1.1.409
+    - mypy@2.1.0
+    - pyright@1.1.410
     - dotenv-linter@4.0.0
     - hadolint@2.14.0
     - taplo@0.10.0
     - actionlint@1.7.12
     - bandit@1.9.4
-    - black@26.3.1
-    - checkov@3.2.527
+    - black@26.5.1
+    - checkov@3.2.533
     - git-diff-check
     - isort@8.0.1
     - markdownlint@0.48.0
-    - osv-scanner@2.3.6
+    - osv-scanner@2.3.8
     - prettier@3.8.3
-    - ruff@0.15.12
-    - trufflehog@3.95.2
+    - ruff@0.15.16
+    - trufflehog@3.95.5
     - yamllint@1.38.0
   definitions:
     - name: bandit
