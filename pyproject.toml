@@ -24,7 +24,7 @@ classifiers = [
 ]
 dependencies = [
   "mtjk==2.7.10.post1",
-  "Pillow==12.2.0",
+  "Pillow==12.3.0",
   "aiohttp==3.14.1",
   "mindroom-nio==0.25.4",
   "matplotlib==3.10.9",
