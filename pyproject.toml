@@ -26,7 +26,7 @@ dependencies = [
   "mtjk==2.7.10.post1",
   "Pillow==12.3.0",
   "aiohttp==3.14.1",
-  "mindroom-nio==0.27.0",
+  "mindroom-nio==0.27.1",
   "matplotlib==3.10.9",
   "requests==2.34.2",
   "markdown==3.10.2",
@@ -40,7 +40,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-e2e = ["mindroom-nio[e2e]==0.27.0"]
+e2e = ["mindroom-nio[e2e]==0.27.1"]
 test = [
   "coverage==7.15.1",
   "pytest==9.1.1",
