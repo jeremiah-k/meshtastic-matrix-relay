@@ -42,7 +42,7 @@ dependencies = [
 [project.optional-dependencies]
 e2e = ["mindroom-nio[e2e]==0.27.2"]
 test = [
-  "coverage==7.15.1",
+  "coverage==7.15.2",
   "pytest==9.1.1",
   "pytest-cov==7.1.0",
   "pytest-asyncio==1.4.0",
