@@ -139,6 +139,13 @@ plugins:
     # Use !nodes <count> for a custom limit or !nodes full for the complete NodeDB.
     # Does not need to specify channels.
 
+  traceroute:
+    active: true
+    #require_bot_mention: true  # Override global setting for this plugin only
+    # Matrix-only: !traceroute <node-id-or-name> [--hops 1-7]
+    # channel_index: 0  # Optional Meshtastic channel index (0-7)
+    # hop_limit: 3     # Optional default; otherwise use the radio's LoRa setting
+
 #community-plugins:
 #  sample_plugin:
 #    active: true

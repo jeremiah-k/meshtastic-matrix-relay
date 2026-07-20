@@ -3270,6 +3270,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
     from mmrelay.plugins.nodes_plugin import Plugin as NodesPlugin
     from mmrelay.plugins.ping_plugin import Plugin as PingPlugin
     from mmrelay.plugins.telemetry_plugin import Plugin as TelemetryPlugin
+    from mmrelay.plugins.traceroute_plugin import Plugin as TraceroutePlugin
     from mmrelay.plugins.weather_plugin import Plugin as WeatherPlugin
 
     # Initial list of core plugins
@@ -3279,6 +3280,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         MeshRelayPlugin(),
         PingPlugin(),
         TelemetryPlugin(),
+        TraceroutePlugin(),
         WeatherPlugin(),
         HelpPlugin(),
         NodesPlugin(),

@@ -51,6 +51,11 @@ Produce high-level details about your mesh:
 
 ![Mesh Details Screenshot](https://user-images.githubusercontent.com/1770544/235245873-1ddc773b-a4cd-4c67-b0a5-b55a29504b73.png)
 
+Inspect current topology from Matrix with `!nodes`, `!nodes full`, and
+`!traceroute <node-id-or-name> [--hops 1-7]`. Traceroute uses mtjk's
+structured route API, including outbound/return paths and per-link SNR when the
+firmware reports it.
+
 See the full list of [core plugins](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Core-Plugins).
 
 ### Plugin System

@@ -800,6 +800,13 @@ class Plugin:
         self.assertIn("core_plugin_0", plugin_names)
         self.assertIn("my_custom_plugin", plugin_names)
 
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    def test_load_plugins_activates_traceroute_core_plugin(self, _mock_scheduler):
+        """The structured traceroute plugin should participate in core loading."""
+        plugins = load_plugins({"plugins": {"traceroute": {"active": True}}})
+
+        self.assertEqual([plugin.plugin_name for plugin in plugins], ["traceroute"])
+
     @patch("mmrelay.plugin_loader.logger")
     def test_load_plugins_caching(self, mock_logger):
         """
