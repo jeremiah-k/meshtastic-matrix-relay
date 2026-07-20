@@ -20,6 +20,11 @@ The legacy `matrix-nio` provider (with `python-olm`) is still technically
 usable if you manually replace mindroom-nio, but upstream matrix-nio is mostly
 inactive and mindroom-nio is recommended for all deployments.
 
+For encrypted sessions, MMRelay also enables mindroom-nio's rotated-device-key
+recovery policy. MMRelay uses trust on first use and never grants interactive
+verification trust to peer devices, so a valid peer identity rotation can
+replace stale Olm keys without preserving trust that the old keys earned.
+
 ### Legacy matrix-nio provider
 
 mindroom-nio is the default and recommended provider. Legacy matrix-nio
