@@ -20,7 +20,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.constants.formats import DATE_FORMAT_LONG
-from mmrelay.plugins.nodes_plugin import Plugin, get_relative_time
+from mmrelay.plugins.nodes_plugin import (
+    NODES_USAGE,
+    Plugin,
+    _parse_node_limit,
+    get_relative_time,
+)
 
 
 class TestGetRelativeTime(unittest.TestCase):
@@ -194,6 +199,17 @@ class TestNodesPlugin(unittest.TestCase):
             },
         }
 
+    def test_parse_node_limit_modes(self):
+        """Node command arguments should support defaults, full output, and counts."""
+        self.assertEqual(_parse_node_limit(""), 10)
+        self.assertIsNone(_parse_node_limit("full"))
+        self.assertIsNone(_parse_node_limit("ALL"))
+        self.assertEqual(_parse_node_limit("25"), 25)
+        with self.assertRaisesRegex(ValueError, "Usage"):
+            _parse_node_limit("0")
+        with self.assertRaisesRegex(ValueError, "Usage"):
+            _parse_node_limit("recent please")
+
     def test_plugin_name(self):
         """
         Verify that the plugin's name attribute is set to "nodes".
@@ -248,6 +264,127 @@ class TestNodesPlugin(unittest.TestCase):
         # Should contain relative time info
         self.assertIn("minutes ago", response)
         self.assertIn("hours ago", response)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_defaults_to_ten_recent_nodes(self, mock_connect):
+        """The default view should be bounded and ordered by newest lastHeard."""
+        base_timestamp = datetime.now().timestamp() - 3600
+        client = MagicMock()
+        client.nodes = {
+            f"!{index:08x}": {
+                "num": index,
+                "user": {
+                    "id": f"!{index:08x}",
+                    "shortName": f"N{index:02d}",
+                    "longName": f"Node {index:02d}",
+                    "hwModel": "TEST",
+                },
+                "lastHeard": base_timestamp + index,
+            }
+            for index in range(12)
+        }
+        mock_connect.return_value = client
+
+        response = self.plugin.generate_response()
+        lines = response.splitlines()
+
+        self.assertEqual(
+            lines[0],
+            "Nodes: showing 10 of 12 (newest first; use !nodes full for all)",
+        )
+        self.assertEqual(len(lines), 11)
+        self.assertIn("N11 Node 11 (!0000000b)", lines[1])
+        self.assertIn("N02 Node 02 (!00000002)", lines[-1])
+        self.assertNotIn("N01 Node 01", response)
+        self.assertNotIn("N00 Node 00", response)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_retries_concurrent_node_database_mutation(
+        self, mock_connect
+    ):
+        """A transient dictionary mutation should not fail the node listing."""
+        nodes = MagicMock()
+        nodes.items.side_effect = [
+            RuntimeError("dictionary changed size during iteration"),
+            [
+                (
+                    "node",
+                    {
+                        "num": 0x1234ABCD,
+                        "user": {
+                            "shortName": "REC",
+                            "longName": "Recovered",
+                            "hwModel": "TEST",
+                        },
+                    },
+                )
+            ],
+        ]
+        client = MagicMock()
+        client.nodes = nodes
+        mock_connect.return_value = client
+
+        response = self.plugin.generate_response()
+
+        self.assertIn("REC Recovered (!1234abcd)", response)
+        self.assertEqual(nodes.items.call_count, 2)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_reports_persistent_node_database_mutation(
+        self, mock_connect
+    ):
+        """Repeated mutation should yield a retryable response, not an empty list."""
+        nodes = MagicMock()
+        nodes.items.side_effect = RuntimeError(
+            "dictionary changed size during iteration"
+        )
+        client = MagicMock()
+        client.nodes = nodes
+        mock_connect.return_value = client
+
+        response = self.plugin.generate_response()
+
+        self.assertEqual(response, "Node database is updating; try again.")
+        self.assertEqual(nodes.items.call_count, 3)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_derives_node_id_from_numeric_record(
+        self, mock_connect
+    ):
+        """Records without string IDs should expose their canonical numeric ID."""
+        client = MagicMock()
+        client.nodes = {
+            "legacy-key": {
+                "num": 0x89ABCDEF,
+                "user": {"shortName": "NUM", "longName": "Numeric Node"},
+            }
+        }
+        mock_connect.return_value = client
+
+        response = self.plugin.generate_response()
+
+        self.assertIn("NUM Numeric Node (!89abcdef)", response)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_full_returns_complete_database(self, mock_connect):
+        """An explicit full request should retain access to every valid node."""
+        base_timestamp = datetime.now().timestamp() - 3600
+        client = MagicMock()
+        client.nodes = {
+            f"!{index:08x}": {
+                "user": {"shortName": f"N{index}", "longName": f"Node {index}"},
+                "lastHeard": base_timestamp + index,
+            }
+            for index in range(12)
+        }
+        mock_connect.return_value = client
+
+        response = self.plugin.generate_response(limit=None)
+
+        self.assertEqual(response.splitlines()[0], "Nodes: 12 (newest first)")
+        self.assertEqual(len(response.splitlines()), 13)
+        self.assertIn("N11 Node 11", response.splitlines()[1])
+        self.assertIn("N0 Node 0", response.splitlines()[-1])
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_missing_data(self, mock_connect):
@@ -684,6 +821,51 @@ class TestNodesPlugin(unittest.TestCase):
         self.assertIn("NUL Null Hops Node", response)
         # Should have two instances of "? hops away"
         self.assertEqual(response.count("? hops away"), 2)
+
+    def test_handle_room_message_full_requests_unbounded_output(self):
+        """The full command should pass an unbounded limit to response generation."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.extract_command_args = MagicMock(return_value="full")
+        self.plugin.generate_response = MagicMock(return_value="Nodes: 0 (newest first)\n")
+        room = MagicMock(room_id="!test:matrix.org")
+        event = MagicMock(event_id="$event")
+
+        async def run_test() -> None:
+            handled = await self.plugin.handle_room_message(room, event, "!nodes full")
+            self.assertTrue(handled)
+
+        import asyncio
+
+        asyncio.run(run_test())
+        self.plugin.generate_response.assert_called_once_with(limit=None)
+        self.plugin.send_matrix_reaction.assert_awaited_once_with(
+            "!test:matrix.org", "$event", "✅"
+        )
+
+    def test_handle_room_message_rejects_invalid_limit(self):
+        """Invalid node arguments should return usage without touching the radio."""
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.extract_command_args = MagicMock(return_value="many")
+        self.plugin.generate_response = MagicMock()
+        room = MagicMock(room_id="!test:matrix.org")
+        event = MagicMock(event_id="$event")
+
+        async def run_test() -> None:
+            handled = await self.plugin.handle_room_message(room, event, "!nodes many")
+            self.assertTrue(handled)
+
+        import asyncio
+
+        asyncio.run(run_test())
+        self.plugin.generate_response.assert_not_called()
+        self.plugin.send_matrix_message.assert_awaited_once_with(
+            room_id="!test:matrix.org",
+            message=NODES_USAGE,
+            formatted=False,
+        )
+        self.plugin.send_matrix_reaction.assert_awaited_once_with(
+            "!test:matrix.org", "$event", "❌"
+        )
 
     def test_handle_room_message_exception_handler(self):
         """Test exception handler in handle_room_message (lines 224-227)."""

@@ -135,7 +135,9 @@ plugins:
   nodes:
     active: true
     #require_bot_mention: true  # Override global setting for this plugin only
-    # Does not need to specify channels, as it's a Matrix-only plugin
+    # Matrix-only: !nodes shows the 10 most recently heard nodes.
+    # Use !nodes <count> for a custom limit or !nodes full for the complete NodeDB.
+    # Does not need to specify channels.
 
 #community-plugins:
 #  sample_plugin:

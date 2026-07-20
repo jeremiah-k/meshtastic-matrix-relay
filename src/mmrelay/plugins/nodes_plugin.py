@@ -1,6 +1,9 @@
+"""Matrix command for concise, recency-sorted Meshtastic node listings."""
+
 import asyncio
+import math
 from datetime import datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (
@@ -24,39 +27,59 @@ from mmrelay.plugins.base_plugin import BasePlugin
 
 logger = get_logger(__name__)
 
+DEFAULT_NODE_LIST_LIMIT = 10
+NODE_SNAPSHOT_ATTEMPTS = 3
+NODES_USAGE = "Usage: !nodes [full|<count>]"
+
+
+class _NodeSummary(NamedTuple):
+    node_id: str | None
+    short_name: str
+    long_name: str
+    hw_model: str
+    battery: str
+    voltage: str
+    snr: str
+    hops: str
+    last_heard: str
+    last_heard_timestamp: float | None
+
+    @property
+    def sort_key(self) -> tuple[bool, float, str, str, str]:
+        """Sort recent nodes first, with deterministic name and ID tie-breakers."""
+        return (
+            self.last_heard_timestamp is None,
+            -(self.last_heard_timestamp or 0.0),
+            self.short_name.casefold(),
+            self.long_name.casefold(),
+            (self.node_id or "").casefold(),
+        )
+
+    def render(self) -> str:
+        """Render one concise node line."""
+        names = f"{self.short_name} {self.long_name}"
+        if self.node_id is not None:
+            names = f"{names} ({self.node_id})"
+        parts = [
+            names,
+            self.hw_model,
+            f"{self.battery} {self.voltage}",
+            self.snr,
+            self.hops,
+            self.last_heard,
+        ]
+        return " / ".join(part for part in parts if part)
+
 
 def get_relative_time(timestamp: float) -> str:
-    """
-    Convert a POSIX timestamp into a concise, human-readable relative time string.
-
-    Parameters:
-        timestamp (float): POSIX timestamp (seconds since the epoch) to compare with the current time.
-
-    Returns:
-        str: A relative time description:
-                - "Just now" for times less than 60 seconds ago
-                - "<N> minutes ago" for times between 60 seconds and 1 hour
-                - "<N> hours ago" for times between 1 hour and 24 hours
-                - "<N> days ago" for times between 1 day and RELATIVE_TIME_DAYS_THRESHOLD days
-                - a timestamp formatted with DATE_FORMAT_LONG when
-                  delta > RELATIVE_TIME_DAYS_THRESHOLD * SECONDS_PER_DAY
-    """
+    """Convert a POSIX timestamp into a concise relative time string."""
     now = datetime.now()
     dt = datetime.fromtimestamp(timestamp)
-
-    # Calculate the time difference between the current time and the given timestamp
-    delta = now - dt
-
-    # Compute signed total seconds and guard against future timestamps
-    total_seconds = int(delta.total_seconds())
+    total_seconds = int((now - dt).total_seconds())
     if total_seconds <= 0:
         return "Just now"
-
-    # Convert the time difference into a relative timeframe
     if total_seconds > RELATIVE_TIME_DAYS_THRESHOLD * SECONDS_PER_DAY:
-        return dt.strftime(
-            DATE_FORMAT_LONG
-        )  # Return formatted date if older than RELATIVE_TIME_DAYS_THRESHOLD days
+        return dt.strftime(DATE_FORMAT_LONG)
 
     days = total_seconds // SECONDS_PER_DAY
     if days >= 1:
@@ -73,122 +96,186 @@ def get_relative_time(timestamp: float) -> str:
     return "Just now"
 
 
+def _parse_node_limit(args: str) -> int | None:
+    """Parse an optional node count; ``None`` means the full database."""
+    normalized = args.strip().casefold()
+    if not normalized:
+        return DEFAULT_NODE_LIST_LIMIT
+    if normalized in {"all", "full"}:
+        return None
+    if normalized.isdecimal():
+        requested = int(normalized)
+        if requested > 0:
+            return requested
+    raise ValueError(NODES_USAGE)
+
+
+def _snapshot_node_items(
+    nodes: object,
+) -> list[tuple[object, dict[str, Any]]] | None:
+    """Copy live node mappings with bounded retries during concurrent mutation."""
+    items_method = getattr(nodes, "items", None)
+    if not callable(items_method):
+        return []
+
+    for attempt in range(1, NODE_SNAPSHOT_ATTEMPTS + 1):
+        try:
+            raw_items = list(items_method())
+            snapshot: list[tuple[object, dict[str, Any]]] = []
+            for node_key, info in raw_items:
+                if not isinstance(info, dict):
+                    continue
+                copied_info = dict(info)
+                for nested_key in ("user", "deviceMetrics"):
+                    nested_value = copied_info.get(nested_key)
+                    if isinstance(nested_value, dict):
+                        copied_info[nested_key] = dict(nested_value)
+                snapshot.append((node_key, copied_info))
+            return snapshot
+        except RuntimeError:
+            logger.debug(
+                "Node database changed during snapshot attempt %s/%s",
+                attempt,
+                NODE_SNAPSHOT_ATTEMPTS,
+            )
+    logger.warning(
+        "Unable to capture a stable node database snapshot after %s attempts",
+        NODE_SNAPSHOT_ATTEMPTS,
+    )
+    return None
+
+
+def _node_identifier(
+    node_key: object, info: dict[str, Any], user_info: dict[str, Any]
+) -> str | None:
+    """Resolve the canonical ``!xxxxxxxx`` identifier when available."""
+    for candidate in (user_info.get("id"), info.get("id"), node_key):
+        if isinstance(candidate, str) and candidate.startswith("!"):
+            return candidate
+
+    node_num = info.get("num")
+    if isinstance(node_num, int) and not isinstance(node_num, bool) and node_num >= 0:
+        return f"!{node_num & 0xFFFFFFFF:08x}"
+    return None
+
+
+def _last_heard(value: object) -> tuple[float | None, str]:
+    """Return a sortable timestamp and display value for ``lastHeard``."""
+    if value is None:
+        return None, "?"
+    try:
+        timestamp = float(value)
+        if not math.isfinite(timestamp) or timestamp <= 0:
+            raise ValueError("timestamp must be finite and positive")
+        return timestamp, get_relative_time(timestamp)
+    except (TypeError, ValueError, OverflowError, OSError):
+        logger.debug("Failed to parse lastHeard timestamp: %s", value)
+        return None, "?"
+
+
+def _hop_description(value: object) -> str:
+    """Format the node database hop count without assuming an integer type."""
+    if value is None:
+        return "? hops away"
+    if value == 0:
+        return "direct"
+    if value == 1:
+        return "1 hop away"
+    return f"{value} hops away"
+
+
+def _signal_description(value: object) -> str:
+    """Format a received SNR value when one is available."""
+    return "" if value is None else f"{value}{SNR_UNIT_SUFFIX}"
+
+
+def _power_descriptions(value: object) -> tuple[str, str]:
+    """Return battery and voltage display values from device metrics."""
+    if not isinstance(value, dict):
+        return "?%", "?V"
+    battery_level = value.get("batteryLevel")
+    voltage = value.get("voltage")
+    return (
+        "?%" if battery_level is None else f"{battery_level}%",
+        "?V" if voltage is None else f"{voltage}V",
+    )
+
+
+def _summarize_node(node_key: object, info: dict[str, Any]) -> _NodeSummary:
+    """Normalize one node database record for sorting and display."""
+    user = info.get("user")
+    user_info = dict(user) if isinstance(user, dict) else {}
+    battery, voltage = _power_descriptions(info.get("deviceMetrics"))
+    last_heard_timestamp, last_heard = _last_heard(info.get("lastHeard"))
+
+    return _NodeSummary(
+        node_id=_node_identifier(node_key, info, user_info),
+        short_name=str(user_info.get("shortName") or UNKNOWN_NODE_VALUE),
+        long_name=str(user_info.get("longName") or UNKNOWN_NODE_VALUE),
+        hw_model=str(user_info.get("hwModel") or UNKNOWN_NODE_VALUE),
+        battery=battery,
+        voltage=voltage,
+        snr=_signal_description(info.get("snr")),
+        hops=_hop_description(info.get("hopsAway")),
+        last_heard=last_heard,
+        last_heard_timestamp=last_heard_timestamp,
+    )
+
+
 class Plugin(BasePlugin):
+    """Expose bounded node-database summaries to Matrix rooms."""
+
     plugin_name = "nodes"
     is_core_plugin = True
 
     @property
     def description(self) -> str:
-        """
-        Provide the plugin description and the node-list line format.
+        return """Show mesh radios and node data, newest first
 
-        The returned string contains a human-readable description followed by an example node line format using these placeholders: $shortname, $longname, $devicemodel, $battery, $voltage, $snr, $hops, $lastseen.
-
-        Returns:
-            A multiline string with the plugin description and the node output format.
-        """
-        return """Show mesh radios and node data
-
-$shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastseen
+!nodes full shows the complete database; !nodes <count> chooses a limit.
+$shortname $longname ($nodeid) / $devicemodel / $battery $voltage / $snr / $hops / $lastseen
 """
 
-    def generate_response(self) -> str:
-        """
-        Builds a textual summary of known Meshtastic nodes and their reported metrics.
+    def generate_response(self, limit: int | None = DEFAULT_NODE_LIST_LIMIT) -> str:
+        """Build a newest-first summary from a stable node database snapshot."""
+        if limit is not None and limit <= 0:
+            raise ValueError("limit must be positive or None")
 
-        The returned string begins with "Nodes: <count>" and includes one line per node with short name, long name, hardware model, battery percentage, voltage, SNR (in dB) when available, hop distance, and last-heard relative time. If the Meshtastic device cannot be contacted, returns the error message "Unable to connect to Meshtastic device."
-
-        Returns:
-            response (str): The multi-line nodes summary or an error message when no Meshtastic client is available.
-        """
-        from mmrelay.meshtastic_utils import connect_meshtastic
+        # Lazy import avoids initializing transport configuration during discovery.
+        from mmrelay.meshtastic_utils import (  # pylint: disable=import-outside-toplevel
+            connect_meshtastic,
+        )
 
         meshtastic_client = connect_meshtastic()
         if meshtastic_client is None:
             return "Unable to connect to Meshtastic device."
 
-        node_lines: list[str] = []
-        valid_node_count = 0
+        snapshot = _snapshot_node_items(getattr(meshtastic_client, "nodes", None))
+        if snapshot is None:
+            return "Node database is updating; try again."
 
-        for _node, info in meshtastic_client.nodes.items():
-            if not isinstance(info, dict):
-                continue
+        summaries = sorted(
+            (_summarize_node(node_key, info) for node_key, info in snapshot),
+            key=lambda summary: summary.sort_key,
+        )
+        total = len(summaries)
+        visible = summaries if limit is None else summaries[:limit]
 
-            user = info.get("user")
-            user_info = user if isinstance(user, dict) else {}
-            short_name = user_info.get("shortName") or UNKNOWN_NODE_VALUE
-            long_name = user_info.get("longName") or UNKNOWN_NODE_VALUE
-            hw_model = user_info.get("hwModel") or UNKNOWN_NODE_VALUE
+        if len(visible) < total:
+            header = (
+                f"Nodes: showing {len(visible)} of {total} "
+                "(newest first; use !nodes full for all)"
+            )
+        else:
+            header = f"Nodes: {total} (newest first)"
 
-            hops = "? hops away"
-            hops_away = info.get("hopsAway")
-            if hops_away is not None:
-                if hops_away == 0:
-                    hops = "direct"
-                elif hops_away == 1:
-                    hops = "1 hop away"
-                else:
-                    hops = f"{hops_away} hops away"
-
-            snr = ""
-            snr_value = info.get("snr")
-            if snr_value is not None:
-                snr = f"{snr_value}{SNR_UNIT_SUFFIX}"
-
-            last_heard = "?"
-            last_heard_timestamp = info.get("lastHeard")
-            if last_heard_timestamp is not None:
-                try:
-                    parsed_last_heard = float(last_heard_timestamp)
-                    if parsed_last_heard > 0:
-                        last_heard = get_relative_time(parsed_last_heard)
-                except (TypeError, ValueError, OverflowError, OSError):
-                    logger.debug(
-                        "Failed to parse lastHeard timestamp: %s", last_heard_timestamp
-                    )
-                    last_heard = "?"
-
-            voltage = "?V"
-            battery = "?%"
-            device_metrics = info.get("deviceMetrics")
-            if isinstance(device_metrics, dict):
-                voltage_value = device_metrics.get("voltage")
-                if voltage_value is not None:
-                    voltage = f"{voltage_value}V"
-                battery_level = device_metrics.get("batteryLevel")
-                if battery_level is not None:
-                    battery = f"{battery_level}%"
-
-            parts = [
-                f"{short_name} {long_name}",
-                hw_model,
-                f"{battery} {voltage}",
-                snr,
-                hops,
-                last_heard,
-            ]
-            node_lines.append(" / ".join(part for part in parts if part) + "\n")
-            valid_node_count += 1
-
-        response = f"Nodes: {valid_node_count}\n"
-        return response + "".join(node_lines)
+        lines = [header, *(summary.render() for summary in visible)]
+        return "\n".join(lines) + "\n"
 
     async def handle_meshtastic_message(
         self, packet: Any, formatted_message: str, longname: str, meshnet_name: str
     ) -> bool:
-        """
-        Handle an incoming Meshtastic packet without processing it.
-
-        Parameters:
-            packet (Any): Raw Meshtastic packet data received from the mesh.
-            formatted_message (str): Human-readable representation of the packet payload.
-            longname (str): Full device name of the packet sender.
-            meshnet_name (str): Name of the mesh network that the packet originated from.
-
-        Returns:
-            bool: `False` indicating the plugin did not handle the message.
-        """
-        # Preserve API surface; arguments are currently unused.
+        """Keep node listings off the constrained mesh transport."""
         _ = packet, formatted_message, longname, meshnet_name
         return False
 
@@ -198,30 +285,37 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
         event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
         full_message: str,
     ) -> bool:
-        # Pass the event to matches()
-        """
-        Handle a Matrix room event and send the nodes summary when the event matches plugin criteria.
-
-        Parameters:
-            room (MatrixRoom): The Matrix room where the event occurred; used as the destination for the response.
-            event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): Incoming event evaluated to determine whether this plugin should handle it.
-            full_message (str): The raw message text; present for signature compatibility and not used by this handler.
-
-        Returns:
-            bool: `True` if the event was handled and a response was sent, `False` otherwise.
-        """
+        """Handle ``!nodes``, ``!nodes full``, and numeric-limit variants."""
         if not self.matches(event):
             return False
-        _ = full_message
+
+        command = self.plugin_name or "nodes"
+        args = self.extract_command_args(command, event=event)
+        if args is None:
+            args = self.extract_command_args(command, text=full_message)
+        if args is None:
+            args = ""
 
         try:
-            response = await asyncio.to_thread(self.generate_response)
+            limit = _parse_node_limit(args)
+        except ValueError:
+            await self.send_matrix_message(
+                room_id=room.room_id,
+                message=NODES_USAGE,
+                formatted=False,
+            )
+            await self.send_matrix_reaction(room.room_id, event.event_id, "❌")
+            return True
+
+        try:
+            response = await asyncio.to_thread(self.generate_response, limit=limit)
             await self.send_matrix_message(
                 room_id=room.room_id,
                 message=response,
                 formatted=False,
             )
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
+            # Plugin handlers are the final command boundary and must not escape.
             self.logger.exception("Error handling nodes command")
             await self.send_matrix_reaction(room.room_id, event.event_id, "❌")
             return True
