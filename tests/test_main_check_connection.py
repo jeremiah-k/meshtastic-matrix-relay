@@ -37,7 +37,7 @@ def _find_check_conn_tasks(
 ) -> tuple[list[Any], list[str]]:
     """Find check_connection tasks from a list of _TaskSpy objects.
 
-    NOTE: Task introspection relies on CPython 3.10+ coroutine internals.
+    NOTE: Task introspection relies on CPython 3.11+ coroutine internals.
     """
     check_conn_tasks = []
     observed_coro_names: list[str] = []
@@ -438,7 +438,7 @@ def test_cancelled_error_cancels_task_and_returns():
 
     async def mock_wait_for(coro, timeout=None):
         if timeout == 5.0:
-            # NOTE: Task introspection relies on CPython 3.10+ coroutine internals.
+            # NOTE: Task introspection relies on CPython 3.11+ coroutine internals.
             # If Python changes these, fallback to checking task names via get_name().
             # Peek inside asyncio wrappers (gather, etc.) to find the
             # target coroutine name using CPython internals with defensive
