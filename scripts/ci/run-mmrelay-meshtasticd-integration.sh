@@ -16,6 +16,7 @@ set -euo pipefail
 #   - meshtasticd relay-B (port 4404) ← MMRelay B ←─┘
 #
 # Test Scenarios:
+#   0. Bot devices publish a valid self-cross-signing chain
 #   1. Matrix user message in plaintext room → Mesh A + Mesh B
 #   2. Injected Mesh A-origin event in plaintext room → remote meshnet processing in MMRelay B
 #   3. Injected Mesh B-origin event in plaintext room → remote meshnet processing in MMRelay A
@@ -836,6 +837,24 @@ print(value)
 PY
 }
 
+# load_json_file_value reads one top-level value from a JSON file.
+load_json_file_value() {
+	local json_path=$1
+	local key=$2
+	"${PYTHON_BIN}" - "${json_path}" "${key}" <<'PY'
+import json
+import sys
+
+json_path, key = sys.argv[1:3]
+with open(json_path, encoding="utf-8") as file_handle:
+    payload = json.load(file_handle)
+value = payload.get(key)
+if value is None:
+    raise SystemExit(1)
+print(value)
+PY
+}
+
 # json_extract extracts the JSON value specified by a dot-separated key path from the given JSON payload and echoes it; exits with status 1 if the path is missing or the value is null.
 json_extract() {
 	local json_payload=$1
@@ -1282,6 +1301,110 @@ async def _run() -> str:
 
 result = asyncio.run(_run())
 print(result)
+PY
+}
+
+# assert_matrix_device_cross_signed queries Matrix key state and verifies the
+# device -> self-signing -> master signature chain for one MMRelay bot device.
+# Arguments: access_token, user_id, device_id.
+assert_matrix_device_cross_signed() {
+	local access_token=$1
+	local user_id=$2
+	local device_id=$3
+
+	"${PYTHON_BIN}" - "${MATRIX_BASE_URL}" "${access_token}" "${user_id}" "${device_id}" <<'PY'
+import sys
+
+import requests
+import vodozemac
+from nio.api import Api
+
+base_url, access_token, user_id, device_id = sys.argv[1:5]
+response = requests.post(
+    f"{base_url}/_matrix/client/v3/keys/query",
+    headers={"Authorization": f"Bearer {access_token}"},
+    json={"device_keys": {user_id: [device_id]}},
+    timeout=30,
+)
+if response.status_code >= 400:
+    raise RuntimeError(
+        f"keys/query failed ({response.status_code}): {response.text[:300]}"
+    )
+payload = response.json()
+
+
+def required_mapping(container: dict, key: str, context: str) -> dict:
+    value = container.get(key)
+    if not isinstance(value, dict):
+        raise RuntimeError(f"Missing {context}: {key}")
+    return value
+
+
+def sole_ed25519_key(payload: dict, context: str) -> tuple[str, str]:
+    keys = required_mapping(payload, "keys", context)
+    matches = [
+        (key_id, value)
+        for key_id, value in keys.items()
+        if isinstance(key_id, str)
+        and key_id.startswith("ed25519:")
+        and isinstance(value, str)
+        and value
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(f"Expected one Ed25519 key for {context}, got {matches!r}")
+    return matches[0]
+
+
+def verify_json(public_key_b64: str, signed: dict, signature_b64: str) -> None:
+    unsigned = {
+        key: value
+        for key, value in signed.items()
+        if key not in ("signatures", "unsigned")
+    }
+    message = Api.to_canonical_json(unsigned).encode("utf-8")
+    public_key = vodozemac.Ed25519PublicKey.from_base64(public_key_b64)
+    signature = vodozemac.Ed25519Signature.from_base64(signature_b64)
+    public_key.verify_signature(message, signature)
+
+
+master = required_mapping(payload, "master_keys", "keys/query response").get(user_id)
+self_signing = required_mapping(
+    payload, "self_signing_keys", "keys/query response"
+).get(user_id)
+device = (
+    required_mapping(payload, "device_keys", "keys/query response")
+    .get(user_id, {})
+    .get(device_id)
+)
+if not isinstance(master, dict):
+    raise RuntimeError(f"Missing master cross-signing key for {user_id}")
+if not isinstance(self_signing, dict):
+    raise RuntimeError(f"Missing self-signing key for {user_id}")
+if not isinstance(device, dict):
+    raise RuntimeError(f"Missing device keys for {user_id} {device_id}")
+
+master_key_id, master_public = sole_ed25519_key(master, "master key")
+self_signing_key_id, self_signing_public = sole_ed25519_key(
+    self_signing, "self-signing key"
+)
+self_signing_signature = (
+    required_mapping(self_signing, "signatures", "self-signing key")
+    .get(user_id, {})
+    .get(master_key_id)
+)
+device_signature = (
+    required_mapping(device, "signatures", "device keys")
+    .get(user_id, {})
+    .get(self_signing_key_id)
+)
+if not isinstance(self_signing_signature, str) or not self_signing_signature:
+    raise RuntimeError("Self-signing key is not signed by the master key")
+if not isinstance(device_signature, str) or not device_signature:
+    raise RuntimeError("Device is not signed by the self-signing key")
+
+verify_json(master_public, self_signing, self_signing_signature)
+verify_json(self_signing_public, device, device_signature)
+print(f"verified {user_id} {device_id}")
 PY
 }
 
@@ -2536,6 +2659,44 @@ logging:
   log_to_file: true
 EOF_CONFIG
 
+# Re-run the normal MMRelay auth flow so E2EE state is initialized with the
+# account password available for homeservers that require password UIA when
+# uploading cross-signing keys. The existing device ids are reused.
+echo ""
+echo "Bootstrapping MMRelay bot cross-signing identities..."
+"${PYTHON_BIN}" -m mmrelay.cli \
+	--config "${MMRELAY_CONFIG_PATH_A}" \
+	--home "${MMRELAY_HOME_DIR_A}" \
+	auth login \
+	--homeserver "${MATRIX_BASE_URL}" \
+	--username "${BOT_A_USER_ID}" \
+	--password "${MATRIX_BOT_A_PASSWORD}"
+"${PYTHON_BIN}" -m mmrelay.cli \
+	--config "${MMRELAY_CONFIG_PATH_B}" \
+	--home "${MMRELAY_HOME_DIR_B}" \
+	auth login \
+	--homeserver "${MATRIX_BASE_URL}" \
+	--username "${BOT_B_USER_ID}" \
+	--password "${MATRIX_BOT_B_PASSWORD}"
+
+# Auth login may refresh the access token. Reload the credentials that MMRelay
+# will actually use, and assert the seeded device identity was preserved.
+BOT_A_CREDENTIALS_PATH="${MMRELAY_HOME_DIR_A}/matrix/credentials.json"
+BOT_B_CREDENTIALS_PATH="${MMRELAY_HOME_DIR_B}/matrix/credentials.json"
+AUTH_BOT_A_DEVICE_ID="$(load_json_file_value "${BOT_A_CREDENTIALS_PATH}" device_id)"
+AUTH_BOT_B_DEVICE_ID="$(load_json_file_value "${BOT_B_CREDENTIALS_PATH}" device_id)"
+if [[ ${AUTH_BOT_A_DEVICE_ID} != "${BOT_A_DEVICE_ID}" ]]; then
+	echo "MMRelay A auth login changed device id: ${BOT_A_DEVICE_ID} -> ${AUTH_BOT_A_DEVICE_ID}" >&2
+	exit 1
+fi
+if [[ ${AUTH_BOT_B_DEVICE_ID} != "${BOT_B_DEVICE_ID}" ]]; then
+	echo "MMRelay B auth login changed device id: ${BOT_B_DEVICE_ID} -> ${AUTH_BOT_B_DEVICE_ID}" >&2
+	exit 1
+fi
+BOT_A_ACCESS_TOKEN="$(load_json_file_value "${BOT_A_CREDENTIALS_PATH}" access_token)"
+BOT_B_ACCESS_TOKEN="$(load_json_file_value "${BOT_B_CREDENTIALS_PATH}" access_token)"
+export BOT_A_ACCESS_TOKEN BOT_B_ACCESS_TOKEN
+
 # =============================================================================
 # Test Scenarios
 # =============================================================================
@@ -2596,6 +2757,20 @@ if docker ps -a --format '{{.Names}}' | grep -Fxq "${MESHTASTICD_CONTAINER_B}"; 
 		MESHTASTICD_LOG_OFFSET_B=$(wc -c <"${mesh_log_baseline_b}")
 	fi
 fi
+
+# Test 0: Both MMRelay bot devices publish a valid cross-signing chain.
+start_test "Test 0" "Test 0: MMRelay bot devices are self-cross-signed..."
+run_or_fail "MMRelay A device is not validly self-cross-signed" \
+	assert_matrix_device_cross_signed \
+	"${USER_ACCESS_TOKEN}" \
+	"${BOT_A_USER_ID}" \
+	"${BOT_A_DEVICE_ID}"
+run_or_fail "MMRelay B device is not validly self-cross-signed" \
+	assert_matrix_device_cross_signed \
+	"${USER_ACCESS_TOKEN}" \
+	"${BOT_B_USER_ID}" \
+	"${BOT_B_DEVICE_ID}"
+pass_test "Both MMRelay bot devices have valid master/self-signing/device chains"
 
 # Test 1: Matrix user message in plaintext room → Mesh A + Mesh B
 MATRIX_TO_SHARED_TEXT="MMRELAY_CI_M2SHARED_$(date +%s)_${RANDOM}"
