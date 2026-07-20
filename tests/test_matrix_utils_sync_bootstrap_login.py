@@ -656,6 +656,7 @@ async def test_login_matrix_bot_e2ee_store_path_creation(
 ):
     mock_client, _ = _make_logged_in_client()
     mock_async_client.return_value = mock_client
+    ensure_cross_signed = AsyncMock(return_value="uploaded_and_signed")
 
     with (
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
@@ -665,6 +666,10 @@ async def test_login_matrix_bot_e2ee_store_path_creation(
         ),
         patch("mmrelay.matrix_utils.save_credentials"),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=True),
+        patch(
+            "mmrelay.matrix_utils._ensure_own_device_cross_signed",
+            ensure_cross_signed,
+        ),
         patch(
             "mmrelay.matrix_utils.get_e2ee_store_dir", return_value=TEST_E2EE_STORE_PATH
         ),
@@ -680,6 +685,7 @@ async def test_login_matrix_bot_e2ee_store_path_creation(
 
     assert result is True
     mock_makedirs.assert_any_call(TEST_E2EE_STORE_PATH, exist_ok=True)
+    ensure_cross_signed.assert_awaited_once_with(mock_client, password="password")
 
 
 @pytest.mark.asyncio

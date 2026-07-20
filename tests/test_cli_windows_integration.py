@@ -280,7 +280,7 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
         from mmrelay.cli import handle_auth_login
 
         # Mock config loading to fail
-        mock_load_config.side_effect = Exception("Config load failed")
+        mock_load_config.side_effect = RuntimeError("Config load failed")
 
         # Mock the login function to return a regular value (not a coroutine)
         # Following the testing guide pattern for async functions called via asyncio.run()
