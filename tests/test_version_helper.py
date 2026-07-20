@@ -2,7 +2,7 @@
 Tests for shared version helper behavior.
 """
 
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import mmrelay._version as version_helper
 
@@ -53,62 +53,18 @@ def test_version_from_pyproject_reads_real_toml(tmp_path) -> None:
         assert version_helper._version_from_pyproject() == "4.5.6"
 
 
-def test_version_from_pyproject_regex_fallback_without_tomllib(tmp_path) -> None:
-    """
-    Python 3.10 fallback should parse version when tomllib is unavailable.
-    """
-    pyproject = tmp_path / "pyproject.toml"
-    pyproject.write_text(
-        '[project]\nname = "mmrelay"\nversion = "7.8.9"\n',
-        encoding="utf-8",
-    )
-    with (
-        patch.object(version_helper, "_find_pyproject_toml", return_value=pyproject),
-        patch.object(version_helper, "tomllib", new=None),
-    ):
-        assert version_helper._version_from_pyproject() == "7.8.9"
-
-
-def test_version_from_pyproject_regex_fallback_allows_inline_comment(tmp_path) -> None:
-    """
-    Python 3.10 fallback should parse version lines with inline comments.
-    """
-    pyproject = tmp_path / "pyproject.toml"
-    pyproject.write_text(
-        '[project]\nname = "mmrelay"\nversion = "7.8.9"  # comment\n',
-        encoding="utf-8",
-    )
-    with (
-        patch.object(version_helper, "_find_pyproject_toml", return_value=pyproject),
-        patch.object(version_helper, "tomllib", new=None),
-    ):
-        assert version_helper._version_from_pyproject() == "7.8.9"
-
-
-def test_version_from_pyproject_tomllib_missing_version_does_not_fallback(
+def test_version_from_pyproject_returns_none_when_project_version_is_missing(
     tmp_path,
 ) -> None:
     """
-    When tomllib is available and project.version is missing, fallback scanner is not used.
+    A valid project table without a version should return None.
     """
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
         '[project]\nname = "mmrelay"\ndynamic = ["version"]\n',
         encoding="utf-8",
     )
-    mock_tomllib = Mock()
-    mock_tomllib.load.return_value = {
-        "project": {"name": "mmrelay", "dynamic": ["version"]}
-    }
-    with (
-        patch.object(version_helper, "_find_pyproject_toml", return_value=pyproject),
-        patch.object(version_helper, "tomllib", new=mock_tomllib),
-        patch.object(
-            type(pyproject),
-            "read_text",
-            side_effect=AssertionError("fallback scanner should not run"),
-        ),
-    ):
+    with patch.object(version_helper, "_find_pyproject_toml", return_value=pyproject):
         assert version_helper._version_from_pyproject() is None
 
 
