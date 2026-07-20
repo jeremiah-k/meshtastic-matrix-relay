@@ -348,9 +348,7 @@ class TestNodesPlugin(unittest.TestCase):
         self.assertEqual(nodes.items.call_count, 3)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_generate_response_derives_node_id_from_numeric_record(
-        self, mock_connect
-    ):
+    def test_generate_response_derives_node_id_from_numeric_record(self, mock_connect):
         """Records without string IDs should expose their canonical numeric ID."""
         client = MagicMock()
         client.nodes = {
@@ -826,7 +824,9 @@ class TestNodesPlugin(unittest.TestCase):
         """The full command should pass an unbounded limit to response generation."""
         self.plugin.matches = MagicMock(return_value=True)
         self.plugin.extract_command_args = MagicMock(return_value="full")
-        self.plugin.generate_response = MagicMock(return_value="Nodes: 0 (newest first)\n")
+        self.plugin.generate_response = MagicMock(
+            return_value="Nodes: 0 (newest first)\n"
+        )
         room = MagicMock(room_id="!test:matrix.org")
         event = MagicMock(event_id="$event")
 

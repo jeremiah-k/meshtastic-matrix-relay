@@ -11,10 +11,10 @@ from mmrelay.plugins.traceroute_plugin import (
     TRACEROUTE_USAGE,
     Plugin,
     TraceRouteCommandError,
-    _TraceRequest,
     _format_result,
     _parse_request,
     _resolve_destination,
+    _TraceRequest,
 )
 
 
@@ -24,9 +24,7 @@ def _hop(node_num: int, node_id: str, snr_db: float | None = None) -> SimpleName
 
 def _result(*, with_return: bool = True) -> SimpleNamespace:
     route_back = (
-        (_hop(3, "!00000003"), _hop(1, "!00000001", -4.25))
-        if with_return
-        else None
+        (_hop(3, "!00000003"), _hop(1, "!00000001", -4.25)) if with_return else None
     )
     return SimpleNamespace(
         route_towards=(

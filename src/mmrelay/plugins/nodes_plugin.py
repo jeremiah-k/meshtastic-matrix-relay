@@ -2,8 +2,9 @@
 
 import asyncio
 import math
+from collections.abc import Callable, Iterable
 from datetime import datetime
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (
@@ -120,7 +121,12 @@ def _snapshot_node_items(
 
     for attempt in range(1, NODE_SNAPSHOT_ATTEMPTS + 1):
         try:
-            raw_items = list(items_method())
+            # `callable()` does not narrow `object` for pyright/mypy; assert the
+            # duck-typed contract that the node DB exposes for `.items()`.
+            items_getter = cast(
+                Callable[[], Iterable[tuple[object, Any]]], items_method
+            )
+            raw_items = list(items_getter())
             snapshot: list[tuple[object, dict[str, Any]]] = []
             for node_key, info in raw_items:
                 if not isinstance(info, dict):
@@ -164,7 +170,9 @@ def _last_heard(value: object) -> tuple[float | None, str]:
     if value is None:
         return None, "?"
     try:
-        timestamp = float(value)
+        # lastHeard arrives from protobuf as int/float; cast narrows for the
+        # static checker while the try/except handles unexpected runtime types.
+        timestamp = float(cast("float | int | str", value))
         if not math.isfinite(timestamp) or timestamp <= 0:
             raise ValueError("timestamp must be finite and positive")
         return timestamp, get_relative_time(timestamp)

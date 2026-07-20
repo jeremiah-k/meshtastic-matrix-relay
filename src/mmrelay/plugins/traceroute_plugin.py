@@ -7,7 +7,7 @@ import math
 import re
 import shlex
 import threading
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any, NamedTuple, Protocol, cast
 
@@ -26,10 +26,7 @@ DEFAULT_TRACEROUTE_HOP_LIMIT = 3
 MAX_TRACEROUTE_HOP_LIMIT = 7
 MAX_CHANNEL_INDEX = 7
 NODE_SNAPSHOT_ATTEMPTS = 3
-TRACEROUTE_USAGE = (
-    "Usage: !traceroute <node-id-or-name> [--hops 1-7] "
-    "(alias: !trace)"
-)
+TRACEROUTE_USAGE = "Usage: !traceroute <node-id-or-name> [--hops 1-7] (alias: !trace)"
 _NODE_ID_RE = re.compile(r"^![0-9a-fA-F]{8}$")
 
 
@@ -156,9 +153,12 @@ def _snapshot_nodes(nodes: object) -> list[tuple[object, dict[str, Any]]]:
         return []
     for _attempt in range(NODE_SNAPSHOT_ATTEMPTS):
         try:
+            # `callable()` does not narrow `object` for pyright/mypy; assert the
+            # duck-typed contract that the node DB exposes for `.items()`.
+            items_getter = cast(Callable[[], Iterable[tuple[object, Any]]], items)
             return [
                 (key, dict(value))
-                for key, value in list(items())
+                for key, value in list(items_getter())
                 if isinstance(value, dict)
             ]
         except RuntimeError:
@@ -192,7 +192,9 @@ def _resolve_destination(client: object, query: str) -> int | str:
         node_num = int(stripped, 10)
         if node_num <= 0xFFFFFFFF:
             return node_num
-        raise TraceRouteCommandError("Node number must fit in an unsigned 32-bit value.")
+        raise TraceRouteCommandError(
+            "Node number must fit in an unsigned 32-bit value."
+        )
 
     matches: dict[int | str, set[str]] = {}
     for node_key, info in _snapshot_nodes(getattr(client, "nodes", None)):
@@ -220,7 +222,9 @@ def _resolve_destination(client: object, query: str) -> int | str:
             f"Node '{stripped}' was not found. Use !nodes to find a node ID."
         )
     if len(matches) > 1:
-        options = ", ".join(str(destination) for destination in sorted(matches, key=str))
+        options = ", ".join(
+            str(destination) for destination in sorted(matches, key=str)
+        )
         raise TraceRouteCommandError(
             f"Node name '{stripped}' is ambiguous; use one of these IDs: {options}."
         )
@@ -232,7 +236,9 @@ def _format_snr(value: object) -> str:
     if value is None:
         return "SNR unknown"
     try:
-        numeric = float(value)
+        # snr_db arrives from protobuf as int/float; cast narrows for the
+        # static checker while the try/except handles unexpected runtime types.
+        numeric = float(cast("float | int | str", value))
     except (TypeError, ValueError):
         return "SNR unknown"
     if not math.isfinite(numeric):
@@ -341,9 +347,7 @@ class Plugin(BasePlugin):
                 )
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 detail = str(exc).strip() or type(exc).__name__
-                raise TraceRouteCommandError(
-                    f"Traceroute failed: {detail}"
-                ) from exc
+                raise TraceRouteCommandError(f"Traceroute failed: {detail}") from exc
             result = cast(_TraceRouteResult, raw_result)
             return _format_result(
                 result,
