@@ -182,7 +182,7 @@ if _ble_interface_module is not None:
 
 
 class BleExecutorDegradedError(Exception):
-    """Raised when a BLE address has too many orphaned workers and needs manual recovery."""
+    """Raised while a BLE address has too many simultaneously live workers."""
 
     pass
 
@@ -318,6 +318,7 @@ _ble_future_started_at: float | None = None
 _ble_future_timeout_secs: float | None = None
 _ble_timeout_counts: dict[str, int] = {}
 _ble_executor_orphaned_workers_by_address: dict[str, int] = {}
+_ble_orphaned_futures: dict[Future[Any], str] = {}
 _ble_timeout_lock = threading.Lock()
 # BLE lifecycle ownership state (per sanitized BLE address).
 _ble_lifecycle_lock = threading.Lock()

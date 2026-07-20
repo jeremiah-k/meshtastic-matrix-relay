@@ -214,6 +214,8 @@ def reset_meshtastic_utils_globals(*, shutdown_executors: bool = False) -> None:
         module._ble_timeout_counts = {}  # type: ignore[attr-defined]
     if hasattr(module, "_ble_executor_orphaned_workers_by_address"):
         module._ble_executor_orphaned_workers_by_address = {}  # type: ignore[attr-defined]
+    if hasattr(module, "_ble_orphaned_futures"):
+        module._ble_orphaned_futures = {}  # type: ignore[attr-defined]
     if hasattr(module, "_metadata_executor_orphaned_workers"):
         module._metadata_executor_orphaned_workers = 0  # type: ignore[attr-defined]
     if hasattr(module, "_ble_executor_degraded_addresses"):

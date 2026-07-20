@@ -681,6 +681,7 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
         old_threshold = mu._ble_timeout_reset_threshold
         old_timeout_counts = dict(mu._ble_timeout_counts)
         old_orphans = dict(mu._ble_executor_orphaned_workers_by_address)
+        old_orphaned_futures = dict(mu._ble_orphaned_futures)
         old_degraded = set(mu._ble_executor_degraded_addresses)
 
         stale_executor = Mock()
@@ -702,6 +703,7 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
             mu._ble_future_timeout_secs = 1.0
             mu._ble_timeout_counts = {"AA:BB:CC:DD:EE:FF": 4}
             mu._ble_executor_orphaned_workers_by_address = {}
+            mu._ble_orphaned_futures = {}
             mu._ble_executor_degraded_addresses = set()
 
             mu._maybe_reset_ble_executor("AA:BB:CC:DD:EE:FF", timeout_count=1)
@@ -715,6 +717,7 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
             mu._ble_timeout_reset_threshold = old_threshold
             mu._ble_timeout_counts = old_timeout_counts
             mu._ble_executor_orphaned_workers_by_address = old_orphans
+            mu._ble_orphaned_futures = old_orphaned_futures
             mu._ble_executor_degraded_addresses = old_degraded
 
         stale_future.cancel.assert_called_once()

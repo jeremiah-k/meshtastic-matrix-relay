@@ -49,6 +49,7 @@ def _shutdown_shared_executors() -> None:
         with facade._ble_timeout_lock:
             facade._ble_timeout_counts.clear()
             facade._ble_executor_orphaned_workers_by_address.clear()
+        facade._ble_orphaned_futures.clear()
         facade._ble_executor_degraded_addresses.clear()
         with facade._ble_lifecycle_lock:
             facade._ble_generation_by_address.clear()
@@ -137,6 +138,7 @@ def reset_executor_degraded_state(
                     ", ".join(sorted(facade._ble_executor_degraded_addresses)),
                 )
                 facade._ble_executor_degraded_addresses.clear()
+                facade._ble_orphaned_futures.clear()
                 with facade._ble_timeout_lock:
                     facade._ble_executor_orphaned_workers_by_address.clear()
                 if facade._ble_executor is not None:
@@ -174,6 +176,11 @@ def reset_executor_degraded_state(
                     ble_address,
                 )
                 facade._ble_executor_degraded_addresses.discard(ble_address)
+                facade._ble_orphaned_futures = {
+                    future: address
+                    for future, address in facade._ble_orphaned_futures.items()
+                    if address != ble_address
+                }
                 with facade._ble_timeout_lock:
                     facade._ble_executor_orphaned_workers_by_address.pop(
                         ble_address, None
@@ -593,111 +600,133 @@ def _ensure_ble_worker_available(ble_address: str, *, operation: str) -> None:
             )
 
 
-def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
+def _release_orphaned_ble_future(completed_future: Future[Any]) -> None:
+    """Release one abandoned BLE worker after its future eventually completes.
+
+    Executor replacement cannot stop a Python thread that is already running. Such
+    futures are tracked as live orphans until their worker exits. Completion removes
+    the live count and automatically clears the per-address degraded guard once the
+    number of remaining workers falls below the safety threshold.
     """
-    Reset the BLE worker executor when an address has reached the timeout threshold.
+    recovered_address: str | None = None
+    remaining_orphans = 0
+    with facade._ble_executor_lock:
+        ble_address = facade._ble_orphaned_futures.pop(completed_future, None)
+        if ble_address is None:
+            return
+        remaining_orphans = sum(
+            address == ble_address
+            for address in facade._ble_orphaned_futures.values()
+        )
+        with facade._ble_timeout_lock:
+            if remaining_orphans:
+                facade._ble_executor_orphaned_workers_by_address[ble_address] = (
+                    remaining_orphans
+                )
+            else:
+                facade._ble_executor_orphaned_workers_by_address.pop(
+                    ble_address, None
+                )
+        if (
+            ble_address in facade._ble_executor_degraded_addresses
+            and remaining_orphans < facade.EXECUTOR_ORPHAN_THRESHOLD
+        ):
+            facade._ble_executor_degraded_addresses.discard(ble_address)
+            recovered_address = ble_address
 
-    Recreates the module's BLE executor and clears any active BLE future/state for the given
-    BLE address when `timeout_count` meets or exceeds the configured reset threshold. Performs a
-    best-effort cancellation and cleanup of a possibly stuck BLE task and resets the per-address
-    timeout counter to zero.
+    if recovered_address is not None:
+        facade.logger.warning(
+            "BLE executor recovered for %s after an abandoned worker completed "
+            "(active orphaned workers=%s, threshold=%s)",
+            recovered_address,
+            remaining_orphans,
+            facade.EXECUTOR_ORPHAN_THRESHOLD,
+        )
 
-    When the number of orphaned workers for a BLE address reaches EXECUTOR_ORPHAN_THRESHOLD,
-    that address enters a degraded state: submission of new BLE work is refused and further
-    automatic recovery is disabled. Recovery requires an explicit reconnect or process restart.
 
-    Parameters:
-        ble_address (str): BLE device address associated with the observed timeouts.
-        timeout_count (int): Number of consecutive timeouts recorded for that address.
+def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
+    """Reset a timed-out BLE executor while bounding live abandoned workers.
+
+    Python cannot terminate a running executor thread. A timed-out future is
+    therefore counted only while it is still alive, and its completion callback
+    releases that count. The address enters a degraded state when the number of
+    simultaneously live abandoned workers reaches ``EXECUTOR_ORPHAN_THRESHOLD``;
+    it recovers automatically as those workers finish.
     """
     reset_threshold = facade._coerce_positive_int(
         facade._ble_timeout_reset_threshold, facade.BLE_TIMEOUT_RESET_THRESHOLD
     )
-    # Capture future ref inside lock, cancel outside to avoid deadlock with done callbacks
-    ble_future_to_cancel = None
+    ble_future_to_cancel: Future[Any] | None = None
+    tracked_future: Future[Any] | None = None
     orphaned_workers = 0
     stale_executor: ThreadPoolExecutor | None = None
+    degraded_now = False
+
     with facade._ble_executor_lock:
         if ble_address in facade._ble_executor_degraded_addresses:
             facade.logger.debug(
-                "BLE executor for %s is in degraded state; refusing to reset. "
-                "Reconnect or restart required to recover.",
+                "BLE executor for %s is in degraded state; refusing to reset while "
+                "its abandoned workers are still running.",
                 ble_address,
             )
             return
-
         if timeout_count < reset_threshold:
             return
 
-        current_orphans = facade._ble_executor_orphaned_workers_by_address.get(
-            ble_address, 0
-        )
-        if current_orphans + 1 >= facade.EXECUTOR_ORPHAN_THRESHOLD:
-            facade._ble_executor_degraded_addresses.add(ble_address)
-            facade.logger.error(
-                "BLE EXECUTOR DEGRADED for %s: %s workers have been orphaned due to "
-                "repeated hangs. Further automatic recovery is disabled for this device. "
-                "Reconnect or restart the relay to restore BLE connectivity.",
-                ble_address,
-                current_orphans + 1,
-            )
-            ble_future_to_cancel = facade._ble_future
-            facade._ble_future = None
-            stale_executor = facade._ble_executor
-            facade._ble_future_address = None
-            facade._ble_future_started_at = None
-            facade._ble_future_timeout_secs = None
-            with facade._ble_timeout_lock:
-                facade._ble_timeout_counts[ble_address] = 0
+        active_future = facade._ble_future
+        if active_future is not None and not active_future.done():
+            ble_future_to_cancel = active_future
+            if active_future not in facade._ble_orphaned_futures:
+                facade._ble_orphaned_futures[active_future] = ble_address
+                tracked_future = active_future
 
-        if ble_address in facade._ble_executor_degraded_addresses:
+        orphaned_workers = sum(
+            address == ble_address
+            for address in facade._ble_orphaned_futures.values()
+        )
+        with facade._ble_timeout_lock:
+            if orphaned_workers:
+                facade._ble_executor_orphaned_workers_by_address[ble_address] = (
+                    orphaned_workers
+                )
+            else:
+                facade._ble_executor_orphaned_workers_by_address.pop(
+                    ble_address, None
+                )
+            facade._ble_timeout_counts[ble_address] = 0
+
+        if orphaned_workers >= facade.EXECUTOR_ORPHAN_THRESHOLD:
+            facade._ble_executor_degraded_addresses.add(ble_address)
             degraded_now = True
+            facade.logger.error(
+                "BLE EXECUTOR DEGRADED for %s: %s active workers remain abandoned "
+                "after repeated hangs. New BLE work is paused until one completes "
+                "or degraded state is reset explicitly.",
+                ble_address,
+                orphaned_workers,
+            )
         else:
-            degraded_now = False
-            if facade._ble_future and not facade._ble_future.done():
-                ble_future_to_cancel = facade._ble_future
-            if facade._ble_executor is not None and not getattr(
-                facade._ble_executor, "_shutdown", False
-            ):
-                with facade._ble_timeout_lock:
-                    orphaned_workers = current_orphans + 1
-                    facade._ble_executor_orphaned_workers_by_address[ble_address] = (
-                        orphaned_workers
-                    )
-                stale_executor = facade._ble_executor
             facade.logger.warning(
                 "BLE worker timed out %s times for %s; recreating executor "
-                "(orphaned BLE workers=%s, threshold=%s)",
+                "(active orphaned BLE workers=%s, threshold=%s)",
                 timeout_count,
                 ble_address,
                 orphaned_workers,
                 facade.EXECUTOR_ORPHAN_THRESHOLD,
             )
-            facade._ble_executor = facade.ThreadPoolExecutor(max_workers=1)
-            facade._ble_future = None
-            facade._ble_future_address = None
-            facade._ble_future_started_at = None
-            facade._ble_future_timeout_secs = None
 
-    if degraded_now:
-        if ble_future_to_cancel is not None:
-            ble_future_to_cancel.cancel()
-            try:
-                ble_future_to_cancel.result(timeout=facade.FUTURE_CANCEL_TIMEOUT_SECS)
-            except Exception as exc:  # noqa: BLE001 - best-effort degraded cleanup
-                facade.logger.debug(
-                    "BLE future cancellation raised error for %s: %s",
-                    ble_address,
-                    exc,
-                )
-        if stale_executor is not None and not getattr(
-            stale_executor, "_shutdown", False
-        ):
-            try:
-                stale_executor.shutdown(wait=False, cancel_futures=True)
-            except TypeError:
-                stale_executor.shutdown(wait=False)
-        return
+        stale_executor = facade._ble_executor
+        if not degraded_now:
+            facade._ble_executor = facade.ThreadPoolExecutor(max_workers=1)
+        facade._ble_future = None
+        facade._ble_future_address = None
+        facade._ble_future_started_at = None
+        facade._ble_future_timeout_secs = None
+
+    # Register only after releasing _ble_executor_lock. Future.add_done_callback()
+    # invokes callbacks inline when the future already completed.
+    if tracked_future is not None:
+        tracked_future.add_done_callback(_release_orphaned_ble_future)
 
     if ble_future_to_cancel is not None:
         ble_future_to_cancel.cancel()
@@ -707,10 +736,9 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
             pass
         except Exception as exc:  # noqa: BLE001 - best-effort reset cleanup
             facade.logger.debug("BLE worker errored during reset: %s", exc)
+
     if stale_executor is not None and not getattr(stale_executor, "_shutdown", False):
         try:
             stale_executor.shutdown(wait=False, cancel_futures=True)
         except TypeError:
             stale_executor.shutdown(wait=False)
-    with facade._ble_timeout_lock:
-        facade._ble_timeout_counts[ble_address] = 0

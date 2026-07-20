@@ -892,8 +892,14 @@ class TestBleExecutorDegradedState:
         mock_executor = Mock(spec=ThreadPoolExecutor)
         mock_executor._shutdown = False
         mu._ble_executor = mock_executor
-        mu._ble_future = None
-        mu._ble_future_address = None
+        orphaned_futures = [Future() for _ in range(EXECUTOR_ORPHAN_THRESHOLD)]
+        for future in orphaned_futures:
+            assert future.set_running_or_notify_cancel()
+        mu._ble_future = orphaned_futures[-1]
+        mu._ble_future_address = ble_address
+        mu._ble_orphaned_futures = {
+            future: ble_address for future in orphaned_futures[:-1]
+        }
         mu._ble_executor_orphaned_workers_by_address = {
             ble_address: EXECUTOR_ORPHAN_THRESHOLD - 1
         }
@@ -930,6 +936,8 @@ class TestBleExecutorDegradedState:
         """Test that reset_executor_degraded_state clears degraded state for specific BLE address."""
         ble_address = TEST_BLE_MAC
         mu._ble_executor_degraded_addresses = {ble_address}
+        orphaned_future: Future[object] = Future()
+        mu._ble_orphaned_futures = {orphaned_future: ble_address}
         mu._ble_executor_orphaned_workers_by_address = {ble_address: 10}
 
         result = mu.reset_executor_degraded_state(ble_address=ble_address)
@@ -937,6 +945,7 @@ class TestBleExecutorDegradedState:
         assert result is True
         assert ble_address not in mu._ble_executor_degraded_addresses
         assert ble_address not in mu._ble_executor_orphaned_workers_by_address
+        assert orphaned_future not in mu._ble_orphaned_futures
 
     def test_ble_executor_allows_recovery_for_all_addresses(self):
         """Test that reset_executor_degraded_state with reset_all clears all degraded state."""

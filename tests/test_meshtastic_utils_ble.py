@@ -199,6 +199,11 @@ def reset_meshtastic_relay_state(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr(
+        "mmrelay.meshtastic_utils._ble_orphaned_futures",
+        {},
+        raising=False,
+    )
+    monkeypatch.setattr(
         "mmrelay.meshtastic_utils._metadata_executor_degraded",
         False,
         raising=False,
@@ -623,6 +628,91 @@ class TestMaybeResetBleExecutor:
                 wait=False, cancel_futures=True
             )
             assert mu._ble_executor is not mock_executor
+
+    def test_completed_abandoned_worker_releases_live_orphan_count(
+        self, monkeypatch
+    ):
+        """A late worker completion should release its live orphan slot."""
+        stale_executor = Mock(spec=ThreadPoolExecutor)
+        stale_executor._shutdown = False
+        replacement_executor = Mock(spec=ThreadPoolExecutor)
+        replacement_executor._shutdown = False
+        stale_future: Future[object] = Future()
+        assert stale_future.set_running_or_notify_cancel()
+        monkeypatch.setattr(mu, "_ble_executor", stale_executor, raising=False)
+        monkeypatch.setattr(mu, "_ble_future", stale_future, raising=False)
+        monkeypatch.setattr(
+            mu, "_ble_future_address", TEST_BLE_MAC, raising=False
+        )
+        monkeypatch.setattr(
+            mu, "_ble_orphaned_futures", {}, raising=False
+        )
+        monkeypatch.setattr(
+            mu, "_ble_executor_orphaned_workers_by_address", {}, raising=False
+        )
+
+        with (
+            patch(
+                "mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 1
+            ),
+            patch(
+                "mmrelay.meshtastic_utils.ThreadPoolExecutor",
+                return_value=replacement_executor,
+            ),
+        ):
+            mu._maybe_reset_ble_executor(TEST_BLE_MAC, timeout_count=1)
+
+        assert mu._ble_orphaned_futures == {stale_future: TEST_BLE_MAC}
+        assert mu._ble_executor_orphaned_workers_by_address[TEST_BLE_MAC] == 1
+        mu._ble_timeout_counts[TEST_BLE_MAC] = 2
+
+        stale_future.set_result(object())
+
+        assert stale_future not in mu._ble_orphaned_futures
+        assert TEST_BLE_MAC not in mu._ble_executor_orphaned_workers_by_address
+        assert mu._ble_timeout_counts[TEST_BLE_MAC] == 2
+        assert TEST_BLE_MAC not in mu._ble_executor_degraded_addresses
+
+    def test_degraded_address_recovers_when_live_orphan_finishes(
+        self, monkeypatch
+    ):
+        """Degraded state should track simultaneous live workers, not history."""
+        futures = [Future() for _ in range(mu.EXECUTOR_ORPHAN_THRESHOLD)]
+        for future in futures:
+            assert future.set_running_or_notify_cancel()
+        active_future = futures[-1]
+        monkeypatch.setattr(
+            mu,
+            "_ble_orphaned_futures",
+            {future: TEST_BLE_MAC for future in futures[:-1]},
+            raising=False,
+        )
+        monkeypatch.setattr(mu, "_ble_future", active_future, raising=False)
+        monkeypatch.setattr(
+            mu, "_ble_future_address", TEST_BLE_MAC, raising=False
+        )
+        stale_executor = Mock(spec=ThreadPoolExecutor)
+        stale_executor._shutdown = False
+        monkeypatch.setattr(mu, "_ble_executor", stale_executor, raising=False)
+
+        with patch(
+            "mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 1
+        ):
+            mu._maybe_reset_ble_executor(TEST_BLE_MAC, timeout_count=1)
+
+        assert TEST_BLE_MAC in mu._ble_executor_degraded_addresses
+        assert (
+            mu._ble_executor_orphaned_workers_by_address[TEST_BLE_MAC]
+            == mu.EXECUTOR_ORPHAN_THRESHOLD
+        )
+
+        active_future.set_result(object())
+
+        assert TEST_BLE_MAC not in mu._ble_executor_degraded_addresses
+        assert (
+            mu._ble_executor_orphaned_workers_by_address[TEST_BLE_MAC]
+            == mu.EXECUTOR_ORPHAN_THRESHOLD - 1
+        )
 
     def test_maybe_reset_ble_executor_handles_type_error(self, monkeypatch):
         """Test handling TypeError during shutdown (older Python compatibility)."""

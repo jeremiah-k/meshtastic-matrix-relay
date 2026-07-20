@@ -1016,8 +1016,8 @@ def _connect_meshtastic_impl(
                                         in facade._ble_executor_degraded_addresses
                                     ):
                                         facade.logger.error(
-                                            "BLE executor degraded for %s: too many orphaned workers. "
-                                            "Reconnect or restart required to restore BLE connectivity.",
+                                            "BLE executor degraded for %s: too many live abandoned workers. "
+                                            "Waiting for a worker to finish or an explicit reset.",
                                             ble_address,
                                         )
                                         raise facade.BleExecutorDegradedError(
@@ -1314,8 +1314,8 @@ def _connect_meshtastic_impl(
                                 )
                             if ble_address in facade._ble_executor_degraded_addresses:
                                 facade.logger.error(
-                                    "BLE executor degraded for %s: too many orphaned workers. "
-                                    "Reconnect or restart required to restore BLE connectivity.",
+                                    "BLE executor degraded for %s: too many live abandoned workers. "
+                                    "Waiting for a worker to finish or an explicit reset.",
                                     ble_address,
                                 )
                                 raise facade.BleExecutorDegradedError(

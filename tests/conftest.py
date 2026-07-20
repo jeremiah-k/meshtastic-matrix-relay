@@ -598,6 +598,7 @@ def reset_meshtastic_globals():
     cleanup_ble_future_state(mu)
     mu._ble_timeout_counts = {}
     mu._ble_executor_orphaned_workers_by_address = {}
+    mu._ble_orphaned_futures = {}
     mu._ble_generation_by_address = {}
     mu._ble_iface_generation_by_id = {}
     mu._ble_teardown_unresolved_by_generation = {}
