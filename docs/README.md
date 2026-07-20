@@ -16,7 +16,7 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 
 ## Release-Specific Documents
 
-- **[What's New in 1.4.0](WHATS_NEW_1.4.md)** - Python 3.11 minimum and upgrade guidance
+- **[What's New in 1.4.0](WHATS_NEW_1.4.md)** - Mesh observability, BLE recovery, and Python 3.11 upgrade guidance
 - **[What's New in 1.3.0](WHATS_NEW_1.3.md)** - Release summary and changes overview
 - **[What's New in 1.2](WHATS_NEW_1.2.md)** - Previous release notes (historical)
 
@@ -42,7 +42,7 @@ docs/
 ├── README.md                 # This file - documentation index
 ├── INSTRUCTIONS.md           # Main installation and setup guide
 ├── MIGRATION_1.3.md         # Migration guide for upgrading from older versions
-├── WHATS_NEW_1.4.md          # 1.4 runtime-support changes
+├── WHATS_NEW_1.4.md          # 1.4 features and upgrade guidance
 ├── WHATS_NEW_1.3.md          # 1.3 release summary
 ├── WHATS_NEW_1.2.md          # 1.2 release notes (historical)
 ├── E2EE.md                  # End-to-End Encryption guide
