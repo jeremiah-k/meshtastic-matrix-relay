@@ -364,6 +364,7 @@ from mmrelay.matrix.credentials import (
     _resolve_and_load_credentials,
     _resolve_credentials_save_path,
 )
+from mmrelay.matrix.client_config import _build_matrix_client_config
 from mmrelay.matrix.auth import (
     _close_matrix_client_after_failure,
     _configure_e2ee,
