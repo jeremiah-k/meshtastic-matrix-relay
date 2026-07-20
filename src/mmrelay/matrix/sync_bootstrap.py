@@ -521,6 +521,7 @@ async def connect_matrix(
 
             if e2ee_enabled:
                 await facade._maybe_upload_e2ee_keys(client)
+                await facade._ensure_own_device_cross_signed(client)
 
             facade.logger.debug("Performing initial sync to initialize rooms...")
             sync_response = await _perform_initial_sync(client, local_homeserver)
@@ -1026,6 +1027,12 @@ async def login_matrix_bot(
                 facade.save_credentials, credentials, credentials_path=credentials_path
             )
             facade.logger.info("Credentials saved to %s", credentials_path)
+
+            if e2ee_enabled:
+                await facade._ensure_own_device_cross_signed(
+                    client,
+                    password=password,
+                )
 
             if logout_others:
                 facade.logger.info("Logging out other sessions...")

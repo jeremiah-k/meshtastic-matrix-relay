@@ -164,6 +164,7 @@ async def test_connect_matrix_uploads_keys_when_needed(monkeypatch):
     mock_client.close = AsyncMock()
     type(mock_client).should_upload_keys = PropertyMock(return_value=True)
     mock_client.keys_upload = AsyncMock()
+    ensure_cross_signed = AsyncMock(return_value="already_signed")
     mock_client.get_displayname = AsyncMock(
         return_value=SimpleNamespace(displayname="Bot")
     )
@@ -179,6 +180,10 @@ async def test_connect_matrix_uploads_keys_when_needed(monkeypatch):
         return mock_client
 
     monkeypatch.setattr("mmrelay.matrix_utils.AsyncClient", fake_async_client)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._ensure_own_device_cross_signed",
+        ensure_cross_signed,
+    )
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
     monkeypatch.setattr(
         "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
@@ -226,6 +231,7 @@ async def test_connect_matrix_uploads_keys_when_needed(monkeypatch):
 
     assert client is mock_client
     mock_client.keys_upload.assert_awaited_once()
+    ensure_cross_signed.assert_awaited_once_with(mock_client)
 
 
 @pytest.mark.asyncio
