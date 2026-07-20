@@ -30,8 +30,6 @@ You need Docker installed on your system. Follow the [official Docker installati
 
 **Most users should start here** - prebuilt images without cloning the repository:
 
-> **Migrating?** If upgrading from an older version with the old directory layout, see the [Migration Guide for v1.3](MIGRATION_1.3.md).
-
 ```bash
 # Create directory and download config
 mkdir -p ~/.mmrelay
@@ -58,10 +56,6 @@ docker compose logs -f
 **That's it!** Your MMRelay is now running with the official prebuilt image.
 
 > **Production deployment**: The `:latest` tag is mutable and may change. For production deployments, pin a specific version tag or digest to ensure reproducible deployments. See the [Kubernetes Guide](KUBERNETES.md#pinning-digests-for-production) for digest pinning examples.
-
-## Upgrading from Older Layouts
-
-If you're upgrading an existing deployment from older MMRelay directory layouts, follow the [Migration Guide for v1.3](MIGRATION_1.3.md).
 
 ## Deployment Methods
 
@@ -386,8 +380,6 @@ The Docker image includes a built-in health check that uses the ready file mecha
 ### First-boot health expectations
 
 On first boot after upgrade, containers may briefly report unhealthy if authentication/bootstrap data is not yet present.
-
-For upgrade/migration procedures and deprecation timeline details, see the [Migration Guide for v1.3](MIGRATION_1.3.md).
 
 ## Troubleshooting
 

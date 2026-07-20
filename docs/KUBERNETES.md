@@ -9,12 +9,6 @@ This guide uses the static manifests in `deploy/k8s/`. Download them, create a S
 - Kubernetes cluster (v1.20+)
 - `kubectl` (includes kustomize support for `kubectl apply -k`)
 
-## Upgrading to 1.3
-
-If you are upgrading from 1.2.x or earlier, read and follow
-`docs/MIGRATION_1.3.md` before applying the manifests. New installations can
-proceed with the Quick Start below.
-
 ## Image Selection
 
 The base Kubernetes manifest uses `kustomize` images transform to set the container image tag. The default `kustomization.yaml` pins to a specific stable release tag (e.g., `1.4.0`). Edit `kustomization.yaml` to change the tag for your target release.
@@ -465,50 +459,6 @@ kubectl delete pod restore-pod -n mmrelay
 # Start the pod
 kubectl scale deployment mmrelay -n mmrelay --replicas=1
 ```
-
-### Migration
-
-The `mmrelay migrate` command handles data migrations between versions:
-
-```bash
-# Dry-run: Preview changes without making them
-kubectl exec -n mmrelay <pod-name> -- mmrelay migrate --dry-run
-
-# Perform migration
-kubectl exec -n mmrelay <pod-name> -- mmrelay migrate
-
-# Force migration (if files already exist in target)
-kubectl exec -n mmrelay <pod-name> -- mmrelay migrate --force
-```
-
-The migration command is designed to be idempotent and safe. It:
-
-- Detects legacy directory structures
-- Moves files to the unified `/data` layout
-- Creates necessary directories
-- Preserves your existing data
-
-For detailed migration instructions, see the [Migration Guide for v1.3](MIGRATION_1.3.md).
-
-### First-boot health expectations
-
-After upgrades, pods can remain unready/unhealthy until credentials/bootstrap state exists or migration is completed.
-
-Recommended sequence:
-
-```bash
-# Preview migration
-kubectl exec -n mmrelay <pod-name> -- mmrelay migrate --dry-run
-
-# Apply migration
-kubectl exec -n mmrelay <pod-name> -- mmrelay migrate
-
-# Verify
-kubectl exec -n mmrelay <pod-name> -- mmrelay verify-migration
-kubectl exec -n mmrelay <pod-name> -- mmrelay doctor
-```
-
-Deprecation timeline: legacy credential/location fallbacks are supported in v1.3 and planned for removal in v1.4.
 
 ### Disaster recovery checklist
 

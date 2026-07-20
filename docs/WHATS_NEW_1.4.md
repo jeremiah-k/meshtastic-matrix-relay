@@ -56,6 +56,11 @@ Before installing MMRelay 1.4.0 or newer, upgrade the runtime to Python 3.11 or
 newer and recreate the virtual environment or pipx installation so compiled
 packages are installed for the new interpreter.
 
+Direct upgrades from supported 1.3.x releases are the normal path. The 1.3
+layout-migration guide is now archived rather than presented as current setup
+documentation. Systems still on 1.2.x or older should first install a 1.3.x
+release, run its migration tooling, and then upgrade to 1.4.0.
+
 Python 3.10 systems can remain on the final MMRelay 1.3.x release. Operators who
 need a custom dependency set may continue to install and maintain an older
 source checkout, but that environment is outside the supported 1.4 release

@@ -10,12 +10,6 @@ This guide covers deploying MMRelay using the Helm chart in `deploy/helm/mmrelay
 - Helm 3.x
 - `kubectl` configured for your cluster
 
-## Upgrading to 1.3
-
-If you are upgrading from 1.2.x or earlier, read and follow
-`docs/MIGRATION_1.3.md` before deploying or upgrading the Helm release.
-New installations can proceed with the Quick Start below.
-
 ## Quick Start
 
 ### 1. Get the chart (git checkout)
@@ -508,9 +502,7 @@ Expected output:
 
 ## Upgrading
 
-### Upgrade to 1.3.x
-
-If upgrading from 1.2.x or earlier, follow `docs/MIGRATION_1.3.md` first.
+### Upgrade MMRelay
 
 ```bash
 helm upgrade mmrelay ./deploy/helm/mmrelay \

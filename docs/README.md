@@ -5,7 +5,6 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 ## Getting Started
 
 - **[Installation Guide](INSTRUCTIONS.md)** - Complete setup instructions for MMRelay
-- **[Migration Guide for v1.3](MIGRATION_1.3.md)** - Upgrading from older versions to unified HOME model
 - **[E2EE Guide](E2EE.md)** - Encrypted Matrix rooms (Matrix E2EE) setup and usage
 - **[Docker Guide](DOCKER.md)** - Docker deployment and configuration
 - **[Helm Guide](HELM.md)** - Kubernetes Helm chart deployment guide
@@ -17,8 +16,9 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 ## Release-Specific Documents
 
 - **[What's New in 1.4.0](WHATS_NEW_1.4.md)** - Mesh observability, BLE recovery, and Python 3.11 upgrade guidance
-- **[What's New in 1.3.0](WHATS_NEW_1.3.md)** - Release summary and changes overview
 - **[What's New in 1.2](WHATS_NEW_1.2.md)** - Previous release notes (historical)
+- **[Archived 1.3 Migration Guide](dev/archive/MIGRATION_1.3.md)** - For systems still on 1.2.x or older before upgrading through a 1.3.x release
+- **[Archived What's New in 1.3.0](dev/archive/WHATS_NEW_1.3.md)** - Historical 1.3 release summary
 
 ## File Locations
 
@@ -32,7 +32,6 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 ## Developer Documentation
 
 - **[Constants Reference](dev/CONSTANTS.md)** - Internal configuration constants and values
-- **[Meshtastic Packet Routing Policy](dev/meshtastic_packet_routing_policy.md)** - Inbound packet routing semantics and design notes
 - **[E2EE Implementation Notes](dev/archive/E2EE_IMPLEMENTATION_NOTES.md)** - Technical details of E2EE implementation
 
 ## Documentation Structure
@@ -41,9 +40,9 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 docs/
 ├── README.md                 # This file - documentation index
 ├── INSTRUCTIONS.md           # Main installation and setup guide
-├── MIGRATION_1.3.md         # Migration guide for upgrading from older versions
+├── MIGRATION_1.3.md          # Compatibility link to the archived guide
 ├── WHATS_NEW_1.4.md          # 1.4 features and upgrade guidance
-├── WHATS_NEW_1.3.md          # 1.3 release summary
+├── WHATS_NEW_1.3.md          # Compatibility link to archived release notes
 ├── WHATS_NEW_1.2.md          # 1.2 release notes (historical)
 ├── E2EE.md                  # End-to-End Encryption guide
 ├── DOCKER.md                # Docker deployment guide
@@ -52,12 +51,12 @@ docs/
 ├── ADVANCED_CONFIGURATION.md # Advanced configuration options
 └── dev/                     # Developer documentation
     ├── CONSTANTS.md         # Internal configuration constants
-    ├── meshtastic_packet_routing_policy.md # Packet routing policy internals
     ├── INNO_SETUP_GUIDE.md  # Windows installer build guide
     ├── TESTING_GUIDE.md     # Testing patterns and practices
-    ├── RELEASE_1.3.md       # Release checklist (internal)
     └── archive/             # Historical planning documents
         ├── DATA_LAYOUT_MIGRATION.md
+        ├── MIGRATION_1.3.md  # Archived 1.3 migration guide
+        ├── WHATS_NEW_1.3.md  # Archived 1.3 release summary
         ├── E2EE_IMPLEMENTATION_NOTES.md  # E2EE technical details
         ├── V1_3_DIRECTORY_REDESIGN.md
         ├── V1_3_MIGRATION_IMPROVEMENTS_PLAN.md

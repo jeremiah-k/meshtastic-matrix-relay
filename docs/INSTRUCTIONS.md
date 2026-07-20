@@ -228,8 +228,6 @@ make logs     # View logs
 
 For detailed Docker commands, configuration options, connection types, and troubleshooting, see the [Docker Guide](DOCKER.md).
 
-If you are upgrading from an older MMRelay layout, see the [Migration Guide for v1.3](MIGRATION_1.3.md).
-
 ## Kubernetes
 
 MMRelay ships static Kubernetes manifests in `deploy/k8s/`. Copy them into your deployment repo, create a Secret that contains your `config.yaml`, then apply with `kubectl`.
