@@ -1,3 +1,4 @@
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -38,11 +39,6 @@ def _patch_detection(
 
 def _read_pyproject_deps() -> dict[str, object]:
     """Read pyproject.toml and extract dependencies and optional-dependencies."""
-    try:
-        import tomllib
-    except ImportError:
-        import tomli as tomllib  # type: ignore[no-redef]
-
     pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
     with pyproject_path.open("rb") as f:
         data = tomllib.load(f)

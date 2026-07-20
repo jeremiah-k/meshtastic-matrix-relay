@@ -4,7 +4,7 @@ Version helpers with source-checkout fallback support.
 
 from __future__ import annotations
 
-import re
+import tomllib
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as metadata_version
 from pathlib import Path
@@ -12,14 +12,6 @@ from typing import Final
 
 _PACKAGE_NAME: Final[str] = "mmrelay"
 _UNKNOWN_VERSION: Final[str] = "0+unknown"
-_PROJECT_VERSION_RE: Final[re.Pattern[str]] = re.compile(
-    r"""^version\s*=\s*["'](?P<version>[^"']+)["']\s*(?:#.*)?$"""
-)
-
-try:
-    import tomllib  # type: ignore[import-not-found]  # Python 3.11+
-except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback path
-    tomllib = None  # pyright: ignore[reportAssignmentType]
 
 
 def _version_from_metadata() -> str | None:
@@ -53,33 +45,15 @@ def _version_from_pyproject() -> str | None:
         return None
 
     try:
-        if tomllib is not None:
-            with pyproject.open("rb") as handle:
-                data = tomllib.load(handle)
-            project = data.get("project")
-            if not isinstance(project, dict):
-                return None
-            version = project.get("version")
-            if isinstance(version, str):
-                normalized = version.strip()
-                return normalized or None
+        with pyproject.open("rb") as handle:
+            data = tomllib.load(handle)
+        project = data.get("project")
+        if not isinstance(project, dict):
             return None
-
-        # Python 3.10 fallback: parse only [project] version entry.
-        in_project_section = False
-        for line in pyproject.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#"):
-                continue
-            if stripped.startswith("[") and stripped.endswith("]"):
-                in_project_section = stripped == "[project]"
-                continue
-            if not in_project_section:
-                continue
-            match = _PROJECT_VERSION_RE.match(stripped)
-            if match:
-                normalized = match.group("version").strip()
-                return normalized or None
+        version = project.get("version")
+        if isinstance(version, str):
+            normalized = version.strip()
+            return normalized or None
     except (OSError, UnicodeError, ValueError):
         return None
 
