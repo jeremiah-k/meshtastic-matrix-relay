@@ -36,6 +36,9 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Validate release tag against package version
+        run: python scripts/ci/validate_release_version.py --tag "${{ github.event.release.tag_name }}"
+
       - name: Install bump-my-version
         shell: bash
         run: |
