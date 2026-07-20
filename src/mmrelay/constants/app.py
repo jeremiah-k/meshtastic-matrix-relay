@@ -56,7 +56,7 @@ SECURE_FILE_PERMISSIONS: Final[int] = 0o600
 SECURE_DIR_PERMISSIONS: Final[int] = 0o700
 
 # Version requirements
-MIN_PYTHON_VERSION: Final[tuple[int, int]] = (3, 10)
+MIN_PYTHON_VERSION: Final[tuple[int, int]] = (3, 11)
 
 # Windows-specific constants
 WINDOWS_VTP_FLAG: Final[int] = 0x0004  # ENABLE_VIRTUAL_TERMINAL_PROCESSING

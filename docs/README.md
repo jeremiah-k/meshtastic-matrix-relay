@@ -74,6 +74,6 @@ docs/
 ## Version Information
 
 - **Current Version**: v1.3+
-- **Python Requirement**: 3.10+
+- **Python Requirement**: 3.11+
 - **Supported Platforms**: Linux, macOS, Windows (E2EE not available on Windows)
 - **Key Features**: Meshtastic ↔ Matrix relay, encrypted Matrix rooms (Matrix E2EE), Docker deployment, Plugin system

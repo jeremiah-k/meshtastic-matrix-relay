@@ -1,6 +1,6 @@
 # MMRelay Instructions
 
-MMRelay works on Linux, macOS, and Windows and requires Python 3.10+.
+MMRelay works on Linux, macOS, and Windows and requires Python 3.11+.
 
 ## Installation
 
