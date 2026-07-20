@@ -57,7 +57,7 @@ helm install mmrelay ./deploy/helm/mmrelay \
 # Optional but recommended: pin image tag explicitly for repeatable runs
 helm upgrade --install mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
-  --set image.tag=1.3.3
+  --set image.tag=1.4.0
 ```
 
 ### 6. Verify Deployment
@@ -76,7 +76,7 @@ The Helm chart is highly configurable. Key options include:
 ```yaml
 image:
   repository: ghcr.io/jeremiah-k/mmrelay
-  tag: 1.3.3
+  tag: 1.4.0
   pullPolicy: IfNotPresent
   # Pin by digest for production (immutable)
   digest: ""
@@ -88,7 +88,7 @@ image:
 
 ```bash
 helm upgrade mmrelay ./deploy/helm/mmrelay \
-  --set image.tag=1.3.3 \
+  --set image.tag=1.4.0 \
   --namespace mmrelay
 ```
 
@@ -515,7 +515,7 @@ If upgrading from 1.2.x or earlier, follow `docs/MIGRATION_1.3.md` first.
 ```bash
 helm upgrade mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
-  --set image.tag=1.3.3
+  --set image.tag=1.4.0
 ```
 
 ### Rolling Restart
