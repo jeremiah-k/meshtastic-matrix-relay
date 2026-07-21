@@ -800,7 +800,7 @@ async def login_matrix_bot(
         else:
             facade.logger.debug("E2EE disabled in configuration, not using store path")
 
-        client_config = facade._build_matrix_client_config(e2ee_enabled=e2ee_enabled)
+        client_config = facade.build_matrix_client_config(e2ee_enabled=e2ee_enabled)
 
         localpart = facade._extract_localpart_from_mxid(username) or ""
         facade.logger.debug("Creating AsyncClient with:")
