@@ -47,6 +47,26 @@ class _DisconnectedCrossSigningClient:
         raise ClientConnectionError("homeserver disconnected")
 
 
+class _UnexpectedProviderError(Exception):
+    """Provider failure outside the previous hard-coded exception tuple."""
+
+
+class _UnexpectedFailureClient:
+    device_id = "MMRELAYDEVICE"
+
+    async def ensure_cross_signing(self, password: str | None = None) -> str:
+        del password
+        raise _UnexpectedProviderError("unexpected provider failure")
+
+
+class _BrokenIdentityPropertyClient(_CrossSigningClient):
+    device_id = "MMRELAYDEVICE"
+
+    @property
+    def cross_signing_identity(self) -> None:
+        raise _UnexpectedProviderError("identity getter failed")
+
+
 class _QueryResponse:
     status = 200
 
@@ -142,6 +162,44 @@ async def test_cross_signing_failure_is_nonfatal(
         "Could not self-verify Matrix device" in str(call.args[0])
         for call in logger.warning.call_args_list
     )
+
+
+@pytest.mark.asyncio
+async def test_unexpected_cross_signing_failure_is_nonfatal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logger = MagicMock()
+    monkeypatch.setattr(e2ee_identity, "logger", logger)
+
+    result = await matrix_utils._ensure_own_device_cross_signed(
+        _UnexpectedFailureClient(),
+    )
+
+    assert result is None
+    assert any(
+        "unexpected provider failure" in str(call.args)
+        for call in logger.warning.call_args_list
+    )
+    logger.debug.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_cross_signing_identity_getter_failure_is_nonfatal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logger = MagicMock()
+    monkeypatch.setattr(e2ee_identity, "logger", logger)
+    client = _BrokenIdentityPropertyClient()
+
+    result = await matrix_utils._ensure_own_device_cross_signed(client)
+
+    assert result is None
+    assert client.passwords == []
+    assert any(
+        "Refusing to generate a replacement identity automatically" in str(call.args[0])
+        for call in logger.warning.call_args_list
+    )
+    logger.debug.assert_called()
 
 
 @pytest.mark.asyncio

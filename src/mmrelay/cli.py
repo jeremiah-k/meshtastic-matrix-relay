@@ -2260,11 +2260,10 @@ def handle_auth_login(args: argparse.Namespace) -> int:
 
     config_for_paths: dict[str, Any] | None = None
     try:
-        from mmrelay.config import load_config
+        from mmrelay.config import load_config_silently
 
-        config_paths = get_config_paths(args)
-        config_for_paths = load_config(args=args, config_paths=config_paths)
-    except (OSError, RuntimeError, TypeError, ValueError) as e:
+        config_for_paths = load_config_silently(args)
+    except Exception as e:
         _get_logger().debug(
             "Could not load config for Matrix authentication paths: %s", e
         )
