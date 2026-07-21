@@ -100,6 +100,11 @@ MMRelay manages encryption devices automatically:
 - Keeps a consistent device ID across restarts
 - Stores encryption keys in `~/.mmrelay/matrix/store/`
 - Uploads encryption keys when needed
+- Attempts to create or reuse a bot-scoped cross-signing identity and sign
+  MMRelay's own device when the active provider supports it
+- Reuses the persisted cross-signing identity across restarts after a successful
+  bootstrap; unsupported providers and bootstrap failures are logged and remain
+  non-fatal
 - Uses `ignore_unverified_devices=True` for reliable room operation
 - Automatically requests missing room keys when an event cannot be decrypted
 
@@ -145,9 +150,13 @@ client session:
 - `~/.mmrelay/matrix/credentials.json` - Matrix login credentials (access
   token, device ID)
 - `~/.mmrelay/matrix/store/` - Matrix encryption keys for this session
+- `~/.mmrelay/matrix/store/<user_id>_cross_signing.json` - mindroom-nio's
+  cross-signing sidecar (the Matrix user ID is sanitized into one filename)
 
-If these are lost or compromised, the impact is the same as losing any Matrix
-session: you need to log in again and re-verify devices.
+Back up the credentials, E2EE store, and cross-signing sidecar together. If the
+sidecar is lost while Matrix still has the account's public cross-signing
+identity, MMRelay deliberately refuses to generate a replacement identity.
+Restore the complete backup or use a new, dedicated bot account.
 
 ### Recommendations
 
@@ -230,8 +239,8 @@ until key exchange completes on a subsequent sync.
 
 ## The `auth login` command
 
-`mmrelay auth login` is the recommended Matrix authentication flow in MMRelay
-v1.2+ and supports E2EE setup end to end.
+`mmrelay auth login` is the recommended Matrix authentication flow and supports
+E2EE setup end to end.
 
 ### What it does
 
@@ -240,6 +249,15 @@ v1.2+ and supports E2EE setup end to end.
 3. Generates/uses a persistent device ID for MMRelay
 4. Stores credentials at `~/.mmrelay/matrix/credentials.json`
 5. Initializes key storage at `~/.mmrelay/matrix/store/`
+6. Attempts to create or reuse a cross-signing identity and self-sign the
+   MMRelay device when supported
+
+Cross-signing is best-effort: login still succeeds if the provider does not
+support it or the homeserver rejects bootstrap, but clients enforcing
+cross-signing may withhold encrypted room keys until the issue is resolved.
+
+The password is used only during login and, when required by the homeserver,
+for the one-time cross-signing upload. It is not written to `credentials.json`.
 
 ### Example session
 
@@ -293,18 +311,30 @@ Keep this file secure; it contains Matrix session credentials.
 
 ## Device verification status
 
-In Matrix clients (Element, etc.), MMRelay messages in encrypted rooms are
-expected to show a red shield warning:
+With mindroom-nio 0.26.0 or newer and E2EE enabled, MMRelay makes a
+best-effort attempt to create or reuse a minimal cross-signing identity for the
+bot account and sign its own device. A successful bootstrap publishes the
+device → self-signing → master signature chain expected by signed-device
+clients. It is intended to remove warnings such as **"This device hasn't
+verified itself"** or **"Encrypted by a device not verified by its owner"**
+after the next successful `mmrelay auth login` and sync. Client wording varies,
+and this does not make other users trust the bot account's master key.
 
-### "Encrypted by a device not verified by its owner"
+When the provider does not expose bot cross-signing, or when bootstrap fails,
+MMRelay logs a warning and continues running. Clients that enforce cross-signing
+may withhold encrypted room keys until the identity is successfully established.
 
-This is expected because:
+The implementation is deliberately bot-scoped:
 
-- Messages **are encrypted** using Matrix E2EE (Olm/Megolm)
-- The nio library does not support interactive device verification
-  (emoji/QR verification)
-- MMRelay devices cannot be cross-signed through the standard Matrix client
-  verification flow
+- the account gets a master key and self-signing key;
+- MMRelay signs only its current device;
+- MMRelay does **not** verify other users or their devices;
+- no emoji/QR verification flow is added;
+- no server-side key backup or secret-storage recovery is added.
+
+If a homeserver requires password-based user-interactive authentication for the
+first cross-signing upload, run `mmrelay auth login` once. Normal service startup has
+only the saved access token and cannot complete that password challenge.
 
 If you see **"Not encrypted"** for MMRelay messages in an encrypted room, treat
 that as a real issue (usually configuration/version related) and troubleshoot.
@@ -366,6 +396,17 @@ mmrelay auth logout
 mmrelay auth login
 ```
 
+### "Could not self-verify Matrix device" in logs
+
+Run `mmrelay auth login` again. The command has the password needed by
+homeservers that require user-interactive authentication for cross-signing key
+upload. Do not delete only the cross-signing sidecar: it contains the private
+master and self-signing seeds, and rotating them independently can invalidate
+the account's existing signatures. If Matrix already has a master key but the
+local sidecar is missing, MMRelay preserves the server identity and refuses to
+replace it automatically. Restore the complete E2EE store/sidecar backup or use
+a new, dedicated bot account.
+
 ### Verify startup state
 
 Look for logs like:
@@ -375,6 +416,11 @@ INFO Matrix: Found credentials at ~/.mmrelay/matrix/credentials.json
 INFO Matrix: Using device ID: YOUR_DEVICE_ID
 INFO Matrix: Setting up End-to-End Encryption...
 INFO Matrix: Encryption keys uploaded successfully
+# First successful bootstrap:
+INFO Matrix: Created Matrix cross-signing identity and self-verified device YOUR_DEVICE_ID
+# Or when reusing an existing identity for this device:
+INFO Matrix: Self-verified Matrix device YOUR_DEVICE_ID with the existing cross-signing identity
+# Subsequent starts may log at DEBUG that the device is already self-verified.
 INFO Matrix: Performing initial sync to initialize rooms...
 INFO Matrix: Initial sync completed. Found X rooms.
 ```
@@ -398,6 +444,7 @@ E2EE support is backward compatible:
   they differ only in the underlying cryptographic library.
 - Loads E2EE store before sync operations
 - Uses automatic key management with `ignore_unverified_devices=True`
+- Uses mindroom-nio's bot-scoped `ensure_cross_signing()` producer flow
 - Provider detection and capability reporting via `mmrelay.matrix.compat`
 
 ### Performance impact
