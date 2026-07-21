@@ -28,6 +28,7 @@ from mmrelay.config import (
     get_plugin_data_dir,
     is_e2ee_enabled,
     load_config,
+    load_config_silently,
     load_credentials,
     load_database_config_from_env,
     load_logging_config_from_env,
@@ -56,6 +57,55 @@ class TestConfig(unittest.TestCase):
         """
         mmrelay.config.relay_config = {}
         mmrelay.config.config_path = None
+
+    def test_load_config_silently_reads_config_without_logging(self):
+        """The auth-path loader should avoid warnings and global config mutation."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = os.path.join(temp_dir, "config.yaml")
+            with open(config_path, "w", encoding="utf-8") as config_file:
+                config_file.write(
+                    "matrix:\n"
+                    "  credentials_path: /tmp/credentials.json\n"
+                    "  e2ee:\n"
+                    "    enabled: true\n"
+                )
+            args = MagicMock(config=config_path)
+            logger = MagicMock()
+
+            with patch.object(mmrelay.config, "logger", logger):
+                loaded = load_config_silently(args)
+
+            self.assertEqual(
+                loaded,
+                {
+                    "matrix": {
+                        "credentials_path": "/tmp/credentials.json",
+                        "e2ee": {"enabled": True},
+                    }
+                },
+            )
+            self.assertEqual(mmrelay.config.relay_config, {})
+            self.assertIsNone(mmrelay.config.config_path)
+            logger.warning.assert_not_called()
+            logger.error.assert_not_called()
+            logger.exception.assert_not_called()
+
+    def test_load_config_silently_ignores_malformed_yaml(self):
+        """Malformed setup config should degrade to an empty mapping quietly."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = os.path.join(temp_dir, "config.yaml")
+            with open(config_path, "w", encoding="utf-8") as config_file:
+                config_file.write("matrix: [unterminated\n")
+            args = MagicMock(config=config_path)
+            logger = MagicMock()
+
+            with patch.object(mmrelay.config, "logger", logger):
+                loaded = load_config_silently(args)
+
+            self.assertEqual(loaded, {})
+            logger.warning.assert_not_called()
+            logger.error.assert_not_called()
+            logger.exception.assert_not_called()
 
     def test_get_base_dir_linux(self):
         # Test default base dir on Linux

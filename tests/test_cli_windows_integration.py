@@ -270,17 +270,17 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
         )
         self.assertTrue(standard_banner)
 
-    @patch("mmrelay.config.load_config")
+    @patch("mmrelay.config.load_config_silently")
     @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("builtins.print")
     def test_auth_login_handles_config_load_error(
-        self, mock_print, mock_login, mock_load_config
+        self, mock_print, mock_login, mock_load_config_silently
     ):
         """Test that auth login handles config loading errors gracefully."""
         from mmrelay.cli import handle_auth_login
 
         # Mock config loading to fail
-        mock_load_config.side_effect = RuntimeError("Config load failed")
+        mock_load_config_silently.side_effect = RuntimeError("Config load failed")
 
         # Mock the login function to return a regular value (not a coroutine)
         # Following the testing guide pattern for async functions called via asyncio.run()

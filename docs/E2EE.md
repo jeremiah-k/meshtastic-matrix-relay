@@ -100,8 +100,11 @@ MMRelay manages encryption devices automatically:
 - Keeps a consistent device ID across restarts
 - Stores encryption keys in `~/.mmrelay/matrix/store/`
 - Uploads encryption keys when needed
-- Creates a bot-scoped cross-signing identity and signs MMRelay's own device
-- Reuses the persisted cross-signing identity across restarts
+- Attempts to create or reuse a bot-scoped cross-signing identity and sign
+  MMRelay's own device when the active provider supports it
+- Reuses the persisted cross-signing identity across restarts after a successful
+  bootstrap; unsupported providers and bootstrap failures are logged and remain
+  non-fatal
 - Uses `ignore_unverified_devices=True` for reliable room operation
 - Automatically requests missing room keys when an event cannot be decrypted
 
@@ -147,6 +150,8 @@ client session:
 - `~/.mmrelay/matrix/credentials.json` - Matrix login credentials (access
   token, device ID)
 - `~/.mmrelay/matrix/store/` - Matrix encryption keys for this session
+- `~/.mmrelay/matrix/store/<user_id>_cross_signing.json` - mindroom-nio's
+  cross-signing sidecar (the Matrix user ID is sanitized into one filename)
 
 Back up the credentials, E2EE store, and cross-signing sidecar together. If the
 sidecar is lost while Matrix still has the account's public cross-signing
@@ -244,7 +249,12 @@ E2EE setup end to end.
 3. Generates/uses a persistent device ID for MMRelay
 4. Stores credentials at `~/.mmrelay/matrix/credentials.json`
 5. Initializes key storage at `~/.mmrelay/matrix/store/`
-6. Creates or reuses a cross-signing identity and self-signs the MMRelay device
+6. Attempts to create or reuse a cross-signing identity and self-sign the
+   MMRelay device when supported
+
+Cross-signing is best-effort: login still succeeds if the provider does not
+support it or the homeserver rejects bootstrap, but clients enforcing
+cross-signing may withhold encrypted room keys until the issue is resolved.
 
 The password is used only during login and, when required by the homeserver,
 for the one-time cross-signing upload. It is not written to `credentials.json`.
@@ -301,13 +311,18 @@ Keep this file secure; it contains Matrix session credentials.
 
 ## Device verification status
 
-With mindroom-nio 0.26.0 or newer, MMRelay automatically creates a minimal
-cross-signing identity for the bot account and signs its own device. This
-publishes the device → self-signing → master signature chain expected by
-signed-device clients. It is intended to remove warnings such as **"This device
-hasn't verified itself"** or **"Encrypted by a device not verified by its
-owner"** after the next successful `mmrelay auth login` and sync. Client wording
-varies, and this does not make other users trust the bot account's master key.
+With mindroom-nio 0.26.0 or newer and E2EE enabled, MMRelay makes a
+best-effort attempt to create or reuse a minimal cross-signing identity for the
+bot account and sign its own device. A successful bootstrap publishes the
+device → self-signing → master signature chain expected by signed-device
+clients. It is intended to remove warnings such as **"This device hasn't
+verified itself"** or **"Encrypted by a device not verified by its owner"**
+after the next successful `mmrelay auth login` and sync. Client wording varies,
+and this does not make other users trust the bot account's master key.
+
+When the provider does not expose bot cross-signing, or when bootstrap fails,
+MMRelay logs a warning and continues running. Clients that enforce cross-signing
+may withhold encrypted room keys until the identity is successfully established.
 
 The implementation is deliberately bot-scoped:
 
@@ -317,8 +332,8 @@ The implementation is deliberately bot-scoped:
 - no emoji/QR verification flow is added;
 - no server-side key backup or secret-storage recovery is added.
 
-If a homeserver requires password user-interactive authentication for the first
-cross-signing upload, run `mmrelay auth login` once. Normal service startup has
+If a homeserver requires password-based user-interactive authentication for the
+first cross-signing upload, run `mmrelay auth login` once. Normal service startup has
 only the saved access token and cannot complete that password challenge.
 
 If you see **"Not encrypted"** for MMRelay messages in an encrypted room, treat
@@ -401,7 +416,11 @@ INFO Matrix: Found credentials at ~/.mmrelay/matrix/credentials.json
 INFO Matrix: Using device ID: YOUR_DEVICE_ID
 INFO Matrix: Setting up End-to-End Encryption...
 INFO Matrix: Encryption keys uploaded successfully
+# First successful bootstrap:
 INFO Matrix: Created Matrix cross-signing identity and self-verified device YOUR_DEVICE_ID
+# Or when reusing an existing identity for this device:
+INFO Matrix: Self-verified Matrix device YOUR_DEVICE_ID with the existing cross-signing identity
+# Subsequent starts may log at DEBUG that the device is already self-verified.
 INFO Matrix: Performing initial sync to initialize rooms...
 INFO Matrix: Initial sync completed. Found X rooms.
 ```

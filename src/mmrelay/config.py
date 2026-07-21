@@ -729,6 +729,35 @@ def is_e2ee_enabled(config: dict[str, Any] | None) -> bool:
     return encryption_enabled or e2ee_enabled
 
 
+def load_config_silently(args: Any = None) -> dict[str, Any]:
+    """Load path-related configuration without emitting setup diagnostics.
+
+    This best-effort loader is intended for commands such as ``mmrelay auth
+    login`` that need the selected config mapping before normal application
+    logging is configured. It does not mutate module-level config state, emit
+    legacy-path warnings, or log unreadable/malformed candidates.
+
+    Returns an empty mapping when no readable mapping is available.
+    """
+    try:
+        config_paths = get_config_paths(args)
+    except Exception:
+        return {}
+
+    for path in config_paths:
+        try:
+            if not os.path.isfile(path):
+                continue
+            with open(path, "r", encoding="utf-8") as config_file:
+                loaded = yaml.load(config_file, Loader=SafeLoader)
+        except (OSError, TypeError, ValueError, yaml.YAMLError):
+            continue
+
+        return loaded if isinstance(loaded, dict) else {}
+
+    return {}
+
+
 def check_e2ee_enabled_silently(args: Any = None) -> bool:
     """
     Check whether End-to-End Encryption (E2EE) is enabled by inspecting the first readable configuration file.
