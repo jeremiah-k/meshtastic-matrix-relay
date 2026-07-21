@@ -24,8 +24,6 @@ matrix:
   #
   e2ee:
     enabled: true
-    # Valid peer identity rotations replace stale keys under MMRelay's
-    # trust-on-first-use policy; interactively verified trust is never granted.
 
   # Message prefix customization (Meshtastic -> Matrix direction)
   #prefix_enabled: true # Enable prefixes on messages from mesh (e.g., "[Alice/MyMesh]: message")

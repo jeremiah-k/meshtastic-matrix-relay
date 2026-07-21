@@ -473,7 +473,7 @@ async def test_connect_matrix_e2ee_windows_disables(monkeypatch):
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
     config_factory = MagicMock()
     monkeypatch.setattr(
-        "mmrelay.matrix_utils._build_matrix_client_config", config_factory
+        "mmrelay.matrix_utils.build_matrix_client_config", config_factory
     )
     monkeypatch.setattr(
         "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False

@@ -8,12 +8,12 @@ from nio import AsyncClientConfig
 
 from mmrelay.log_utils import get_logger
 
-__all__ = ["_build_matrix_client_config"]
+__all__ = ["build_matrix_client_config"]
 
 logger = get_logger(name="Matrix")
 
 
-def _build_matrix_client_config(
+def build_matrix_client_config(
     *,
     e2ee_enabled: bool,
     max_limit_exceeded: int | None = None,
@@ -45,10 +45,21 @@ def _build_matrix_client_config(
             encryption_enabled=e2ee_enabled,
         )
 
-    config_fields = getattr(type(config), "__dataclass_fields__", {})
-    if e2ee_enabled and "replace_rotated_device_keys" in config_fields:
+    if e2ee_enabled and hasattr(config, "replace_rotated_device_keys"):
+        try:
+            setattr(config, "replace_rotated_device_keys", True)
+        except (AttributeError, TypeError):
+            # Preserve compatibility with immutable dataclass-style providers
+            # without using dataclass internals as the capability check.
+            try:
+                config = replace(config, replace_rotated_device_keys=True)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Matrix provider exposes rotated device-key recovery but its "
+                    "client configuration could not be updated"
+                )
+                return config
         logger.debug(
             "Enabled rotated Matrix device-key recovery for MMRelay's TOFU E2EE policy"
         )
-        return replace(config, replace_rotated_device_keys=True)
     return config
