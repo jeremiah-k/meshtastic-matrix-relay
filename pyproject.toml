@@ -27,7 +27,7 @@ dependencies = [
   "Pillow==12.3.0",
   "aiohttp==3.14.3",
   "mindroom-nio==0.28.0",
-  "matplotlib==3.10.9",
+  "matplotlib==3.11.1",
   "requests==2.34.2",
   "markdown==3.10.2",
   "nh3==0.3.6",
