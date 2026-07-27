@@ -1416,6 +1416,12 @@ class TestAuthLogin(unittest.TestCase):
         self.mock_args.homeserver = None
         self.mock_args.username = None
         self.mock_args.password = None
+        self.mock_args.config = None
+        self.load_config_patcher = patch(
+            "mmrelay.config.load_config_silently", return_value={}
+        )
+        self.mock_load_config_silently = self.load_config_patcher.start()
+        self.addCleanup(self.load_config_patcher.stop)
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("mmrelay.cli.ensure_directories")
@@ -1434,7 +1440,11 @@ class TestAuthLogin(unittest.TestCase):
         self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_login.assert_called_once_with(
-            homeserver=None, username=None, password=None, logout_others=False
+            homeserver=None,
+            username=None,
+            password=None,
+            logout_others=False,
+            config_for_paths={},
         )
         # Check that header was printed for interactive mode
         mock_print.assert_any_call("\nMatrix Bot Authentication")
@@ -1457,7 +1467,11 @@ class TestAuthLogin(unittest.TestCase):
         self.assertEqual(result, EXIT_CODE_ERROR)
         mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_login.assert_called_once_with(
-            homeserver=None, username=None, password=None, logout_others=False
+            homeserver=None,
+            username=None,
+            password=None,
+            logout_others=False,
+            config_for_paths={},
         )
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
@@ -1486,8 +1500,38 @@ class TestAuthLogin(unittest.TestCase):
             username="@bot:matrix.org",
             password="secret123",
             logout_others=False,
+            config_for_paths={},
         )
         # Should NOT print header in non-interactive mode
+        mock_print.assert_not_called()
+
+    @patch("mmrelay.matrix_utils.login_matrix_bot")
+    @patch("mmrelay.cli.ensure_directories")
+    @patch("builtins.print")
+    def test_handle_auth_login_propagates_explicit_config(
+        self, mock_print, mock_ensure_dirs, mock_login
+    ):
+        """Pass the resolved CLI config into login for E2EE/path decisions."""
+        config_data = {"matrix": {"e2ee": {"enabled": True}}}
+        self.mock_load_config_silently.return_value = config_data
+        self.mock_args.config = "/custom/config.yaml"
+        self.mock_args.homeserver = "https://matrix.example"
+        self.mock_args.username = "@bot:matrix.example"
+        self.mock_args.password = "secret123"
+        mock_login.return_value = True
+
+        result = handle_auth_login(self.mock_args)
+
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
+        mock_ensure_dirs.assert_called_once_with(create_missing=True)
+        self.mock_load_config_silently.assert_called_once_with(self.mock_args)
+        mock_login.assert_called_once_with(
+            homeserver="https://matrix.example",
+            username="@bot:matrix.example",
+            password="secret123",
+            logout_others=False,
+            config_for_paths=config_data,
+        )
         mock_print.assert_not_called()
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
@@ -1754,7 +1798,11 @@ class TestAuthLogin(unittest.TestCase):
         # Verify interactive mode
         self.assertEqual(result, EXIT_CODE_SUCCESS)
         mock_login.assert_called_with(
-            homeserver=None, username=None, password=None, logout_others=False
+            homeserver=None,
+            username=None,
+            password=None,
+            logout_others=False,
+            config_for_paths={},
         )
         mock_print.assert_any_call("\nMatrix Bot Authentication")
         mock_print.assert_any_call("=========================")
