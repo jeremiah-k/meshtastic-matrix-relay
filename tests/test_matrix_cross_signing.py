@@ -300,3 +300,198 @@ async def test_provider_without_cross_signing_logs_warning(
         "does not support automatic device self-verification" in str(call.args[0])
         for call in logger.warning.call_args_list
     )
+
+
+class _RaisingAttributeClient:
+    @property
+    def device_id(self) -> str:
+        raise RuntimeError("device id unavailable")
+
+
+class _EnsureGetterFailureClient:
+    device_id = "MMRELAYDEVICE"
+
+    @property
+    def ensure_cross_signing(self) -> object:
+        raise RuntimeError("capability getter failed")
+
+
+class _EnsureGetterCancelledClient:
+    device_id = "MMRELAYDEVICE"
+
+    @property
+    def ensure_cross_signing(self) -> object:
+        raise asyncio.CancelledError
+
+
+class _IdentityGetterCancelledClient(_CrossSigningClient):
+    @property
+    def cross_signing_identity(self) -> None:
+        raise asyncio.CancelledError
+
+
+class _TextResponse:
+    def __init__(
+        self,
+        *,
+        status: int,
+        payload: object = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.status = status
+        self.payload = payload
+        self.error = error
+
+    async def text(self) -> str:
+        return "homeserver unavailable"
+
+    async def json(self, *, content_type: object = None) -> object:
+        del content_type
+        if self.error is not None:
+            raise self.error
+        return self.payload
+
+
+class _RawQueryClient:
+    user_id = "@bot:example.org"
+    access_token = "token"
+
+    def __init__(self, response: _TextResponse) -> None:
+        self.response = response
+
+    async def send(
+        self, method: str, path: str, data: str, headers: dict[str, str]
+    ) -> _TextResponse:
+        del method, path, data, headers
+        return self.response
+
+
+def test_client_label_hides_attribute_getter_failures() -> None:
+    assert (
+        e2ee_identity._client_label(_RaisingAttributeClient(), "device_id")
+        == "<unknown>"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("client", "message"),
+    [
+        (object(), "user id is unavailable"),
+        (
+            type("NoTokenClient", (), {"user_id": "@bot:example.org"})(),
+            "access token is unavailable",
+        ),
+        (
+            type(
+                "NoSendClient",
+                (),
+                {"user_id": "@bot:example.org", "access_token": "token"},
+            )(),
+            "does not expose an authenticated send method",
+        ),
+    ],
+)
+async def test_server_identity_query_requires_authenticated_client_surface(
+    client: object,
+    message: str,
+) -> None:
+    with pytest.raises(RuntimeError, match=message):
+        await e2ee_identity._server_has_own_cross_signing_identity(client)
+
+
+@pytest.mark.asyncio
+async def test_server_identity_query_reports_non_success_response() -> None:
+    client = _RawQueryClient(_TextResponse(status=503))
+
+    with pytest.raises(RuntimeError, match="503 homeserver unavailable"):
+        await e2ee_identity._server_has_own_cross_signing_identity(client)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [ValueError("bad json"), TypeError("bad json")])
+async def test_server_identity_query_rejects_invalid_json(error: Exception) -> None:
+    client = _RawQueryClient(_TextResponse(status=200, error=error))
+
+    with pytest.raises(RuntimeError, match="returned invalid JSON"):
+        await e2ee_identity._server_has_own_cross_signing_identity(client)
+
+
+@pytest.mark.asyncio
+async def test_server_identity_query_rejects_non_object_json() -> None:
+    client = _RawQueryClient(_TextResponse(status=200, payload=[]))
+
+    with pytest.raises(RuntimeError, match="non-object response"):
+        await e2ee_identity._server_has_own_cross_signing_identity(client)
+
+
+@pytest.mark.asyncio
+async def test_cross_signing_capability_getter_failure_is_nonfatal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logger = MagicMock()
+    monkeypatch.setattr(e2ee_identity, "logger", logger)
+
+    result = await matrix_utils._ensure_own_device_cross_signed(
+        _EnsureGetterFailureClient()
+    )
+
+    assert result is None
+    assert any(
+        "Could not inspect Matrix cross-signing support" in str(call.args[0])
+        for call in logger.warning.call_args_list
+    )
+    logger.debug.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_cross_signing_capability_getter_cancellation_propagates() -> None:
+    with pytest.raises(asyncio.CancelledError):
+        await matrix_utils._ensure_own_device_cross_signed(
+            _EnsureGetterCancelledClient()
+        )
+
+
+@pytest.mark.asyncio
+async def test_cross_signing_identity_getter_cancellation_propagates() -> None:
+    with pytest.raises(asyncio.CancelledError):
+        await matrix_utils._ensure_own_device_cross_signed(
+            _IdentityGetterCancelledClient()
+        )
+
+
+@pytest.mark.asyncio
+async def test_server_identity_query_cancellation_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _GuardedCrossSigningClient(has_master=False)
+
+    async def cancelled_query(_client: object) -> bool:
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(
+        e2ee_identity,
+        "_server_has_own_cross_signing_identity",
+        cancelled_query,
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await matrix_utils._ensure_own_device_cross_signed(client)
+
+
+@pytest.mark.asyncio
+async def test_unexpected_cross_signing_result_is_not_treated_as_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logger = MagicMock()
+    monkeypatch.setattr(e2ee_identity, "logger", logger)
+
+    result = await matrix_utils._ensure_own_device_cross_signed(
+        _CrossSigningClient("future-provider-result")
+    )
+
+    assert result is None
+    assert any(
+        "unexpected cross-signing result" in str(call.args[0])
+        for call in logger.warning.call_args_list
+    )
