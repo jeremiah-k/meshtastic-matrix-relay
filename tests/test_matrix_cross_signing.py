@@ -59,6 +59,15 @@ class _UnexpectedFailureClient:
         raise _UnexpectedProviderError("unexpected provider failure")
 
 
+class _HangingCrossSigningClient:
+    device_id = "MMRELAYDEVICE"
+
+    async def ensure_cross_signing(self, password: str | None = None) -> str:
+        del password
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+
 class _BrokenIdentityPropertyClient(_CrossSigningClient):
     device_id = "MMRELAYDEVICE"
 
@@ -226,6 +235,28 @@ async def test_cross_signing_cancellation_propagates() -> None:
         await matrix_utils._ensure_own_device_cross_signed(
             _CancelledCrossSigningClient(),
         )
+
+
+@pytest.mark.asyncio
+async def test_cross_signing_bootstrap_timeout_is_nonfatal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logger = MagicMock()
+    monkeypatch.setattr(e2ee_identity, "logger", logger)
+    monkeypatch.setattr(
+        e2ee_identity,
+        "_CROSS_SIGNING_BOOTSTRAP_TIMEOUT_SECONDS",
+        0.001,
+    )
+
+    result = await matrix_utils._ensure_own_device_cross_signed(
+        _HangingCrossSigningClient()
+    )
+
+    assert result is None
+    assert any(
+        "Timed out" in str(call.args[0]) for call in logger.warning.call_args_list
+    )
 
 
 @pytest.mark.asyncio

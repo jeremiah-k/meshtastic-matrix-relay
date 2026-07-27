@@ -317,11 +317,12 @@ Keep this file secure; it contains Matrix session credentials.
 ## Device verification status
 
 With MMRelay's supported mindroom-nio provider and E2EE enabled, MMRelay
-makes a best-effort attempt to create or reuse a minimal cross-signing identity for the
-bot account and sign its own device. A successful bootstrap publishes the
-device → self-signing → master signature chain expected by signed-device
-clients. It is intended to remove warnings such as **"This device hasn't
-verified itself"** or **"Encrypted by a device not verified by its owner"**
+makes a best-effort attempt to create or reuse a minimal cross-signing identity
+for the bot account and sign its own device. A successful bootstrap establishes
+the Matrix signing relationship expected by signed-device clients: the master
+key signs the self-signing key, and the self-signing key signs the device. It is
+intended to remove warnings such as **"This device hasn't verified itself"** or
+**"Encrypted by a device not verified by its owner"**
 after the next successful `mmrelay auth login` and sync. Client wording varies,
 and this does not make other users trust the bot account's master key.
 

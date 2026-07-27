@@ -1670,5 +1670,18 @@ def test_silent_config_readers_share_candidate_scanning(tmp_path) -> None:
         assert check_e2ee_enabled_silently() is True
 
 
+def test_silent_config_readers_skip_empty_higher_priority_candidate(tmp_path) -> None:
+    empty = tmp_path / "empty.yaml"
+    enabled = tmp_path / "enabled.yaml"
+    empty.write_text("", encoding="utf-8")
+    enabled.write_text("matrix:\n  e2ee:\n    enabled: true\n", encoding="utf-8")
+
+    paths = [str(empty), str(enabled)]
+    with patch("mmrelay.config.get_config_paths", return_value=paths):
+        expected = {"matrix": {"e2ee": {"enabled": True}}}
+        assert load_config_silently() == expected
+        assert check_e2ee_enabled_silently() is True
+
+
 if __name__ == "__main__":
     unittest.main()

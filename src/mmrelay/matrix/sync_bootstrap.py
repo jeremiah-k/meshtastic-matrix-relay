@@ -1026,10 +1026,14 @@ async def login_matrix_bot(
             facade.logger.info("Credentials saved to %s", credentials_path)
 
             if e2ee_enabled:
-                await facade._ensure_own_device_cross_signed(
-                    client,
-                    password=password,
-                )
+                try:
+                    await facade._ensure_own_device_cross_signed(
+                        client,
+                        password=password,
+                    )
+                except asyncio.CancelledError:
+                    await client.close()
+                    raise
 
             if logout_others:
                 facade.logger.info("Logging out other sessions...")

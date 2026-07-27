@@ -10,6 +10,14 @@ from pathlib import Path
 SCRIPT = Path("scripts/ci/run-mmrelay-meshtasticd-integration.sh")
 
 
+def _extract_verifier_source(script: str) -> str:
+    """Return the embedded Python verifier from the integration shell script."""
+    function_start = script.index("assert_matrix_device_cross_signed() {")
+    python_start = script.index("<<'PY'\n", function_start) + len("<<'PY'\n")
+    python_end = script.index("\nPY\n}", python_start)
+    return script[python_start:python_end]
+
+
 def test_integration_script_verifies_server_visible_cross_signing_chain() -> None:
     script = SCRIPT.read_text(encoding="utf-8")
 
@@ -18,20 +26,17 @@ def test_integration_script_verifies_server_visible_cross_signing_chain() -> Non
     assert "vodozemac.Ed25519PublicKey.from_base64" in script
     assert "Device is not signed by the self-signing key" in script
     assert "Self-signing key is not signed by the master key" in script
+    assert 'run_or_fail "MMRelay A auth login failed"' in script
+    assert 'run_or_fail "MMRelay B auth login failed"' in script
+    assert "Missing key {key!r} in {json_path}" in script
 
-    function_start = script.index("assert_matrix_device_cross_signed() {")
-    python_start = script.index("<<'PY'\n", function_start) + len("<<'PY'\n")
-    python_end = script.index("\nPY\n}", python_start)
-    compile(script[python_start:python_end], "<cross-signing-smoke>", "exec")
+    compile(_extract_verifier_source(script), "<cross-signing-smoke>", "exec")
 
 
 def test_embedded_verifier_accepts_canonical_json_bytes() -> None:
     """Execute the verifier in a clean process with the real bindings."""
     script = SCRIPT.read_text(encoding="utf-8")
-    function_start = script.index("assert_matrix_device_cross_signed() {")
-    python_start = script.index("<<'PY'\n", function_start) + len("<<'PY'\n")
-    python_end = script.index("\nPY\n}", python_start)
-    parsed = ast.parse(script[python_start:python_end])
+    parsed = ast.parse(_extract_verifier_source(script))
     verifier_function = next(
         node
         for node in parsed.body

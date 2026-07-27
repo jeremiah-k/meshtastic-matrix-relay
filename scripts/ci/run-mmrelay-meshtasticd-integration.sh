@@ -832,7 +832,7 @@ with open(runtime_file, encoding="utf-8") as f:
 
 value = data.get(key)
 if value is None:
-    raise SystemExit(1)
+    raise SystemExit(f"Missing key {key!r} in {runtime_file}")
 print(value)
 PY
 }
@@ -850,7 +850,7 @@ with open(json_path, encoding="utf-8") as file_handle:
     payload = json.load(file_handle)
 value = payload.get(key)
 if value is None:
-    raise SystemExit(1)
+    raise SystemExit(f"Missing key {key!r} in {json_path}")
 print(value)
 PY
 }
@@ -2664,14 +2664,16 @@ EOF_CONFIG
 # uploading cross-signing keys. The existing device ids are reused.
 echo ""
 echo "Bootstrapping MMRelay bot cross-signing identities..."
-"${PYTHON_BIN}" -m mmrelay.cli \
+run_or_fail "MMRelay A auth login failed" \
+	"${PYTHON_BIN}" -m mmrelay.cli \
 	--config "${MMRELAY_CONFIG_PATH_A}" \
 	--home "${MMRELAY_HOME_DIR_A}" \
 	auth login \
 	--homeserver "${MATRIX_BASE_URL}" \
 	--username "${BOT_A_USER_ID}" \
 	--password "${MATRIX_BOT_A_PASSWORD}"
-"${PYTHON_BIN}" -m mmrelay.cli \
+run_or_fail "MMRelay B auth login failed" \
+	"${PYTHON_BIN}" -m mmrelay.cli \
 	--config "${MMRELAY_CONFIG_PATH_B}" \
 	--home "${MMRELAY_HOME_DIR_B}" \
 	auth login \
