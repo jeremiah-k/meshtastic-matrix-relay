@@ -18,7 +18,16 @@ PYPROJECT = ROOT / "pyproject.toml"
 def _single_mindroom_requirement(
     dependencies: list[str], *, expected_extras: frozenset[str]
 ) -> Requirement:
-    """Return the single mindroom-nio requirement for the requested extras."""
+    """
+    Find the single `mindroom-nio` requirement matching the requested extras.
+    
+    Parameters:
+    	dependencies (list[str]): Dependency requirement strings to inspect.
+    	expected_extras (frozenset[str]): Extras that the matching requirement must specify.
+    
+    Returns:
+    	Requirement: The matching `mindroom-nio` requirement.
+    """
     matches: list[Requirement] = []
     for dependency in dependencies:
         requirement = Requirement(dependency)
@@ -43,7 +52,12 @@ def _exact_pin(requirement: Requirement) -> str:
 
 
 def _mindroom_pin() -> str:
-    """Return the single version used by the base and E2EE dependency sets."""
+    """
+    Determine the pinned version shared by the base and E2EE `mindroom-nio` dependencies.
+    
+    Returns:
+    	str: The shared pinned `mindroom-nio` version.
+    """
     with PYPROJECT.open("rb") as handle:
         project = tomllib.load(handle)["project"]
 

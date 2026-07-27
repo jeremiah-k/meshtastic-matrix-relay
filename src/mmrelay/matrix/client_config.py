@@ -19,15 +19,20 @@ def build_matrix_client_config(
     max_limit_exceeded: int | None = None,
     max_timeouts: int | None = None,
 ) -> AsyncClientConfig:
-    """Build a client config with MMRelay's E2EE trust policy.
-
-    MMRelay never grants interactive verification trust to peer devices. When
-    mindroom-nio exposes its opt-in rotated-device recovery policy, enable it
-    for encrypted sessions so a peer that legitimately recreates its identity
-    under the same device ID does not remain pinned to stale Olm keys.
-
-    Legacy matrix-nio providers do not expose the fork-specific field, so they
-    retain their default behavior.
+    """
+    Build a Matrix client configuration with MMRelay's E2EE trust policy.
+    
+    Parameters:
+        e2ee_enabled (bool): Whether to enable end-to-end encryption.
+        max_limit_exceeded (int | None): Maximum limit-exceeded retries.
+        max_timeouts (int | None): Maximum timeout retries; must be provided
+            together with max_limit_exceeded.
+    
+    Returns:
+        AsyncClientConfig: The configured Matrix client settings.
+    
+    Raises:
+        ValueError: If only one retry limit is provided.
     """
     if (max_limit_exceeded is None) != (max_timeouts is None):
         raise ValueError("Matrix retry limits must be provided together")

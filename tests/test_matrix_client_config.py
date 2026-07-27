@@ -28,6 +28,15 @@ class _MutableNonDataclassConfig:
         max_limit_exceeded: int = 10,
         max_timeouts: int = 3,
     ) -> None:
+        """
+        Initialize Matrix client configuration settings.
+        
+        Parameters:
+        	store_sync_tokens (bool): Whether to persist synchronization tokens.
+        	encryption_enabled (bool): Whether end-to-end encryption is enabled.
+        	max_limit_exceeded (int): Maximum number of rate-limit responses to retry.
+        	max_timeouts (int): Maximum number of timeout responses to retry.
+        """
         self.store_sync_tokens = store_sync_tokens
         self.encryption_enabled = encryption_enabled
         self.max_limit_exceeded = max_limit_exceeded
