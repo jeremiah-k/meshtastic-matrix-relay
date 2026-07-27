@@ -729,6 +729,40 @@ def is_e2ee_enabled(config: dict[str, Any] | None) -> bool:
     return encryption_enabled or e2ee_enabled
 
 
+def _iter_readable_config_mappings(args: Any = None) -> Iterable[dict[str, Any]]:
+    """Yield readable configuration mappings without logging or global mutation."""
+    try:
+        config_paths = get_config_paths(args)
+    except (AttributeError, OSError, TypeError, ValueError):
+        return
+
+    for path in config_paths:
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as config_file:
+                loaded = yaml.load(config_file, Loader=SafeLoader)
+        except (OSError, TypeError, ValueError, yaml.YAMLError):
+            continue
+
+        yield loaded if isinstance(loaded, dict) else {}
+
+
+def load_config_silently(args: Any = None) -> dict[str, Any]:
+    """Load path-related configuration without emitting setup diagnostics.
+
+    This best-effort loader is intended for commands such as ``mmrelay auth
+    login`` that need the selected config mapping before normal application
+    logging is configured. It does not mutate module-level config state, emit
+    legacy-path warnings, or log unreadable/malformed candidates.
+
+    Returns an empty mapping when no readable mapping is available.
+    """
+    for mapping in _iter_readable_config_mappings(args):
+        return mapping
+    return {}
+
+
 def check_e2ee_enabled_silently(args: Any = None) -> bool:
     """
     Check whether End-to-End Encryption (E2EE) is enabled by inspecting the first readable configuration file.
@@ -745,21 +779,11 @@ def check_e2ee_enabled_silently(args: Any = None) -> bool:
     if sys.platform == "win32":
         return False
 
-    # Get config paths without logging
-    config_paths = get_config_paths(args)
-
-    # Try each config path silently
-    for path in config_paths:
-        if os.path.isfile(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    config = yaml.load(f, Loader=SafeLoader)
-                if config and is_e2ee_enabled(config):
-                    return True
-            except (yaml.YAMLError, PermissionError, OSError):
-                continue  # Silently try the next path
-    # No valid config found or E2EE not enabled in any config
-    return False
+    return any(
+        is_e2ee_enabled(mapping)
+        for mapping in _iter_readable_config_mappings(args)
+        if mapping
+    )
 
 
 def _normalize_optional_dict_sections(
