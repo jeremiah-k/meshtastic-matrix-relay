@@ -43,7 +43,12 @@ from mmrelay.constants.app import CREDENTIALS_FILENAME
 from mmrelay.constants.cli import EXIT_CODE_ERROR, EXIT_CODE_SUCCESS
 from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 from mmrelay.matrix.compat import MatrixLibraryCapabilities
-from tests.constants import TEST_CONFIG_PATH, TEST_HOME_CONFIG_PATH, TEST_SERIAL_PORT
+from tests.constants import (
+    TEST_CONFIG_PATH,
+    TEST_HOME_CONFIG_PATH,
+    TEST_LOGIN_CREDENTIAL,
+    TEST_SERIAL_PORT,
+)
 
 # sys.path setup handled by conftest.py
 
@@ -1403,6 +1408,76 @@ class TestAuthLogout(unittest.TestCase):
             mock_print.assert_any_call("• Invalidate Matrix access token")
 
 
+def test_handle_auth_login_passes_explicit_config() -> None:
+    """Pass the selected config mapping into Matrix login path resolution."""
+    args = SimpleNamespace(
+        config="/custom/config.yaml",
+        homeserver="https://matrix.example",
+        username="@bot:matrix.example",
+        password=TEST_LOGIN_CREDENTIAL,
+    )
+    config_data = {"matrix": {"e2ee": {"enabled": True}}}
+
+    with (
+        patch("builtins.print") as mock_print,
+        patch("mmrelay.cli.ensure_directories") as mock_ensure_dirs,
+        patch(
+            "mmrelay.config.load_config_silently", return_value=config_data
+        ) as mock_load_config,
+        patch(
+            "mmrelay.matrix_utils.login_matrix_bot", return_value=True
+        ) as mock_login,
+    ):
+        result = handle_auth_login(args)
+
+    assert result == EXIT_CODE_SUCCESS
+    mock_ensure_dirs.assert_called_once_with(create_missing=True)
+    mock_load_config.assert_called_once_with(args)
+    mock_login.assert_called_once_with(
+        homeserver="https://matrix.example",
+        username="@bot:matrix.example",
+        password=TEST_LOGIN_CREDENTIAL,
+        logout_others=False,
+        config_for_paths=config_data,
+    )
+    mock_print.assert_not_called()
+
+
+def test_handle_auth_login_continues_when_config_load_fails() -> None:
+    """Continue login with default paths after an expected silent-load failure."""
+    args = SimpleNamespace(
+        config="/custom/config.yaml",
+        homeserver="https://matrix.example",
+        username="@bot:matrix.example",
+        password=TEST_LOGIN_CREDENTIAL,
+    )
+
+    with (
+        patch("builtins.print") as mock_print,
+        patch("mmrelay.cli.ensure_directories") as mock_ensure_dirs,
+        patch(
+            "mmrelay.config.load_config_silently",
+            side_effect=ValueError("Config load failed"),
+        ) as mock_load_config,
+        patch(
+            "mmrelay.matrix_utils.login_matrix_bot", return_value=True
+        ) as mock_login,
+    ):
+        result = handle_auth_login(args)
+
+    assert result == EXIT_CODE_SUCCESS
+    mock_ensure_dirs.assert_called_once_with(create_missing=True)
+    mock_load_config.assert_called_once_with(args)
+    mock_login.assert_called_once_with(
+        homeserver="https://matrix.example",
+        username="@bot:matrix.example",
+        password=TEST_LOGIN_CREDENTIAL,
+        logout_others=False,
+        config_for_paths=None,
+    )
+    mock_print.assert_not_called()
+
+
 class TestAuthLogin(unittest.TestCase):
     """Test cases for handle_auth_login function."""
 
@@ -1503,35 +1578,6 @@ class TestAuthLogin(unittest.TestCase):
             config_for_paths={},
         )
         # Should NOT print header in non-interactive mode
-        mock_print.assert_not_called()
-
-    @patch("mmrelay.matrix_utils.login_matrix_bot")
-    @patch("mmrelay.cli.ensure_directories")
-    @patch("builtins.print")
-    def test_handle_auth_login_propagates_explicit_config(
-        self, mock_print, mock_ensure_dirs, mock_login
-    ):
-        """Pass the resolved CLI config into login for E2EE/path decisions."""
-        config_data = {"matrix": {"e2ee": {"enabled": True}}}
-        self.mock_load_config_silently.return_value = config_data
-        self.mock_args.config = "/custom/config.yaml"
-        self.mock_args.homeserver = "https://matrix.example"
-        self.mock_args.username = "@bot:matrix.example"
-        self.mock_args.password = "secret123"
-        mock_login.return_value = True
-
-        result = handle_auth_login(self.mock_args)
-
-        self.assertEqual(result, EXIT_CODE_SUCCESS)
-        mock_ensure_dirs.assert_called_once_with(create_missing=True)
-        self.mock_load_config_silently.assert_called_once_with(self.mock_args)
-        mock_login.assert_called_once_with(
-            homeserver="https://matrix.example",
-            username="@bot:matrix.example",
-            password="secret123",
-            logout_others=False,
-            config_for_paths=config_data,
-        )
         mock_print.assert_not_called()
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")

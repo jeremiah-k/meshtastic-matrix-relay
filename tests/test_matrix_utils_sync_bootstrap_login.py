@@ -12,11 +12,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from mmrelay.matrix_utils import login_matrix_bot
+from tests.constants import TEST_LOGIN_CREDENTIAL
 
 TEST_CREDS_PATH = str(Path(tempfile.gettempdir()) / "creds.json")
 TEST_E2EE_STORE_PATH = str(Path(tempfile.gettempdir()) / "e2ee_store")
-TEST_LOGIN_CREDENTIAL = "password"
-
 
 def _make_login_bot_mocks():
     mock_temp = MagicMock()
@@ -697,8 +696,10 @@ async def test_login_matrix_bot_e2ee_store_path_creation(
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
 async def test_login_matrix_bot_closes_client_when_cross_signing_is_cancelled(
-    mock_logger, mock_async_client, mock_ssl
-):
+    mock_logger: MagicMock,
+    mock_async_client: MagicMock,
+    mock_ssl: MagicMock,
+) -> None:
     del mock_logger, mock_ssl
     temp_client = _make_login_bot_mocks()
     mock_client, _ = _make_logged_in_client()

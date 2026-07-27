@@ -11,7 +11,7 @@ import sys
 import threading
 import warnings
 from collections.abc import Mapping as MappingABC
-from typing import TYPE_CHECKING, Any, Iterable, Mapping, cast
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, Protocol, cast
 
 import yaml
 from yaml.loader import SafeLoader
@@ -67,6 +67,12 @@ from mmrelay.paths import (
 
 if TYPE_CHECKING:
     import logging
+
+
+class _ConfigPathArgs(Protocol):
+    """Parsed CLI argument surface used for configuration path selection."""
+
+    config: str | None
 
 
 class CredentialsPathError(OSError):
@@ -236,7 +242,7 @@ def get_app_path() -> str:
         return os.path.dirname(os.path.abspath(__file__))
 
 
-def get_config_paths(args: Any = None) -> list[str]:
+def get_config_paths(args: _ConfigPathArgs | None = None) -> list[str]:
     """
     Get a prioritized list of candidate configuration file paths for the application.
 
@@ -244,7 +250,7 @@ def get_config_paths(args: Any = None) -> list[str]:
     creation should be handled by ensure_directories() in mmrelay.paths.
 
     Parameters:
-        args (Any): Parsed command-line arguments; if present, `args.config` is used as an explicit config candidate.
+        args: Parsed command-line arguments; if present, `args.config` is used as an explicit config candidate.
 
     Returns:
         list[str]: Absolute paths to candidate configuration files, ordered by priority.
@@ -729,7 +735,9 @@ def is_e2ee_enabled(config: dict[str, Any] | None) -> bool:
     return encryption_enabled or e2ee_enabled
 
 
-def _iter_readable_config_mappings(args: Any = None) -> Iterable[dict[str, Any]]:
+def _iter_readable_config_mappings(
+    args: _ConfigPathArgs | None = None,
+) -> Iterable[dict[str, Any]]:
     """Yield readable configuration mappings without logging or global mutation."""
     try:
         config_paths = get_config_paths(args)
@@ -748,7 +756,7 @@ def _iter_readable_config_mappings(args: Any = None) -> Iterable[dict[str, Any]]
         yield loaded if isinstance(loaded, dict) else {}
 
 
-def load_config_silently(args: Any = None) -> dict[str, Any]:
+def load_config_silently(args: _ConfigPathArgs | None = None) -> dict[str, Any]:
     """Load path-related configuration without emitting setup diagnostics.
 
     This best-effort loader is intended for commands such as ``mmrelay auth
@@ -764,7 +772,7 @@ def load_config_silently(args: Any = None) -> dict[str, Any]:
     return {}
 
 
-def check_e2ee_enabled_silently(args: Any = None) -> bool:
+def check_e2ee_enabled_silently(args: _ConfigPathArgs | None = None) -> bool:
     """
     Check whether End-to-End Encryption (E2EE) is enabled by inspecting the first readable configuration file.
 
@@ -1374,7 +1382,7 @@ def set_config(module: Any, passed_config: dict[str, Any]) -> dict[str, Any]:
 
 def load_config(
     config_file: str | None = None,
-    args: Any = None,
+    args: _ConfigPathArgs | None = None,
     config_paths: list[str] | None = None,
 ) -> dict[str, Any]:
     """

@@ -125,6 +125,16 @@ class _BrokenGuardedCrossSigningClient(_GuardedCrossSigningClient):
         raise RuntimeError("keys query unavailable")
 
 
+class _HangingGuardedCrossSigningClient(_GuardedCrossSigningClient):
+    async def send(
+        self, method: str, path: str, data: str, headers: dict[str, str]
+    ) -> _QueryResponse:
+        del method, path, data, headers
+        self.query_calls += 1
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("result", "expected_log_fragment"),
@@ -245,7 +255,7 @@ async def test_cross_signing_bootstrap_timeout_is_nonfatal(
     monkeypatch.setattr(e2ee_identity, "logger", logger)
     monkeypatch.setattr(
         e2ee_identity,
-        "_CROSS_SIGNING_BOOTSTRAP_TIMEOUT_SECONDS",
+        "_CROSS_SIGNING_OPERATION_TIMEOUT_SECONDS",
         0.001,
     )
 
@@ -256,6 +266,30 @@ async def test_cross_signing_bootstrap_timeout_is_nonfatal(
     assert result is None
     assert any(
         "Timed out" in str(call.args[0]) for call in logger.warning.call_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_server_identity_precheck_timeout_is_nonfatal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logger = MagicMock()
+    monkeypatch.setattr(e2ee_identity, "logger", logger)
+    monkeypatch.setattr(
+        e2ee_identity,
+        "_CROSS_SIGNING_OPERATION_TIMEOUT_SECONDS",
+        0.001,
+    )
+    client = _HangingGuardedCrossSigningClient(has_master=False)
+
+    result = await matrix_utils._ensure_own_device_cross_signed(client)
+
+    assert result is None
+    assert client.query_calls == 1
+    assert client.passwords == []
+    assert any(
+        "confirming Matrix cross-signing state" in str(call.args[0])
+        for call in logger.warning.call_args_list
     )
 
 
