@@ -12,7 +12,7 @@
 
 - **Imports**: Use isort with black profile (already configured)
 - **Formatting**: Black formatter with 88-character line length
-- **Types**: Use type hints consistently (Python 3.10+)
+- **Types**: Use type hints consistently (Python 3.11+)
 - **Naming**: snake_case for functions/variables, PascalCase for classes
 - **Error handling**: Use specific exceptions, avoid bare except clauses
 - **Logging**: Use structured logging via log_utils.get_logger()
