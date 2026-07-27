@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -114,3 +115,24 @@ def test_retry_limits_must_be_provided_together() -> None:
             e2ee_enabled=True,
             max_limit_exceeded=0,
         )
+
+
+def test_immutable_provider_replace_failure_is_nonfatal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logger = MagicMock()
+
+    def fail_replace(*_args: object, **_kwargs: object) -> object:
+        raise TypeError("unsupported")
+
+    monkeypatch.setattr(client_config, "AsyncClientConfig", _MindroomConfig)
+    monkeypatch.setattr(client_config, "replace", fail_replace)
+    monkeypatch.setattr(client_config, "logger", logger)
+
+    config = matrix_utils.build_matrix_client_config(e2ee_enabled=True)
+
+    assert config.replace_rotated_device_keys is False
+    logger.warning.assert_called_once_with(
+        "Matrix provider exposes rotated device-key recovery but its "
+        "client configuration could not be updated"
+    )

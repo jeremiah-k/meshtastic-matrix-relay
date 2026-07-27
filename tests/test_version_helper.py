@@ -79,3 +79,18 @@ def test_version_from_pyproject_returns_none_for_malformed_toml(tmp_path) -> Non
     )
     with patch.object(version_helper, "_find_pyproject_toml", return_value=pyproject):
         assert version_helper._version_from_pyproject() is None
+
+
+def test_version_from_pyproject_returns_none_when_file_is_not_found() -> None:
+    with patch.object(version_helper, "_find_pyproject_toml", return_value=None):
+        assert version_helper._version_from_pyproject() is None
+
+
+def test_version_from_pyproject_returns_none_for_non_mapping_project(
+    tmp_path,
+) -> None:
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text('project = "not-a-table"\n', encoding="utf-8")
+
+    with patch.object(version_helper, "_find_pyproject_toml", return_value=pyproject):
+        assert version_helper._version_from_pyproject() is None

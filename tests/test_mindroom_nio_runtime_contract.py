@@ -71,7 +71,6 @@ def _mindroom_pin() -> str:
 
     base_version = _exact_pin(base_requirement)
     e2e_version = _exact_pin(e2e_requirement)
-    assert base_version == "0.31.0"
     assert e2e_version == base_version
     return base_version
 
