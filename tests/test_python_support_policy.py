@@ -75,7 +75,9 @@ def _matrix_python_versions(job: Mapping[str, object]) -> tuple[tuple[int, int],
     versions: list[tuple[int, int]] = []
     for raw_version in raw_versions:
         major, separator, minor = str(raw_version).partition(".")
-        assert separator and major.isdigit() and minor.isdigit(), raw_version
+        assert separator, raw_version
+        assert major.isdigit(), raw_version
+        assert minor.isdigit(), raw_version
         versions.append((int(major), int(minor)))
     assert len(versions) == len(set(versions)), "Duplicate Python versions in CI matrix"
     return tuple(sorted(versions))
@@ -152,6 +154,11 @@ def test_supported_ci_matrix_matches_declared_versions_and_runs_e2ee() -> None:
     job = _test_job()
 
     assert _matrix_python_versions(job) == _python_classifiers(project)
+
+    checkout_step = _step_using(job, "actions/checkout")
+    checkout_options = checkout_step.get("with")
+    assert isinstance(checkout_options, dict)
+    assert checkout_options.get("persist-credentials") is False
 
     setup_step = _step_using(job, "actions/setup-python")
     setup_options = setup_step.get("with")
