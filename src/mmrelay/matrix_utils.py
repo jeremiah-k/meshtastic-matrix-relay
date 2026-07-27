@@ -364,6 +364,9 @@ from mmrelay.matrix.credentials import (
     _resolve_and_load_credentials,
     _resolve_credentials_save_path,
 )
+from mmrelay.matrix.e2ee_identity import (
+    _ensure_own_device_cross_signed,
+)
 from mmrelay.matrix.auth import (
     _close_matrix_client_after_failure,
     _configure_e2ee,
