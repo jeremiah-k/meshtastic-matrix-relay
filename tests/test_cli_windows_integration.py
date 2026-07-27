@@ -286,16 +286,23 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
         # Following the testing guide pattern for async functions called via asyncio.run()
         mock_login.return_value = True
 
-        handle_auth_login(self.mock_args)
+        result = handle_auth_login(self.mock_args)
 
-        # Should still show standard banner (fallback behavior)
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
+        mock_load_config_silently.assert_called_once_with(self.mock_args)
+        mock_login.assert_called_once_with(
+            homeserver=None,
+            username=None,
+            password=None,
+            logout_others=False,
+            config_for_paths=None,
+        )
         printed_messages = [
             call.args[0] for call in mock_print.call_args_list if call.args
         ]
-        banner_shown = any(
-            "Matrix Bot Authentication" in str(msg) for msg in printed_messages
+        self.assertTrue(
+            any("Matrix Bot Authentication" in str(msg) for msg in printed_messages)
         )
-        self.assertTrue(banner_shown)
 
 
 class TestCLIE2EEValidation(unittest.TestCase):

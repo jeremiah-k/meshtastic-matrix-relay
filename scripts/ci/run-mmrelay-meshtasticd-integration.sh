@@ -817,26 +817,6 @@ wait_for_log_pattern_since() {
 	return 1
 }
 
-# load_json_value reads MATRIX_RUNTIME_JSON and echoes the value of the given top-level JSON key.
-# key is the top-level key to extract; the function prints the value to stdout and exits with status 1 if the key is not present.
-load_json_value() {
-	local key=$1
-	"${PYTHON_BIN}" - "${MATRIX_RUNTIME_JSON}" "${key}" <<'PY'
-import json
-import sys
-
-runtime_file = sys.argv[1]
-key = sys.argv[2]
-with open(runtime_file, encoding="utf-8") as f:
-    data = json.load(f)
-
-value = data.get(key)
-if value is None:
-    raise SystemExit(f"Missing key {key!r} in {runtime_file}")
-print(value)
-PY
-}
-
 # load_json_file_value reads one top-level value from a JSON file.
 load_json_file_value() {
 	local json_path=$1
@@ -853,6 +833,12 @@ if value is None:
     raise SystemExit(f"Missing key {key!r} in {json_path}")
 print(value)
 PY
+}
+
+# load_json_value reads one top-level value from MATRIX_RUNTIME_JSON.
+load_json_value() {
+	local key=$1
+	load_json_file_value "${MATRIX_RUNTIME_JSON}" "${key}"
 }
 
 # json_extract extracts the JSON value specified by a dot-separated key path from the given JSON payload and echoes it; exits with status 1 if the path is missing or the value is null.
