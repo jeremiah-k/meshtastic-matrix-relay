@@ -18,6 +18,7 @@ from mmrelay.config import (
     _convert_env_float,
     _convert_env_int,
     apply_env_config_overrides,
+    check_e2ee_enabled_silently,
     get_app_path,
     get_base_dir,
     get_config_paths,
@@ -28,6 +29,7 @@ from mmrelay.config import (
     get_plugin_data_dir,
     is_e2ee_enabled,
     load_config,
+    load_config_silently,
     load_credentials,
     load_database_config_from_env,
     load_logging_config_from_env,
@@ -56,6 +58,55 @@ class TestConfig(unittest.TestCase):
         """
         mmrelay.config.relay_config = {}
         mmrelay.config.config_path = None
+
+    def test_load_config_silently_reads_config_without_logging(self):
+        """The auth-path loader should avoid warnings and global config mutation."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = os.path.join(temp_dir, "config.yaml")
+            with open(config_path, "w", encoding="utf-8") as config_file:
+                config_file.write(
+                    "matrix:\n"
+                    "  credentials_path: /tmp/credentials.json\n"
+                    "  e2ee:\n"
+                    "    enabled: true\n"
+                )
+            args = MagicMock(config=config_path)
+            logger = MagicMock()
+
+            with patch.object(mmrelay.config, "logger", logger):
+                loaded = load_config_silently(args)
+
+            self.assertEqual(
+                loaded,
+                {
+                    "matrix": {
+                        "credentials_path": "/tmp/credentials.json",
+                        "e2ee": {"enabled": True},
+                    }
+                },
+            )
+            self.assertEqual(mmrelay.config.relay_config, {})
+            self.assertIsNone(mmrelay.config.config_path)
+            logger.warning.assert_not_called()
+            logger.error.assert_not_called()
+            logger.exception.assert_not_called()
+
+    def test_load_config_silently_ignores_malformed_yaml(self):
+        """Malformed setup config should degrade to an empty mapping quietly."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = os.path.join(temp_dir, "config.yaml")
+            with open(config_path, "w", encoding="utf-8") as config_file:
+                config_file.write("matrix: [unterminated\n")
+            args = MagicMock(config=config_path)
+            logger = MagicMock()
+
+            with patch.object(mmrelay.config, "logger", logger):
+                loaded = load_config_silently(args)
+
+            self.assertEqual(loaded, {})
+            logger.warning.assert_not_called()
+            logger.error.assert_not_called()
+            logger.exception.assert_not_called()
 
     def test_get_base_dir_linux(self):
         # Test default base dir on Linux
@@ -1595,6 +1646,28 @@ def _cli_utils_import_blocker(
     if name in ("mmrelay.cli_utils", "cli_utils"):
         raise ImportError
     return _real_import(name, globals, locals, fromlist, level)
+
+
+def test_load_config_silently_handles_path_resolution_errors() -> None:
+    with patch("mmrelay.config.get_config_paths", side_effect=ValueError("bad path")):
+        assert load_config_silently() == {}
+
+
+def test_check_e2ee_enabled_silently_is_disabled_on_windows() -> None:
+    with patch("mmrelay.config.sys.platform", "win32"):
+        assert check_e2ee_enabled_silently() is False
+
+
+def test_silent_config_readers_share_candidate_scanning(tmp_path) -> None:
+    malformed = tmp_path / "malformed.yaml"
+    enabled = tmp_path / "enabled.yaml"
+    malformed.write_text("matrix: [unterminated\n", encoding="utf-8")
+    enabled.write_text("matrix:\n  e2ee:\n    enabled: true\n", encoding="utf-8")
+
+    paths = [str(malformed), str(enabled)]
+    with patch("mmrelay.config.get_config_paths", return_value=paths):
+        assert load_config_silently() == {"matrix": {"e2ee": {"enabled": True}}}
+        assert check_e2ee_enabled_silently() is True
 
 
 if __name__ == "__main__":
