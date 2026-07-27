@@ -15,6 +15,7 @@ from mmrelay.matrix_utils import login_matrix_bot
 
 TEST_CREDS_PATH = str(Path(tempfile.gettempdir()) / "creds.json")
 TEST_E2EE_STORE_PATH = str(Path(tempfile.gettempdir()) / "e2ee_store")
+TEST_PASSWORD = "password"
 
 
 def _make_login_bot_mocks():
@@ -656,6 +657,7 @@ async def test_login_matrix_bot_e2ee_store_path_creation(
 ):
     mock_client, _ = _make_logged_in_client()
     mock_async_client.return_value = mock_client
+    ensure_cross_signed = AsyncMock(return_value="uploaded_and_signed")
 
     with (
         patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
@@ -666,6 +668,10 @@ async def test_login_matrix_bot_e2ee_store_path_creation(
         patch("mmrelay.matrix_utils.save_credentials"),
         patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=True),
         patch(
+            "mmrelay.matrix_utils._ensure_own_device_cross_signed",
+            ensure_cross_signed,
+        ),
+        patch(
             "mmrelay.matrix_utils.get_e2ee_store_dir", return_value=TEST_E2EE_STORE_PATH
         ),
         patch("os.makedirs") as mock_makedirs,
@@ -673,13 +679,17 @@ async def test_login_matrix_bot_e2ee_store_path_creation(
         result = await login_matrix_bot(
             homeserver="https://matrix.org",
             username="@bot:matrix.org",
-            password="password",
+            password=TEST_PASSWORD,
             logout_others=False,
             config_for_paths={},
         )
 
     assert result is True
     mock_makedirs.assert_any_call(TEST_E2EE_STORE_PATH, exist_ok=True)
+    ensure_cross_signed.assert_awaited_once_with(
+        mock_client,
+        password=TEST_PASSWORD,
+    )
 
 
 @pytest.mark.asyncio
