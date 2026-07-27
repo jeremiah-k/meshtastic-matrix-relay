@@ -329,11 +329,13 @@ When the provider does not expose bot cross-signing, or when bootstrap fails,
 MMRelay logs a warning and continues running. Clients that enforce cross-signing
 may withhold encrypted room keys until the identity is successfully established.
 
-The implementation is deliberately bot-scoped:
+The implementation is deliberately limited to the Matrix client identity used by MMRelay:
 
-- the account gets a master key and self-signing key;
-- MMRelay signs only its current device;
-- MMRelay does **not** verify other users or their devices;
+- the configured Matrix bot account gets a Matrix master key and self-signing key;
+- MMRelay signs only that account's current Matrix client device;
+- MMRelay does **not** verify other Matrix users or their devices;
+- it does not sign Meshtastic nodes or link Matrix and Meshtastic identities;
+- no cross-platform identity or verification protocol is added;
 - no emoji/QR verification flow is added;
 - no server-side key backup or secret-storage recovery is added.
 
