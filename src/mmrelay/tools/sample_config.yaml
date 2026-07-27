@@ -24,6 +24,8 @@ matrix:
   #
   e2ee:
     enabled: true
+    # MMRelay attempts to cross-sign only this Matrix bot client device when supported.
+    # This does not sign Meshtastic nodes or link identities across platforms.
 
   # Message prefix customization (Meshtastic -> Matrix direction)
   #prefix_enabled: true # Enable prefixes on messages from mesh (e.g., "[Alice/MyMesh]: message")
