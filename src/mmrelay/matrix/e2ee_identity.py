@@ -18,6 +18,7 @@ logger = get_logger(name="Matrix")
 _CROSS_SIGNING_UPLOADED_AND_SIGNED: Final = "uploaded_and_signed"
 _CROSS_SIGNING_DEVICE_SIGNED: Final = "device_signed"
 _CROSS_SIGNING_ALREADY_SIGNED: Final = "already_signed"
+_CROSS_SIGNING_BOOTSTRAP_TIMEOUT_SECONDS: Final[float] = 120.0
 
 
 class _MatrixHttpResponse(Protocol):
@@ -173,10 +174,24 @@ async def _ensure_own_device_cross_signed(
             )
             return None
 
+    # mindroom-nio applies its configured timeout to each request, but this
+    # bootstrap can make several requests and key upload may retry. Bound the
+    # complete best-effort operation so Matrix startup cannot wait forever.
     try:
-        result = await cast(_EnsureCrossSigning, ensure_method)(password=password)
+        result = await asyncio.wait_for(
+            cast(_EnsureCrossSigning, ensure_method)(password=password),
+            timeout=_CROSS_SIGNING_BOOTSTRAP_TIMEOUT_SECONDS,
+        )
     except asyncio.CancelledError:
         raise
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Timed out after %.0f seconds while self-verifying Matrix device %s. "
+            "MMRelay startup will continue; run 'mmrelay auth login' to retry.",
+            _CROSS_SIGNING_BOOTSTRAP_TIMEOUT_SECONDS,
+            _client_label(client, "device_id"),
+        )
+        return None
     except Exception as exc:
         logger.warning(
             "Could not self-verify Matrix device %s: %s. MMRelay startup will "

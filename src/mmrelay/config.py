@@ -759,7 +759,8 @@ def load_config_silently(args: Any = None) -> dict[str, Any]:
     Returns an empty mapping when no readable mapping is available.
     """
     for mapping in _iter_readable_config_mappings(args):
-        return mapping
+        if mapping:
+            return mapping
     return {}
 
 
