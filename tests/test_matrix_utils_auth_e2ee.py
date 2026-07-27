@@ -458,8 +458,6 @@ async def test_on_decryption_failure_timeout_on_to_device():
 
 async def test_connect_matrix_e2ee_windows_disables(monkeypatch):
     """E2EE should be disabled on Windows platforms."""
-    import mmrelay.matrix_utils as mx
-
     mock_client = MagicMock()
     mock_client.rooms = {}
     mock_client.sync = AsyncMock(return_value=SimpleNamespace())
@@ -473,7 +471,10 @@ async def test_connect_matrix_e2ee_windows_disables(monkeypatch):
         "mmrelay.config.is_e2ee_enabled", lambda _cfg: True, raising=False
     )
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
-    monkeypatch.setattr("mmrelay.matrix_utils.AsyncClientConfig", MagicMock())
+    config_factory = MagicMock()
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.build_matrix_client_config", config_factory
+    )
     monkeypatch.setattr(
         "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
     )
@@ -511,8 +512,11 @@ async def test_connect_matrix_e2ee_windows_disables(monkeypatch):
     ):
         await connect_matrix(config)
 
-    _, kwargs = mx.AsyncClientConfig.call_args  # type: ignore[attr-defined]
-    assert kwargs["encryption_enabled"] is False
+    config_factory.assert_called_once_with(
+        e2ee_enabled=False,
+        max_limit_exceeded=0,
+        max_timeouts=0,
+    )
 
 
 async def test_connect_matrix_e2ee_store_path_from_config(monkeypatch):

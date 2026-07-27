@@ -185,11 +185,10 @@ def _initialize_matrix_client(
     Returns:
         AsyncClient: A configured AsyncClient instance ready for login and synchronization.
     """
-    client_config = facade.AsyncClientConfig(
+    client_config = facade.build_matrix_client_config(
+        e2ee_enabled=e2ee_enabled,
         max_limit_exceeded=0,
         max_timeouts=0,
-        store_sync_tokens=True,
-        encryption_enabled=e2ee_enabled,
     )
 
     if device_id:

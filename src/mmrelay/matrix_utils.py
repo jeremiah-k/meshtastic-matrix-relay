@@ -371,6 +371,7 @@ from mmrelay.matrix.auth import (
     _maybe_upload_e2ee_keys,
     _perform_matrix_login,
 )
+from mmrelay.matrix.client_config import build_matrix_client_config
 from mmrelay.matrix.sync_bootstrap import (
     _perform_initial_sync,
     _post_sync_setup,

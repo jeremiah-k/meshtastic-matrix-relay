@@ -8,36 +8,71 @@ import textwrap
 import tomllib
 from pathlib import Path
 
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
 
 
+def _single_mindroom_requirement(
+    dependencies: list[str], *, expected_extras: frozenset[str]
+) -> Requirement:
+    """
+    Find the single `mindroom-nio` requirement matching the requested extras.
+
+    Parameters:
+        dependencies (list[str]): Dependency requirement strings to inspect.
+        expected_extras (frozenset[str]): Extras that the matching requirement must specify.
+
+    Returns:
+        Requirement: The matching `mindroom-nio` requirement.
+    """
+    matches: list[Requirement] = []
+    for dependency in dependencies:
+        requirement = Requirement(dependency)
+        if (
+            canonicalize_name(requirement.name) == "mindroom-nio"
+            and frozenset(requirement.extras) == expected_extras
+        ):
+            matches.append(requirement)
+
+    assert len(matches) == 1, matches
+    return matches[0]
+
+
+def _exact_pin(requirement: Requirement) -> str:
+    """Return an exact version pin and reject ranges or environment markers."""
+    specifiers = list(requirement.specifier)
+    assert requirement.marker is None
+    assert len(specifiers) == 1, specifiers
+    specifier = specifiers[0]
+    assert specifier.operator == "=="
+    return specifier.version
+
+
 def _mindroom_pin() -> str:
-    """Return the single version used by the base and E2EE dependency sets."""
+    """
+    Determine the pinned version shared by the base and E2EE `mindroom-nio` dependencies.
+
+    Returns:
+        str: The shared pinned `mindroom-nio` version.
+    """
     with PYPROJECT.open("rb") as handle:
         project = tomllib.load(handle)["project"]
 
-    dependencies = project["dependencies"]
-    base_matches = [
-        dependency
-        for dependency in dependencies
-        if isinstance(dependency, str) and dependency.startswith("mindroom-nio==")
-    ]
-    assert base_matches == ["mindroom-nio==0.31.0"]
+    base_requirement = _single_mindroom_requirement(
+        project["dependencies"], expected_extras=frozenset()
+    )
+    e2e_requirement = _single_mindroom_requirement(
+        project["optional-dependencies"]["e2e"],
+        expected_extras=frozenset({"e2e"}),
+    )
 
-    optional_dependencies = project["optional-dependencies"]
-    e2e_dependencies = optional_dependencies["e2e"]
-    e2e_matches = [
-        dependency
-        for dependency in e2e_dependencies
-        if isinstance(dependency, str)
-        and dependency.startswith("mindroom-nio[e2e]==")
-    ]
-    assert e2e_matches == ["mindroom-nio[e2e]==0.31.0"]
-
-    base_version = base_matches[0].partition("==")[2]
-    e2e_version = e2e_matches[0].partition("==")[2]
-    assert base_version == e2e_version
+    base_version = _exact_pin(base_requirement)
+    e2e_version = _exact_pin(e2e_requirement)
+    assert base_version == "0.31.0"
+    assert e2e_version == base_version
     return base_version
 
 
@@ -45,8 +80,7 @@ def test_installed_mindroom_nio_exposes_mmrelay_e2ee_contract() -> None:
     """Exercise the real provider outside MMRelay's in-process dependency mocks."""
 
     expected_version = _mindroom_pin()
-    script = textwrap.dedent(
-        f"""
+    script = textwrap.dedent(f"""
         from importlib import metadata
         from inspect import Parameter, signature
 
@@ -113,14 +147,14 @@ def test_installed_mindroom_nio_exposes_mmrelay_e2ee_contract() -> None:
         )
         signature_value = vodozemac.Ed25519Signature.from_base64(signature_b64)
         public_key.verify_signature(message, signature_value)
-        """
-    )
+        """)
 
     result = subprocess.run(
         [sys.executable, "-I", "-c", script],
         check=False,
         capture_output=True,
         text=True,
+        timeout=30,
     )
 
     assert result.returncode == 0, result.stderr or result.stdout
