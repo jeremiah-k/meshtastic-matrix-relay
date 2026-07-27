@@ -316,8 +316,8 @@ Keep this file secure; it contains Matrix session credentials.
 
 ## Device verification status
 
-With mindroom-nio 0.26.0 or newer and E2EE enabled, MMRelay makes a
-best-effort attempt to create or reuse a minimal cross-signing identity for the
+With MMRelay's supported mindroom-nio provider and E2EE enabled, MMRelay
+makes a best-effort attempt to create or reuse a minimal cross-signing identity for the
 bot account and sign its own device. A successful bootstrap publishes the
 device → self-signing → master signature chain expected by signed-device
 clients. It is intended to remove warnings such as **"This device hasn't
