@@ -21,16 +21,16 @@ def build_matrix_client_config(
 ) -> AsyncClientConfig:
     """
     Build a Matrix client configuration with MMRelay's E2EE trust policy.
-    
+
     Parameters:
         e2ee_enabled (bool): Whether to enable end-to-end encryption.
         max_limit_exceeded (int | None): Maximum limit-exceeded retries.
         max_timeouts (int | None): Maximum timeout retries; must be provided
             together with max_limit_exceeded.
-    
+
     Returns:
         AsyncClientConfig: The configured Matrix client settings.
-    
+
     Raises:
         ValueError: If only one retry limit is provided.
     """
@@ -52,7 +52,9 @@ def build_matrix_client_config(
 
     if e2ee_enabled and hasattr(config, "replace_rotated_device_keys"):
         try:
-            setattr(config, "replace_rotated_device_keys", True)
+            # pyright cannot see that the dataclass attribute is read-only;
+            # the defensive try/except preserves PC's TOFU-compat pattern.
+            config.replace_rotated_device_keys = True  # type: ignore[reportAttributeAccessIssue]
         except (AttributeError, TypeError):
             # Preserve compatibility with immutable dataclass-style providers
             # without using dataclass internals as the capability check.

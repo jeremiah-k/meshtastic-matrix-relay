@@ -20,13 +20,13 @@ def _single_mindroom_requirement(
 ) -> Requirement:
     """
     Find the single `mindroom-nio` requirement matching the requested extras.
-    
+
     Parameters:
-    	dependencies (list[str]): Dependency requirement strings to inspect.
-    	expected_extras (frozenset[str]): Extras that the matching requirement must specify.
-    
+        dependencies (list[str]): Dependency requirement strings to inspect.
+        expected_extras (frozenset[str]): Extras that the matching requirement must specify.
+
     Returns:
-    	Requirement: The matching `mindroom-nio` requirement.
+        Requirement: The matching `mindroom-nio` requirement.
     """
     matches: list[Requirement] = []
     for dependency in dependencies:
@@ -54,9 +54,9 @@ def _exact_pin(requirement: Requirement) -> str:
 def _mindroom_pin() -> str:
     """
     Determine the pinned version shared by the base and E2EE `mindroom-nio` dependencies.
-    
+
     Returns:
-    	str: The shared pinned `mindroom-nio` version.
+        str: The shared pinned `mindroom-nio` version.
     """
     with PYPROJECT.open("rb") as handle:
         project = tomllib.load(handle)["project"]
@@ -80,8 +80,7 @@ def test_installed_mindroom_nio_exposes_mmrelay_e2ee_contract() -> None:
     """Exercise the real provider outside MMRelay's in-process dependency mocks."""
 
     expected_version = _mindroom_pin()
-    script = textwrap.dedent(
-        f"""
+    script = textwrap.dedent(f"""
         from importlib import metadata
         from inspect import Parameter, signature
 
@@ -148,8 +147,7 @@ def test_installed_mindroom_nio_exposes_mmrelay_e2ee_contract() -> None:
         )
         signature_value = vodozemac.Ed25519Signature.from_base64(signature_b64)
         public_key.verify_signature(message, signature_value)
-        """
-    )
+        """)
 
     result = subprocess.run(
         [sys.executable, "-I", "-c", script],
