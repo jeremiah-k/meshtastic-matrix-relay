@@ -783,14 +783,19 @@ class TestReconnectCancellation:
 class TestConnectionLostHandlerClearingStaleBleFuture:
     """Test connection lost handler clearing stale BLE future."""
 
-    def test_stale_ble_executor_is_not_replaced_with_non_daemon_pool(self):
+    def test_stale_ble_executor_is_not_replaced_with_non_daemon_pool(self, monkeypatch):
         from mmrelay.meshtastic.events import _clear_stale_ble_future_for_reconnect
 
         old_executor = MagicMock()
-        mu._ble_executor = old_executor
-        mu._ble_future = MagicMock()
-        mu._ble_future.done.return_value = False
-        mu._ble_future_address = "AA:BB:CC:DD:EE:FF"
+        pending_future = MagicMock()
+        pending_future.done.return_value = False
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        monkeypatch.setattr(mu, "_ble_executor", old_executor)
+        monkeypatch.setattr(mu, "_ble_future", pending_future)
+        monkeypatch.setattr(mu, "_ble_future_address", ble_address)
+        monkeypatch.setattr(mu, "_ble_future_started_at", 123.0)
+        monkeypatch.setattr(mu, "_ble_future_timeout_secs", 30.0)
+        monkeypatch.setattr(mu, "_ble_timeout_counts", {ble_address: 2})
 
         _future, stale_executor, _address = _clear_stale_ble_future_for_reconnect(
             "test"
@@ -798,6 +803,11 @@ class TestConnectionLostHandlerClearingStaleBleFuture:
 
         assert stale_executor is old_executor
         assert mu._ble_executor is None
+        assert mu._ble_future is None
+        assert mu._ble_future_address is None
+        assert mu._ble_future_started_at is None
+        assert mu._ble_future_timeout_secs is None
+        assert ble_address not in mu._ble_timeout_counts
 
     def test_on_lost_meshtastic_connection_clears_ble_future_globals(self):
         """Test that _ble_future, _ble_future_address, _ble_future_started_at, _ble_future_timeout_secs are cleared."""
