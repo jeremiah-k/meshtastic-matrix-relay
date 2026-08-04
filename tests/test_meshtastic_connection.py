@@ -638,9 +638,7 @@ class TestConnectMeshtasticTimeoutBranches:
                 return None
 
         class ImmediateExecutor:
-            def submit(
-                self, fn: Callable[..., Any], /, *args: Any
-            ) -> Future[Any]:
+            def submit(self, fn: Callable[..., Any], /, *args: Any) -> Future[Any]:
                 future: Future[Any] = Future()
                 try:
                     future.set_result(fn(*args))
