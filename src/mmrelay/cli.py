@@ -2292,12 +2292,18 @@ def handle_auth_login(args: argparse.Namespace) -> int:
         return 1
     else:
         if result:
+            from mmrelay.config import get_explicit_credentials_path
             from mmrelay.paths import get_credentials_path
 
-            creds_path = get_credentials_path()
+            explicit_credentials_path = get_explicit_credentials_path(config_for_paths)
+            creds_path = (
+                os.path.expanduser(explicit_credentials_path)
+                if explicit_credentials_path
+                else str(get_credentials_path())
+            )
             # Keep non-interactive output quiet for automation and existing CLI behavior.
             if len(provided_params) == 0:
-                if creds_path.exists():
+                if os.path.exists(creds_path):
                     print(f"✅ credentials.json saved: {creds_path}")
                 else:
                     print(
