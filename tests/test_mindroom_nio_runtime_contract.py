@@ -128,6 +128,14 @@ def test_installed_mindroom_nio_exposes_mmrelay_e2ee_contract() -> None:
         assert config.encryption_enabled is True
         assert config.store_sync_tokens is True
         assert config.replace_rotated_device_keys is True
+        assert (
+            config.backfill_limited_timelines
+            is {MINDROOM_BACKFILL_LIMITED_TIMELINES_DEFAULT!r}
+        )
+        assert (
+            config.backfill_persist_recovery
+            is {MINDROOM_BACKFILL_PERSIST_RECOVERY_DEFAULT!r}
+        )
 
         ensure_parameters = signature(AsyncClient.ensure_cross_signing).parameters
         password = ensure_parameters["password"]
