@@ -415,7 +415,8 @@ def _configure_logger(
                 os.makedirs(log_dir, exist_ok=True)
             except OSError as e:
                 if logger.name == APP_DISPLAY_NAME:
-                    log_file_path = None
+                    with _shared_file_handler_lock:
+                        log_file_path = None
                 # Use the logger itself to report the error if available, otherwise print
                 error_msg = f"Error creating log directory {log_dir}: {e}"
                 if logger and logger.handlers:
@@ -438,7 +439,8 @@ def _configure_logger(
             )
         except OSError as e:
             if logger.name == APP_DISPLAY_NAME:
-                log_file_path = None
+                with _shared_file_handler_lock:
+                    log_file_path = None
             error_msg = f"Error creating log file at {log_file}: {e}"
             if logger and logger.handlers:
                 logger.exception(error_msg)
@@ -447,7 +449,8 @@ def _configure_logger(
             return logger
         except Exception as e:
             if logger.name == APP_DISPLAY_NAME:
-                log_file_path = None
+                with _shared_file_handler_lock:
+                    log_file_path = None
             error_msg = f"Unexpected error creating log file at {log_file}: {e}"
             if logger and logger.handlers:
                 logger.exception(error_msg)
@@ -457,9 +460,11 @@ def _configure_logger(
 
         logger.addHandler(file_handler)
         if logger.name == APP_DISPLAY_NAME:
-            log_file_path = file_handler.baseFilename
+            with _shared_file_handler_lock:
+                log_file_path = file_handler.baseFilename
     elif logger.name == APP_DISPLAY_NAME:
-        log_file_path = None
+        with _shared_file_handler_lock:
+            log_file_path = None
 
     _logger_config_generations[logger.name] = _config_generation
     return logger
