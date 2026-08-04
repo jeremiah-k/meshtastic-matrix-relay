@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import mmrelay.meshtastic_utils as mu
+from mmrelay.meshtastic.daemon_executor import DaemonThreadExecutor
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
@@ -52,8 +53,38 @@ class TestGetBleExecutor:
         with mu._ble_executor_lock:
             executor = _get_ble_executor()
         assert executor is not None
-        assert isinstance(executor, ThreadPoolExecutor)
+        assert isinstance(executor, DaemonThreadExecutor)
         executor.shutdown(wait=False)
+
+    def test_worker_thread_is_daemon_and_shutdown_does_not_wait(self):
+        import threading
+        import time
+
+        from mmrelay.meshtastic.executors import _get_ble_executor
+
+        started = threading.Event()
+        release = threading.Event()
+
+        def _blocking_ble_call() -> None:
+            started.set()
+            release.wait(5.0)
+
+        mu._ble_executor = None
+        with mu._ble_executor_lock:
+            executor = _get_ble_executor()
+        future = executor.submit(_blocking_ble_call)
+        assert started.wait(1.0)
+        assert isinstance(executor, DaemonThreadExecutor)
+        assert executor._threads
+        assert all(thread.daemon for thread in executor._threads)
+
+        started_at = time.monotonic()
+        executor.shutdown(wait=False, cancel_futures=True)
+        assert time.monotonic() - started_at < 0.5
+        assert not future.cancelled()
+
+        release.set()
+        future.result(timeout=1.0)
 
     def test_recreates_when_shutdown(self):
         from mmrelay.meshtastic.executors import _get_ble_executor
@@ -65,7 +96,7 @@ class TestGetBleExecutor:
         with mu._ble_executor_lock:
             executor = _get_ble_executor()
         assert executor is not old
-        assert isinstance(executor, ThreadPoolExecutor)
+        assert isinstance(executor, DaemonThreadExecutor)
         executor.shutdown(wait=False)
 
 
