@@ -17,6 +17,8 @@ class _MindroomConfig:
     max_limit_exceeded: int = 10
     max_timeouts: int = 3
     replace_rotated_device_keys: bool = False
+    backfill_limited_timelines: bool = False
+    backfill_persist_recovery: bool | None = None
 
 
 class _MutableNonDataclassConfig:
@@ -66,6 +68,8 @@ def test_e2ee_config_enables_rotated_device_key_recovery(
     assert config.encryption_enabled is True
     assert config.store_sync_tokens is True
     assert config.replace_rotated_device_keys is True
+    assert config.backfill_limited_timelines is False
+    assert config.backfill_persist_recovery is None
     assert config.max_limit_exceeded == 0
     assert config.max_timeouts == 0
 
