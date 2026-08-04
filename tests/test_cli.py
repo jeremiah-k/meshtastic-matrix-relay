@@ -1424,9 +1424,7 @@ def test_handle_auth_login_passes_explicit_config() -> None:
         patch(
             "mmrelay.config.load_config_silently", return_value=config_data
         ) as mock_load_config,
-        patch(
-            "mmrelay.matrix_utils.login_matrix_bot", return_value=True
-        ) as mock_login,
+        patch("mmrelay.matrix_utils.login_matrix_bot", return_value=True) as mock_login,
     ):
         result = handle_auth_login(args)
 
@@ -1459,9 +1457,7 @@ def test_handle_auth_login_continues_when_config_load_fails() -> None:
             "mmrelay.config.load_config_silently",
             side_effect=ValueError("Config load failed"),
         ) as mock_load_config,
-        patch(
-            "mmrelay.matrix_utils.login_matrix_bot", return_value=True
-        ) as mock_login,
+        patch("mmrelay.matrix_utils.login_matrix_bot", return_value=True) as mock_login,
     ):
         result = handle_auth_login(args)
 
