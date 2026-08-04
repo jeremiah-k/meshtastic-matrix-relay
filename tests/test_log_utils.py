@@ -90,10 +90,16 @@ class TestLogUtils(unittest.TestCase):
         # Create temporary directory for test logs
         self.test_dir = tempfile.mkdtemp()
         self.test_log_file = os.path.join(self.test_dir, "test.log")
+        self._log_path_env_patcher = patch.dict(
+            os.environ, {"MMRELAY_LOG_PATH": ""}
+        )
+        self._log_path_env_patcher.start()
+        self.addCleanup(self._log_path_env_patcher.stop)
 
         # Reset global state
         import mmrelay.log_utils
 
+        mmrelay.log_utils._close_shared_file_handler()
         mmrelay.log_utils.config = None
         mmrelay.log_utils.log_file_path = None
         mmrelay.log_utils._registered_logger_names.clear()
@@ -113,6 +119,9 @@ class TestLogUtils(unittest.TestCase):
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
         # Reset logging state using the comprehensive handler cleanup helper
+        import mmrelay.log_utils as lu
+
+        lu._close_shared_file_handler()
         self._close_all_handlers()
         logging.getLogger().setLevel(logging.WARNING)
 
