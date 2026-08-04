@@ -34,6 +34,7 @@ TEST_BOT_USER_ID: Final[str] = "@bot:matrix.org"
 TEST_BOT_USER_ID_EXAMPLE: Final[str] = "@bot:example.org"
 TEST_USER_ID: Final[str] = "@user:matrix.org"
 TEST_LOGIN_CREDENTIAL: Final[str] = "password"
+TEST_MATRIX_SESSION_CREDENTIAL: Final[str] = "token"
 
 # Matrix room IDs
 TEST_ROOM_ID: Final[str] = "!room:matrix.org"

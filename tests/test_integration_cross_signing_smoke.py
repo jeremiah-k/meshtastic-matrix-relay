@@ -7,7 +7,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-SCRIPT = Path("scripts/ci/run-mmrelay-meshtasticd-integration.sh")
+import pytest
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = REPOSITORY_ROOT / "scripts/ci/run-mmrelay-meshtasticd-integration.sh"
 
 
 def _extract_verifier_source(script: str) -> str:
@@ -35,6 +38,7 @@ def test_integration_script_verifies_server_visible_cross_signing_chain() -> Non
 
 def test_embedded_verifier_accepts_canonical_json_bytes() -> None:
     """Execute the verifier in a clean process with the real bindings."""
+    pytest.importorskip("vodozemac")
     script = SCRIPT.read_text(encoding="utf-8")
     parsed = ast.parse(_extract_verifier_source(script))
     verifier_function = next(
@@ -57,7 +61,7 @@ verify_json(identity.master_public_key, payload, signature)
 """
     )
     completed = subprocess.run(
-        [sys.executable, "-c", probe],
+        [sys.executable, "-W", "error", "-c", probe],
         check=False,
         capture_output=True,
         text=True,
