@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import Future
-from typing import Callable
+from typing import Any, Callable
 from unittest.mock import ANY, MagicMock, patch
 
 import pytest
@@ -638,8 +638,10 @@ class TestConnectMeshtasticTimeoutBranches:
                 return None
 
         class ImmediateExecutor:
-            def submit(self, fn, *args):
-                future = Future()
+            def submit(
+                self, fn: Callable[..., Any], /, *args: Any
+            ) -> Future[Any]:
+                future: Future[Any] = Future()
                 try:
                     future.set_result(fn(*args))
                 except BaseException as exc:
@@ -648,7 +650,12 @@ class TestConnectMeshtasticTimeoutBranches:
 
         wait_count = 0
 
-        def _wait_then_shutdown(future, *, timeout_seconds, poll_seconds=1.0):
+        def _wait_then_shutdown(
+            future: Future[Any],
+            *,
+            timeout_seconds: float,
+            poll_seconds: float = 1.0,
+        ) -> Any:
             nonlocal wait_count
             del timeout_seconds, poll_seconds
             wait_count += 1
