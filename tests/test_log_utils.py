@@ -90,9 +90,7 @@ class TestLogUtils(unittest.TestCase):
         # Create temporary directory for test logs
         self.test_dir = tempfile.mkdtemp()
         self.test_log_file = os.path.join(self.test_dir, "test.log")
-        self._log_path_env_patcher = patch.dict(
-            os.environ, {"MMRELAY_LOG_PATH": ""}
-        )
+        self._log_path_env_patcher = patch.dict(os.environ, {"MMRELAY_LOG_PATH": ""})
         self._log_path_env_patcher.start()
         self.addCleanup(self._log_path_env_patcher.stop)
 

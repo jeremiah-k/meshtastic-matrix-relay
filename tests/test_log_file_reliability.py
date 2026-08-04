@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from logging.handlers import RotatingFileHandler
 
 import pytest
@@ -117,9 +116,7 @@ def test_shared_handler_keeps_all_loggers_on_active_file_after_rotation(tmp_path
     assert all(_file_handler(logger) is shared for logger in loggers)
 
 
-def test_main_log_path_is_not_advertised_when_file_handler_fails(
-    tmp_path, monkeypatch
-):
+def test_main_log_path_is_not_advertised_when_file_handler_fails(tmp_path, monkeypatch):
     log_path = tmp_path / "mmrelay.log"
     lu.config = {"logging": {"log_to_file": True, "filename": str(log_path)}}
 
