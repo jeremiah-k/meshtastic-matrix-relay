@@ -333,12 +333,13 @@ class TestRunBlockingWithTimeout:
 class TestWaitForFutureResultWithShutdown:
     def test_raises_on_shutdown(self):
         from mmrelay.meshtastic.async_utils import (
+            FutureWaitShutdownError,
             _wait_for_future_result_with_shutdown,
         )
 
         mu.shutting_down = True
         fut = Future()
-        with pytest.raises(TimeoutError, match="Shutdown"):
+        with pytest.raises(FutureWaitShutdownError, match="Shutdown"):
             _wait_for_future_result_with_shutdown(fut, timeout_seconds=5)
 
     def test_raises_on_deadline(self):

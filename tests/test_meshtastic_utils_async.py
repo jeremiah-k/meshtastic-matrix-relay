@@ -809,13 +809,15 @@ def test_wait_for_future_result_with_shutdown_returns_result():
 def test_wait_for_future_result_with_shutdown_aborts_when_shutting_down():
     future = MagicMock()
 
-    with patch.object(mu, "shutting_down", True):
-        with pytest.raises(FutureWaitShutdownError, match="Shutdown in progress"):
-            _wait_for_future_result_with_shutdown(
-                future,
-                timeout_seconds=0.5,
-                poll_seconds=0.01,
-            )
+    with (
+        patch.object(mu, "shutting_down", True),
+        pytest.raises(FutureWaitShutdownError, match="Shutdown in progress"),
+    ):
+        _wait_for_future_result_with_shutdown(
+            future,
+            timeout_seconds=0.5,
+            poll_seconds=0.01,
+        )
 
     future.result.assert_not_called()
 

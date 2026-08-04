@@ -564,7 +564,7 @@ class TestConnectMeshtasticTimeoutBranches:
         mu.meshtastic_iface = None
         return ble_address
 
-    def test_interface_creation_shutdown_is_not_reported_as_timeout(self, monkeypatch):
+    def test_interface_creation_shutdown_is_not_reported_as_timeout(self):
         from mmrelay.meshtastic.connection import _connect_meshtastic_impl
 
         self._configure_ble()
@@ -573,13 +573,14 @@ class TestConnectMeshtasticTimeoutBranches:
             def __init__(
                 self,
                 *,
-                address,
-                noProto=False,
-                debugOut=None,
-                noNodes=False,
-                timeout=None,
-                auto_reconnect=False,
-            ):
+                address: str,
+                noProto: bool = False,
+                debugOut: object | None = None,
+                noNodes: bool = False,
+                timeout: int | None = None,
+                auto_reconnect: bool = False,
+            ) -> None:
+                del noProto, debugOut, noNodes, timeout
                 self.address = address
                 self.auto_reconnect = auto_reconnect
 
@@ -610,6 +611,81 @@ class TestConnectMeshtasticTimeoutBranches:
         )
         assert any(
             "interrupted by shutdown" in str(call)
+            for call in mock_logger.debug.call_args_list
+        )
+
+    def test_ble_connect_shutdown_is_not_reported_as_timeout(self):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        ble_address = self._configure_ble()
+
+        class FakeBleInterface:
+            def __init__(
+                self,
+                *,
+                address: str,
+                noProto: bool = False,
+                debugOut: object | None = None,
+                noNodes: bool = False,
+                timeout: int | None = None,
+                auto_reconnect: bool = False,
+            ) -> None:
+                del noProto, debugOut, noNodes, timeout
+                self.address = address
+                self.auto_reconnect = auto_reconnect
+
+            def connect(self) -> None:
+                return None
+
+        class ImmediateExecutor:
+            def submit(self, fn, *args):
+                future = Future()
+                try:
+                    future.set_result(fn(*args))
+                except BaseException as exc:
+                    future.set_exception(exc)
+                return future
+
+        wait_count = 0
+
+        def _wait_then_shutdown(future, *, timeout_seconds, poll_seconds=1.0):
+            nonlocal wait_count
+            del timeout_seconds, poll_seconds
+            wait_count += 1
+            if wait_count == 1:
+                return future.result()
+            raise mu.FutureWaitShutdownError("Shutdown in progress")
+
+        mock_executor = ImmediateExecutor()
+        with (
+            patch.object(mu.meshtastic.ble_interface, "BLEInterface", FakeBleInterface),
+            patch.object(mu, "_get_ble_executor", return_value=mock_executor),
+            patch.object(
+                mu,
+                "_wait_for_future_result_with_shutdown",
+                side_effect=_wait_then_shutdown,
+            ),
+            patch.object(mu, "_ensure_ble_worker_available"),
+            patch.object(mu, "_get_ble_unresolved_teardown_generations", return_value=[]),
+            patch.object(mu, "logger") as mock_logger,
+        ):
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        assert wait_count == 2
+        assert mu.meshtastic_iface is None
+        assert mu._ble_future is None
+        assert mu._ble_future_address is None
+        assert not any(
+            "BLE connect() call timed out" in str(call)
+            for call in mock_logger.error.call_args_list
+        )
+        assert not any(
+            "stale BlueZ" in str(call) for call in mock_logger.warning.call_args_list
+        )
+        assert any(
+            call.args[:2]
+            == ("BLE connect() interrupted by shutdown for %s", ble_address)
             for call in mock_logger.debug.call_args_list
         )
 

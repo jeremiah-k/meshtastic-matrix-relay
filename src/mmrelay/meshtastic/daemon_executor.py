@@ -23,7 +23,9 @@ class DaemonThreadExecutor(Executor):
     primitives so it does not depend on private CPython thread-pool internals.
     """
 
-    def __init__(self, max_workers: int = 1, *, thread_name_prefix: str = "daemon"):
+    def __init__(
+        self, max_workers: int = 1, *, thread_name_prefix: str = "daemon"
+    ) -> None:
         if max_workers <= 0:
             raise ValueError("max_workers must be greater than 0")
         self._max_workers = max_workers
@@ -87,7 +89,6 @@ class DaemonThreadExecutor(Executor):
 
     def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
         with self._lock:
-            first_shutdown = not self._shutdown
             self._shutdown = True
             threads = list(self._threads)
 
@@ -100,9 +101,11 @@ class DaemonThreadExecutor(Executor):
                     if work_item is not None:
                         work_item[0].cancel()
 
-            if first_shutdown:
-                for _ in threads:
-                    self._work_queue.put(None)
+            # Queue an exit signal for every currently live worker on every call.
+            # A repeated shutdown(cancel_futures=True) may have drained sentinels
+            # left by an earlier non-waiting shutdown.
+            for _ in threads:
+                self._work_queue.put(None)
 
         if wait:
             for thread in threads:
