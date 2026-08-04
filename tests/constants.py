@@ -42,6 +42,12 @@ TEST_ROOM_ID_2: Final[str] = "!room2:matrix.org"
 # Matrix event IDs
 TEST_EVENT_ID: Final[str] = "$event123"
 
+# Expected mindroom-nio AsyncClientConfig recovery defaults (single source of truth
+# for tests that assert MMRelay leaves limited-timeline recovery disabled).
+# Update here when the pinned provider changes these defaults.
+MINDROOM_BACKFILL_LIMITED_TIMELINES_DEFAULT: Final[bool] = False
+MINDROOM_BACKFILL_PERSIST_RECOVERY_DEFAULT: Final[bool | None] = None
+
 # Test message delay values for message queue testing
 # These are intentionally different from production to test edge cases
 TEST_MESSAGE_DELAY_LOW: Final[float] = (
