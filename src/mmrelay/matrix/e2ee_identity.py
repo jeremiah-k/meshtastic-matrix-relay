@@ -160,8 +160,8 @@ async def _ensure_own_device_cross_signed(
             if identity_property is not None and local_identity is None:
                 checking_server_identity = True
                 try:
-                    server_has_identity = (
-                        await _server_has_own_cross_signing_identity(client)
+                    server_has_identity = await _server_has_own_cross_signing_identity(
+                        client
                     )
                 except asyncio.CancelledError:
                     raise
