@@ -606,8 +606,7 @@ class TestConnectMeshtasticTimeoutBranches:
             for call in mock_logger.error.call_args_list
         )
         assert not any(
-            "stale BlueZ" in str(call)
-            for call in mock_logger.warning.call_args_list
+            "stale BlueZ" in str(call) for call in mock_logger.warning.call_args_list
         )
         assert any(
             "interrupted by shutdown" in str(call)
