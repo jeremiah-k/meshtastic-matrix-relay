@@ -270,6 +270,7 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
         )
         self.assertTrue(standard_banner)
 
+
 def test_auth_login_handles_config_load_error(monkeypatch) -> None:
     """Test that auth login handles config loading errors gracefully."""
     import mmrelay.config
