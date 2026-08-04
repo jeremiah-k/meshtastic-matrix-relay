@@ -761,14 +761,21 @@ def load_config_silently(args: _ConfigPathArgs | None = None) -> dict[str, Any]:
 
     This best-effort loader is intended for commands such as ``mmrelay auth
     login`` that need the selected config mapping before normal application
-    logging is configured. It does not mutate module-level config state, emit
-    legacy-path warnings, or log unreadable/malformed candidates.
+    logging is configured. It mirrors ``load_config`` candidate precedence:
+    an explicitly requested missing file does not fall through to defaults,
+    and the first readable candidate is authoritative even when it is empty.
+    The function does not mutate module-level config state, emit legacy-path
+    warnings, or log unreadable/malformed candidates.
 
-    Returns an empty mapping when no readable mapping is available.
+    Returns an empty mapping when the selected candidate is empty/non-mapping
+    or when no readable mapping is available.
     """
+    explicit_path = getattr(args, "config", None) if args else None
+    if explicit_path and not os.path.isfile(explicit_path):
+        return {}
+
     for mapping in _iter_readable_config_mappings(args):
-        if mapping:
-            return mapping
+        return mapping
     return {}
 
 
