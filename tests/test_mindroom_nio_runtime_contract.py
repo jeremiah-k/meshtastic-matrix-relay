@@ -71,7 +71,7 @@ def _mindroom_pin() -> str:
 
     base_version = _exact_pin(base_requirement)
     e2e_version = _exact_pin(e2e_requirement)
-    assert base_version == "0.31.0"
+    assert base_version == "0.34.1"
     assert e2e_version == base_version
     return base_version
 
@@ -82,7 +82,7 @@ def test_installed_mindroom_nio_exposes_mmrelay_e2ee_contract() -> None:
     expected_version = _mindroom_pin()
     script = textwrap.dedent(f"""
         from importlib import metadata
-        from inspect import Parameter, signature
+        from inspect import Parameter, iscoroutinefunction, signature
 
         import vodozemac
         from nio import AsyncClient, AsyncClientConfig
@@ -102,11 +102,12 @@ def test_installed_mindroom_nio_exposes_mmrelay_e2ee_contract() -> None:
         assert ENCRYPTION_ENABLED is True
         assert vodozemac.__name__ == "vodozemac"
         assert SqliteStore is not None
-        assert MatrixStore.store_version == 3
+        assert MatrixStore.store_version == 7
 
         default_config = AsyncClientConfig()
         assert default_config.replace_rotated_device_keys is False
         assert default_config.backfill_limited_timelines is False
+        assert default_config.backfill_persist_recovery is None
         assert default_config.backfill_sliding_seed_rooms == 1000
 
         config = AsyncClientConfig(
@@ -128,6 +129,7 @@ def test_installed_mindroom_nio_exposes_mmrelay_e2ee_contract() -> None:
             assert parameter in send_parameters, parameter
 
         assert isinstance(AsyncClient.cross_signing_identity, property)
+        assert iscoroutinefunction(AsyncClient.close)
         for capability in ("ensure_cross_signing", "stop_sync_forever"):
             assert callable(getattr(AsyncClient, capability, None)), capability
 
