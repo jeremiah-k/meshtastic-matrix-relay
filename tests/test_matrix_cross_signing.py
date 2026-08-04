@@ -10,6 +10,7 @@ from aiohttp import ClientConnectionError
 
 import mmrelay.matrix.e2ee_identity as e2ee_identity
 import mmrelay.matrix_utils as matrix_utils
+from tests.constants import TEST_LOGIN_CREDENTIAL, TEST_MATRIX_SESSION_CREDENTIAL
 
 
 class _CrossSigningClient:
@@ -100,7 +101,7 @@ class _QueryResponse:
 
 class _GuardedCrossSigningClient(_CrossSigningClient):
     user_id = "@bot:example.org"
-    access_token = "token"
+    access_token = TEST_MATRIX_SESSION_CREDENTIAL
     device_id = "MMRELAYDEVICE"
 
     @property
@@ -118,14 +119,14 @@ class _GuardedCrossSigningClient(_CrossSigningClient):
         assert method == "POST"
         assert path == "/_matrix/client/v3/keys/query"
         assert self.user_id in data
-        assert headers["Authorization"] == "Bearer token"
+        assert headers["Authorization"] == f"Bearer {TEST_MATRIX_SESSION_CREDENTIAL}"
         self.query_calls += 1
         return _QueryResponse(user_id=self.user_id, has_master=self.has_master)
 
 
 class _NoIdentityPropertyClient:
     user_id = "@bot:example.org"
-    access_token = "token"
+    access_token = TEST_MATRIX_SESSION_CREDENTIAL
     device_id = "MMRELAYDEVICE"
 
     def __init__(self, *, has_master: bool) -> None:
@@ -184,11 +185,11 @@ async def test_cross_signing_bootstrap_is_idempotent_and_reports_status(
 
     observed = await matrix_utils._ensure_own_device_cross_signed(
         client,
-        password="secret",
+        password=TEST_LOGIN_CREDENTIAL,
     )
 
     assert observed == result
-    assert client.passwords == ["secret"]
+    assert client.passwords == [TEST_LOGIN_CREDENTIAL]
     log_calls = [*logger.info.call_args_list, *logger.debug.call_args_list]
     assert any(expected_log_fragment in str(call.args[0]) for call in log_calls)
 
@@ -332,7 +333,7 @@ async def test_missing_sidecar_does_not_replace_server_identity(
 
     result = await matrix_utils._ensure_own_device_cross_signed(
         client,
-        password="secret",
+        password=TEST_LOGIN_CREDENTIAL,
     )
 
     assert result is None
@@ -373,7 +374,7 @@ async def test_missing_sidecar_fails_closed_when_server_state_is_unknown(
 
     result = await matrix_utils._ensure_own_device_cross_signed(
         client,
-        password="secret",
+        password=TEST_LOGIN_CREDENTIAL,
     )
 
     assert result is None
@@ -391,12 +392,12 @@ async def test_missing_sidecar_bootstraps_when_server_has_no_identity() -> None:
 
     result = await matrix_utils._ensure_own_device_cross_signed(
         client,
-        password="secret",
+        password=TEST_LOGIN_CREDENTIAL,
     )
 
     assert result == "uploaded_and_signed"
     assert client.query_calls == 1
-    assert client.passwords == ["secret"]
+    assert client.passwords == [TEST_LOGIN_CREDENTIAL]
 
 
 @pytest.mark.asyncio
@@ -467,7 +468,7 @@ class _TextResponse:
 
 class _RawQueryClient:
     user_id = "@bot:example.org"
-    access_token = "token"
+    access_token = TEST_MATRIX_SESSION_CREDENTIAL
 
     def __init__(self, response: _TextResponse) -> None:
         self.response = response
@@ -499,7 +500,10 @@ def test_client_label_hides_attribute_getter_failures() -> None:
             type(
                 "NoSendClient",
                 (),
-                {"user_id": "@bot:example.org", "access_token": "token"},
+                {
+                    "user_id": "@bot:example.org",
+                    "access_token": TEST_MATRIX_SESSION_CREDENTIAL,
+                },
             )(),
             "does not expose an authenticated send method",
         ),

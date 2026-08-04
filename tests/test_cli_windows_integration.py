@@ -8,7 +8,7 @@ including console setup, error handling, and Windows-specific guidance.
 import os
 import sys
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -270,39 +270,46 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
         )
         self.assertTrue(standard_banner)
 
-    @patch("mmrelay.config.load_config_silently")
-    @patch("mmrelay.matrix_utils.login_matrix_bot")
-    @patch("builtins.print")
-    def test_auth_login_handles_config_load_error(
-        self, mock_print, mock_login, mock_load_config_silently
-    ):
-        """Test that auth login handles config loading errors gracefully."""
-        from mmrelay.cli import handle_auth_login
+def test_auth_login_handles_config_load_error(monkeypatch) -> None:
+    """Test that auth login handles config loading errors gracefully."""
+    import mmrelay.config
+    import mmrelay.matrix_utils
+    from mmrelay.cli import handle_auth_login
 
-        # Mock config loading to fail
-        mock_load_config_silently.side_effect = ValueError("Config load failed")
+    mock_args = MagicMock()
+    mock_args.homeserver = None
+    mock_args.username = None
+    mock_args.password = None
+    mock_args.config = None
+    mock_print = MagicMock()
+    mock_login = AsyncMock(return_value=True)
+    mock_load_config_silently = MagicMock(side_effect=ValueError("Config load failed"))
+    monkeypatch.setattr("builtins.print", mock_print)
+    monkeypatch.setattr(
+        mmrelay.config,
+        "check_e2ee_enabled_silently",
+        MagicMock(return_value=False),
+    )
+    monkeypatch.setattr(
+        mmrelay.config,
+        "load_config_silently",
+        mock_load_config_silently,
+    )
+    monkeypatch.setattr(mmrelay.matrix_utils, "login_matrix_bot", mock_login)
 
-        # Mock the login function to return a regular value (not a coroutine)
-        # Following the testing guide pattern for async functions called via asyncio.run()
-        mock_login.return_value = True
+    result = handle_auth_login(mock_args)
 
-        result = handle_auth_login(self.mock_args)
-
-        self.assertEqual(result, EXIT_CODE_SUCCESS)
-        mock_load_config_silently.assert_called_once_with(self.mock_args)
-        mock_login.assert_called_once_with(
-            homeserver=None,
-            username=None,
-            password=None,
-            logout_others=False,
-            config_for_paths=None,
-        )
-        printed_messages = [
-            call.args[0] for call in mock_print.call_args_list if call.args
-        ]
-        self.assertTrue(
-            any("Matrix Bot Authentication" in str(msg) for msg in printed_messages)
-        )
+    assert result == EXIT_CODE_SUCCESS
+    mock_load_config_silently.assert_called_once_with(mock_args)
+    mock_login.assert_called_once_with(
+        homeserver=None,
+        username=None,
+        password=None,
+        logout_others=False,
+        config_for_paths=None,
+    )
+    printed_messages = [call.args[0] for call in mock_print.call_args_list if call.args]
+    assert any("Matrix Bot Authentication" in str(msg) for msg in printed_messages)
 
 
 class TestCLIE2EEValidation(unittest.TestCase):
