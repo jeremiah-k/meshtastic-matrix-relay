@@ -1441,6 +1441,34 @@ def test_handle_auth_login_passes_explicit_config() -> None:
     mock_print.assert_not_called()
 
 
+def test_handle_auth_login_reports_configured_credentials_path(tmp_path) -> None:
+    """Report the credentials path selected by the same config used for login."""
+    credentials_path = tmp_path / "matrix-credentials.json"
+    credentials_path.write_text("{}", encoding="utf-8")
+    args = SimpleNamespace(
+        config="/custom/config.yaml",
+        homeserver=None,
+        username=None,
+        password=None,
+    )
+    config_data = {"matrix": {"credentials_path": str(credentials_path)}}
+
+    with (
+        patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": ""}),
+        patch("builtins.print") as mock_print,
+        patch("mmrelay.cli.ensure_directories"),
+        patch("mmrelay.config.check_e2ee_enabled_silently", return_value=False),
+        patch("mmrelay.config.load_config_silently", return_value=config_data),
+        patch("mmrelay.matrix_utils.login_matrix_bot", return_value=True),
+        patch("mmrelay.paths.get_credentials_path") as mock_default_credentials_path,
+    ):
+        result = handle_auth_login(args)
+
+    assert result == EXIT_CODE_SUCCESS
+    mock_default_credentials_path.assert_not_called()
+    mock_print.assert_any_call(f"✅ credentials.json saved: {credentials_path}")
+
+
 def test_handle_auth_login_continues_when_config_load_fails() -> None:
     """Continue login with default paths after an expected silent-load failure."""
     args = SimpleNamespace(
