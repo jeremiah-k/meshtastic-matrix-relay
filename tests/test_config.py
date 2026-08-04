@@ -1670,7 +1670,7 @@ def test_silent_config_readers_share_candidate_scanning(tmp_path) -> None:
         assert check_e2ee_enabled_silently() is True
 
 
-def test_silent_config_readers_skip_empty_higher_priority_candidate(tmp_path) -> None:
+def test_load_config_silently_preserves_empty_candidate_precedence(tmp_path) -> None:
     empty = tmp_path / "empty.yaml"
     enabled = tmp_path / "enabled.yaml"
     empty.write_text("", encoding="utf-8")
@@ -1678,9 +1678,27 @@ def test_silent_config_readers_skip_empty_higher_priority_candidate(tmp_path) ->
 
     paths = [str(empty), str(enabled)]
     with patch("mmrelay.config.get_config_paths", return_value=paths):
-        expected = {"matrix": {"e2ee": {"enabled": True}}}
-        assert load_config_silently() == expected
+        assert load_config_silently() == {}
         assert check_e2ee_enabled_silently() is True
+
+
+def test_load_config_silently_does_not_fallback_for_missing_explicit_config(
+    tmp_path,
+) -> None:
+    missing = tmp_path / "missing.yaml"
+    fallback = tmp_path / "fallback.yaml"
+    fallback.write_text(
+        "matrix:\n  e2ee:\n    enabled: true\n  credentials_path: /tmp/fallback.json\n",
+        encoding="utf-8",
+    )
+    args = MagicMock(config=str(missing))
+
+    with patch(
+        "mmrelay.config.get_config_paths", return_value=[str(missing), str(fallback)]
+    ) as get_paths:
+        assert load_config_silently(args) == {}
+
+    get_paths.assert_not_called()
 
 
 if __name__ == "__main__":
