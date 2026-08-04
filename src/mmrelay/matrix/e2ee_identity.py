@@ -129,16 +129,11 @@ async def _ensure_own_device_cross_signed(
         )
         return None
 
-    # mindroom-nio owns cross-signing private keys in a local sidecar. When the
-    # provider exposes that diagnostic property and the sidecar is absent,
-    # refuse to replace an existing server identity automatically.
+    # mindroom-nio owns cross-signing private keys in a local sidecar. Treat an
+    # unavailable local identity as missing and refuse to replace an existing
+    # server identity automatically.
     try:
-        identity_property = getattr(type(client), "cross_signing_identity", None)
-        local_identity = (
-            getattr(client, "cross_signing_identity", None)
-            if identity_property is not None
-            else None
-        )
+        local_identity = getattr(client, "cross_signing_identity", None)
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001 - provider property boundary
@@ -157,7 +152,7 @@ async def _ensure_own_device_cross_signed(
     checking_server_identity = False
     try:
         async with asyncio.timeout(_CROSS_SIGNING_OPERATION_TIMEOUT_SECONDS):
-            if identity_property is not None and local_identity is None:
+            if local_identity is None:
                 checking_server_identity = True
                 try:
                     server_has_identity = await _server_has_own_cross_signing_identity(

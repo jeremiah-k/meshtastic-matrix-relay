@@ -13,6 +13,8 @@ import mmrelay.matrix_utils as matrix_utils
 
 
 class _CrossSigningClient:
+    cross_signing_identity = object()
+
     def __init__(self, result: str = "already_signed") -> None:
         self.device_id = "MMRELAYDEVICE"
         self.result = result
@@ -24,6 +26,7 @@ class _CrossSigningClient:
 
 
 class _FailingCrossSigningClient:
+    cross_signing_identity = object()
     device_id = "MMRELAYDEVICE"
 
     async def ensure_cross_signing(self, password: str | None = None) -> str:
@@ -32,6 +35,7 @@ class _FailingCrossSigningClient:
 
 
 class _CancelledCrossSigningClient:
+    cross_signing_identity = object()
     device_id = "MMRELAYDEVICE"
 
     async def ensure_cross_signing(self, password: str | None = None) -> str:
@@ -40,6 +44,7 @@ class _CancelledCrossSigningClient:
 
 
 class _DisconnectedCrossSigningClient:
+    cross_signing_identity = object()
     device_id = "MMRELAYDEVICE"
 
     async def ensure_cross_signing(self, password: str | None = None) -> str:
@@ -52,6 +57,7 @@ class _UnexpectedProviderError(Exception):
 
 
 class _UnexpectedFailureClient:
+    cross_signing_identity = object()
     device_id = "MMRELAYDEVICE"
 
     async def ensure_cross_signing(self, password: str | None = None) -> str:
@@ -60,6 +66,7 @@ class _UnexpectedFailureClient:
 
 
 class _HangingCrossSigningClient:
+    cross_signing_identity = object()
     device_id = "MMRELAYDEVICE"
 
     async def ensure_cross_signing(self, password: str | None = None) -> str:
@@ -112,6 +119,28 @@ class _GuardedCrossSigningClient(_CrossSigningClient):
         assert path == "/_matrix/client/v3/keys/query"
         assert self.user_id in data
         assert headers["Authorization"] == "Bearer token"
+        self.query_calls += 1
+        return _QueryResponse(user_id=self.user_id, has_master=self.has_master)
+
+
+class _NoIdentityPropertyClient:
+    user_id = "@bot:example.org"
+    access_token = "token"
+    device_id = "MMRELAYDEVICE"
+
+    def __init__(self, *, has_master: bool) -> None:
+        self.has_master = has_master
+        self.query_calls = 0
+        self.passwords: list[str | None] = []
+
+    async def ensure_cross_signing(self, password: str | None = None) -> str:
+        self.passwords.append(password)
+        return "uploaded_and_signed"
+
+    async def send(
+        self, method: str, path: str, data: str, headers: dict[str, str]
+    ) -> _QueryResponse:
+        del method, path, data, headers
         self.query_calls += 1
         return _QueryResponse(user_id=self.user_id, has_master=self.has_master)
 
@@ -305,6 +334,25 @@ async def test_missing_sidecar_does_not_replace_server_identity(
         client,
         password="secret",
     )
+
+    assert result is None
+    assert client.query_calls == 1
+    assert client.passwords == []
+    assert any(
+        "existing identity was preserved" in str(call.args[0])
+        for call in logger.warning.call_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_provider_without_identity_property_preserves_server_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logger = MagicMock()
+    monkeypatch.setattr(e2ee_identity, "logger", logger)
+    client = _NoIdentityPropertyClient(has_master=True)
+
+    result = await matrix_utils._ensure_own_device_cross_signed(client)
 
     assert result is None
     assert client.query_calls == 1
