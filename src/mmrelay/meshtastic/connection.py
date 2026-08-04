@@ -1168,7 +1168,7 @@ def _connect_meshtastic_impl(
                                     raise TimeoutError(
                                         f"BLE connection attempt timed out for {ble_address}."
                                     ) from err
-                            except TimeoutError as err:
+                            except TimeoutError:
                                 if facade.shutting_down:
                                     if future is not None and future.cancel():
                                         facade._clear_ble_future(future)
