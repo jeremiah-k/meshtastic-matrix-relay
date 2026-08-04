@@ -18,12 +18,17 @@ __all__ = [
     "_coerce_positive_int",
     "_coerce_positive_int_id",
     "_fire_and_forget",
+    "FutureWaitShutdownError",
     "_make_awaitable",
     "_run_blocking_with_timeout",
     "_submit_coro",
     "_wait_for_future_result_with_shutdown",
     "_wait_for_result",
 ]
+
+
+class FutureWaitShutdownError(RuntimeError):
+    """Raised when a blocking future wait is aborted because shutdown started."""
 
 
 def _coerce_nonnegative_float(value: Any, default: float) -> float:
@@ -601,7 +606,7 @@ def _wait_for_future_result_with_shutdown(
 
     while True:
         if facade.shutting_down:
-            raise TimeoutError("Shutdown in progress")
+            raise FutureWaitShutdownError("Shutdown in progress")
 
         remaining = deadline - facade.time.monotonic()
         if remaining <= 0:

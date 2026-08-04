@@ -564,6 +564,56 @@ class TestConnectMeshtasticTimeoutBranches:
         mu.meshtastic_iface = None
         return ble_address
 
+    def test_interface_creation_shutdown_is_not_reported_as_timeout(self, monkeypatch):
+        from mmrelay.meshtastic.connection import _connect_meshtastic_impl
+
+        self._configure_ble()
+
+        class FakeBleInterface:
+            def __init__(
+                self,
+                *,
+                address,
+                noProto=False,
+                debugOut=None,
+                noNodes=False,
+                timeout=None,
+                auto_reconnect=False,
+            ):
+                self.address = address
+                self.auto_reconnect = auto_reconnect
+
+        pending_future = Future()
+        mock_executor = MagicMock()
+        mock_executor.submit.return_value = pending_future
+
+        with (
+            patch.object(mu.meshtastic.ble_interface, "BLEInterface", FakeBleInterface),
+            patch.object(mu, "_get_ble_executor", return_value=mock_executor),
+            patch.object(
+                mu,
+                "_wait_for_future_result_with_shutdown",
+                side_effect=mu.FutureWaitShutdownError("Shutdown in progress"),
+            ),
+            patch.object(mu, "_ensure_ble_worker_available"),
+            patch.object(mu, "logger") as mock_logger,
+        ):
+            result = _connect_meshtastic_impl()
+
+        assert result is None
+        assert not any(
+            "BLE interface creation timed out" in str(call)
+            for call in mock_logger.error.call_args_list
+        )
+        assert not any(
+            "stale BlueZ" in str(call)
+            for call in mock_logger.warning.call_args_list
+        )
+        assert any(
+            "interrupted by shutdown" in str(call)
+            for call in mock_logger.debug.call_args_list
+        )
+
     def test_typed_timeout_return_action(self, monkeypatch):
         from mmrelay.meshtastic.connection import _connect_meshtastic_impl
 

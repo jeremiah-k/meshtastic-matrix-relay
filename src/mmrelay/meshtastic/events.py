@@ -138,7 +138,10 @@ def _clear_stale_ble_future_for_reconnect(
             facade._ble_future_timeout_secs = None
             if facade._ble_executor is not None:
                 stale_executor = facade._ble_executor
-                facade._ble_executor = facade.ThreadPoolExecutor(max_workers=1)
+                # Leave replacement lazy so every BLE worker is created through
+                # _get_ble_executor(), which uses daemon threads that cannot hold
+                # interpreter shutdown hostage if BlueZ/DBus wedges.
+                facade._ble_executor = None
     return ble_future_to_cancel, stale_executor, stale_ble_address
 
 

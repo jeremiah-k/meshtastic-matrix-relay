@@ -17,7 +17,7 @@ import math
 import sys
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Executor, Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any, Awaitable, Callable, Coroutine, cast
 
@@ -310,7 +310,7 @@ _health_probe_request_lock = threading.Lock()
 
 # Shared executor for BLE init/connect to avoid leaking threads across retries.
 # BLE setup is inherently sequential, so a single worker keeps things predictable.
-_ble_executor: ThreadPoolExecutor | None = ThreadPoolExecutor(max_workers=1)
+_ble_executor: Executor | None = None
 _ble_executor_lock = threading.Lock()
 _ble_future: Future[Any] | None = None
 _ble_future_address: str | None = None
@@ -360,6 +360,7 @@ from mmrelay.meshtastic.async_utils import (
     _coerce_positive_int,
     _coerce_positive_int_id,
     _fire_and_forget,
+    FutureWaitShutdownError,
     _make_awaitable,
     _run_blocking_with_timeout,
     _submit_coro,

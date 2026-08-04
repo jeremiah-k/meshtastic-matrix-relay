@@ -666,9 +666,9 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
             7.0,
         )
 
-    @patch("mmrelay.meshtastic_utils.ThreadPoolExecutor")
+    @patch("mmrelay.meshtastic.executors.DaemonThreadExecutor")
     def test_maybe_reset_ble_executor_handles_cancel_timeout_and_stale_executor_shutdown(
-        self, mock_thread_pool
+        self, mock_daemon_executor
     ):
         """BLE executor reset should cancel stale futures and shutdown old executors."""
         import mmrelay.meshtastic_utils as mu
@@ -690,7 +690,7 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
         stale_future.result.side_effect = ConcurrentTimeoutError()
 
         replacement_executor = Mock()
-        mock_thread_pool.return_value = replacement_executor
+        mock_daemon_executor.return_value = replacement_executor
         created_executor = None
 
         try:
@@ -719,7 +719,7 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
 
         stale_future.cancel.assert_called_once()
         stale_executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
-        mock_thread_pool.assert_called_once()
+        mock_daemon_executor.assert_called_once()
         self.assertIs(created_executor, replacement_executor)
 
     @patch("mmrelay.meshtastic_utils.logger")

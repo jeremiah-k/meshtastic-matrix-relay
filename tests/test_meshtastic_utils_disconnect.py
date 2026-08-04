@@ -783,6 +783,22 @@ class TestReconnectCancellation:
 class TestConnectionLostHandlerClearingStaleBleFuture:
     """Test connection lost handler clearing stale BLE future."""
 
+    def test_stale_ble_executor_is_not_replaced_with_non_daemon_pool(self):
+        from mmrelay.meshtastic.events import _clear_stale_ble_future_for_reconnect
+
+        old_executor = MagicMock()
+        mu._ble_executor = old_executor
+        mu._ble_future = MagicMock()
+        mu._ble_future.done.return_value = False
+        mu._ble_future_address = "AA:BB:CC:DD:EE:FF"
+
+        _future, stale_executor, _address = _clear_stale_ble_future_for_reconnect(
+            "test"
+        )
+
+        assert stale_executor is old_executor
+        assert mu._ble_executor is None
+
     def test_on_lost_meshtastic_connection_clears_ble_future_globals(self):
         """Test that _ble_future, _ble_future_address, _ble_future_started_at, _ble_future_timeout_secs are cleared."""
         mock_future = Mock(spec=Future)

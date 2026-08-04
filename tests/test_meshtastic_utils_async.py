@@ -26,6 +26,7 @@ import pytest
 import mmrelay.meshtastic_utils as _mu_real
 import mmrelay.meshtastic_utils as mu
 from mmrelay.meshtastic_utils import (
+    FutureWaitShutdownError,
     _get_name_safely,
     _make_awaitable,
     _wait_for_future_result_with_shutdown,
@@ -809,7 +810,7 @@ def test_wait_for_future_result_with_shutdown_aborts_when_shutting_down():
     future = MagicMock()
 
     with patch.object(mu, "shutting_down", True):
-        with pytest.raises(TimeoutError, match="Shutdown in progress"):
+        with pytest.raises(FutureWaitShutdownError, match="Shutdown in progress"):
             _wait_for_future_result_with_shutdown(
                 future,
                 timeout_seconds=0.5,
