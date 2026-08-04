@@ -666,7 +666,9 @@ class TestConnectMeshtasticTimeoutBranches:
                 side_effect=_wait_then_shutdown,
             ),
             patch.object(mu, "_ensure_ble_worker_available"),
-            patch.object(mu, "_get_ble_unresolved_teardown_generations", return_value=[]),
+            patch.object(
+                mu, "_get_ble_unresolved_teardown_generations", return_value=[]
+            ),
             patch.object(mu, "logger") as mock_logger,
         ):
             result = _connect_meshtastic_impl()
