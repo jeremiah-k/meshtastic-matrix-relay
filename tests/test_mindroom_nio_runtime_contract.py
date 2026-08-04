@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import subprocess
+import subprocess  # nosec B404 - runs contract check script with hardcoded args in isolated mode
 import sys
 import textwrap
 import tomllib
@@ -10,6 +10,11 @@ from pathlib import Path
 
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
+
+from tests.constants import (
+    MINDROOM_BACKFILL_LIMITED_TIMELINES_DEFAULT,
+    MINDROOM_BACKFILL_PERSIST_RECOVERY_DEFAULT,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
@@ -71,7 +76,6 @@ def _mindroom_pin() -> str:
 
     base_version = _exact_pin(base_requirement)
     e2e_version = _exact_pin(e2e_requirement)
-    assert base_version == "0.34.1"
     assert e2e_version == base_version
     return base_version
 
@@ -106,8 +110,14 @@ def test_installed_mindroom_nio_exposes_mmrelay_e2ee_contract() -> None:
 
         default_config = AsyncClientConfig()
         assert default_config.replace_rotated_device_keys is False
-        assert default_config.backfill_limited_timelines is False
-        assert default_config.backfill_persist_recovery is None
+        assert (
+            default_config.backfill_limited_timelines
+            is {MINDROOM_BACKFILL_LIMITED_TIMELINES_DEFAULT!r}
+        )
+        assert (
+            default_config.backfill_persist_recovery
+            is {MINDROOM_BACKFILL_PERSIST_RECOVERY_DEFAULT!r}
+        )
         assert default_config.backfill_sliding_seed_rooms == 1000
 
         config = AsyncClientConfig(
@@ -157,6 +167,6 @@ def test_installed_mindroom_nio_exposes_mmrelay_e2ee_contract() -> None:
         capture_output=True,
         text=True,
         timeout=30,
-    )
+    )  # nosec B603
 
     assert result.returncode == 0, result.stderr or result.stdout

@@ -8,6 +8,10 @@ import pytest
 
 import mmrelay.matrix.client_config as client_config
 import mmrelay.matrix_utils as matrix_utils
+from tests.constants import (
+    MINDROOM_BACKFILL_LIMITED_TIMELINES_DEFAULT,
+    MINDROOM_BACKFILL_PERSIST_RECOVERY_DEFAULT,
+)
 
 
 @dataclass(frozen=True)
@@ -17,8 +21,8 @@ class _MindroomConfig:
     max_limit_exceeded: int = 10
     max_timeouts: int = 3
     replace_rotated_device_keys: bool = False
-    backfill_limited_timelines: bool = False
-    backfill_persist_recovery: bool | None = None
+    backfill_limited_timelines: bool = MINDROOM_BACKFILL_LIMITED_TIMELINES_DEFAULT
+    backfill_persist_recovery: bool | None = MINDROOM_BACKFILL_PERSIST_RECOVERY_DEFAULT
 
 
 class _MutableNonDataclassConfig:
@@ -68,8 +72,12 @@ def test_e2ee_config_enables_rotated_device_key_recovery(
     assert config.encryption_enabled is True
     assert config.store_sync_tokens is True
     assert config.replace_rotated_device_keys is True
-    assert config.backfill_limited_timelines is False
-    assert config.backfill_persist_recovery is None
+    assert (
+        config.backfill_limited_timelines is MINDROOM_BACKFILL_LIMITED_TIMELINES_DEFAULT
+    )
+    assert (
+        config.backfill_persist_recovery is MINDROOM_BACKFILL_PERSIST_RECOVERY_DEFAULT
+    )
     assert config.max_limit_exceeded == 0
     assert config.max_timeouts == 0
 
