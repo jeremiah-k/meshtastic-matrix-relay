@@ -141,6 +141,40 @@ class TestLogUtils(unittest.TestCase):
                 h.close()
         logging.getLogger().handlers.clear()
 
+    def test_close_shared_file_handler_detaches_shared_handler_and_resets_state(self):
+        """Shared handler cleanup detaches every logger and clears advertised state."""
+        import mmrelay.log_utils as lu
+        from mmrelay.constants.app import APP_DISPLAY_NAME
+
+        lu.config = {
+            "logging": {
+                "log_to_file": True,
+                "filename": self.test_log_file,
+                "color_enabled": False,
+            }
+        }
+        main_logger = lu.get_logger(APP_DISPLAY_NAME)
+        logger1 = lu.get_logger("mmrelay.test.close_shared_handler.1")
+        logger2 = lu.get_logger("mmrelay.test.close_shared_handler.2")
+        shared_handler = lu._shared_file_handler
+
+        self.assertIsNotNone(shared_handler)
+        self.assertIsNotNone(lu._shared_file_handler_key)
+        self.assertEqual(lu.log_file_path, os.path.abspath(self.test_log_file))
+        self.assertIn(shared_handler, main_logger.handlers)
+        self.assertIn(shared_handler, logger1.handlers)
+        self.assertIn(shared_handler, logger2.handlers)
+
+        lu._close_shared_file_handler()
+
+        self.assertIsNone(lu._shared_file_handler)
+        self.assertIsNone(lu._shared_file_handler_key)
+        self.assertIsNone(lu.log_file_path)
+        self.assertNotIn(shared_handler, main_logger.handlers)
+        self.assertNotIn(shared_handler, logger1.handlers)
+        self.assertNotIn(shared_handler, logger2.handlers)
+        self.assertNotIn(shared_handler, logging.getLogger().handlers)
+
     def test_get_logger_basic(self):
         """
         Verifies that a logger is created with default settings when no configuration is provided.
