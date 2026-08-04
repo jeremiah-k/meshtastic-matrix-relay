@@ -539,7 +539,8 @@ def get_log_file() -> Path:
     """
     env_log = os.getenv("MMRELAY_LOG_PATH")
     if env_log:
-        return Path(env_log).expanduser().absolute()
+        expanded_log = os.path.expandvars(os.path.expanduser(env_log))
+        return Path(expanded_log).absolute()
     return get_logs_dir() / LOG_FILENAME
 
 

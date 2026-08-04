@@ -131,3 +131,58 @@ def test_main_log_path_is_not_advertised_when_file_handler_fails(tmp_path, monke
     assert not any(
         isinstance(handler, RotatingFileHandler) for handler in logger.handlers
     )
+
+
+def test_refresh_reattaches_shared_handler_to_component_loggers(tmp_path):
+    log_path = tmp_path / "mmrelay.log"
+    lu.config = {
+        "logging": {
+            "log_to_file": True,
+            "filename": str(log_path),
+            "color_enabled": False,
+            "debug": {"meshtastic": True},
+        }
+    }
+
+    main_logger = lu.get_logger(APP_DISPLAY_NAME)
+    lu.configure_component_debug_logging()
+    component_logger = logging.getLogger("meshtastic.ble_interface")
+    old_handler = _file_handler(component_logger)
+    assert old_handler is _file_handler(main_logger)
+
+    lu.refresh_all_loggers()
+
+    new_handler = _file_handler(main_logger)
+    assert new_handler is _file_handler(component_logger)
+    assert new_handler is not old_handler
+    component_logger.debug("component survives refresh")
+    new_handler.flush()
+    assert "component survives refresh" in log_path.read_text(encoding="utf-8")
+
+
+def test_close_shared_file_handler_detaches_every_logger_and_resets_state(tmp_path):
+    log_path = tmp_path / "mmrelay.log"
+    lu.config = {
+        "logging": {
+            "log_to_file": True,
+            "filename": str(log_path),
+            "color_enabled": False,
+            "debug": {"meshtastic": True},
+        }
+    }
+
+    main_logger = lu.get_logger(APP_DISPLAY_NAME)
+    lu.configure_component_debug_logging()
+    component_logger = logging.getLogger("meshtastic.ble_interface")
+    shared_handler = _file_handler(main_logger)
+    assert shared_handler in component_logger.handlers
+    assert lu._shared_file_handler_key is not None
+    assert lu.log_file_path == str(log_path)
+
+    lu._close_shared_file_handler()
+
+    assert lu._shared_file_handler is None
+    assert lu._shared_file_handler_key is None
+    assert lu.log_file_path is None
+    assert shared_handler not in main_logger.handlers
+    assert shared_handler not in component_logger.handlers

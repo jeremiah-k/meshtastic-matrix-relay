@@ -523,3 +523,8 @@ def refresh_all_loggers(args: argparse.Namespace | None = None) -> None:
 
     for logger_name in list(_registered_logger_names):
         _configure_logger(logging.getLogger(logger_name), args=args)
+
+    # Component loggers are configured directly through logging.getLogger() and
+    # are therefore not part of _registered_logger_names. Reapply their settings
+    # so they receive the newly-created shared handler after the old one closes.
+    configure_component_debug_logging()
