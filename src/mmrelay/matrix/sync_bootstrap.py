@@ -1032,7 +1032,14 @@ async def login_matrix_bot(
                         password=password,
                     )
                 except asyncio.CancelledError:
-                    await client.close()
+                    try:
+                        await client.close()
+                    except Exception as exc:  # noqa: BLE001 - cleanup boundary
+                        facade.logger.debug(
+                            "Failed to close Matrix client after cancellation: %s",
+                            exc,
+                            exc_info=True,
+                        )
                     raise
 
             if logout_others:

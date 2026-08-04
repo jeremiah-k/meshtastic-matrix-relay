@@ -320,11 +320,10 @@ With MMRelay's supported mindroom-nio provider and E2EE enabled, MMRelay
 makes a best-effort attempt to create or reuse a minimal cross-signing identity
 for the bot account and sign its own device. A successful bootstrap establishes
 the Matrix signing relationship expected by signed-device clients: the master
-key signs the self-signing key, and the self-signing key signs the device. It is
-intended to remove warnings such as **"This device hasn't verified itself"** or
-**"Encrypted by a device not verified by its owner"**
-after the next successful `mmrelay auth login` and sync. Client wording varies,
-and this does not make other users trust the bot account's master key.
+key signs the self-signing key, and the self-signing key signs the device. It can
+remove the bot account's own self-verification warning after the next successful
+`mmrelay auth login` and sync. Other clients may still show trust warnings until
+they verify or trust the bot account's master key.
 
 When the provider does not expose bot cross-signing, or when bootstrap fails,
 MMRelay logs a warning and continues running. Clients that enforce cross-signing
@@ -406,14 +405,24 @@ mmrelay auth login
 
 ### "Could not self-verify Matrix device" in logs
 
-Run `mmrelay auth login` again. The command has the password needed by
-homeservers that require user-interactive authentication for cross-signing key
-upload. Do not delete only the cross-signing sidecar: it contains the private
-master and self-signing seeds, and rotating them independently can invalidate
-the account's existing signatures. If Matrix already has a master key but the
-local sidecar is missing, MMRelay preserves the server identity and refuses to
-replace it automatically. Restore the complete E2EE store/sidecar backup or use
-a new, dedicated bot account.
+Use the warning details to choose the recovery path:
+
+- If the homeserver requests password-based user-interactive authentication,
+  run `mmrelay auth login` again so MMRelay can retry the upload with the bot
+  password.
+- If the active Matrix provider does not support automatic cross-signing, use
+  the supported `mindroom-nio[e2e]` provider and remove conflicting `matrix-nio`
+  installations before retrying.
+- If the homeserver rejects the cross-signing upload for another reason, review
+  the accompanying server error or policy; repeatedly running `auth login` does
+  not bypass a server-side rejection.
+- If Matrix already has a master key but the local sidecar is missing, restore
+  the complete E2EE store/sidecar backup or use a new, dedicated bot account.
+  MMRelay preserves the server identity and refuses to replace it automatically.
+
+Do not delete only the cross-signing sidecar: it contains the private master and
+self-signing seeds, and rotating them independently can invalidate the account's
+existing signatures.
 
 ### Verify startup state
 
