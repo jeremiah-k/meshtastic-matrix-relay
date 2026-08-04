@@ -17,6 +17,7 @@ from tests.constants import TEST_LOGIN_CREDENTIAL
 TEST_CREDS_PATH = str(Path(tempfile.gettempdir()) / "creds.json")
 TEST_E2EE_STORE_PATH = str(Path(tempfile.gettempdir()) / "e2ee_store")
 
+
 def _make_login_bot_mocks():
     mock_temp = MagicMock()
     mock_temp.discovery_info = AsyncMock(side_effect=Exception("skip discovery"))
