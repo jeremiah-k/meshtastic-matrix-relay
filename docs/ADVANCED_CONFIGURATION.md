@@ -329,9 +329,10 @@ Use environment variables **only** when:
 | `MMRELAY_HOME`                               | _(path override)_                    | string  | Override application home directory (default: `~/.mmrelay`)                                                          |
 | `MMRELAY_LOG_PATH`                           | _(path override)_                    | string  | Override log file path (default: `<home>/logs/mmrelay.log`)                                                          |
 
-For the application log file, path precedence is `--logfile`, `MMRELAY_LOG_PATH`,
-`logging.filename` (including `MMRELAY_LOG_FILE`), then the default
-`<home>/logs/mmrelay.log`. User-home (`~`) and environment-variable markers are
+For the application log file, path precedence is the explicit logfile CLI option,
+`MMRELAY_LOG_PATH`, `logging.filename` (including `MMRELAY_LOG_FILE`), then the
+default `<home>/logs/mmrelay.log`. User home directory (`~`) and
+environment-variable markers are
 expanded before the file is opened. Normal direct runs and the systemd service
 use the same file-logging rules; systemd additionally captures console output in
 the journal. CLI-only maintenance commands may suppress file logging unless it
