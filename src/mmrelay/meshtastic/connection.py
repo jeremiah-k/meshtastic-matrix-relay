@@ -46,7 +46,7 @@ __all__ = [
     "serial_port_exists",
 ]
 
-CONNECT_PROBE_POST_DRAIN_DELAY_SECS: float = 2.0
+CONNECT_PROBE_POST_STABILIZATION_DELAY_SECS: float = 2.0
 
 
 class BLEDiscoveryTransientError(Exception):
@@ -354,6 +354,32 @@ def _get_connect_time_probe_settings(
     return enabled, timeout_secs
 
 
+def _get_connect_probe_stabilization_deadline() -> tuple[float | None, str | None]:
+    """Return the latest startup/reconnect deadline that should defer probe traffic.
+
+    Connect-time metadata probes are backup calibration traffic. They should not
+    compete with either the first-connect startup drain or the reconnect bootstrap
+    window while the transport and firmware are settling.
+    """
+    with facade._relay_rx_time_clock_skew_lock:
+        candidates = (
+            ("startup drain", facade._relay_startup_drain_deadline_monotonic_secs),
+            (
+                "reconnect bootstrap",
+                facade._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs,
+            ),
+        )
+    deadlines = [
+        (name, float(deadline))
+        for name, deadline in candidates
+        if isinstance(deadline, (float, int))
+    ]
+    if not deadlines:
+        return None, None
+    name, deadline = max(deadlines, key=lambda item: item[1])
+    return deadline, name
+
+
 def _schedule_connect_time_calibration_probe(
     client: Any,
     *,
@@ -409,16 +435,18 @@ def _schedule_connect_time_calibration_probe(
             timeout_secs,
         )
 
-    with facade._relay_rx_time_clock_skew_lock:
-        drain_deadline = facade._relay_startup_drain_deadline_monotonic_secs
+    stabilization_deadline, stabilization_window = (
+        _get_connect_probe_stabilization_deadline()
+    )
 
-    if drain_deadline is not None:
-        remaining = drain_deadline - facade.time.monotonic()
+    if stabilization_deadline is not None:
+        remaining = stabilization_deadline - facade.time.monotonic()
         if remaining > 0:
-            delay = remaining + CONNECT_PROBE_POST_DRAIN_DELAY_SECS
+            delay = remaining + CONNECT_PROBE_POST_STABILIZATION_DELAY_SECS
             facade.logger.debug(
-                "Delaying connect-time metadata probe by %.1fs until after startup drain window",
+                "Delaying connect-time metadata probe by %.1fs until after %s window",
                 delay,
+                stabilization_window,
             )
 
             def _delayed_submit_with_stale_guard() -> None:
