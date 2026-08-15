@@ -51,7 +51,7 @@ test = [
 dev = [
   "mypy==2.3.1",
   "pyright==1.1.411",
-  "types-PyYAML==6.0.12.20260724",
+  "types-PyYAML==6.0.12.20260815",
   "types-Markdown==3.10.2.20260712",
   "types-jsonschema==4.26.0.20260518",
 ]
