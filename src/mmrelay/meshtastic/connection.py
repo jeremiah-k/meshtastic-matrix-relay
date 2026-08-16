@@ -1363,6 +1363,9 @@ def _connect_meshtastic_impl(
                                 "Skipping BLE connect() for %s (shutting down)",
                                 ble_address,
                             )
+                            # Hand ownership of the pre-client interface to the
+                            # shared rollback path so shutdown disposes it.
+                            client = iface
                             raise facade.FutureWaitShutdownError(
                                 f"BLE connect cancelled for {ble_address} (shutting down)."
                             )
@@ -1397,6 +1400,9 @@ def _connect_meshtastic_impl(
                                 )
                             except RuntimeError as exc:
                                 if facade.shutting_down:
+                                    # No task was scheduled; hand the published
+                                    # interface to the shared rollback path.
+                                    client = iface
                                     raise facade.FutureWaitShutdownError(
                                         "BLE connect() submission interrupted by shutdown"
                                     ) from exc
@@ -1453,6 +1459,10 @@ def _connect_meshtastic_impl(
                                     and connect_future.cancel()
                                 ):
                                     facade._clear_ble_future(connect_future)
+                                    # The connect task never ran and the interface
+                                    # is still published. Hand it to the shared
+                                    # rollback path so shutdown disposes it.
+                                    client = iface
                                 elif connect_future is not None:
                                     facade._schedule_ble_future_cleanup(
                                         connect_future,
@@ -1466,8 +1476,10 @@ def _connect_meshtastic_impl(
                                         fallback_iface=shutdown_iface,
                                         generation=connect_generation,
                                     )
-                                iface = None
-                                facade.meshtastic_iface = None
+                                    # A worker may still finish the connect;
+                                    # unpublish so the late disposer owns it.
+                                    iface = None
+                                    facade.meshtastic_iface = None
                             else:
                                 # Use logger.exception so timeouts include stack context (TRY400),
                                 # but raise a short error and keep operator guidance in logs (TRY003).
