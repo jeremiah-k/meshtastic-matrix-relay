@@ -14,6 +14,7 @@ from packaging.utils import canonicalize_name
 from tests.constants import (
     MINDROOM_BACKFILL_LIMITED_TIMELINES_DEFAULT,
     MINDROOM_BACKFILL_PERSIST_RECOVERY_DEFAULT,
+    MINDROOM_STORE_VERSION,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -106,7 +107,7 @@ def test_installed_mindroom_nio_exposes_mmrelay_e2ee_contract() -> None:
         assert ENCRYPTION_ENABLED is True
         assert vodozemac.__name__ == "vodozemac"
         assert SqliteStore is not None
-        assert MatrixStore.store_version == 7
+        assert MatrixStore.store_version == {MINDROOM_STORE_VERSION!r}
 
         default_config = AsyncClientConfig()
         assert default_config.replace_rotated_device_keys is False
