@@ -1433,12 +1433,16 @@ class TestGetConnectTimeProbeSettings(unittest.TestCase):
         self.assertEqual(timeout, float(DEFAULT_MESHTASTIC_OPERATION_TIMEOUT))
 
 
-def test_get_connect_probe_stabilization_deadline_prefers_latest_window() -> None:
+def test_get_connect_probe_stabilization_deadline_prefers_latest_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The connect probe should wait for the latest stabilization window."""
     from mmrelay.meshtastic.connection import _get_connect_probe_stabilization_deadline
 
-    mu._relay_startup_drain_deadline_monotonic_secs = 115.0
-    mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = 105.0
+    monkeypatch.setattr(mu, "_relay_startup_drain_deadline_monotonic_secs", 115.0)
+    monkeypatch.setattr(
+        mu, "_relay_reconnect_prestart_bootstrap_deadline_monotonic_secs", 105.0
+    )
 
     deadline, window = _get_connect_probe_stabilization_deadline()
 
@@ -1472,8 +1476,14 @@ def test_connect_probe_delays_until_after_stabilization_window(
         timer_instances.append(timer)
         return timer
 
-    mu._relay_startup_drain_deadline_monotonic_secs = startup_deadline
-    mu._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = reconnect_deadline
+    monkeypatch.setattr(
+        mu, "_relay_startup_drain_deadline_monotonic_secs", startup_deadline
+    )
+    monkeypatch.setattr(
+        mu,
+        "_relay_reconnect_prestart_bootstrap_deadline_monotonic_secs",
+        reconnect_deadline,
+    )
     monkeypatch.setattr(mu.time, "monotonic", lambda: 100.0)
     monkeypatch.setattr(connection_module.threading, "Timer", _timer_factory)
     monkeypatch.setattr(
