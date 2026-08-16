@@ -48,6 +48,9 @@ TEST_EVENT_ID: Final[str] = "$event123"
 MINDROOM_BACKFILL_LIMITED_TIMELINES_DEFAULT: Final[bool] = False
 MINDROOM_BACKFILL_PERSIST_RECOVERY_DEFAULT: Final[bool | None] = None
 
+# Expected schema version for the pinned mindroom-nio MatrixStore.
+MINDROOM_STORE_VERSION: Final[int] = 10
+
 # Test message delay values for message queue testing
 # These are intentionally different from production to test edge cases
 TEST_MESSAGE_DELAY_LOW: Final[float] = (
