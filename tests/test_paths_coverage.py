@@ -25,6 +25,7 @@ from mmrelay.paths import (
     get_home_dir,
     get_legacy_dirs,
     get_legacy_env_vars,
+    get_log_file,
     get_plugin_code_dir,
     get_plugin_data_dir,
     is_deprecation_window_active,
@@ -931,6 +932,14 @@ def test_resolve_all_paths_home_source_data_dir(
         assert resolved["home_source"] == "MMRELAY_DATA_DIR env var"
     finally:
         paths_module._reset_deprecation_warning_flag()
+
+
+def test_get_log_file_expands_environment_markers(monkeypatch, tmp_path: Path) -> None:
+    """Reported log path should match the expanded path used by file logging."""
+    monkeypatch.setenv("MMRELAY_LOG_ROOT", str(tmp_path))
+    monkeypatch.setenv("MMRELAY_LOG_PATH", "$MMRELAY_LOG_ROOT/mmrelay.log")
+
+    assert get_log_file() == (tmp_path / "mmrelay.log").absolute()
 
 
 def test_resolve_all_paths_home_source_platform_defaults(

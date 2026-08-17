@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import logging
 import os
+import threading
 from logging.handlers import RotatingFileHandler
 from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Set
 
@@ -56,8 +57,16 @@ LOG_LEVEL_STYLES = {
 # Global config variable that will be set from main.py
 config = None
 
-# Global variable to store the log file path
-log_file_path = None
+# Global variable to store the active log file path. This is populated only
+# after a file handler has been opened successfully.
+log_file_path: str | None = None
+
+# All MMRelay loggers share one rotating file handler. Separate
+# RotatingFileHandler instances pointed at the same path can rotate underneath
+# one another, leaving different loggers writing to different generations.
+_shared_file_handler: RotatingFileHandler | None = None
+_shared_file_handler_key: tuple[str, int, int] | None = None
+_shared_file_handler_lock = threading.RLock()
 
 # Track loggers configured through this module so we can reconfigure them when
 # configuration changes later in the startup sequence.
@@ -88,6 +97,12 @@ _COMPONENT_LOGGERS = {
         "meshtastic.ble_interface",
     ],
 }
+
+# Component loggers are owned by third-party libraries, so only detach handlers
+# that this module previously attached. This preserves handlers installed by an
+# embedding application while allowing refreshes to replace MMRelay's console
+# and shared-file handlers exactly once.
+_component_attached_handlers: Dict[str, Set[logging.Handler]] = {}
 
 # Avoid file logging for loggers that are used during path resolution to
 # prevent recursive logging configuration (paths -> log_utils -> paths).
@@ -127,6 +142,13 @@ def configure_component_debug_logging() -> None:
     for component, loggers in _COMPONENT_LOGGERS.items():
         component_config = debug_config.get(component)
 
+        for logger_name in loggers:
+            component_logger = logging.getLogger(logger_name)
+            previous_handlers = _component_attached_handlers.pop(logger_name, set())
+            for handler in previous_handlers:
+                if handler in component_logger.handlers:
+                    component_logger.removeHandler(handler)
+
         if component_config:
             # Component debug is enabled - check if it's a boolean or a log level
             if isinstance(component_config, bool):
@@ -150,8 +172,8 @@ def configure_component_debug_logging() -> None:
                 component_logger.propagate = False  # Prevent duplicate logging
                 # Attach main handlers to the component logger
                 for handler in main_handlers:
-                    if handler not in component_logger.handlers:
-                        component_logger.addHandler(handler)
+                    component_logger.addHandler(handler)
+                _component_attached_handlers[logger_name] = set(main_handlers)
         else:
             # Component debug is disabled - completely suppress external library logging
             # Use a level higher than CRITICAL to effectively disable all messages
@@ -191,25 +213,32 @@ def _should_log_to_file(args: argparse.Namespace | None) -> bool:
     return bool(enabled)
 
 
+def _expand_log_path(path: str) -> str:
+    """Expand environment/user markers and return an absolute log path."""
+    return os.path.abspath(os.path.expandvars(os.path.expanduser(path)))
+
+
 def _resolve_log_file(args: argparse.Namespace | None) -> str:
-    """
-    Resolve the log file path using the following precedence: CLI `args.logfile`, configuration `logging.filename`, or the default "<log_dir>/mmrelay.log".
+    """Resolve the active log path.
 
-    Parameters:
-        args (argparse.Namespace | None): Optional namespace that may contain a `logfile` attribute; when present and a non-empty string, that value is selected.
-
-    Returns:
-        str: Filesystem path chosen for log output.
+    Precedence is explicit ``--logfile``, ``MMRELAY_LOG_PATH``, configured
+    ``logging.filename`` (including the ``MMRELAY_LOG_FILE`` config override),
+    then the default logs directory. All selected paths expand ``~`` and
+    environment-variable markers before use.
     """
     logfile = getattr(args, "logfile", None) if args is not None else None
     if isinstance(logfile, str) and logfile:
-        return logfile
+        return _expand_log_path(logfile)
+
+    env_log_file = os.getenv("MMRELAY_LOG_PATH")
+    if env_log_file:
+        return _expand_log_path(env_log_file)
 
     config_log_file = config.get("logging", {}).get("filename") if config else None
     if isinstance(config_log_file, str) and config_log_file:
-        return config_log_file
+        return _expand_log_path(config_log_file)
 
-    return os.path.join(get_log_dir(), LOG_FILENAME)
+    return _expand_log_path(os.path.join(get_log_dir(), LOG_FILENAME))
 
 
 class LogsDirTypeError(TypeError):
@@ -234,6 +263,70 @@ def get_log_dir() -> str:
     if not isinstance(result, str):
         raise LogsDirTypeError()
     return result
+
+
+def _detach_handler_from_all_loggers(handler: logging.Handler) -> None:
+    """Remove a shared handler from every live logger before closing it."""
+    loggers: list[logging.Logger] = [logging.getLogger()]
+    for value in logging.Logger.manager.loggerDict.values():
+        if isinstance(value, logging.Logger):
+            loggers.append(value)
+    for logger in loggers:
+        if handler in logger.handlers:
+            logger.removeHandler(handler)
+
+
+def _close_shared_file_handler() -> None:
+    """Detach and close the process-wide rotating file handler, if present."""
+    global _shared_file_handler, _shared_file_handler_key, log_file_path
+
+    with _shared_file_handler_lock:
+        handler = _shared_file_handler
+        _shared_file_handler = None
+        _shared_file_handler_key = None
+        log_file_path = None
+        if handler is None:
+            return
+        _detach_handler_from_all_loggers(handler)
+        with contextlib.suppress(OSError, ValueError):
+            handler.close()
+
+
+def _get_shared_file_handler(
+    log_file: str, *, max_bytes: int, backup_count: int
+) -> RotatingFileHandler:
+    """Return the single rotating handler used by all MMRelay loggers."""
+    global _shared_file_handler, _shared_file_handler_key
+
+    normalized_path = _expand_log_path(log_file)
+    key = (normalized_path, int(max_bytes), int(backup_count))
+    with _shared_file_handler_lock:
+        if _shared_file_handler is not None and _shared_file_handler_key == key:
+            return _shared_file_handler
+
+        if _shared_file_handler is not None:
+            old_handler = _shared_file_handler
+            _shared_file_handler = None
+            _shared_file_handler_key = None
+            _detach_handler_from_all_loggers(old_handler)
+            with contextlib.suppress(OSError, ValueError):
+                old_handler.close()
+
+        handler = RotatingFileHandler(
+            normalized_path,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding="utf-8",
+        )
+        handler.setFormatter(
+            logging.Formatter(
+                fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+                datefmt=DATETIME_FORMAT_WITH_TZ,
+            )
+        )
+        _shared_file_handler = handler
+        _shared_file_handler_key = key
+        return handler
 
 
 def _configure_logger(
@@ -283,11 +376,14 @@ def _configure_logger(
     if not needs_refresh:
         return logger
 
-    # Reset handlers so we can rebuild with the latest configuration
+    # Reset handlers so we can rebuild with the latest configuration. The shared
+    # file handler may still be attached to other loggers, so only detach it here.
     for handler in list(logger.handlers):
+        logger.removeHandler(handler)
+        if handler is _shared_file_handler:
+            continue
         with contextlib.suppress(OSError, ValueError):
             handler.close()
-    logger.handlers.clear()
 
     # Add handler for console logging (with or without colors), unless in CLI mode.
     if not _cli_mode:
@@ -331,6 +427,9 @@ def _configure_logger(
             try:
                 os.makedirs(log_dir, exist_ok=True)
             except OSError as e:
+                if logger.name == APP_DISPLAY_NAME:
+                    with _shared_file_handler_lock:
+                        log_file_path = None
                 # Use the logger itself to report the error if available, otherwise print
                 error_msg = f"Error creating log directory {log_dir}: {e}"
                 if logger and logger.handlers:
@@ -339,48 +438,46 @@ def _configure_logger(
                     print(error_msg)
                 return logger  # Return logger without file handler
 
-        # Store the log file path for later use
-        if logger.name == APP_DISPLAY_NAME:
-            log_file_path = log_file
-
-        # Create a file handler for logging
+        # Create or reuse the process-wide file handler. Only advertise the log
+        # path after the handler is open successfully.
         try:
-            # Set up size-based log rotation
             max_bytes = DEFAULT_LOG_SIZE_MB * LOG_SIZE_BYTES_MULTIPLIER
             backup_count = DEFAULT_LOG_BACKUP_COUNT
 
             if config is not None and "logging" in config:
                 max_bytes = config["logging"].get("max_log_size", max_bytes)
                 backup_count = config["logging"].get("backup_count", backup_count)
-            file_handler = RotatingFileHandler(
-                log_file, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
+            file_handler = _get_shared_file_handler(
+                log_file, max_bytes=max_bytes, backup_count=backup_count
             )
         except OSError as e:
-            # Use the logger itself to report the error if available, otherwise print
+            if logger.name == APP_DISPLAY_NAME:
+                with _shared_file_handler_lock:
+                    log_file_path = None
             error_msg = f"Error creating log file at {log_file}: {e}"
             if logger and logger.handlers:
                 logger.exception(error_msg)
             else:
                 print(error_msg)
-            return logger  # Return logger without file handler
+            return logger
         except Exception as e:
-            # Catch any other unexpected exceptions
+            if logger.name == APP_DISPLAY_NAME:
+                with _shared_file_handler_lock:
+                    log_file_path = None
             error_msg = f"Unexpected error creating log file at {log_file}: {e}"
             if logger and logger.handlers:
                 logger.exception(error_msg)
             else:
                 print(error_msg)
-            return logger  # Return logger without file handler
+            return logger
 
-        file_handler.setFormatter(
-            logging.Formatter(
-                fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
-                datefmt=DATETIME_FORMAT_WITH_TZ,
-            )
-        )
         logger.addHandler(file_handler)
+        if logger.name == APP_DISPLAY_NAME:
+            with _shared_file_handler_lock:
+                log_file_path = file_handler.baseFilename
     elif logger.name == APP_DISPLAY_NAME:
-        log_file_path = None
+        with _shared_file_handler_lock:
+            log_file_path = None
 
     _logger_config_generations[logger.name] = _config_generation
     return logger
@@ -437,7 +534,15 @@ def refresh_all_loggers(args: argparse.Namespace | None = None) -> None:
     """
     global _config_generation
 
+    # Component loggers can share the main handler too. Detach it globally before
+    # rebuilding so no logger retains a closed rotation file descriptor.
+    _close_shared_file_handler()
     _config_generation += 1
 
     for logger_name in list(_registered_logger_names):
         _configure_logger(logging.getLogger(logger_name), args=args)
+
+    # Component loggers are configured directly through logging.getLogger() and
+    # are therefore not part of _registered_logger_names. Reapply their settings
+    # so they receive the newly-created shared handler after the old one closes.
+    configure_component_debug_logging()

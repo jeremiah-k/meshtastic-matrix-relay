@@ -90,10 +90,14 @@ class TestLogUtils(unittest.TestCase):
         # Create temporary directory for test logs
         self.test_dir = tempfile.mkdtemp()
         self.test_log_file = os.path.join(self.test_dir, "test.log")
+        self._log_path_env_patcher = patch.dict(os.environ, {"MMRELAY_LOG_PATH": ""})
+        self._log_path_env_patcher.start()
+        self.addCleanup(self._log_path_env_patcher.stop)
 
         # Reset global state
         import mmrelay.log_utils
 
+        mmrelay.log_utils._close_shared_file_handler()
         mmrelay.log_utils.config = None
         mmrelay.log_utils.log_file_path = None
         mmrelay.log_utils._registered_logger_names.clear()
@@ -113,6 +117,9 @@ class TestLogUtils(unittest.TestCase):
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
         # Reset logging state using the comprehensive handler cleanup helper
+        import mmrelay.log_utils as lu
+
+        lu._close_shared_file_handler()
         self._close_all_handlers()
         logging.getLogger().setLevel(logging.WARNING)
 
@@ -133,6 +140,40 @@ class TestLogUtils(unittest.TestCase):
             with contextlib.suppress(OSError, ValueError):
                 h.close()
         logging.getLogger().handlers.clear()
+
+    def test_close_shared_file_handler_detaches_shared_handler_and_resets_state(self):
+        """Shared handler cleanup detaches every logger and clears advertised state."""
+        import mmrelay.log_utils as lu
+        from mmrelay.constants.app import APP_DISPLAY_NAME
+
+        lu.config = {
+            "logging": {
+                "log_to_file": True,
+                "filename": self.test_log_file,
+                "color_enabled": False,
+            }
+        }
+        main_logger = lu.get_logger(APP_DISPLAY_NAME)
+        logger1 = lu.get_logger("mmrelay.test.close_shared_handler.1")
+        logger2 = lu.get_logger("mmrelay.test.close_shared_handler.2")
+        shared_handler = lu._shared_file_handler
+
+        self.assertIsNotNone(shared_handler)
+        self.assertIsNotNone(lu._shared_file_handler_key)
+        self.assertEqual(lu.log_file_path, os.path.abspath(self.test_log_file))
+        self.assertIn(shared_handler, main_logger.handlers)
+        self.assertIn(shared_handler, logger1.handlers)
+        self.assertIn(shared_handler, logger2.handlers)
+
+        lu._close_shared_file_handler()
+
+        self.assertIsNone(lu._shared_file_handler)
+        self.assertIsNone(lu._shared_file_handler_key)
+        self.assertIsNone(lu.log_file_path)
+        self.assertNotIn(shared_handler, main_logger.handlers)
+        self.assertNotIn(shared_handler, logger1.handlers)
+        self.assertNotIn(shared_handler, logger2.handlers)
+        self.assertNotIn(shared_handler, logging.getLogger().handlers)
 
     def test_get_logger_basic(self):
         """
