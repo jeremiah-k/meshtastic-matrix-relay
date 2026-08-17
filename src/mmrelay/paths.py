@@ -41,6 +41,7 @@ from mmrelay.constants.app import (
     WINDOWS_INSTALLER_DIR_NAME,
     WINDOWS_PLATFORM,
 )
+from mmrelay.constants.config import LEGACY_LAYOUT_REMOVAL_VERSION
 from mmrelay.constants.database import PLUGIN_DB_FILENAME_TEMPLATE
 from mmrelay.constants.plugins import (
     PLUGIN_TYPE_COMMUNITY,
@@ -298,8 +299,9 @@ def get_home_dir() -> Path:
         if legacy_vars and not _deprecation_warning_shown:
             logger.warning(
                 "MMRELAY_HOME is set; ignoring legacy environment variable(s): %s. "
-                "Support will be removed in v1.4.",
+                "Support will be removed in v%s.",
                 ", ".join(legacy_vars),
+                LEGACY_LAYOUT_REMOVAL_VERSION,
             )
             _deprecation_warning_shown = True
         return Path(env_home).expanduser().absolute()
@@ -313,7 +315,8 @@ def get_home_dir() -> Path:
             logger.warning(
                 "Both MMRELAY_BASE_DIR and MMRELAY_DATA_DIR are set. "
                 "Preferring MMRELAY_BASE_DIR and ignoring MMRELAY_DATA_DIR. "
-                "Support will be removed in v1.4."
+                "Support will be removed in v%s.",
+                LEGACY_LAYOUT_REMOVAL_VERSION,
             )
             _deprecation_warning_shown = True
         return Path(env_base_dir).expanduser().absolute()
@@ -323,7 +326,8 @@ def get_home_dir() -> Path:
             logger.warning(
                 "Deprecated environment variable MMRELAY_BASE_DIR is set. "
                 "Use MMRELAY_HOME instead. "
-                "Support will be removed in v1.4."
+                "Support will be removed in v%s.",
+                LEGACY_LAYOUT_REMOVAL_VERSION,
             )
             _deprecation_warning_shown = True
         return Path(env_base_dir).expanduser().absolute()
@@ -333,7 +337,8 @@ def get_home_dir() -> Path:
             logger.warning(
                 "Deprecated environment variable MMRELAY_DATA_DIR is set. "
                 "Use MMRELAY_HOME instead. "
-                "Support will be removed in v1.4."
+                "Support will be removed in v%s.",
+                LEGACY_LAYOUT_REMOVAL_VERSION,
             )
             _deprecation_warning_shown = True
         return Path(env_data_dir).expanduser().absolute()
@@ -808,8 +813,9 @@ def is_deprecation_window_active() -> bool:
                 logger.warning(
                     "Deprecated environment variable(s) detected: %s. "
                     "Use MMRELAY_HOME instead. "
-                    "Support will be removed in v1.4.",
+                    "Support will be removed in v%s.",
                     ", ".join(legacy_vars),
+                    LEGACY_LAYOUT_REMOVAL_VERSION,
                 )
                 _deprecation_warning_shown = True
             return True

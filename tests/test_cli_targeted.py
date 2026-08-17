@@ -354,6 +354,21 @@ class TestHandleMigrateCommand(unittest.TestCase):
 
     @patch("mmrelay.migrate.perform_migration")
     @patch("builtins.print")
+    def test_migration_warns_about_final_compatibility_window(
+        self, mock_print, mock_perform
+    ):
+        """Migration tells operators that 1.4 is the final bridge release."""
+        mock_perform.return_value = {"success": True, "migrations": []}
+
+        result = handle_migrate_command(self.args)
+
+        self.assertEqual(result, EXIT_CODE_SUCCESS)
+        output = "\n".join(" ".join(map(str, call.args)) for call in mock_print.call_args_list)
+        self.assertIn("final release series", output)
+        self.assertIn("v1.5", output)
+
+    @patch("mmrelay.migrate.perform_migration")
+    @patch("builtins.print")
     def test_failed_migration(self, mock_print, mock_perform):
         """Test failed migration prints error message."""
         mock_perform.return_value = {
