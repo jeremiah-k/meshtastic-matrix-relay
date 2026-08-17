@@ -125,8 +125,9 @@ meshtastic:
 - `ENCRYPTED` is a log/display label, not a valid override value.
 - `chat_portnums` only makes a packet relay-eligible; Matrix delivery still requires a usable channel. If channel info is missing, plugins still run but the Matrix relay leg is skipped.
 
-The routing checks above are applied before Matrix delivery; plugins may still
-observe packets that are relay-ineligible when their own subscriptions permit it.
+The routing checks above are applied before Matrix delivery. Except for packets
+dropped by `disabled_portnums`, plugins may still observe relay-ineligible
+packets when their own subscriptions permit it.
 
 ## Meshtastic Health Check Overrides
 

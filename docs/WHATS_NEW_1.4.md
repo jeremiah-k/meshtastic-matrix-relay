@@ -7,13 +7,12 @@ Matrix E2EE, and logging hardening developed since 1.3.8.
 ## Before upgrading
 
 1. Upgrade the runtime to Python 3.11 or newer.
-2. If you still use pre-1.3 file locations or legacy `MMRELAY_*_DIR`
-   environment variables, run `mmrelay migrate --dry-run`, then `mmrelay
-   migrate` and `mmrelay verify-migration`.
-3. Back up the Matrix E2EE store, credentials, and cross-signing sidecar
+2. Back up the Matrix E2EE store, credentials, and cross-signing sidecar
    together before changing authentication or storage.
-4. For containers or Kubernetes, update the image tag to `1.4.0` after the
+3. For containers or Kubernetes, update the image tag to `1.4.0` after the
    release image is available.
+
+After installing 1.4, run the migration commands for legacy layouts.
 
 ## Python 3.11 minimum
 
