@@ -57,6 +57,8 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_DATABASE_LEGACY,
     CONFIG_SECTION_MATRIX,
     CONFIG_SECTION_MESHTASTIC,
+    LEGACY_LAYOUT_FINAL_MIGRATION_SERIES,
+    LEGACY_LAYOUT_REMOVAL_VERSION,
     REQUIRED_CREDENTIALS_KEYS,
 )
 from mmrelay.constants.formats import (
@@ -2533,6 +2535,14 @@ def handle_migrate_command(args: argparse.Namespace) -> int:
 
         print("MMRelay Migration")
         print("=================")
+        print(
+            f"NOTICE: MMRelay {LEGACY_LAYOUT_FINAL_MIGRATION_SERIES} is the final "
+            "release series that includes legacy-layout migration tooling."
+        )
+        print(
+            f"Complete migration before upgrading to v{LEGACY_LAYOUT_REMOVAL_VERSION} "
+            "or newer."
+        )
         print(f"Mode: {'DRY RUN' if dry_run else 'APPLY'}")
         print(f"Force overwrite: {'yes' if force else 'no'}")
         print(f"MMRELAY_HOME: {paths_info.get('home')}")

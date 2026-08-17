@@ -1168,15 +1168,18 @@ class TestLegacyPathOverrideWarnings(unittest.TestCase):
 
     def test_warning_includes_removal_version(self):
         from mmrelay.config import _warn_on_legacy_path_overrides
-        from mmrelay.constants.config import DEPRECATION_VERSIONS
+        from mmrelay.constants.config import LEGACY_LAYOUT_REMOVAL_VERSION
 
         config = {"credentials_path": "/some/path"}
         with patch("mmrelay.config.logger") as mock_logger:
             _warn_on_legacy_path_overrides(config)
             warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
             assert any(
-                DEPRECATION_VERSIONS[1] in msg for msg in warning_calls
-            ), f"No warning mentioning {DEPRECATION_VERSIONS[1]} in {warning_calls}"
+                LEGACY_LAYOUT_REMOVAL_VERSION in msg for msg in warning_calls
+            ), (
+                "No warning mentioning "
+                f"{LEGACY_LAYOUT_REMOVAL_VERSION} in {warning_calls}"
+            )
 
     def test_get_explicit_credentials_path_warns_on_env_var(self):
         from mmrelay.config import get_explicit_credentials_path

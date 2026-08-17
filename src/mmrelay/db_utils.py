@@ -13,6 +13,7 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_DATABASE_LEGACY,
     ENV_BOOL_FALSE_VALUES,
     ENV_BOOL_TRUE_VALUES,
+    LEGACY_LAYOUT_REMOVAL_VERSION,
 )
 from mmrelay.constants.database import (
     DEBUG_ID_SAMPLE_LIMIT,
@@ -571,8 +572,9 @@ def get_db_path() -> str:
                         logger.warning(
                             "Database found in legacy location: %s. "
                             "Please run 'mmrelay migrate' to move to new unified structure. "
-                            "Support for legacy database locations will be removed in v1.4.",
+                            "Support for legacy database locations will be removed in v%s.",
                             candidate,
+                            LEGACY_LAYOUT_REMOVAL_VERSION,
                         )
                         _db_path_logged = True
                     _cached_db_path = candidate

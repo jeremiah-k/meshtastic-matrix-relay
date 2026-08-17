@@ -35,7 +35,7 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_CUSTOM_PLUGINS,
     CONFIG_SECTION_MATRIX,
     CONFIG_SECTION_MESHTASTIC,
-    DEPRECATION_VERSIONS,
+    LEGACY_LAYOUT_REMOVAL_VERSION,
     ENV_BOOL_FALSE_VALUES,
     ENV_BOOL_TRUE_VALUES,
     JSON_INDENT_STANDARD,
@@ -149,7 +149,7 @@ def _warn_on_legacy_path_overrides(
                 "Use MMRELAY_HOME to control all data paths. "
                 "Support for these overrides will be removed in v%s.",
                 "; ".join(warnings_to_emit),
-                DEPRECATION_VERSIONS[1],
+                LEGACY_LAYOUT_REMOVAL_VERSION,
             )
 
 
@@ -173,7 +173,7 @@ def _emit_legacy_credentials_warning(credentials_path: str) -> None:
         "Please run 'mmrelay migrate' to move to new unified structure. "
         "Support for legacy credentials will be removed in v%s.",
         credentials_path,
-        DEPRECATION_VERSIONS[1],
+        LEGACY_LAYOUT_REMOVAL_VERSION,
     )
 
 
@@ -186,7 +186,7 @@ def _warn_deprecated(_name: str) -> None:
         _name (str): Ignored; included so callers can cache or key warnings (e.g., with lru_cache).
     """
     warnings.warn(
-        f"Use paths.get_home_dir() instead. Support will be removed in v{DEPRECATION_VERSIONS[1]}.",  # [1] is the removal version
+        f"Use paths.get_home_dir() instead. Support will be removed in v{LEGACY_LAYOUT_REMOVAL_VERSION}.",
         DeprecationWarning,
         stacklevel=3,
     )

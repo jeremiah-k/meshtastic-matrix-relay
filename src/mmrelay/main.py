@@ -45,6 +45,8 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_MESHTASTIC,
     REQUIRED_CONFIG_SECTIONS_WITH_CREDENTIALS,
     REQUIRED_CONFIG_SECTIONS_WITHOUT_CREDENTIALS,
+    LEGACY_LAYOUT_FINAL_MIGRATION_SERIES,
+    LEGACY_LAYOUT_REMOVAL_VERSION,
 )
 from mmrelay.constants.network import (
     MATRIX_CLIENT_CLOSE_TIMEOUT_SECS,
@@ -1306,13 +1308,19 @@ def run_main(args: Any) -> int:
     legacy_dirs = get_legacy_dirs()
     if legacy_envs or legacy_dirs:
         config_rich_logger.warning(
-            "Legacy data layout detected (MMRELAY_HOME=%s, legacy_env_vars=%s, legacy_dirs=%s). This layout is deprecated and will be removed in a future release.",
+            "Legacy data layout detected (MMRELAY_HOME=%s, legacy_env_vars=%s, legacy_dirs=%s). "
+            "MMRelay %s is the final release series with legacy-layout migration support; "
+            "compatibility will be removed in v%s.",
             str(get_home_dir()),
             ", ".join(legacy_envs) if legacy_envs else "none",
             ", ".join(str(p) for p in legacy_dirs) if legacy_dirs else "none",
+            LEGACY_LAYOUT_FINAL_MIGRATION_SERIES,
+            LEGACY_LAYOUT_REMOVAL_VERSION,
         )
         config_rich_logger.warning(
-            "To migrate to the new layout, see docs/DOCKER.md: Migrating to the New Layout."
+            "Run 'mmrelay migrate --dry-run' and 'mmrelay migrate' before upgrading "
+            "past the %s release series. See docs/DOCKER.md: Migrating to the New Layout.",
+            LEGACY_LAYOUT_FINAL_MIGRATION_SERIES,
         )
 
     # Check if config exists and has the required keys

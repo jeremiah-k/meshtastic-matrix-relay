@@ -167,8 +167,13 @@ PLUGIN_SECTION_TYPES: Final[Mapping[str, str]] = MappingProxyType(
     }
 )
 
-# Versions where deprecation warnings were introduced
-# Each version marks when a feature became deprecated; removal follows in a later release
-# v1.3: Deprecated legacy config paths and --generate-config, --check-config flags
-# v1.4: Deprecated legacy credential storage location and --install-service flag
+# Versions where deprecation warnings were introduced.
+# These are historical introduction versions, not removal deadlines.
 DEPRECATION_VERSIONS: Final[tuple[str, ...]] = ("1.3", "1.4")
+
+# MMRelay 1.4 intentionally remains a final bridge release for installations that
+# still need the v1.3 data-layout migration tooling. Remove legacy layout fallback
+# and migration commands together in 1.5 so direct upgrades from <=1.2 are not
+# stranded during the 1.4 release transition.
+LEGACY_LAYOUT_FINAL_MIGRATION_SERIES: Final[str] = "1.4"
+LEGACY_LAYOUT_REMOVAL_VERSION: Final[str] = "1.5"
