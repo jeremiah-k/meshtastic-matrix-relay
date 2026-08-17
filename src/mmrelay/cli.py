@@ -417,6 +417,15 @@ def parse_arguments() -> argparse.Namespace:
         metavar="PWD",
         help="Matrix password (can be empty). If provided, --homeserver and --username are also required. For security, prefer interactive mode.",
     )
+    login_parser.add_argument(
+        "--reset-cross-signing",
+        action="store_true",
+        help=(
+            "Replace an existing Matrix cross-signing identity when MMRelay's "
+            "local sidecar is missing. Reuses the current device when possible "
+            "and may require other clients to verify the identity again."
+        ),
+    )
 
     auth_subparsers.add_parser(
         "status",
@@ -2201,6 +2210,7 @@ def handle_auth_login(args: argparse.Namespace) -> int:
     homeserver = getattr(args, "homeserver", None)
     username = getattr(args, "username", None)
     password = getattr(args, "password", None)
+    reset_cross_signing = getattr(args, "reset_cross_signing", False) is True
 
     # Count provided parameters (empty strings count as provided)
     provided_params = [p for p in [homeserver, username, password] if p is not None]
@@ -2269,15 +2279,16 @@ def handle_auth_login(args: argparse.Namespace) -> int:
         )
 
     try:
-        result = asyncio.run(
-            login_matrix_bot(
-                homeserver=homeserver,
-                username=username,
-                password=password,
-                logout_others=False,
-                config_for_paths=config_for_paths,
-            )
-        )
+        login_kwargs: dict[str, Any] = {
+            "homeserver": homeserver,
+            "username": username,
+            "password": password,
+            "logout_others": False,
+            "config_for_paths": config_for_paths,
+        }
+        if reset_cross_signing:
+            login_kwargs["reset_cross_signing"] = True
+        result = asyncio.run(login_matrix_bot(**login_kwargs))
     except KeyboardInterrupt:
         print("\nAuthentication cancelled by user.")
         return 1
