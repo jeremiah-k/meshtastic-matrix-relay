@@ -661,6 +661,9 @@ class _ServerVisibleIdentity:
     master_public_key = "MASTERKEY"
     self_signing_public_key = "SELFSIGNINGKEY"
 
+    def __init__(self) -> None:
+        self.signed_device_inputs: list[dict[str, object]] = []
+
     def self_signing_key_payload(self) -> dict[str, object]:
         return {
             "user_id": "@bot:example.org",
@@ -672,6 +675,7 @@ class _ServerVisibleIdentity:
     def signed_device_payload(
         self, device_keys: dict[str, object]
     ) -> dict[str, object]:
+        self.signed_device_inputs.append(dict(device_keys))
         signed = dict(device_keys)
         signed["signatures"] = {
             "@bot:example.org": {"ed25519:SELFSIGNINGKEY": "device-sig"}
@@ -805,6 +809,7 @@ class _ServerVisibleCrossSigningClient:
                                 "device_id": self.device_id_field,
                                 "keys": {f"ed25519:{self.device_id}": "device-key"},
                                 "signatures": signatures,
+                                "unsigned": {"device_display_name": "MMRelay"},
                             }
                         }
                         if self.include_device
@@ -816,7 +821,7 @@ class _ServerVisibleCrossSigningClient:
 
 
 @pytest.mark.asyncio
-async def test_already_signed_refreshes_server_device_notification(
+async def test_already_signed_verifies_without_duplicate_signature_upload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     logger = MagicMock()
@@ -827,7 +832,14 @@ async def test_already_signed_refreshes_server_device_notification(
 
     assert result == "already_signed"
     assert client.query_calls == 1
-    assert client.signature_upload_calls == 1
+    assert client.signature_upload_calls == 0
+    assert client.identity.signed_device_inputs == [
+        {
+            "user_id": client.user_id,
+            "device_id": client.device_id,
+            "keys": {f"ed25519:{client.device_id}": "device-key"},
+        }
+    ]
     assert any(
         "Confirmed server-visible Matrix self-signing" in str(call.args[0])
         for call in logger.info.call_args_list
@@ -943,8 +955,28 @@ async def test_own_key_query_rejects_homeserver_failures() -> None:
         )
     )
 
-    with pytest.raises(RuntimeError, match="reported homeserver failures"):
+    with pytest.raises(RuntimeError) as exc_info:
         await e2ee_identity._query_own_keys(client, device_ids=[])
+
+    message = str(exc_info.value)
+    assert "reported homeserver failures" in message
+    assert "example.org" in message
+    assert "M_UNKNOWN" in message
+
+
+def test_keys_query_failure_summary_is_sanitized_and_bounded() -> None:
+    failures = {
+        "example.org\nforged": {"errcode": "M_UNKNOWN\rforged"},
+        **{f"server-{index}.example": {} for index in range(8)},
+    }
+
+    summary = e2ee_identity._summarize_keys_query_failures(failures)
+
+    assert "example.org\\nforged (M_UNKNOWN\\rforged)" in summary
+    assert "\n" not in summary
+    assert "\r" not in summary
+    assert "+4 more" in summary
+    assert len(summary) <= 300
 
 
 def test_nested_dict_stops_at_non_mapping_value() -> None:
@@ -1025,24 +1057,16 @@ async def test_signature_republish_handles_missing_or_broken_provider_hook() -> 
 
 
 @pytest.mark.asyncio
-async def test_cache_refresh_failure_does_not_invalidate_verified_server_chain(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    logger = MagicMock()
-    monkeypatch.setattr(e2ee_identity, "logger", logger)
+async def test_valid_server_chain_does_not_call_private_signature_upload_hook() -> None:
     client = _ServerVisibleCrossSigningClient(
-        upload_error=RuntimeError("refresh unavailable")
+        upload_error=RuntimeError("must not be called")
     )
 
     result = await matrix_utils._ensure_own_device_cross_signed(client)
 
     assert result == "already_signed"
     assert client.query_calls == 1
-    assert client.signature_upload_calls == 1
-    assert any(
-        "could not refresh its device-signature notification" in str(call.args[0])
-        for call in logger.warning.call_args_list
-    )
+    assert client.signature_upload_calls == 0
 
 
 @pytest.mark.asyncio
@@ -1111,14 +1135,6 @@ async def test_postcondition_query_failure_is_nonfatal(
 @pytest.mark.asyncio
 async def test_postcondition_query_cancellation_propagates() -> None:
     client = _ServerVisibleCrossSigningClient(query_error=asyncio.CancelledError())
-
-    with pytest.raises(asyncio.CancelledError):
-        await matrix_utils._ensure_own_device_cross_signed(client)
-
-
-@pytest.mark.asyncio
-async def test_verified_signature_refresh_cancellation_propagates() -> None:
-    client = _ServerVisibleCrossSigningClient(upload_error=asyncio.CancelledError())
 
     with pytest.raises(asyncio.CancelledError):
         await matrix_utils._ensure_own_device_cross_signed(client)
