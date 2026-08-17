@@ -13,8 +13,8 @@ channels and Matrix rooms.
 
 - **Meshtastic side:** MMRelay connects to a Meshtastic node over **Serial**, **BLE**, or **TCP/network** (for example, a node reachable over Wi-Fi).
 - **Matrix side:** MMRelay joins configured rooms using a dedicated Matrix bot account.
-- **Room/channel mapping:** each configured Matrix room is associated with a Meshtastic channel number. Multiple Matrix rooms may use the same channel.
-- **Bidirectional relay:** eligible mesh traffic can be posted to mapped Matrix rooms, and eligible Matrix traffic can be transmitted on the mapped Meshtastic channel.
+- **Room/channel mapping:** one or more Meshtastic channels (0–7), each mapped 1:1 to a Matrix room.
+- **Bidirectional relay:** eligible mesh traffic can be posted to the mapped Matrix room, and eligible Matrix traffic can be transmitted on the mapped Meshtastic channel.
 - **Identity boundary:** messages posted into Matrix are sent by the MMRelay bot. Meshtastic sender names and node IDs are preserved as attribution; they are not Matrix-authenticated identities.
 
 For the full conceptual model—including meshnet terminology, the recommended
