@@ -98,6 +98,12 @@ _COMPONENT_LOGGERS = {
     ],
 }
 
+# Component loggers are owned by third-party libraries, so only detach handlers
+# that this module previously attached. This preserves handlers installed by an
+# embedding application while allowing refreshes to replace MMRelay's console
+# and shared-file handlers exactly once.
+_component_attached_handlers: Dict[str, Set[logging.Handler]] = {}
+
 # Avoid file logging for loggers that are used during path resolution to
 # prevent recursive logging configuration (paths -> log_utils -> paths).
 # Include both the short name and fully-qualified name for robustness.
@@ -136,6 +142,13 @@ def configure_component_debug_logging() -> None:
     for component, loggers in _COMPONENT_LOGGERS.items():
         component_config = debug_config.get(component)
 
+        for logger_name in loggers:
+            component_logger = logging.getLogger(logger_name)
+            previous_handlers = _component_attached_handlers.pop(logger_name, set())
+            for handler in previous_handlers:
+                if handler in component_logger.handlers:
+                    component_logger.removeHandler(handler)
+
         if component_config:
             # Component debug is enabled - check if it's a boolean or a log level
             if isinstance(component_config, bool):
@@ -159,8 +172,8 @@ def configure_component_debug_logging() -> None:
                 component_logger.propagate = False  # Prevent duplicate logging
                 # Attach main handlers to the component logger
                 for handler in main_handlers:
-                    if handler not in component_logger.handlers:
-                        component_logger.addHandler(handler)
+                    component_logger.addHandler(handler)
+                _component_attached_handlers[logger_name] = set(main_handlers)
         else:
             # Component debug is disabled - completely suppress external library logging
             # Use a level higher than CRITICAL to effectively disable all messages
