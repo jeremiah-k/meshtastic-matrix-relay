@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import mmrelay.meshtastic_utils as mu
+from mmrelay.meshtastic.daemon_executor import DaemonThreadExecutor
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
@@ -52,8 +53,83 @@ class TestGetBleExecutor:
         with mu._ble_executor_lock:
             executor = _get_ble_executor()
         assert executor is not None
-        assert isinstance(executor, ThreadPoolExecutor)
+        assert isinstance(executor, DaemonThreadExecutor)
         executor.shutdown(wait=False)
+
+    def test_worker_thread_is_daemon_and_shutdown_does_not_wait(self):
+        import threading
+        import time
+
+        from mmrelay.meshtastic.executors import _get_ble_executor
+
+        started = threading.Event()
+        release = threading.Event()
+
+        def _blocking_ble_call() -> None:
+            started.set()
+            release.wait(5.0)
+
+        mu._ble_executor = None
+        with mu._ble_executor_lock:
+            executor = _get_ble_executor()
+        future = executor.submit(_blocking_ble_call)
+        queued_ran = threading.Event()
+        queued_future = executor.submit(queued_ran.set)
+        assert started.wait(1.0)
+        assert isinstance(executor, DaemonThreadExecutor)
+        worker_threads = list(executor._threads)
+        assert worker_threads
+        assert all(thread.daemon for thread in worker_threads)
+
+        started_at = time.monotonic()
+        executor.shutdown(wait=False, cancel_futures=True)
+        assert time.monotonic() - started_at < 0.5
+        assert not future.cancelled()
+        assert queued_future.cancelled()
+        assert not queued_ran.is_set()
+
+        release.set()
+        future.result(timeout=1.0)
+        for thread in worker_threads:
+            thread.join(timeout=1.0)
+            assert not thread.is_alive()
+
+    def test_repeated_shutdown_restores_worker_sentinel(self):
+        import threading
+
+        started = threading.Event()
+        release = threading.Event()
+        executor = DaemonThreadExecutor(
+            max_workers=1, thread_name_prefix="repeat-shutdown"
+        )
+
+        def _blocking_call() -> None:
+            started.set()
+            release.wait(5.0)
+
+        future = executor.submit(_blocking_call)
+        assert started.wait(1.0)
+        worker_threads = list(executor._threads)
+
+        executor.shutdown(wait=False)
+
+        shutdown_done = threading.Event()
+
+        def _repeat_shutdown() -> None:
+            executor.shutdown(wait=True, cancel_futures=True)
+            shutdown_done.set()
+
+        shutdown_thread = threading.Thread(target=_repeat_shutdown, daemon=True)
+        shutdown_thread.start()
+        release.set()
+        future.result(timeout=1.0)
+
+        assert shutdown_done.wait(1.0), "repeated shutdown must not strand a worker"
+        shutdown_thread.join(timeout=1.0)
+        assert not shutdown_thread.is_alive()
+        for thread in worker_threads:
+            thread.join(timeout=1.0)
+            assert not thread.is_alive()
 
     def test_recreates_when_shutdown(self):
         from mmrelay.meshtastic.executors import _get_ble_executor
@@ -65,7 +141,7 @@ class TestGetBleExecutor:
         with mu._ble_executor_lock:
             executor = _get_ble_executor()
         assert executor is not old
-        assert isinstance(executor, ThreadPoolExecutor)
+        assert isinstance(executor, DaemonThreadExecutor)
         executor.shutdown(wait=False)
 
 

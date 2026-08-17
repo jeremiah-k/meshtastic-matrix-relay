@@ -960,7 +960,7 @@ def _connect_meshtastic_impl(
                                 facade._disconnect_ble_by_address(ble_address)
 
                             # Create BLE interface with timeout protection to prevent indefinite hangs
-                            # Use ThreadPoolExecutor to run with timeout, as BLEInterface.__init__
+                            # Run on the shared BLE executor with timeout protection, as BLEInterface.__init__
                             # can potentially block indefinitely if BlueZ is in a bad state.
                             def create_ble_interface(
                                 kwargs: dict[str, Any],
@@ -988,7 +988,7 @@ def _connect_meshtastic_impl(
                                     "Skipping BLE interface creation for %s (shutting down)",
                                     ble_address,
                                 )
-                                raise TimeoutError(
+                                raise facade.FutureWaitShutdownError(
                                     f"BLE interface creation cancelled for {ble_address} (shutting down)."
                                 )
 
@@ -1028,8 +1028,10 @@ def _connect_meshtastic_impl(
                                             create_ble_interface, ble_kwargs
                                         )
                                     except RuntimeError as exc:
-                                        # The shared executor can be shutting down during interpreter
-                                        # teardown; treat this as a timeout so retry logic applies.
+                                        if facade.shutting_down:
+                                            raise facade.FutureWaitShutdownError(
+                                                "BLE interface creation submission interrupted by shutdown"
+                                            ) from exc
                                         facade.logger.exception(
                                             "BLE interface creation submission failed for %s",
                                             ble_address,
@@ -1102,6 +1104,27 @@ def _connect_meshtastic_impl(
                                         facade.reset_executor_degraded_state(
                                             ble_address=ble_address
                                         )
+                                except facade.FutureWaitShutdownError:
+                                    facade.logger.debug(
+                                        "BLE interface creation interrupted by shutdown for %s",
+                                        ble_address,
+                                    )
+                                    if future is not None and future.cancel():
+                                        facade._clear_ble_future(future)
+                                    elif future is not None:
+                                        facade._schedule_ble_future_cleanup(
+                                            future,
+                                            ble_address,
+                                            reason="interface creation shutdown cancellation",
+                                        )
+                                        facade._attach_late_ble_interface_disposer(
+                                            future,
+                                            ble_address,
+                                            reason="interface creation shutdown cancellation",
+                                            generation=connect_generation,
+                                        )
+                                    facade.meshtastic_iface = None
+                                    raise
                                 except facade.FuturesTimeoutError as err:
                                     facade.logger.error(
                                         "BLE interface creation timed out after %.1f seconds for %s.",
@@ -1145,11 +1168,8 @@ def _connect_meshtastic_impl(
                                     raise TimeoutError(
                                         f"BLE connection attempt timed out for {ble_address}."
                                     ) from err
-                            except TimeoutError as err:
-                                if (
-                                    facade.shutting_down
-                                    or str(err) == "Shutdown in progress"
-                                ):
+                            except TimeoutError:
+                                if facade.shutting_down:
                                     if future is not None and future.cancel():
                                         facade._clear_ble_future(future)
                                     elif future is not None:
@@ -1277,7 +1297,7 @@ def _connect_meshtastic_impl(
                         )
 
                         # Add timeout protection for connect() call to prevent indefinite hangs
-                        # Use ThreadPoolExecutor with 30-second timeout (same as CONNECTION_TIMEOUT)
+                        # Use the shared BLE executor with a 30-second timeout (same as CONNECTION_TIMEOUT)
                         def connect_iface(iface_param: Any) -> None:
                             """
                             Establishes the given interface by invoking its no-argument `connect()` method.
@@ -1293,7 +1313,10 @@ def _connect_meshtastic_impl(
                                 "Skipping BLE connect() for %s (shutting down)",
                                 ble_address,
                             )
-                            raise TimeoutError(
+                            # Hand ownership of the pre-client interface to the
+                            # shared rollback path so shutdown disposes it.
+                            client = iface
+                            raise facade.FutureWaitShutdownError(
                                 f"BLE connect cancelled for {ble_address} (shutting down)."
                             )
 
@@ -1326,6 +1349,13 @@ def _connect_meshtastic_impl(
                                     connect_iface, iface
                                 )
                             except RuntimeError as exc:
+                                if facade.shutting_down:
+                                    # No task was scheduled; hand the published
+                                    # interface to the shared rollback path.
+                                    client = iface
+                                    raise facade.FutureWaitShutdownError(
+                                        "BLE connect() submission interrupted by shutdown"
+                                    ) from exc
                                 facade.logger.exception(
                                     "BLE connect() submission failed for %s",
                                     ble_address,
@@ -1360,10 +1390,14 @@ def _connect_meshtastic_impl(
                             facade.reset_executor_degraded_state(
                                 ble_address=ble_address
                             )
-                        except (TimeoutError, facade.FuturesTimeoutError) as err:
+                        except (
+                            facade.FutureWaitShutdownError,
+                            TimeoutError,
+                            facade.FuturesTimeoutError,
+                        ) as err:
                             if (
-                                facade.shutting_down
-                                or str(err) == "Shutdown in progress"
+                                isinstance(err, facade.FutureWaitShutdownError)
+                                or facade.shutting_down
                             ):
                                 facade.logger.debug(
                                     "BLE connect() interrupted by shutdown for %s",
@@ -1375,6 +1409,10 @@ def _connect_meshtastic_impl(
                                     and connect_future.cancel()
                                 ):
                                     facade._clear_ble_future(connect_future)
+                                    # The connect task never ran and the interface
+                                    # is still published. Hand it to the shared
+                                    # rollback path so shutdown disposes it.
+                                    client = iface
                                 elif connect_future is not None:
                                     facade._schedule_ble_future_cleanup(
                                         connect_future,
@@ -1388,8 +1426,10 @@ def _connect_meshtastic_impl(
                                         fallback_iface=shutdown_iface,
                                         generation=connect_generation,
                                     )
-                                iface = None
-                                facade.meshtastic_iface = None
+                                    # A worker may still finish the connect;
+                                    # unpublish so the late disposer owns it.
+                                    iface = None
+                                    facade.meshtastic_iface = None
                             else:
                                 # Use logger.exception so timeouts include stack context (TRY400),
                                 # but raise a short error and keep operator guidance in logs (TRY003).
@@ -1773,6 +1813,17 @@ def _connect_meshtastic_impl(
             successful = False
             facade.logger.exception("Critical connection error")
             return None
+        except facade.FutureWaitShutdownError:
+            successful = False
+            client_assigned_for_this_connect = facade._rollback_connect_attempt_state(
+                client=client,
+                client_assigned_for_this_connect=client_assigned_for_this_connect,
+                startup_drain_armed_for_this_connect=startup_drain_armed_for_this_connect,
+                startup_drain_applied_for_this_connect=startup_drain_applied_for_this_connect,
+                reconnect_bootstrap_armed_for_this_connect=reconnect_bootstrap_armed_for_this_connect,
+            )
+            facade.logger.debug("Shutdown in progress. Aborting connection attempts.")
+            break
         except BLEDiscoveryTransientError as e:
             successful = False
             client_assigned_for_this_connect = facade._rollback_connect_attempt_state(

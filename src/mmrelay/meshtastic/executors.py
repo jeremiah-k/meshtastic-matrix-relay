@@ -1,9 +1,10 @@
 import threading
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Executor, Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any, Callable
 
 import mmrelay.meshtastic_utils as facade
+from mmrelay.meshtastic.daemon_executor import DaemonThreadExecutor
 
 __all__ = [
     "_clear_ble_future",
@@ -207,7 +208,7 @@ def reset_executor_degraded_state(
     return reset_any
 
 
-def _get_ble_executor() -> ThreadPoolExecutor:
+def _get_ble_executor() -> Executor:
     """
     Get or create a BLE executor thread pool.
 
@@ -216,12 +217,14 @@ def _get_ble_executor() -> ThreadPoolExecutor:
     Note: Caller must hold _ble_executor_lock to avoid race conditions.
 
     Returns:
-        ThreadPoolExecutor: The shared BLE executor instance.
+        Executor: The shared BLE executor instance.
     """
     if facade._ble_executor is None or getattr(
         facade._ble_executor, "_shutdown", False
     ):
-        facade._ble_executor = facade.ThreadPoolExecutor(max_workers=1)
+        facade._ble_executor = DaemonThreadExecutor(
+            max_workers=1, thread_name_prefix="mmrelay-ble"
+        )
     return facade._ble_executor
 
 
@@ -616,7 +619,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     # Capture future ref inside lock, cancel outside to avoid deadlock with done callbacks
     ble_future_to_cancel = None
     orphaned_workers = 0
-    stale_executor: ThreadPoolExecutor | None = None
+    stale_executor: Executor | None = None
     with facade._ble_executor_lock:
         if ble_address in facade._ble_executor_degraded_addresses:
             facade.logger.debug(
@@ -673,7 +676,9 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
                 orphaned_workers,
                 facade.EXECUTOR_ORPHAN_THRESHOLD,
             )
-            facade._ble_executor = facade.ThreadPoolExecutor(max_workers=1)
+            facade._ble_executor = DaemonThreadExecutor(
+                max_workers=1, thread_name_prefix="mmrelay-ble"
+            )
             facade._ble_future = None
             facade._ble_future_address = None
             facade._ble_future_started_at = None
