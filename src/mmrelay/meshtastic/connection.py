@@ -439,52 +439,74 @@ def _schedule_connect_time_calibration_probe(
         _get_connect_probe_stabilization_deadline()
     )
 
-    if stabilization_deadline is not None:
-        remaining = stabilization_deadline - facade.time.monotonic()
-        if remaining > 0:
-            delay = remaining + CONNECT_PROBE_POST_STABILIZATION_DELAY_SECS
-            facade.logger.debug(
-                "Delaying connect-time metadata probe by %.1fs until after %s window",
-                delay,
-                stabilization_window,
-            )
+    def _clear_pending_timer(timer: threading.Timer) -> bool:
+        with facade._relay_rx_time_clock_skew_lock:
+            if facade._pending_connect_time_probe_timer is not timer:
+                return False
+            facade._pending_connect_time_probe_timer = None
+            return True
 
-            def _delayed_submit_with_stale_guard() -> None:
-                if facade.shutting_down:
-                    facade.logger.debug(
-                        "Skipping delayed connect-time metadata probe; shutdown in progress"
-                    )
-                    with facade._relay_rx_time_clock_skew_lock:
-                        if facade._pending_connect_time_probe_timer is timer:
-                            facade._pending_connect_time_probe_timer = None
+    def _arm_delayed_probe(delay: float, window: str | None) -> None:
+        facade.logger.debug(
+            "Delaying connect-time metadata probe by %.1fs until after %s window",
+            delay,
+            window,
+        )
+
+        def _delayed_submit_with_stale_guard() -> None:
+            with facade._relay_rx_time_clock_skew_lock:
+                if facade._pending_connect_time_probe_timer is not timer:
                     return
-                active_client = facade.meshtastic_client
-                active_client_id = facade._relay_active_client_id
-                if active_client is not client and (
-                    active_client_id is None or active_client_id != id(client)
-                ):
-                    facade.logger.debug(
-                        "Skipping delayed connect-time metadata probe; active client changed since scheduling"
-                    )
-                    with facade._relay_rx_time_clock_skew_lock:
-                        if facade._pending_connect_time_probe_timer is timer:
-                            facade._pending_connect_time_probe_timer = None
+            if facade.shutting_down:
+                facade.logger.debug(
+                    "Skipping delayed connect-time metadata probe; shutdown in progress"
+                )
+                _clear_pending_timer(timer)
+                return
+            active_client = facade.meshtastic_client
+            active_client_id = facade._relay_active_client_id
+            if active_client is not client and (
+                active_client_id is None or active_client_id != id(client)
+            ):
+                facade.logger.debug(
+                    "Skipping delayed connect-time metadata probe; active client changed since scheduling"
+                )
+                _clear_pending_timer(timer)
+                return
+
+            latest_deadline, latest_window = _get_connect_probe_stabilization_deadline()
+            if latest_deadline is not None:
+                latest_delay = (
+                    latest_deadline
+                    + CONNECT_PROBE_POST_STABILIZATION_DELAY_SECS
+                    - facade.time.monotonic()
+                )
+                if latest_delay > 0:
+                    _arm_delayed_probe(latest_delay, latest_window)
                     return
-                with facade._relay_rx_time_clock_skew_lock:
-                    if facade._pending_connect_time_probe_timer is timer:
-                        facade._pending_connect_time_probe_timer = None
+
+            if _clear_pending_timer(timer):
                 _submit_probe()
 
-            timer = threading.Timer(delay, _delayed_submit_with_stale_guard)
-            timer.daemon = True
-            old_timer = None
-            with facade._relay_rx_time_clock_skew_lock:
-                old_timer = facade._pending_connect_time_probe_timer
-                facade._pending_connect_time_probe_timer = timer
-            if old_timer is not None:
-                with contextlib.suppress(Exception):
-                    old_timer.cancel()
-            timer.start()
+        timer = threading.Timer(delay, _delayed_submit_with_stale_guard)
+        timer.daemon = True
+        old_timer = None
+        with facade._relay_rx_time_clock_skew_lock:
+            old_timer = facade._pending_connect_time_probe_timer
+            facade._pending_connect_time_probe_timer = timer
+        if old_timer is not None:
+            with contextlib.suppress(Exception):
+                old_timer.cancel()
+        timer.start()
+
+    if stabilization_deadline is not None:
+        delay = (
+            stabilization_deadline
+            + CONNECT_PROBE_POST_STABILIZATION_DELAY_SECS
+            - facade.time.monotonic()
+        )
+        if delay > 0:
+            _arm_delayed_probe(delay, stabilization_window)
             return
 
     _submit_probe()
