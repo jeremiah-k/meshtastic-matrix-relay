@@ -1319,7 +1319,8 @@ def run_main(args: Any) -> int:
         )
         config_rich_logger.warning(
             "Run 'mmrelay migrate --dry-run' and 'mmrelay migrate' before upgrading "
-            "past the 1.4 release series. See docs/DOCKER.md: Migrating to the New Layout."
+            "past the %s release series. See docs/DOCKER.md: Migrating to the New Layout.",
+            LEGACY_LAYOUT_FINAL_MIGRATION_SERIES,
         )
 
     # Check if config exists and has the required keys

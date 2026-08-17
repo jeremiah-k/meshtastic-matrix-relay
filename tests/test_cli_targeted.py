@@ -32,6 +32,10 @@ from mmrelay.cli import (
 )
 from mmrelay.constants.app import APP_DISPLAY_NAME, CREDENTIALS_FILENAME, LOG_FILENAME
 from mmrelay.constants.cli import EXIT_CODE_ERROR, EXIT_CODE_SUCCESS
+from mmrelay.constants.config import (
+    LEGACY_LAYOUT_FINAL_MIGRATION_SERIES,
+    LEGACY_LAYOUT_REMOVAL_VERSION,
+)
 
 
 def _make_paths_info(**overrides):
@@ -357,15 +361,18 @@ class TestHandleMigrateCommand(unittest.TestCase):
     def test_migration_warns_about_final_compatibility_window(
         self, mock_print, mock_perform
     ):
-        """Migration tells operators that 1.4 is the final bridge release."""
+        """Migration reports the configured final compatibility window."""
         mock_perform.return_value = {"success": True, "migrations": []}
 
         result = handle_migrate_command(self.args)
 
         self.assertEqual(result, EXIT_CODE_SUCCESS)
         output = "\n".join(" ".join(map(str, call.args)) for call in mock_print.call_args_list)
-        self.assertIn("final release series", output)
-        self.assertIn("v1.5", output)
+        self.assertIn(
+            f"MMRelay {LEGACY_LAYOUT_FINAL_MIGRATION_SERIES} is the final release series",
+            output,
+        )
+        self.assertIn(f"v{LEGACY_LAYOUT_REMOVAL_VERSION}", output)
 
     @patch("mmrelay.migrate.perform_migration")
     @patch("builtins.print")
