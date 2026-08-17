@@ -67,7 +67,11 @@ jobs:
           pip install pyinstaller
 
       - name: Build executable
-        run: pyinstaller --name=mmrelay.exe --onefile --console --collect-all rich src/mmrelay/main.py
+        # --collect-submodules meshtastic: mtjk's BLE compat layer imports
+        # modules lazily via importlib (monkeypatch-friendly shims), which
+        # PyInstaller's static analysis cannot see; without this the frozen
+        # exe crashes at startup (ModuleNotFoundError: receive_compat_service).
+        run: pyinstaller --name=mmrelay.exe --onefile --console --collect-all rich --collect-submodules meshtastic src/mmrelay/main.py
 
       - name: Build installer
         # Intentionally using a SHA-pinned action that supports `filepath` + `options`.
