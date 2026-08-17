@@ -320,9 +320,16 @@ With MMRelay's supported mindroom-nio provider and E2EE enabled, MMRelay
 makes a best-effort attempt to create or reuse a minimal cross-signing identity
 for the bot account and sign its own device. A successful bootstrap establishes
 the Matrix signing relationship expected by signed-device clients: the master
-key signs the self-signing key, and the self-signing key signs the device. It can
-remove the bot account's own self-verification warning after the next successful
-`mmrelay auth login` and sync. Other clients may still show trust warnings until
+key signs the self-signing key, and the self-signing key signs the device.
+MMRelay then queries the homeserver and verifies that exact chain against the
+persisted local identity instead of trusting only the provider's sidecar state.
+If an existing device has lost only its self-signing signature, MMRelay can
+re-publish that signature without rotating the master or self-signing keys.
+
+For an already-signed device, MMRelay also re-publishes the same device signature
+at startup. This is idempotent and gives the homeserver another device-list
+notification so remote homeservers and Matrix clients can refresh stale
+cross-signing caches. Other clients may still show identity-trust warnings until
 they verify or trust the bot account's master key.
 
 When the provider does not expose bot cross-signing, or when bootstrap fails,
@@ -402,6 +409,40 @@ key sharing has not completed.
 mmrelay auth logout
 mmrelay auth login
 ```
+
+### "Encrypted by a device not verified by its owner" in Element
+
+This Element warning means the sending device is not currently linked to the
+sender's Matrix cross-signing identity through a valid self-signing signature.
+It is different from a warning that the sender's overall identity is merely
+untrusted.
+
+With the supported mindroom-nio provider, MMRelay now checks the server-visible
+master -> self-signing -> current-device chain after bootstrap. If the provider's
+local sidecar says the device is already signed but the homeserver is missing the
+device signature, MMRelay re-publishes the signature and verifies it again. It
+never repairs this condition by replacing a mismatched master or self-signing
+key.
+
+After upgrading, restart MMRelay and look for a server-visible confirmation such
+as:
+
+```text
+INFO Matrix: Confirmed server-visible Matrix self-signing for device YOUR_DEVICE_ID
+```
+
+If MMRelay had to restore a missing device signature, it also logs:
+
+```text
+INFO Matrix: Repaired server-visible Matrix self-signing for device YOUR_DEVICE_ID
+```
+
+If the warning remains in another Matrix client after MMRelay has confirmed the
+server-visible chain, allow that client's homeserver/device-list cache to refresh
+and send a new message. A persistent warning at that point is likely outside the
+local MMRelay identity state and should be investigated as a homeserver/federation
+device-list propagation issue rather than by deleting the MMRelay cross-signing
+sidecar.
 
 ### "Could not self-verify Matrix device" in logs
 
