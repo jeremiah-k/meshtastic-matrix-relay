@@ -147,6 +147,7 @@ Behavior notes:
 - `connect_probe_enabled` defaults to `health_check.enabled` when unset.
 - First process connect uses a startup drain window to avoid relaying backlogged packets.
 - Reconnects use a bounded pre-start bootstrap path; they do not re-run the startup drain window.
+- A connect-time metadata probe waits until the active startup drain or reconnect bootstrap window has ended, then adds the normal post-stabilization delay before sending probe traffic.
 - BLE connections use disconnect detection and skip periodic metadata probes.
 - Legacy `meshtastic.heartbeat_interval` is still supported for compatibility, but `health_check` is preferred.
 
