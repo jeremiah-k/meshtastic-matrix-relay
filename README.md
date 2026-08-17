@@ -1,105 +1,70 @@
 # MMRelay
 
-## (Meshtastic <=> Matrix Relay)
+**Meshtastic ↔ Matrix Relay**
 
-A powerful and easy-to-use relay between Meshtastic devices and Matrix chat rooms, allowing seamless communication across platforms. This opens the door for bridging Meshtastic devices to [many other platforms](https://matrix.org/bridges/).
+MMRelay is a self-hosted bridge between a Meshtastic meshnet and Matrix. It runs
+as a long-lived service, connects to one Meshtastic node, logs in to Matrix with
+a bot account, and relays eligible traffic between configured Meshtastic
+channels and Matrix rooms.
 
-## Features
+`Meshtastic meshnet ⇄ Meshtastic node ⇄ MMRelay ⇄ Matrix rooms`
 
-- Bidirectional message relay between Meshtastic devices and Matrix chat rooms, capable of supporting multiple meshnets
-- Supports serial, network, and BLE connections for Meshtastic devices
-- Custom fields are embedded in Matrix messages for relaying messages between multiple meshnets
-- Truncates long messages to fit within Meshtastic's payload size
-- SQLite database to store node information for improved functionality
-- Customizable logging level for easy debugging
-- Configurable through a simple YAML file
-- Supports mapping multiple rooms and channels 1:1
-- Relays messages to/from an MQTT broker, if configured in the Meshtastic firmware
-- Bidirectional replies and reactions support
-- Native Docker support
-- Supports encrypted Matrix rooms 🔐 (Matrix E2EE)
-- Unified directory structure 📁 (New in v1.3)
+## How it works at a glance
 
-> **Encryption note**: MMRelay uses [**mindroom-nio**](https://github.com/mindroom-ai/mindroom-nio) with **vodozemac** for Matrix E2EE. With MMRelay's supported mindroom-nio provider, encrypted sessions make a best-effort attempt to cross-sign the Matrix bot account's own Matrix client device without verifying other users; startup continues with a warning when the provider or homeserver cannot complete it. This is Matrix client key management only: it does not sign Meshtastic nodes, link identities across Matrix and Meshtastic, or add cross-platform verification. Run `mmrelay auth login` once if the homeserver requires password-based authentication for the initial upload. If the local cross-signing sidecar was lost but Matrix already has an identity, `mmrelay auth login --reset-cross-signing` provides an explicit password-authenticated recovery path without first logging out; it replaces the server identity, so other clients may require verification again. Most users, including Docker deployments and clean pipx/PyPI installs, should not need to do anything else. If you maintain a developer venv/editable install or an older in-place upgraded Python environment, verify that matrix-nio is not still installed alongside mindroom-nio. See the [E2EE Setup Guide](docs/E2EE.md) and the [v1.3 Migration Guide](docs/MIGRATION_1.3.md).
+- **Meshtastic side:** MMRelay connects to a Meshtastic node over **Serial**, **BLE**, or **TCP/network** (for example, a node reachable over Wi-Fi).
+- **Matrix side:** MMRelay joins configured rooms using a dedicated Matrix bot account.
+- **Room/channel mapping:** each configured Matrix room is associated with a Meshtastic channel number. Multiple Matrix rooms may use the same channel.
+- **Bidirectional relay:** eligible mesh traffic can be posted to mapped Matrix rooms, and eligible Matrix traffic can be transmitted on the mapped Meshtastic channel.
+- **Identity boundary:** messages posted into Matrix are sent by the MMRelay bot. Meshtastic sender names and node IDs are preserved as attribution; they are not Matrix-authenticated identities.
+
+For the full conceptual model—including meshnet terminology, the recommended
+relay-node setup, message flow, mapping behavior, and the identity/trust
+boundary—see **[How MMRelay Works](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/How-MMRelay-Works)**.
+
+## Start here
+
+- **[Installation and setup](docs/INSTRUCTIONS.md)** — install MMRelay and create a configuration
+- **[Getting started with Matrix](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Getting-Started-With-Matrix-&-MM-Relay)** — Matrix basics and account setup
+- **[E2EE setup](docs/E2EE.md)** — encrypted Matrix rooms and bot-device identity
+- **[Docker](docs/DOCKER.md)** · **[Helm](docs/HELM.md)** · **[Kubernetes](docs/KUBERNETES.md)** — deployment options
+- **[What's new in 1.4](docs/WHATS_NEW_1.4.md)** — release and upgrade guidance
+- **[Documentation index](docs/README.md)** — all versioned project documentation
+
+## Highlights
+
+- Bidirectional Meshtastic ↔ Matrix message relay
+- Multiple meshnets and configurable room/channel mappings
+- Serial, BLE, and TCP/network Meshtastic connections
+- Matrix end-to-end encryption support
+- Replies and reactions across the bridge
+- Message formatting and payload-size handling for Meshtastic
+- SQLite-backed node/message state
+- Docker and Kubernetes deployment support
+- Core, community, and local plugin support
+- Optional MQTT integration through Meshtastic firmware
+
+> **E2EE:** MMRelay uses [mindroom-nio](https://github.com/mindroom-ai/mindroom-nio)
+> with vodozemac for encrypted Matrix rooms. Cross-signing applies to the Matrix
+> bot device only; it does not authenticate Meshtastic identities. See the
+> [E2EE guide](docs/E2EE.md), especially before resetting authentication or
+> cross-signing state.
 >
-> **Improved BLE stability (v1.3.3)**: The Meshtastic Python library has been replaced with [mtjk](https://github.com/jeremiah-k/mtjk), a fork with BLE reliability improvements (auto-reconnection, state management, notification recovery) along with thread-safety and connection handling fixes. Changes may be upstreamed selectively once they've been battle-tested here. See the [Refactor Program](https://github.com/jeremiah-k/mtjk/blob/develop/REFACTOR_PROGRAM.md) for scope and rationale.
-
-## Documentation
-
-MMRelay supports multiple deployment methods including pip/pipx, Docker, and Kubernetes. For complete setup instructions and all deployment options, see:
-
-- [Installation Instructions](docs/INSTRUCTIONS.md) - Setup and configuration guide
-- [What's New in v1.3](docs/WHATS_NEW_1.3.md) - Latest release changes and migration info
-- [Migration Guide for v1.3](docs/MIGRATION_1.3.md) - Upgrading from v1.2 or earlier
-- [Docker Guide](docs/DOCKER.md) - Docker deployment methods
-- [Kubernetes Guide](docs/KUBERNETES.md) - Kubernetes deployment guide
-- [E2EE Setup Guide](docs/E2EE.md) - Matrix End-to-End Encryption configuration
-
----
+> **Meshtastic library:** MMRelay uses [mtjk](https://github.com/jeremiah-k/mtjk),
+> a Meshtastic Python fork with additional BLE, connection-lifecycle, and
+> thread-safety work used by this project.
 
 ## Plugins
 
-MMRelay supports plugins for extending its functionality, enabling customization and enhancement of the relay to suit specific needs.
+MMRelay can be extended with built-in core plugins, Git-managed community
+plugins, and local custom plugins. Plugins run inside the MMRelay process, so
+install third-party code only from sources you trust.
 
-### Core Plugins
+- [Core Plugins](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Core-Plugins)
+- [Community Plugin List](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Community-Plugin-List)
+- [Plugin Development Guide](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Plugin-Development-Guide)
 
-Generate a map of your nodes:
+## Community
 
-![Map Plugin Screenshot](https://user-images.githubusercontent.com/1770544/235247915-47750b4f-d505-4792-a458-54a5f24c1523.png)
-
-Produce high-level details about your mesh:
-
-![Mesh Details Screenshot](https://user-images.githubusercontent.com/1770544/235245873-1ddc773b-a4cd-4c67-b0a5-b55a29504b73.png)
-
-See the full list of [core plugins](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Core-Plugins).
-
-### Plugin System
-
-MMRelay supports three plugin types:
-
-- **Core Plugins**: Built in with MMRelay
-- **Community Plugins**: Git-based plugins that MMRelay syncs for you
-- **Custom Plugins**: Local/manual plugins for private use and development
-
-MMRelay manages plugin directories under `MMRELAY_HOME` (default `~/.mmrelay`).
-Most users only need `config.yaml`; path details matter mainly when authoring custom plugins.
-
-Check the [Community Plugins Development Guide](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Community-Plugin-Development-Guide) in our wiki to get started.
-
-✨️ Visit the [Community Plugins List](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Community-Plugin-List)!
-
-### Install a Community Plugin
-
-Add the repository under the `community-plugins` section in `config.yaml`:
-
-```yaml
-community-plugins:
-  example-plugin:
-    active: true
-    repository: https://github.com/jeremiah-k/mmr-plugin-template.git
-    commit: 0123456789abcdef0123456789abcdef01234567
-    install_requirements: true
-```
-
-- Community plugins run in the same MMRelay process and inherit its permissions. Use trusted sources.
-- Dependency installation is per-plugin and defaults to off (`install_requirements: false`).
-- Prefer commit-pinned refs.
-- Explicit `branch` and `tag` refs are allowed for dependency install, but MMRelay logs warnings.
-- Missing ref (implicit default branch) is not eligible for dependency install.
-- Dependencies install once per resolved local commit and are skipped when unchanged.
-
----
-
-## Getting Started with Matrix
-
-See our Wiki page [Getting Started With Matrix & MMRelay](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Getting-Started-With-Matrix-&-MM-Relay).
-
----
-
-## Already on Matrix?
-
-Join us!
-
-- Our project's room: [#mmrelay:matrix.org](https://matrix.to/#/#mmrelay:matrix.org)
-- Part of the Meshnet Club Matrix space: [#meshnetclub:matrix.org](https://matrix.to/#/#meshnetclub:matrix.org)
-- Public Relay Room: [#mmrelay-relay-room:matrix.org](https://matrix.to/#/#mmrelay-relay-room:matrix.org) - Where we bridge multiple meshnets. Feel free to join us, with or without a relay!
+- Project room: [#mmrelay:matrix.org](https://matrix.to/#/#mmrelay:matrix.org)
+- Meshnet Club space: [#meshnetclub:matrix.org](https://matrix.to/#/#meshnetclub:matrix.org)
+- Public relay room: [#mmrelay-relay-room:matrix.org](https://matrix.to/#/#mmrelay-relay-room:matrix.org)

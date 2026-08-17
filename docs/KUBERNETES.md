@@ -508,7 +508,7 @@ kubectl exec -n mmrelay <pod-name> -- mmrelay verify-migration
 kubectl exec -n mmrelay <pod-name> -- mmrelay doctor
 ```
 
-Deprecation timeline: legacy credential/location fallbacks are supported in v1.3 and planned for removal in v1.4.
+Deprecation timeline: legacy credential/location fallback and migration tooling remain available through the v1.4 release series as a final upgrade bridge and are planned for removal in v1.5.
 
 ### Disaster recovery checklist
 
