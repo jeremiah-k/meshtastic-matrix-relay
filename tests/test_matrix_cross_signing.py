@@ -346,6 +346,49 @@ async def test_missing_sidecar_does_not_replace_server_identity(
 
 
 @pytest.mark.asyncio
+async def test_missing_sidecar_can_replace_server_identity_with_explicit_reset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An authenticated opt-in should recover without logging out the device."""
+    logger = MagicMock()
+    monkeypatch.setattr(e2ee_identity, "logger", logger)
+    client = _GuardedCrossSigningClient(has_master=True)
+
+    result = await matrix_utils._ensure_own_device_cross_signed(
+        client,
+        password=TEST_LOGIN_CREDENTIAL,
+        reset_cross_signing=True,
+    )
+
+    assert result == "uploaded_and_signed"
+    assert client.query_calls == 1
+    assert client.passwords == [TEST_LOGIN_CREDENTIAL]
+
+
+@pytest.mark.asyncio
+async def test_missing_sidecar_reset_requires_password(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Identity replacement must remain unavailable to unattended startup."""
+    logger = MagicMock()
+    monkeypatch.setattr(e2ee_identity, "logger", logger)
+    client = _GuardedCrossSigningClient(has_master=True)
+
+    result = await matrix_utils._ensure_own_device_cross_signed(
+        client,
+        reset_cross_signing=True,
+    )
+
+    assert result is None
+    assert client.query_calls == 1
+    assert client.passwords == []
+    assert any(
+        "without password authentication" in str(call.args[0])
+        for call in logger.warning.call_args_list
+    )
+
+
+@pytest.mark.asyncio
 async def test_provider_without_identity_property_preserves_server_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -623,9 +666,7 @@ class _ServerVisibleIdentity:
             "user_id": "@bot:example.org",
             "usage": ["self_signing"],
             "keys": {"ed25519:SELFSIGNINGKEY": "SELFSIGNINGKEY"},
-            "signatures": {
-                "@bot:example.org": {"ed25519:MASTERKEY": "master-sig"}
-            },
+            "signatures": {"@bot:example.org": {"ed25519:MASTERKEY": "master-sig"}},
         }
 
     def signed_device_payload(
@@ -746,9 +787,7 @@ class _ServerVisibleCrossSigningClient:
                     self.user_id: {
                         "user_id": self.user_id,
                         "usage": ["self_signing"],
-                        "keys": {
-                            f"ed25519:{self_signing_key}": self_signing_key
-                        },
+                        "keys": {f"ed25519:{self_signing_key}": self_signing_key},
                         "signatures": {
                             self.user_id: {
                                 f"ed25519:{self.identity.master_public_key}": (
@@ -914,9 +953,7 @@ def test_nested_dict_stops_at_non_mapping_value() -> None:
 
 def test_verifiable_identity_hides_provider_property_failures() -> None:
     assert (
-        e2ee_identity._verifiable_cross_signing_identity(
-            _BrokenVerificationIdentity()
-        )
+        e2ee_identity._verifiable_cross_signing_identity(_BrokenVerificationIdentity())
         is None
     )
 

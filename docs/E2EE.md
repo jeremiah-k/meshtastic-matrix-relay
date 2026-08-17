@@ -160,8 +160,10 @@ client session:
 
 Back up the credentials, E2EE store, and cross-signing sidecar together. If the
 sidecar is lost while Matrix still has the account's public cross-signing
-identity, MMRelay deliberately refuses to generate a replacement identity.
-Restore the complete backup or use a new, dedicated bot account.
+identity, MMRelay refuses to generate a replacement during unattended startup.
+Restore the complete backup when possible. If it cannot be restored, an explicit
+password-authenticated `mmrelay auth login --reset-cross-signing` can replace the
+identity without first logging out or deleting the working device session.
 
 ### Recommendations
 
@@ -256,6 +258,13 @@ E2EE setup end to end.
 5. Initializes key storage at `~/.mmrelay/matrix/store/`
 6. Attempts to create or reuse a cross-signing identity and self-sign the
    MMRelay device when supported
+
+When existing credentials belong to the same account, login reuses their device
+ID. This allows `mmrelay auth login --reset-cross-signing` to repair a lost
+cross-signing sidecar without running `auth logout` or deleting the E2EE store.
+The reset replaces the account's server-side master and self-signing keys, so
+other Matrix clients may require identity verification again. Prefer restoring a
+complete backup when one is available.
 
 Cross-signing is best-effort: login still succeeds if the provider does not
 support it or the homeserver rejects bootstrap, but clients enforcing
@@ -458,8 +467,11 @@ Use the warning details to choose the recovery path:
   the accompanying server error or policy; repeatedly running `auth login` does
   not bypass a server-side rejection.
 - If Matrix already has a master key but the local sidecar is missing, restore
-  the complete E2EE store/sidecar backup or use a new, dedicated bot account.
-  MMRelay preserves the server identity and refuses to replace it automatically.
+  the complete E2EE store/sidecar backup when possible. If recovery is impossible,
+  stop MMRelay and run `mmrelay auth login --reset-cross-signing`. This reuses the
+  saved device ID when the account matches and does not require `auth logout`, but
+  it replaces the server identity and other clients may require verification
+  again. MMRelay still refuses to replace the identity during ordinary startup.
 
 Do not delete only the cross-signing sidecar: it contains the private master and
 self-signing seeds, and rotating them independently can invalidate the account's
