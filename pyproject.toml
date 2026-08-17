@@ -46,7 +46,7 @@ test = [
   "pytest-cov==7.1.0",
   "pytest-asyncio==1.4.0",
   "pytest-env==1.7.0",
-  "pytest-timeout==2.4.0",
+  "pytest-timeout==2.5.0",
 ]
 dev = [
   "mypy==2.3.1",
