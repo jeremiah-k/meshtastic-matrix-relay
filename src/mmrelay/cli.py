@@ -2258,6 +2258,16 @@ def handle_auth_login(args: argparse.Namespace) -> int:
             print("\nMatrix Bot Authentication")
             print("=========================")
 
+    config_for_paths: dict[str, Any] | None = None
+    try:
+        from mmrelay.config import load_config_silently
+
+        config_for_paths = load_config_silently(args)
+    except (OSError, PermissionError, ImportError, ValueError) as e:
+        _get_logger().debug(
+            "Could not load config for Matrix authentication paths: %s", e
+        )
+
     try:
         result = asyncio.run(
             login_matrix_bot(
@@ -2265,6 +2275,7 @@ def handle_auth_login(args: argparse.Namespace) -> int:
                 username=username,
                 password=password,
                 logout_others=False,
+                config_for_paths=config_for_paths,
             )
         )
     except KeyboardInterrupt:
@@ -2281,12 +2292,18 @@ def handle_auth_login(args: argparse.Namespace) -> int:
         return 1
     else:
         if result:
+            from mmrelay.config import get_explicit_credentials_path
             from mmrelay.paths import get_credentials_path
 
-            creds_path = get_credentials_path()
+            explicit_credentials_path = get_explicit_credentials_path(config_for_paths)
+            creds_path = (
+                os.path.expanduser(explicit_credentials_path)
+                if explicit_credentials_path
+                else str(get_credentials_path())
+            )
             # Keep non-interactive output quiet for automation and existing CLI behavior.
             if len(provided_params) == 0:
-                if creds_path.exists():
+                if os.path.exists(creds_path):
                     print(f"✅ credentials.json saved: {creds_path}")
                 else:
                     print(

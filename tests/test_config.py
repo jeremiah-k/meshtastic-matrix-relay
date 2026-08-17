@@ -18,6 +18,7 @@ from mmrelay.config import (
     _convert_env_float,
     _convert_env_int,
     apply_env_config_overrides,
+    check_e2ee_enabled_silently,
     get_app_path,
     get_base_dir,
     get_config_paths,
@@ -28,6 +29,7 @@ from mmrelay.config import (
     get_plugin_data_dir,
     is_e2ee_enabled,
     load_config,
+    load_config_silently,
     load_credentials,
     load_database_config_from_env,
     load_logging_config_from_env,
@@ -46,6 +48,56 @@ from mmrelay.constants.network import (
     DEFAULT_TCP_PORT,
 )
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
+
+
+def test_load_config_silently_reads_config_without_logging(
+    tmp_path, monkeypatch
+) -> None:
+    """The auth-path loader should avoid warnings and global config mutation."""
+    config_path = tmp_path / "config.yaml"
+    credentials_path = tmp_path / "credentials.json"
+    config_path.write_text(
+        "matrix:\n"
+        f"  credentials_path: {credentials_path}\n"
+        "  e2ee:\n"
+        "    enabled: true\n",
+        encoding="utf-8",
+    )
+    args = MagicMock(config=str(config_path))
+    logger = MagicMock()
+    monkeypatch.setattr(mmrelay.config, "relay_config", {})
+    monkeypatch.setattr(mmrelay.config, "config_path", None)
+    monkeypatch.setattr(mmrelay.config, "logger", logger)
+
+    loaded = load_config_silently(args)
+
+    assert loaded == {
+        "matrix": {
+            "credentials_path": str(credentials_path),
+            "e2ee": {"enabled": True},
+        }
+    }
+    assert mmrelay.config.relay_config == {}
+    assert mmrelay.config.config_path is None
+    logger.warning.assert_not_called()
+    logger.error.assert_not_called()
+    logger.exception.assert_not_called()
+
+
+def test_load_config_silently_ignores_malformed_yaml(tmp_path, monkeypatch) -> None:
+    """Malformed setup config should degrade to an empty mapping quietly."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("matrix: [unterminated\n", encoding="utf-8")
+    args = MagicMock(config=str(config_path))
+    logger = MagicMock()
+    monkeypatch.setattr(mmrelay.config, "logger", logger)
+
+    loaded = load_config_silently(args)
+
+    assert loaded == {}
+    logger.warning.assert_not_called()
+    logger.error.assert_not_called()
+    logger.exception.assert_not_called()
 
 
 class TestConfig(unittest.TestCase):
@@ -1595,6 +1647,59 @@ def _cli_utils_import_blocker(
     if name in ("mmrelay.cli_utils", "cli_utils"):
         raise ImportError
     return _real_import(name, globals, locals, fromlist, level)
+
+
+def test_load_config_silently_handles_path_resolution_errors() -> None:
+    with patch("mmrelay.config.get_config_paths", side_effect=ValueError("bad path")):
+        assert load_config_silently() == {}
+
+
+def test_check_e2ee_enabled_silently_is_disabled_on_windows() -> None:
+    with patch("mmrelay.config.sys.platform", "win32"):
+        assert check_e2ee_enabled_silently() is False
+
+
+def test_silent_config_readers_share_candidate_scanning(tmp_path) -> None:
+    malformed = tmp_path / "malformed.yaml"
+    enabled = tmp_path / "enabled.yaml"
+    malformed.write_text("matrix: [unterminated\n", encoding="utf-8")
+    enabled.write_text("matrix:\n  e2ee:\n    enabled: true\n", encoding="utf-8")
+
+    paths = [str(malformed), str(enabled)]
+    with patch("mmrelay.config.get_config_paths", return_value=paths):
+        assert load_config_silently() == {"matrix": {"e2ee": {"enabled": True}}}
+        assert check_e2ee_enabled_silently() is True
+
+
+def test_load_config_silently_preserves_empty_candidate_precedence(tmp_path) -> None:
+    empty = tmp_path / "empty.yaml"
+    enabled = tmp_path / "enabled.yaml"
+    empty.write_text("", encoding="utf-8")
+    enabled.write_text("matrix:\n  e2ee:\n    enabled: true\n", encoding="utf-8")
+
+    paths = [str(empty), str(enabled)]
+    with patch("mmrelay.config.get_config_paths", return_value=paths):
+        assert load_config_silently() == {}
+        assert check_e2ee_enabled_silently() is True
+
+
+def test_load_config_silently_does_not_fallback_for_missing_explicit_config(
+    tmp_path,
+) -> None:
+    missing = tmp_path / "missing.yaml"
+    fallback = tmp_path / "fallback.yaml"
+    fallback.write_text(
+        "matrix:\n  e2ee:\n    enabled: true\n  credentials_path: /tmp/fallback.json\n",
+        encoding="utf-8",
+    )
+    args = MagicMock(config=str(missing))
+
+    with patch(
+        "mmrelay.config.get_config_paths", return_value=[str(missing), str(fallback)]
+    ) as get_paths:
+        assert load_config_silently(args) == {}
+
+    get_paths.assert_not_called()
 
 
 if __name__ == "__main__":
