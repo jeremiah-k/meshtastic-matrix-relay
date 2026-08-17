@@ -811,6 +811,11 @@ async def login_matrix_bot(
                 "for this login."
             )
             return False
+        if reset_cross_signing and not password:
+            facade.logger.error(
+                "Cannot reset Matrix cross-signing without password authentication."
+            )
+            return False
 
         client_config = facade.build_matrix_client_config(e2ee_enabled=e2ee_enabled)
 

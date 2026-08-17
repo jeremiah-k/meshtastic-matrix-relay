@@ -152,6 +152,13 @@ def test_installed_mindroom_nio_exposes_mmrelay_e2ee_contract() -> None:
         for capability in ("ensure_cross_signing", "stop_sync_forever"):
             assert callable(getattr(AsyncClient, capability, None)), capability
 
+        upload_own_device_signature = getattr(
+            AsyncClient, "_upload_own_device_signature", None
+        )
+        assert iscoroutinefunction(upload_own_device_signature)
+        upload_parameters = signature(upload_own_device_signature).parameters
+        assert "identity" in upload_parameters
+
         identity = CrossSigningIdentity.generate("@bot:example.org")
         self_signing = identity.self_signing_key_payload()
         signature_b64 = self_signing["signatures"][identity.user_id][

@@ -49,6 +49,22 @@ _EnsureCrossSigning = Callable[..., Awaitable[str]]
 _UploadOwnDeviceSignature = Callable[[object], Awaitable[None]]
 
 
+def _summarize_keys_query_failures(failures: dict[object, object]) -> str:
+    """Return a bounded diagnostic summary of Matrix keys/query failures."""
+    summaries: list[str] = []
+    for server, detail in list(failures.items())[:5]:
+        server_label = str(server).replace("\r", "\\r").replace("\n", "\\n")[:80]
+        errcode = detail.get("errcode") if isinstance(detail, dict) else None
+        if isinstance(errcode, str) and errcode:
+            errcode_label = errcode.replace("\r", "\\r").replace("\n", "\\n")[:64]
+            summaries.append(f"{server_label} ({errcode_label})")
+        else:
+            summaries.append(server_label)
+    if len(failures) > 5:
+        summaries.append(f"+{len(failures) - 5} more")
+    return ", ".join(summaries)[:300]
+
+
 def _client_label(client: object, attribute: str) -> str:
     """Return a diagnostic client attribute without allowing getters to escape."""
     try:
@@ -98,7 +114,10 @@ async def _query_own_keys(
         raise RuntimeError("Matrix keys/query returned a non-object response")
     failures = payload.get("failures")
     if isinstance(failures, dict) and failures:
-        raise RuntimeError("Matrix keys/query reported homeserver failures")
+        summary = _summarize_keys_query_failures(failures)
+        raise RuntimeError(
+            f"Matrix keys/query reported homeserver failures: {summary}"
+        )
     return user_id, cast(dict[str, object], payload)
 
 
@@ -229,7 +248,12 @@ async def _server_own_device_cross_signing_status(
         return False, False, "the server does not expose keys for the current device"
     if device.get("user_id") != user_id or device.get("device_id") != device_id:
         return False, False, "the server returned inconsistent current-device keys"
-    expected_signed_device = identity.signed_device_payload(device)
+    signable_device = {
+        key: value
+        for key, value in device.items()
+        if key not in ("signatures", "unsigned")
+    }
+    expected_signed_device = identity.signed_device_payload(signable_device)
     expected_device_signature = _signature_value(
         expected_signed_device,
         user_id=user_id,
@@ -273,8 +297,6 @@ async def _republish_own_device_signature(client: object, identity: object) -> b
 async def _confirm_server_visible_cross_signing(
     client: object,
     identity: object,
-    *,
-    refresh_notification: bool,
 ) -> bool:
     """Verify the server postcondition and repair a stale device signature safely."""
     verifiable_identity = _verifiable_cross_signing_identity(identity)
@@ -288,28 +310,6 @@ async def _confirm_server_visible_cross_signing(
         verifiable_identity,
     )
     if valid:
-        if refresh_notification:
-            try:
-                refreshed = await _republish_own_device_signature(client, identity)
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:  # noqa: BLE001 - provider upload boundary
-                logger.warning(
-                    "Matrix device %s is self-signed on the homeserver, but MMRelay "
-                    "could not refresh its device-signature notification: %s",
-                    _client_label(client, "device_id"),
-                    exc,
-                )
-                logger.debug(
-                    "Matrix cross-signing notification refresh failure", exc_info=True
-                )
-            else:
-                if refreshed:
-                    logger.debug(
-                        "Re-published Matrix device signature for %s so homeserver "
-                        "device-list caches can refresh",
-                        _client_label(client, "device_id"),
-                    )
         logger.info(
             "Confirmed server-visible Matrix self-signing for device %s",
             _client_label(client, "device_id"),
@@ -340,7 +340,7 @@ async def _confirm_server_visible_cross_signing(
     if not refreshed:
         logger.warning(
             "Matrix device %s is missing its owner self-signing signature, and the "
-            "active provider does not expose a safe signature-refresh path.",
+            "active provider does not expose a safe signature-repair path.",
             _client_label(client, "device_id"),
         )
         return False
@@ -365,26 +365,10 @@ async def _confirm_server_visible_cross_signing(
     return True
 
 
-async def _ensure_own_device_cross_signed(
+def _inspect_cross_signing_provider(
     client: object,
-    *,
-    password: str | None = None,
-    reset_cross_signing: bool = False,
-) -> str | None:
-    """Attempt to cross-sign the bot's own Matrix device when supported.
-
-    mindroom-nio provides a bot-scoped producer implementation that creates a
-    master and self-signing key and signs only the current device. It does not
-    verify other users. The operation is idempotent and deliberately non-fatal
-    for MMRelay: startup can continue if a provider or homeserver rejects the
-    bootstrap, while logs explain that enforcing clients may withhold room keys
-    and how to retry with password UIA via ``mmrelay auth login``.
-
-    ``reset_cross_signing`` is an explicit recovery path for a lost sidecar. It
-    allows a password-authenticated login to replace server identity material;
-    ordinary startup remains fail-closed. ``asyncio.CancelledError`` is always
-    allowed to propagate.
-    """
+) -> tuple[_EnsureCrossSigning, object | None] | None:
+    """Return the provider bootstrap callable and local identity when inspectable."""
     try:
         ensure_method = getattr(client, "ensure_cross_signing", None)
     except asyncio.CancelledError:
@@ -410,9 +394,6 @@ async def _ensure_own_device_cross_signed(
         )
         return None
 
-    # mindroom-nio owns cross-signing private keys in a local sidecar. Treat an
-    # unavailable local identity as missing and refuse to replace an existing
-    # server identity automatically.
     try:
         local_identity = getattr(client, "cross_signing_identity", None)
     except asyncio.CancelledError:
@@ -427,62 +408,156 @@ async def _ensure_own_device_cross_signed(
         logger.debug("Matrix cross-signing identity inspection failure", exc_info=True)
         return None
 
-    # mindroom-nio applies its configured timeout to each request, but this
-    # operation can query server state, make several bootstrap requests, and retry
-    # key uploads. Use one deadline for the complete best-effort async operation.
-    checking_server_identity = False
+    return cast(_EnsureCrossSigning, ensure_method), local_identity
+
+
+async def _resolve_cross_signing_reset_policy(
+    client: object,
+    *,
+    local_identity: object | None,
+    password: str | None,
+    reset_cross_signing: bool,
+) -> bool:
+    """Decide whether bootstrap may proceed without rotating identity implicitly."""
+    if local_identity is not None:
+        return True
+
+    try:
+        server_has_identity = await _server_has_own_cross_signing_identity(client)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - provider request boundary
+        logger.warning(
+            "Could not confirm Matrix cross-signing state for device %s: %s. "
+            "Refusing to generate a replacement identity automatically.",
+            _client_label(client, "device_id"),
+            exc,
+        )
+        logger.debug("Matrix cross-signing state query failure", exc_info=True)
+        return False
+
+    if not server_has_identity:
+        return True
+    if not reset_cross_signing:
+        logger.warning(
+            "Matrix already has a cross-signing identity for %s, but MMRelay's "
+            "local cross-signing sidecar is missing. The existing identity was "
+            "preserved; restore the E2EE store/sidecar or run 'mmrelay auth login "
+            "--reset-cross-signing' to replace it explicitly.",
+            _client_label(client, "user_id"),
+        )
+        return False
+    if not password:
+        logger.warning(
+            "Refusing to reset the existing Matrix cross-signing identity for %s "
+            "without password authentication.",
+            _client_label(client, "user_id"),
+        )
+        return False
+
+    logger.warning(
+        "Replacing the existing Matrix cross-signing identity for %s because an "
+        "authenticated reset was explicitly requested. Other Matrix clients may "
+        "require identity verification again.",
+        _client_label(client, "user_id"),
+    )
+    return True
+
+
+async def _verify_cross_signing_postcondition(
+    client: object,
+    result: str,
+) -> bool:
+    """Validate a provider result and its server-visible self-signing postcondition."""
+    device_id = _client_label(client, "device_id")
+    if result not in {
+        _CROSS_SIGNING_UPLOADED_AND_SIGNED,
+        _CROSS_SIGNING_DEVICE_SIGNED,
+        _CROSS_SIGNING_ALREADY_SIGNED,
+    }:
+        logger.warning(
+            "Matrix provider returned an unexpected cross-signing result for "
+            "device %s: %r",
+            device_id,
+            result,
+        )
+        return False
+
+    # First use creates the mindroom-nio sidecar inside ensure_cross_signing(),
+    # so reload it before checking the server-visible postcondition. Providers
+    # without mindroom-nio's identity surface retain the historical best-effort
+    # behavior.
+    try:
+        current_identity = getattr(client, "cross_signing_identity", None)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - provider property boundary
+        logger.warning(
+            "Matrix provider reported successful self-signing for device %s, but "
+            "MMRelay could not reload its local identity: %s",
+            device_id,
+            exc,
+        )
+        logger.debug("Matrix post-bootstrap identity inspection failure", exc_info=True)
+        return False
+
+    try:
+        return await _confirm_server_visible_cross_signing(client, current_identity)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - provider/server boundary
+        logger.warning(
+            "Matrix provider reported successful self-signing for device %s, but "
+            "MMRelay could not verify the server-visible identity chain: %s",
+            device_id,
+            exc,
+        )
+        logger.debug(
+            "Matrix cross-signing postcondition verification failure",
+            exc_info=True,
+        )
+        return False
+
+
+async def _ensure_own_device_cross_signed(
+    client: object,
+    *,
+    password: str | None = None,
+    reset_cross_signing: bool = False,
+) -> str | None:
+    """Attempt to cross-sign the bot's own Matrix device when supported.
+
+    mindroom-nio provides a bot-scoped producer implementation that creates a
+    master and self-signing key and signs only the current device. It does not
+    verify other users. The operation is idempotent and deliberately non-fatal
+    for MMRelay: startup can continue if a provider or homeserver rejects the
+    bootstrap, while logs explain that enforcing clients may withhold room keys
+    and how to retry with password UIA via ``mmrelay auth login``.
+
+    ``reset_cross_signing`` is an explicit recovery path for a lost sidecar. It
+    allows a password-authenticated login to replace server identity material;
+    ordinary startup remains fail-closed. ``asyncio.CancelledError`` is always
+    allowed to propagate.
+    """
+    provider = _inspect_cross_signing_provider(client)
+    if provider is None:
+        return None
+    ensure_method, local_identity = provider
+
+    timeout_phase = "server identity check"
     try:
         async with asyncio.timeout(_CROSS_SIGNING_OPERATION_TIMEOUT_SECONDS):
-            if local_identity is None:
-                checking_server_identity = True
-                try:
-                    server_has_identity = await _server_has_own_cross_signing_identity(
-                        client
-                    )
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:  # noqa: BLE001 - provider request boundary
-                    logger.warning(
-                        "Could not confirm Matrix cross-signing state for device "
-                        "%s: %s. "
-                        "Refusing to generate a replacement identity automatically.",
-                        _client_label(client, "device_id"),
-                        exc,
-                    )
-                    logger.debug(
-                        "Matrix cross-signing state query failure", exc_info=True
-                    )
-                    return None
-                if server_has_identity:
-                    if not reset_cross_signing:
-                        logger.warning(
-                            "Matrix already has a cross-signing identity for %s, but "
-                            "MMRelay's local cross-signing sidecar is missing. The "
-                            "existing identity was preserved; restore the E2EE "
-                            "store/sidecar or run 'mmrelay auth login "
-                            "--reset-cross-signing' to replace it explicitly.",
-                            _client_label(client, "user_id"),
-                        )
-                        return None
-                    if not password:
-                        logger.warning(
-                            "Refusing to reset the existing Matrix cross-signing "
-                            "identity for %s without password authentication.",
-                            _client_label(client, "user_id"),
-                        )
-                        return None
-                    logger.warning(
-                        "Replacing the existing Matrix cross-signing identity for %s "
-                        "because an authenticated reset was explicitly requested. "
-                        "Other Matrix clients may require identity verification again.",
-                        _client_label(client, "user_id"),
-                    )
+            if not await _resolve_cross_signing_reset_policy(
+                client,
+                local_identity=local_identity,
+                password=password,
+                reset_cross_signing=reset_cross_signing,
+            ):
+                return None
 
-            checking_server_identity = False
+            timeout_phase = "bootstrap"
             try:
-                result = await cast(_EnsureCrossSigning, ensure_method)(
-                    password=password
-                )
+                result = await ensure_method(password=password)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 - provider bootstrap boundary
@@ -497,65 +572,11 @@ async def _ensure_own_device_cross_signed(
                 logger.debug("Matrix cross-signing bootstrap failure", exc_info=True)
                 return None
 
-            device_id = _client_label(client, "device_id")
-            if result not in {
-                _CROSS_SIGNING_UPLOADED_AND_SIGNED,
-                _CROSS_SIGNING_DEVICE_SIGNED,
-                _CROSS_SIGNING_ALREADY_SIGNED,
-            }:
-                logger.warning(
-                    "Matrix provider returned an unexpected cross-signing result for "
-                    "device %s: %r",
-                    device_id,
-                    result,
-                )
-                return None
-
-            # First use creates the mindroom-nio sidecar inside ensure_cross_signing(),
-            # so reload it before checking the server-visible postcondition. Providers
-            # without mindroom-nio's identity surface retain the historical
-            # best-effort behavior.
-            try:
-                current_identity = getattr(client, "cross_signing_identity", None)
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:  # noqa: BLE001 - provider property boundary
-                logger.warning(
-                    "Matrix provider reported successful self-signing for device %s, "
-                    "but MMRelay could not reload its local identity: %s",
-                    device_id,
-                    exc,
-                )
-                logger.debug(
-                    "Matrix post-bootstrap identity inspection failure", exc_info=True
-                )
-                return None
-
-            try:
-                confirmed = await _confirm_server_visible_cross_signing(
-                    client,
-                    current_identity,
-                    refresh_notification=result == _CROSS_SIGNING_ALREADY_SIGNED,
-                )
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:  # noqa: BLE001 - provider/server boundary
-                logger.warning(
-                    "Matrix provider reported successful self-signing for device %s, "
-                    "but MMRelay could not verify the server-visible identity "
-                    "chain: %s",
-                    device_id,
-                    exc,
-                )
-                logger.debug(
-                    "Matrix cross-signing postcondition verification failure",
-                    exc_info=True,
-                )
-                return None
-            if not confirmed:
+            timeout_phase = "postcondition verification"
+            if not await _verify_cross_signing_postcondition(client, result):
                 return None
     except asyncio.TimeoutError:
-        if checking_server_identity:
+        if timeout_phase == "server identity check":
             logger.warning(
                 "Timed out after %.0f seconds while confirming Matrix cross-signing "
                 "state for device %s. Refusing to generate a replacement identity "

@@ -471,7 +471,9 @@ Use the warning details to choose the recovery path:
   stop MMRelay and run `mmrelay auth login --reset-cross-signing`. This reuses the
   saved device ID when the account matches and does not require `auth logout`, but
   it replaces the server identity and other clients may require verification
-  again. MMRelay still refuses to replace the identity during ordinary startup.
+  again. Enable `matrix.e2ee.enabled` before using the reset flag; login rejects
+  cross-signing reset when E2EE is disabled. MMRelay still refuses to replace the
+  identity during ordinary startup.
 
 Do not delete only the cross-signing sidecar: it contains the private master and
 self-signing seeds, and rotating them independently can invalidate the account's
