@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   bump-main-to-next-patch:
-    if: github.event.release.target_commitish == 'main'
+    if: github.event.release.target_commitish == 'main' && github.event.release.prerelease == false
     runs-on: ubuntu-latest
     env:
       RELEASE_BUMP_PAT: ${{ secrets.RELEASE_BUMP_PAT }}
@@ -36,6 +36,18 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Validate released tag against package version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_pyproject="${RUNNER_TEMP}/release-pyproject.toml"
+          git show "${RELEASE_TAG}:pyproject.toml" > "${release_pyproject}"
+          python scripts/ci/validate_release_version.py \
+            --tag "${RELEASE_TAG}" \
+            --pyproject "${release_pyproject}"
+
       - name: Install bump-my-version
         shell: bash
         run: |
@@ -43,27 +55,51 @@ jobs:
           python -m pip install --upgrade pip
           pip install bump-my-version==1.3.0
 
-      - name: Bump patch version
+      - name: Bump patch version exactly once
         id: bump
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         shell: bash
         run: |
           set -euo pipefail
 
+          RELEASE_VERSION="$(
+            python3 -c 'import os; from scripts.ci.validate_release_version import normalize_release_tag; print(normalize_release_tag(os.environ["RELEASE_TAG"]))'
+          )"
+          EXPECTED_VERSION="$(
+            RELEASE_VERSION="$RELEASE_VERSION" python3 -c 'import os; from scripts.ci.validate_release_version import next_patch_version; print(next_patch_version(os.environ["RELEASE_VERSION"]))'
+          )"
           CURRENT_VERSION="$(
             python3 -c "import tomllib; from pathlib import Path; print(tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))['project']['version'])"
           )"
+
+          echo "current=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "new=$EXPECTED_VERSION" >> "$GITHUB_OUTPUT"
+
+          if [[ "$CURRENT_VERSION" == "$EXPECTED_VERSION" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "main is already at expected post-release version $EXPECTED_VERSION; nothing to do."
+            exit 0
+          fi
+
+          if [[ "$CURRENT_VERSION" != "$RELEASE_VERSION" ]]; then
+            echo "::error::main version $CURRENT_VERSION is neither released version $RELEASE_VERSION nor expected post-release version $EXPECTED_VERSION."
+            exit 1
+          fi
 
           bump-my-version bump patch
 
           NEW_VERSION="$(
             python3 -c "import tomllib; from pathlib import Path; print(tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))['project']['version'])"
           )"
-
-          echo "current=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
-          echo "new=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "$NEW_VERSION" != "$EXPECTED_VERSION" ]]; then
+            echo "::error::version bump produced $NEW_VERSION; expected $EXPECTED_VERSION."
+            exit 1
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Commit and push version bump
-        if: steps.bump.outputs.current != steps.bump.outputs.new
+        if: steps.bump.outputs.changed == 'true'
         env:
           NEW_VERSION: ${{ steps.bump.outputs.new }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
