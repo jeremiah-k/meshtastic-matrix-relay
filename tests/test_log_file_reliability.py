@@ -15,6 +15,7 @@ def _reset_logging_state():
     original_cli_mode = lu._cli_mode
     lu._close_shared_file_handler()
     lu._registered_logger_names.clear()
+    lu._component_attached_handlers.clear()
     lu._logger_config_generations.clear()
     lu._config_generation = 0
     lu.log_file_path = None
@@ -28,6 +29,12 @@ def _reset_logging_state():
                 logger.removeHandler(handler)
                 handler.close()
         lu._registered_logger_names.clear()
+        for name, handlers in lu._component_attached_handlers.items():
+            logger = logging.getLogger(name)
+            for handler in handlers:
+                if handler in logger.handlers:
+                    logger.removeHandler(handler)
+        lu._component_attached_handlers.clear()
         lu._logger_config_generations.clear()
         lu._config_generation = 0
         lu.log_file_path = None
@@ -158,6 +165,29 @@ def test_refresh_reattaches_shared_handler_to_component_loggers(tmp_path):
     component_logger.debug("component survives refresh")
     new_handler.flush()
     assert "component survives refresh" in log_path.read_text(encoding="utf-8")
+
+
+def test_refresh_replaces_component_console_handler_without_duplicates(tmp_path):
+    log_path = tmp_path / "mmrelay.log"
+    lu.config = {
+        "logging": {
+            "log_to_file": True,
+            "filename": str(log_path),
+            "color_enabled": False,
+            "debug": {"matrix_nio": True},
+        }
+    }
+
+    main_logger = lu.get_logger(APP_DISPLAY_NAME)
+    lu.configure_component_debug_logging()
+    component_logger = logging.getLogger("nio")
+    original_handlers = set(component_logger.handlers)
+    assert original_handlers == set(main_logger.handlers)
+
+    lu.refresh_all_loggers()
+
+    assert set(component_logger.handlers) == set(main_logger.handlers)
+    assert original_handlers.isdisjoint(component_logger.handlers)
 
 
 def test_close_shared_file_handler_detaches_every_logger_and_resets_state(tmp_path):
