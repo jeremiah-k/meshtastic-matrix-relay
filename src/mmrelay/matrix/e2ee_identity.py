@@ -369,6 +369,7 @@ async def _ensure_own_device_cross_signed(
     client: object,
     *,
     password: str | None = None,
+    reset_cross_signing: bool = False,
 ) -> str | None:
     """Attempt to cross-sign the bot's own Matrix device when supported.
 
@@ -379,7 +380,10 @@ async def _ensure_own_device_cross_signed(
     bootstrap, while logs explain that enforcing clients may withhold room keys
     and how to retry with password UIA via ``mmrelay auth login``.
 
-    ``asyncio.CancelledError`` is always allowed to propagate.
+    ``reset_cross_signing`` is an explicit recovery path for a lost sidecar. It
+    allows a password-authenticated login to replace server identity material;
+    ordinary startup remains fail-closed. ``asyncio.CancelledError`` is always
+    allowed to propagate.
     """
     try:
         ensure_method = getattr(client, "ensure_cross_signing", None)
@@ -450,14 +454,29 @@ async def _ensure_own_device_cross_signed(
                     )
                     return None
                 if server_has_identity:
+                    if not reset_cross_signing:
+                        logger.warning(
+                            "Matrix already has a cross-signing identity for %s, but "
+                            "MMRelay's local cross-signing sidecar is missing. The "
+                            "existing identity was preserved; restore the E2EE "
+                            "store/sidecar or run 'mmrelay auth login "
+                            "--reset-cross-signing' to replace it explicitly.",
+                            _client_label(client, "user_id"),
+                        )
+                        return None
+                    if not password:
+                        logger.warning(
+                            "Refusing to reset the existing Matrix cross-signing "
+                            "identity for %s without password authentication.",
+                            _client_label(client, "user_id"),
+                        )
+                        return None
                     logger.warning(
-                        "Matrix already has a cross-signing identity for %s, but "
-                        "MMRelay's local cross-signing sidecar is missing. The "
-                        "existing identity was preserved; restore the E2EE "
-                        "store/sidecar or use a dedicated bot account.",
+                        "Replacing the existing Matrix cross-signing identity for %s "
+                        "because an authenticated reset was explicitly requested. "
+                        "Other Matrix clients may require identity verification again.",
                         _client_label(client, "user_id"),
                     )
-                    return None
 
             checking_server_identity = False
             try:

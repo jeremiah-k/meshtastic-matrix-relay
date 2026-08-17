@@ -119,6 +119,7 @@ class TestCLI(unittest.TestCase):
                 "@bot:matrix.org",
                 "--password",
                 "secret123",
+                "--reset-cross-signing",
             ],
         ):
             args = parse_arguments()
@@ -127,6 +128,7 @@ class TestCLI(unittest.TestCase):
             self.assertEqual(args.homeserver, "https://matrix.org")
             self.assertEqual(args.username, "@bot:matrix.org")
             self.assertEqual(args.password, "secret123")
+            self.assertTrue(args.reset_cross_signing)
 
     def test_parse_arguments_auth_login_no_parameters(self):
         """Test parsing of auth login subcommand without parameters."""
@@ -137,6 +139,7 @@ class TestCLI(unittest.TestCase):
             self.assertIsNone(args.homeserver)
             self.assertIsNone(args.username)
             self.assertIsNone(args.password)
+            self.assertFalse(args.reset_cross_signing)
 
     @patch("mmrelay.cli._validate_credentials_json")
     @patch("mmrelay.config.os.makedirs")
@@ -1415,6 +1418,7 @@ def test_handle_auth_login_passes_explicit_config() -> None:
         homeserver="https://matrix.example",
         username="@bot:matrix.example",
         password=TEST_LOGIN_CREDENTIAL,
+        reset_cross_signing=True,
     )
     config_data = {"matrix": {"e2ee": {"enabled": True}}}
 
@@ -1437,6 +1441,7 @@ def test_handle_auth_login_passes_explicit_config() -> None:
         password=TEST_LOGIN_CREDENTIAL,
         logout_others=False,
         config_for_paths=config_data,
+        reset_cross_signing=True,
     )
     mock_print.assert_not_called()
 

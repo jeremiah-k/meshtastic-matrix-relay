@@ -556,6 +556,7 @@ async def login_matrix_bot(
     password: str | None = None,
     logout_others: bool | None = None,
     config_for_paths: dict[str, Any] | None = None,
+    reset_cross_signing: bool = False,
 ) -> bool:
     """
     Perform an interactive login to a Matrix homeserver, persist the obtained session credentials, and prepare an optional E2EE store when enabled.
@@ -566,6 +567,9 @@ async def login_matrix_bot(
         password (str | None): Account password; when None the user will be prompted.
         logout_others (bool | None): If True attempt to log out other sessions; if False do not; if None and running interactively the user will be prompted (treated as False for non-interactive calls).
         config_for_paths (dict[str, Any] | None): Optional in-memory configuration used to resolve credential and E2EE file paths without reloading configuration from disk.
+        reset_cross_signing (bool): Explicitly replace an existing server-side
+            cross-signing identity when its local sidecar is missing. Requires
+            E2EE and password authentication; the default preserves the identity.
 
     Returns:
         bool: `True` if login succeeded and credentials were saved, `False` otherwise.
@@ -801,6 +805,13 @@ async def login_matrix_bot(
         else:
             facade.logger.debug("E2EE disabled in configuration, not using store path")
 
+        if reset_cross_signing and not e2ee_enabled:
+            facade.logger.error(
+                "Cannot reset Matrix cross-signing because E2EE is not enabled "
+                "for this login."
+            )
+            return False
+
         client_config = facade.build_matrix_client_config(e2ee_enabled=e2ee_enabled)
 
         localpart = facade._extract_localpart_from_mxid(username) or ""
@@ -1027,9 +1038,11 @@ async def login_matrix_bot(
 
             if e2ee_enabled:
                 try:
+                    cross_signing_kwargs: dict[str, Any] = {"password": password}
+                    if reset_cross_signing:
+                        cross_signing_kwargs["reset_cross_signing"] = True
                     await facade._ensure_own_device_cross_signed(
-                        client,
-                        password=password,
+                        client, **cross_signing_kwargs
                     )
                 except asyncio.CancelledError:
                     try:

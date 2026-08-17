@@ -682,6 +682,7 @@ async def test_login_matrix_bot_e2ee_store_path_creation(
             password=TEST_LOGIN_CREDENTIAL,
             logout_others=False,
             config_for_paths={},
+            reset_cross_signing=True,
         )
 
     assert result is True
@@ -689,6 +690,44 @@ async def test_login_matrix_bot_e2ee_store_path_creation(
     ensure_cross_signed.assert_awaited_once_with(
         mock_client,
         password=TEST_LOGIN_CREDENTIAL,
+        reset_cross_signing=True,
+    )
+
+
+@pytest.mark.asyncio
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils.logger")
+async def test_login_matrix_bot_rejects_cross_signing_reset_when_e2ee_disabled(
+    mock_logger: MagicMock,
+    mock_async_client: MagicMock,
+    mock_ssl: MagicMock,
+) -> None:
+    del mock_ssl
+    mock_async_client.return_value = _make_login_bot_mocks()
+
+    with (
+        patch("mmrelay.matrix_utils.config_module.load_config", return_value={}),
+        patch(
+            "mmrelay.matrix_utils._resolve_credentials_save_path",
+            return_value=TEST_CREDS_PATH,
+        ),
+        patch("mmrelay.matrix_utils.is_e2ee_enabled", return_value=False),
+    ):
+        result = await login_matrix_bot(
+            homeserver="https://matrix.org",
+            username="@bot:matrix.org",
+            password=TEST_LOGIN_CREDENTIAL,
+            logout_others=False,
+            config_for_paths={},
+            reset_cross_signing=True,
+        )
+
+    assert result is False
+    assert mock_async_client.call_count == 1
+    assert any(
+        "E2EE is not enabled" in str(call.args[0])
+        for call in mock_logger.error.call_args_list
     )
 
 
