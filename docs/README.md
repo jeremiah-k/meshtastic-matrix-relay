@@ -1,81 +1,58 @@
 # MMRelay Documentation
 
-Welcome to the MMRelay documentation! This directory contains comprehensive guides for setting up and using MMRelay.
+The repository documentation is for **versioned setup, deployment, upgrade, and
+operator guidance**. Broader conceptual and community documentation lives in the
+[MMRelay wiki](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki).
 
-## Getting Started
+## Understand MMRelay
 
-- **[Installation Guide](INSTRUCTIONS.md)** - Complete setup instructions for MMRelay
-- **[Migration Guide for v1.3](MIGRATION_1.3.md)** - Upgrading from older versions to unified HOME model
-- **[E2EE Guide](E2EE.md)** - Encrypted Matrix rooms (Matrix E2EE) setup and usage
-- **[Docker Guide](DOCKER.md)** - Docker deployment and configuration
-- **[Helm Guide](HELM.md)** - Kubernetes Helm chart deployment guide
+- **[How MMRelay Works](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/How-MMRelay-Works)** — meshnet, relay node, channel/room mapping, message flow, and identity boundary
+- **[Getting Started with Matrix](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Getting-Started-With-Matrix-&-MM-Relay)** — Matrix basics for new MMRelay operators
 
-## Advanced Configuration
+## Install and deploy
 
-- **[Advanced Configuration](ADVANCED_CONFIGURATION.md)** - Advanced features like message prefixes, packet routing overrides, health-check tuning, debug logging, and environment variables
+- **[Installation Guide](INSTRUCTIONS.md)** — pip/pipx setup and primary configuration workflow
+- **[Docker Guide](DOCKER.md)** — Docker deployment
+- **[Helm Guide](HELM.md)** — Kubernetes deployment with Helm
+- **[Kubernetes Guide](KUBERNETES.md)** — static-manifest deployment
 
-## Release-Specific Documents
+## Configure and operate
 
-- **[What's New in 1.4.0](WHATS_NEW_1.4.md)** - Python 3.11 minimum and upgrade guidance
-- **[What's New in 1.3.0](WHATS_NEW_1.3.md)** - Release summary and changes overview
-- **[What's New in 1.2](WHATS_NEW_1.2.md)** - Previous release notes (historical)
+- **[E2EE Guide](E2EE.md)** — encrypted rooms, device identity, and cross-signing recovery
+- **[Advanced Configuration](ADVANCED_CONFIGURATION.md)** — message formatting, packet routing, health checks, debug logging, and environment overrides
 
-## File Locations
+## Upgrade and release notes
 
-| File          | Purpose               | Location                             |
-| ------------- | --------------------- | ------------------------------------ |
-| Configuration | Main settings         | `~/.mmrelay/config.yaml`             |
+- **[What's New in 1.4.0](WHATS_NEW_1.4.md)** — 1.4 release summary and upgrade guidance
+- **[Migration Guide for v1.3 layout](MIGRATION_1.3.md)** — moving older installations to the unified MMRelay home layout
+- **[What's New in 1.3.0](WHATS_NEW_1.3.md)** — historical 1.3 release summary
+- **[What's New in 1.2](WHATS_NEW_1.2.md)** — historical 1.2 release notes
+
+## Runtime file locations
+
+| File          | Purpose               | Default location                    |
+| ------------- | --------------------- | ----------------------------------- |
+| Configuration | Main settings         | `~/.mmrelay/config.yaml`            |
 | Credentials   | Matrix authentication | `~/.mmrelay/matrix/credentials.json` |
-| E2EE Store    | Encryption keys       | `~/.mmrelay/matrix/store/`           |
-| Logs          | Application logs      | `~/.mmrelay/logs/`                   |
+| E2EE Store    | Encryption keys       | `~/.mmrelay/matrix/store/`          |
+| Logs          | Application logs      | `~/.mmrelay/logs/`                  |
 
-## Developer Documentation
+Actual paths can vary when `MMRELAY_HOME`, installer-specific locations, or
+container mounts are used. The deployment guides document those cases.
 
-- **[Constants Reference](dev/CONSTANTS.md)** - Internal configuration constants and values
-- **[Meshtastic Packet Routing Policy](dev/meshtastic_packet_routing_policy.md)** - Inbound packet routing semantics and design notes
-- **[E2EE Implementation Notes](dev/archive/E2EE_IMPLEMENTATION_NOTES.md)** - Technical details of E2EE implementation
+## Developer documentation
 
-## Documentation Structure
+- **[Constants Reference](dev/CONSTANTS.md)** — internal configuration constants
+- **[Testing Guide](dev/TESTING_GUIDE.md)** — project testing patterns and ownership
+- **[Windows Installer Build Guide](dev/INNO_SETUP_GUIDE.md)** — installer maintenance
+- **[BLE Compatibility Notes](dev/BLE_DUAL_LIBRARY_COMPATIBILITY.md)** — BLE library compatibility design
+- **[Matrix Compatibility Plan](dev/MATRIX_DUAL_LIBRARY_COMPATIBILITY_PLAN.md)** — Matrix-provider compatibility design
+- **[Archived implementation notes](dev/archive/)** — historical design and migration material
 
-```bash
-docs/
-├── README.md                 # This file - documentation index
-├── INSTRUCTIONS.md           # Main installation and setup guide
-├── MIGRATION_1.3.md         # Migration guide for upgrading from older versions
-├── WHATS_NEW_1.4.md          # 1.4 runtime-support changes
-├── WHATS_NEW_1.3.md          # 1.3 release summary
-├── WHATS_NEW_1.2.md          # 1.2 release notes (historical)
-├── E2EE.md                  # End-to-End Encryption guide
-├── DOCKER.md                # Docker deployment guide
-├── KUBERNETES.md            # Static manifest deployment guide
-├── HELM.md                  # Helm chart deployment guide
-├── ADVANCED_CONFIGURATION.md # Advanced configuration options
-└── dev/                     # Developer documentation
-    ├── CONSTANTS.md         # Internal configuration constants
-    ├── meshtastic_packet_routing_policy.md # Packet routing policy internals
-    ├── INNO_SETUP_GUIDE.md  # Windows installer build guide
-    ├── TESTING_GUIDE.md     # Testing patterns and practices
-    ├── RELEASE_1.3.md       # Release checklist (internal)
-    └── archive/             # Historical planning documents
-        ├── DATA_LAYOUT_MIGRATION.md
-        ├── E2EE_IMPLEMENTATION_NOTES.md  # E2EE technical details
-        ├── V1_3_DIRECTORY_REDESIGN.md
-        ├── V1_3_MIGRATION_IMPROVEMENTS_PLAN.md
-        ├── UPGRADE_TEST_PLAN.md
-        └── UPGRADE_TEST_EXECUTION_CHECKLIST.md
-```
+## Getting help
 
-## Getting Help
-
-1. **Check the relevant guide** for your specific use case
-2. **Review troubleshooting sections** in each guide
-3. **Validate your configuration** with `mmrelay config check`
-4. **Enable debug logging** for detailed diagnostics
-5. **Ask for help** in the MMRelay Matrix room with your configuration and log excerpts
-
-## Version Information
-
-- **Next Release**: v1.4.0
-- **Python Requirement (v1.4+)**: 3.11+
-- **Supported Platforms**: Linux, macOS, Windows (E2EE not available on Windows)
-- **Key Features**: Meshtastic ↔ Matrix relay, encrypted Matrix rooms (Matrix E2EE), Docker deployment, Plugin system
+1. Start with the guide for your deployment or problem area.
+2. Run `mmrelay config check` for configuration validation.
+3. Run `mmrelay doctor` for general diagnostics.
+4. Enable targeted debug logging when troubleshooting a connection or provider.
+5. Ask in [#mmrelay:matrix.org](https://matrix.to/#/#mmrelay:matrix.org) with relevant configuration excerpts and logs, with secrets removed.
