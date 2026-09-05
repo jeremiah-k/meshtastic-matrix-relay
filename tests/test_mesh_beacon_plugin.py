@@ -8,7 +8,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from mmrelay.plugins.mesh_beacon_plugin import MeshBeaconConfigError, Plugin
+from mmrelay.plugins.mesh_beacon_plugin import (
+    MeshBeaconConfigError,
+    Plugin,
+    _channel_is_usable,
+    _enum_name,
+    _enum_number,
+    _find_channel,
+    _strict_bool,
+)
 
 
 class _EnumValue:
@@ -199,9 +207,10 @@ def _plugin(**config: Any) -> Plugin:
         "broadcast": True,
         "message": "Join HomeMesh",
         "interval_seconds": 3600,
+        "offer_channel_index": 0,
         "targets": [
-            {"preset": "LONG_FAST"},
-            {"preset": "MEDIUM_FAST"},
+            {"preset": "LONG_FAST", "channel_index": 0},
+            {"preset": "MEDIUM_FAST", "channel_index": 0},
             {"preset": "SHORT_FAST", "channel_index": 1},
         ],
         **config,
@@ -210,7 +219,7 @@ def _plugin(**config: Any) -> Plugin:
 
 
 def test_configures_native_cross_preset_beacon() -> None:
-    plugin = _plugin(legacy_split=False)
+    plugin = _plugin(legacy_split=False, listen=True)
     interface = _Interface()
 
     assert plugin.configure_firmware(interface) is True
@@ -232,8 +241,8 @@ def test_configures_native_cross_preset_beacon() -> None:
         for target in beacon.broadcast_targets
     ]
     assert targets == [
-        (_PRESETS["LONG_FAST"], _REGIONS["US"], None),
-        (_PRESETS["MEDIUM_FAST"], _REGIONS["US"], None),
+        (_PRESETS["LONG_FAST"], _REGIONS["US"], 0),
+        (_PRESETS["MEDIUM_FAST"], _REGIONS["US"], 0),
         (_PRESETS["SHORT_FAST"], _REGIONS["US"], 1),
     ]
 
@@ -249,7 +258,7 @@ def test_does_not_rewrite_matching_firmware_config() -> None:
 
 
 def test_rejects_same_preset_only_configuration() -> None:
-    plugin = _plugin(targets=[{"preset": "LONG_FAST"}])
+    plugin = _plugin(targets=[{"preset": "LONG_FAST", "channel_index": 0}])
     interface = _Interface()
 
     with pytest.raises(MeshBeaconConfigError, match="at least one target"):
@@ -279,7 +288,7 @@ def test_rejects_custom_lora_configuration() -> None:
     [
         ({"interval_seconds": 3599}, "interval_seconds"),
         ({"message": "é" * 51}, "100 UTF-8 bytes"),
-        ({"targets": [{"preset": "MEDIUM_FAST"}] * 5}, "at most 4"),
+        ({"targets": [{"preset": "MEDIUM_FAST", "channel_index": 0}] * 5}, "at most 4"),
         (
             {"targets": [{"preset": "MEDIUM_FAST", "channel_index": 2}]},
             "enabled configured channel",
@@ -298,10 +307,10 @@ def test_rejects_invalid_broadcast_policy(
 
 def test_uses_conservative_presets_when_firmware_has_no_region_map() -> None:
     interface = _Interface(allowed=None)
-    plugin = _plugin(targets=[{"preset": "MEDIUM_FAST"}])
+    plugin = _plugin(targets=[{"preset": "MEDIUM_FAST", "channel_index": 0}])
     assert plugin.configure_firmware(interface) is True
 
-    plugin = _plugin(targets=[{"preset": "SHORT_TURBO"}])
+    plugin = _plugin(targets=[{"preset": "SHORT_TURBO", "channel_index": 0}])
     with pytest.raises(MeshBeaconConfigError, match="not allowed"):
         plugin.configure_firmware(_Interface(allowed=None))
 
@@ -365,3 +374,219 @@ def test_lifecycle_subscribes_to_connection_events(monkeypatch: pytest.MonkeyPat
         plugin._on_connection_established,
         "meshtastic.connection.established",
     )
+
+
+def test_requires_explicit_offer_and_target_channels() -> None:
+    """Beacon configuration never chooses a credential-bearing channel implicitly."""
+    plugin = _plugin()
+    del plugin.config["offer_channel_index"]
+    with pytest.raises(MeshBeaconConfigError, match="must be set explicitly"):
+        plugin.configure_firmware(_Interface())
+
+    plugin = _plugin(targets=[{"preset": "MEDIUM_FAST"}])
+    with pytest.raises(MeshBeaconConfigError, match="channel_index must be specified"):
+        plugin.configure_firmware(_Interface())
+
+
+def test_explicit_secondary_offer_channel_shares_only_selected_credentials() -> None:
+    """An explicit offer index copies exactly that configured channel into the offer."""
+    plugin = _plugin(
+        offer_channel_index=1,
+        targets=[{"preset": "MEDIUM_FAST", "channel_index": 1}],
+    )
+    interface = _Interface()
+
+    assert plugin.configure_firmware(interface) is True
+
+    offer = interface.localNode.moduleConfig.mesh_beacon.broadcast_offer_channel
+    assert offer.name == "BeaconPublic"
+    assert offer.psk == b"\x01"
+
+
+@pytest.mark.parametrize(
+    ("configured_index", "message"),
+    [
+        (True, "integer or null"),
+        (99, "is not configured"),
+        (2, "disabled or blank"),
+    ],
+)
+def test_rejects_invalid_offer_channel_selection(
+    configured_index: Any, message: str
+) -> None:
+    """Explicit offer indexes must identify usable configured channel slots."""
+    plugin = _plugin(offer_channel_index=configured_index)
+    with pytest.raises(MeshBeaconConfigError, match=message):
+        plugin.configure_firmware(_Interface())
+
+
+def test_rejects_missing_channel_table_for_explicit_offer() -> None:
+    """An explicit offer cannot be resolved when the radio exposes no channel table."""
+    interface = _Interface()
+    interface.localNode.channels = []
+    with pytest.raises(MeshBeaconConfigError, match="channel configuration"):
+        _plugin().configure_firmware(interface)
+
+
+@pytest.mark.parametrize(
+    ("targets", "message"),
+    [
+        (None, "at least one"),
+        ([], "at least one"),
+        (["MEDIUM_FAST"], "must be a mapping"),
+        ([{"preset": None, "channel_index": 0}], "must be a preset name"),
+        ([{"preset": "NOT_A_PRESET", "channel_index": 0}], "unknown modem_preset"),
+        ([{"preset": "MEDIUM_FAST", "channel_index": True}], "must be an integer"),
+        ([{"preset": "MEDIUM_FAST", "channel_index": 99}], "enabled configured channel"),
+        (
+            [
+                {"preset": "MEDIUM_FAST", "channel_index": 0},
+                {"preset": "medium-fast", "channel_index": 0},
+            ],
+            "duplicates an earlier",
+        ),
+    ],
+)
+def test_rejects_malformed_or_duplicate_targets(targets: Any, message: str) -> None:
+    """Target validation rejects ambiguous, invalid, and duplicate radio destinations."""
+    with pytest.raises(MeshBeaconConfigError, match=message):
+        _plugin(targets=targets).configure_firmware(_Interface())
+
+
+@pytest.mark.parametrize(
+    ("override", "lora", "message"),
+    [
+        ({"message": 123}, None, "message must be a string"),
+        ({"interval_seconds": True}, None, "must be an integer"),
+        ({"interval_seconds": 0x100000000}, None, "must be between"),
+        ({}, _Lora(region=0), "configured LoRa region"),
+    ],
+)
+def test_rejects_invalid_scalar_broadcast_settings(
+    override: dict[str, Any], lora: _Lora | None, message: str
+) -> None:
+    """Broadcast scalar values stay within firmware and protobuf constraints."""
+    with pytest.raises(MeshBeaconConfigError, match=message):
+        _plugin(**override).configure_firmware(_Interface(lora=lora))
+
+
+def test_rejects_invalid_boolean_settings() -> None:
+    """Boolean feature flags do not accept truthy scalar substitutes."""
+    with pytest.raises(MeshBeaconConfigError, match="listen must be true or false"):
+        _plugin(listen=1).configure_firmware(_Interface())
+    assert _strict_bool({}, "listen", None) is None
+    assert _strict_bool({"listen": False}, "listen", None) is False
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("no_local_node", "no local node"),
+        ("no_module_config", "module configuration"),
+        ("bad_schema", "schema does not expose"),
+        ("no_lora", "LoRa configuration"),
+    ],
+)
+def test_rejects_incomplete_connected_radio_state(mutation: str, message: str) -> None:
+    """Configuration fails clearly when mtjk has not populated required local state."""
+    interface = _Interface()
+    if mutation == "no_local_node":
+        interface.localNode = None
+    elif mutation == "no_module_config":
+        interface.localNode.moduleConfig = None
+    elif mutation == "bad_schema":
+        interface.localNode.moduleConfig.HasField = MagicMock(side_effect=ValueError("old schema"))
+    else:
+        interface.localNode.localConfig.lora = None
+
+    with pytest.raises(MeshBeaconConfigError, match=message):
+        _plugin().configure_firmware(interface)
+
+
+def test_enum_and_channel_helpers_cover_schema_and_channel_edge_cases() -> None:
+    """Low-level validation helpers fail closed for missing schema and unusable slots."""
+    with pytest.raises(MeshBeaconConfigError, match="enum metadata"):
+        _enum_number(SimpleNamespace(), "modem_preset", "LONG_FAST")
+    assert _enum_number(_Lora(), "modem_preset", "medium-fast") == _PRESETS["MEDIUM_FAST"]
+    assert _enum_name(_Lora(), "region", 999) == "999"
+    assert _find_channel([], 0) is None
+    assert _channel_is_usable(None) is False
+    assert _channel_is_usable(SimpleNamespace(role=0)) is False
+    assert _channel_is_usable(SimpleNamespace(role=2, settings=None)) is False
+    assert _channel_is_usable(_Channel(3, 2, "", b"")) is False
+    assert _channel_is_usable(_Channel(0, 1, "", b""), allow_blank_primary=True) is True
+    assert _channel_is_usable(_Channel(3, 2, "named", b"")) is True
+    assert _channel_is_usable(_Channel(3, 2, "", b"key")) is True
+
+
+def test_allowed_presets_falls_back_without_interface_helper() -> None:
+    """Conservative preset validation remains available on older mtjk interfaces."""
+    allowed = Plugin._allowed_presets(SimpleNamespace(), _Lora(), _REGIONS["US"])
+    assert _PRESETS["LONG_FAST"] in allowed
+    assert _PRESETS["SHORT_TURBO"] not in allowed
+
+
+def test_lifecycle_applies_connected_radio_once_and_handles_unsubscribe_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lifecycle wiring configures an existing connection and tolerates stale subscriptions."""
+    plugin = _plugin()
+    plugin.logger = MagicMock()
+    interface = _Interface()
+    mock_pub = MagicMock()
+    plugin._apply_safely = MagicMock()
+    monkeypatch.setattr("mmrelay.plugins.mesh_beacon_plugin.pub", mock_pub)
+    monkeypatch.setattr("mmrelay.meshtastic_utils.meshtastic_client", interface)
+
+    plugin.start()
+    plugin.start()
+
+    mock_pub.subscribe.assert_called_once()
+    assert plugin._apply_safely.call_count == 2
+    mock_pub.unsubscribe.side_effect = RuntimeError("already gone")
+    plugin.stop()
+    plugin.on_stop()
+    plugin.logger.debug.assert_any_call(
+        "Mesh Beacon connection callback was already unsubscribed",
+        exc_info=True,
+    )
+
+
+def test_connection_callback_delegates_to_safe_apply() -> None:
+    """Connection events are routed through the guarded firmware configuration path."""
+    plugin = _plugin()
+    interface = _Interface()
+    plugin._apply_safely = MagicMock()
+    plugin._on_connection_established(interface)
+    plugin._apply_safely.assert_called_once_with(interface)
+
+
+@pytest.mark.parametrize(
+    ("result", "exception", "logger_method"),
+    [
+        (True, None, "info"),
+        (False, None, "debug"),
+        (None, MeshBeaconConfigError("invalid"), "error"),
+        (None, RuntimeError("write failed"), "exception"),
+    ],
+)
+def test_safe_apply_logs_configuration_outcomes(
+    result: bool | None, exception: Exception | None, logger_method: str
+) -> None:
+    """Background configuration reports success, no-op, policy errors, and unexpected failures."""
+    plugin = _plugin()
+    plugin.logger = MagicMock()
+    if exception is None:
+        plugin.configure_firmware = MagicMock(return_value=result)
+    else:
+        plugin.configure_firmware = MagicMock(side_effect=exception)
+
+    plugin._apply_safely(_Interface())
+
+    assert getattr(plugin.logger, logger_method).called
+
+
+def test_description_identifies_firmware_native_cross_preset_behavior() -> None:
+    """The core plugin description states the native cross-preset scope."""
+    assert "Firmware 2.8" in _plugin().description
+    assert "cross-preset" in _plugin().description
