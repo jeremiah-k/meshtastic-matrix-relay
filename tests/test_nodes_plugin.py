@@ -202,16 +202,13 @@ class TestNodesPlugin(unittest.TestCase):
 
     def test_description_property(self):
         """
-        Verify that the plugin's description property contains expected placeholders and descriptive text for node data fields.
+        Verify that the plugin description documents configurable node fields.
         """
         description = self.plugin.description
 
         self.assertIn("Show mesh radios and node data", description)
-        self.assertIn("$shortname $longname", description)
-        self.assertIn("$devicemodel", description)
-        self.assertIn("$battery $voltage", description)
-        self.assertIn("$snr", description)
-        self.assertIn("$lastseen", description)
+        self.assertIn("plugins.nodes.fields", description)
+        self.assertIn("status", description)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_full_data(self, mock_connect):
@@ -248,6 +245,73 @@ class TestNodesPlugin(unittest.TestCase):
         # Should contain relative time info
         self.assertIn("minutes ago", response)
         self.assertIn("hours ago", response)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_includes_status_when_available(self, mock_connect):
+        """Firmware 2.8 status messages should appear in the default view when cached."""
+        self.mock_meshtastic_client.nodes["node1"]["status"] = "At the trailhead"
+        mock_connect.return_value = self.mock_meshtastic_client
+
+        response = self.plugin.generate_response()
+
+        self.assertIn("status: At the trailhead", response)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_supports_configured_fields(self, mock_connect):
+        """Configured aliases and raw dotted paths should render in configured order."""
+        client = MagicMock()
+        client.nodes = {
+            "!12345678": {
+                "num": 0x12345678,
+                "user": {
+                    "id": "!12345678",
+                    "publicKey": bytes(range(32)),
+                    "role": "ROUTER",
+                },
+                "status": "Relay online",
+                "environmentMetrics": {"temperature": 21.5},
+            }
+        }
+        self.plugin.config["fields"] = [
+            "node_id",
+            "role",
+            "status",
+            "public_key",
+            "environmentMetrics.temperature",
+        ]
+        mock_connect.return_value = client
+
+        response = self.plugin.generate_response()
+
+        expected_key = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+        node_line = response.splitlines()[1]
+        self.assertEqual(
+            node_line,
+            "id: !12345678 / role: ROUTER / status: Relay online / "
+            f"key: {expected_key} / environmentMetrics.temperature: 21.5",
+        )
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_sorts_nodes_by_recency(self, mock_connect):
+        """The most recently heard node should be listed first."""
+        client = MagicMock()
+        client.nodes = {
+            "older": {
+                "user": {"shortName": "OLD", "longName": "Older"},
+                "lastHeard": 100,
+            },
+            "newer": {
+                "user": {"shortName": "NEW", "longName": "Newer"},
+                "lastHeard": 200,
+            },
+            "unknown": {"user": {"shortName": "UNK", "longName": "Unknown"}},
+        }
+        self.plugin.config["fields"] = ["name"]
+        mock_connect.return_value = client
+
+        response = self.plugin.generate_response().splitlines()
+
+        self.assertEqual(response[1:], ["NEW Newer", "OLD Older", "UNK Unknown"])
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_missing_data(self, mock_connect):
