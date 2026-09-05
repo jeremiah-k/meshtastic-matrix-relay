@@ -300,7 +300,8 @@ class Plugin(BasePlugin):
                 for field in fields
                 if (rendered := self._render_field(field, node_key, info)) is not None
             ]
-            node_lines.append(" / ".join(rendered_fields) + "\n")
+            node_text = " / ".join(rendered_fields) if rendered_fields else "No fields available"
+            node_lines.append(node_text + "\n")
 
         response = f"Nodes: {len(node_entries)}\n"
         return response + "".join(node_lines)
