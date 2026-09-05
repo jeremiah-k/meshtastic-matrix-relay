@@ -749,6 +749,110 @@ class TestNodesPlugin(unittest.TestCase):
         # Should have two instances of "? hops away"
         self.assertEqual(response.count("? hops away"), 2)
 
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_marks_nodes_with_no_renderable_fields(
+        self, mock_connect
+    ):
+        """Nodes remain countable when explicitly selected data has not been reported."""
+        client = MagicMock()
+        client.nodes = {"node1": {"user": {"shortName": "N1"}}}
+        self.plugin.config["fields"] = ["status"]
+        mock_connect.return_value = client
+
+        response = self.plugin.generate_response()
+
+        self.assertEqual(response, "Nodes: 1\nNo fields available\n")
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_formats_supported_custom_field_types(
+        self, mock_connect
+    ):
+        """Configured aliases format metrics, location, flags, keys, and raw binary values."""
+        client = MagicMock()
+        client.nodes = {
+            "!deadbeef": {
+                "user": {"publicKey": bytearray(b"key")},
+                "deviceMetrics": {
+                    "batteryLevel": 91,
+                    "voltage": 4.1,
+                    "channelUtilization": 12.5,
+                    "airUtilTx": 3.25,
+                    "uptimeSeconds": 42,
+                },
+                "position": {"latitude": 1.5, "longitude": -2.5, "altitude": 123},
+                "isFavorite": False,
+                "rawBytes": b"\x00\xff",
+                "rawBytearray": bytearray(b"ab"),
+                "rawBool": True,
+            }
+        }
+        self.plugin.config["fields"] = [
+            "node_id",
+            "public_key",
+            "battery",
+            "voltage",
+            "channel_utilization",
+            "air_util_tx",
+            "uptime",
+            "latitude",
+            "longitude",
+            "altitude",
+            "favorite",
+            "rawBytes",
+            "rawBytearray",
+            "rawBool",
+        ]
+        mock_connect.return_value = client
+
+        response = self.plugin.generate_response()
+
+        self.assertIn("id: !deadbeef", response)
+        self.assertIn("key: a2V5", response)
+        self.assertIn("battery: 91%", response)
+        self.assertIn("voltage: 4.1V", response)
+        self.assertIn("channel util: 12.5%", response)
+        self.assertIn("air util tx: 3.25%", response)
+        self.assertIn("uptime: 42s", response)
+        self.assertIn("lat: 1.5°", response)
+        self.assertIn("lon: -2.5°", response)
+        self.assertIn("alt: 123m", response)
+        self.assertIn("favorite: no", response)
+        self.assertIn("rawBytes: AP8=", response)
+        self.assertIn("rawBytearray: YWI=", response)
+        self.assertIn("rawBool: yes", response)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_invalid_field_configurations_fall_back_to_defaults(self, mock_connect):
+        """Malformed or empty field selections retain the established default view."""
+        client = MagicMock()
+        client.nodes = {"node1": {"user": {"shortName": "N1", "longName": "Node"}}}
+        mock_connect.return_value = client
+
+        for fields in ("status", [None, 1, "   "]):
+            with self.subTest(fields=fields):
+                self.plugin.config["fields"] = fields
+                response = self.plugin.generate_response()
+                self.assertIn("N1 Node / Unknown", response)
+
+        self.assertEqual(self.plugin.logger.warning.call_count, 2)
+
+    def test_public_key_formatter_accepts_string_and_scalar_values(self):
+        """Public-key rendering tolerates serialized values from alternate node sources."""
+        from mmrelay.plugins.nodes_plugin import _format_public_key
+
+        self.assertEqual(_format_public_key("already-encoded"), "already-encoded")
+        self.assertIsNone(_format_public_key(""))
+        self.assertEqual(_format_public_key(123), "123")
+        self.assertIsNone(_format_public_key(None))
+        self.assertIsNone(_format_public_key(b""))
+        self.assertIsNone(_format_public_key(bytearray()))
+
+    def test_relative_time_under_one_minute_is_just_now(self):
+        """A recent past timestamp takes the final sub-minute branch."""
+        now = datetime.now()
+        timestamp = (now - timedelta(seconds=30)).timestamp()
+        self.assertEqual(get_relative_time(timestamp), "Just now")
+
     def test_handle_room_message_exception_handler(self):
         """Test exception handler in handle_room_message (lines 224-227)."""
         self.plugin.matches = MagicMock(return_value=True)
