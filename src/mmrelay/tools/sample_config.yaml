@@ -149,14 +149,20 @@ plugins:
     #interval_seconds: 3600 # Firmware minimum is one hour
     #listen: true # Omitted preserves the radio's current listen flag
     #legacy_split: false # Omitted preserves the radio's current compatibility setting
-    #offer_channel_index: 0 # Omitted uses primary; null omits channel/PSK offer
-    # Up to four targets. Presets are validated against the connected radio's region.
-    # A channel_index selects another already-configured channel key for that TX target.
+    # Required: choose a configured channel index to share its name/PSK, or null
+    # to advertise no channel credentials. MMRelay never chooses one implicitly.
+    offer_channel_index: null
+    # Up to four targets. Every target must name an already-configured channel
+    # index explicitly; update these channel slots before enabling the plugin.
     targets:
-      - preset: LONG_FAST
-      - preset: LONG_MODERATE
-      - preset: MEDIUM_FAST
-      - preset: SHORT_FAST
+      - preset: "LONG_FAST"
+        channel_index: 0
+      - preset: "LONG_MODERATE"
+        channel_index: 0
+      - preset: "MEDIUM_FAST"
+        channel_index: 0
+      - preset: "SHORT_FAST"
+        channel_index: 0
 
 #community-plugins:
 #  sample_plugin:

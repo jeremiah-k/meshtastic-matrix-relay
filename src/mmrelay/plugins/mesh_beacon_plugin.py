@@ -35,6 +35,7 @@ class MeshBeaconConfigError(ValueError):
 def _strict_bool(
     config: Mapping[str, Any], key: str, default: bool | None
 ) -> bool | None:
+    """Return a boolean option without accepting truthy non-boolean values."""
     if key not in config:
         return default
     value = config[key]
@@ -44,10 +45,12 @@ def _strict_bool(
 
 
 def _normalize_enum_name(value: str) -> str:
+    """Normalize human-readable enum names to protobuf enum spelling."""
     return value.strip().upper().replace("-", "_").replace(" ", "_")
 
 
 def _enum_descriptor(message: Any, field_name: str) -> Any:
+    """Return enum metadata for a protobuf field or fail closed."""
     descriptor = getattr(message, "DESCRIPTOR", None)
     fields = getattr(descriptor, "fields_by_name", {})
     field = fields.get(field_name) if hasattr(fields, "get") else None
@@ -60,6 +63,7 @@ def _enum_descriptor(message: Any, field_name: str) -> Any:
 
 
 def _enum_number(message: Any, field_name: str, configured_name: str) -> int:
+    """Resolve a configured enum name to its protobuf numeric value."""
     enum = _enum_descriptor(message, field_name)
     name = _normalize_enum_name(configured_name)
     values = getattr(enum, "values_by_name", {})
@@ -74,6 +78,7 @@ def _enum_number(message: Any, field_name: str, configured_name: str) -> int:
 
 
 def _enum_name(message: Any, field_name: str, number: int) -> str:
+    """Resolve an enum number to its name, preserving unknown numbers as text."""
     enum = _enum_descriptor(message, field_name)
     values = getattr(enum, "values_by_number", {})
     value = values.get(int(number)) if hasattr(values, "get") else None
@@ -81,26 +86,22 @@ def _enum_name(message: Any, field_name: str, number: int) -> str:
 
 
 def _copy_message(message: Any) -> Any:
+    """Clone a protobuf-style message without sharing mutable state."""
     clone = type(message)()
     clone.CopyFrom(message)
     return clone
 
 
 def _find_channel(channels: Sequence[Any], channel_index: int) -> Any | None:
+    """Find a configured channel by its device slot index."""
     for channel in channels:
         if int(getattr(channel, "index", -1)) == channel_index:
             return channel
     return None
 
 
-def _primary_channel(channels: Sequence[Any]) -> Any | None:
-    for channel in channels:
-        if int(getattr(channel, "role", 0)) == 1:
-            return channel
-    return _find_channel(channels, 0)
-
-
 def _channel_is_usable(channel: Any, *, allow_blank_primary: bool = False) -> bool:
+    """Return whether a channel slot can be used for beacon offer or TX."""
     if channel is None or int(getattr(channel, "role", 0)) == 0:
         return False
     settings = getattr(channel, "settings", None)
@@ -124,12 +125,15 @@ class Plugin(BasePlugin):
 
     @property
     def description(self) -> str:
+        """Describe the firmware-native cross-preset beacon controller."""
         return "Configure Firmware 2.8 native cross-preset Mesh Beacon broadcasts"
 
     def get_matrix_commands(self) -> list[str]:
+        """Expose no Matrix commands; configuration is applied from plugin settings."""
         return []
 
     def start(self) -> None:
+        """Subscribe to connections and configure an already-connected radio."""
         super().start()
         if not self._connection_subscribed:
             pub.subscribe(self._on_connection_established, _CONNECTION_TOPIC)
@@ -142,6 +146,7 @@ class Plugin(BasePlugin):
             self._apply_safely(interface)
 
     def on_stop(self) -> None:
+        """Remove the connection subscription when the plugin stops."""
         if not self._connection_subscribed:
             return
         try:
@@ -154,9 +159,11 @@ class Plugin(BasePlugin):
         self._connection_subscribed = False
 
     def _on_connection_established(self, interface: Any) -> None:
+        """Apply beacon policy whenever mtjk establishes a radio connection."""
         self._apply_safely(interface)
 
     def _apply_safely(self, interface: Any) -> None:
+        """Apply configuration while containing policy and transport failures."""
         try:
             with self._configure_lock:
                 changed = self.configure_firmware(interface)
@@ -173,6 +180,7 @@ class Plugin(BasePlugin):
                 )
 
     def configure_firmware(self, interface: Any) -> bool:
+        """Validate and write the desired native Mesh Beacon module configuration."""
         local_node = getattr(interface, "localNode", None)
         if local_node is None:
             raise MeshBeaconConfigError("connected interface has no local node")
@@ -227,6 +235,7 @@ class Plugin(BasePlugin):
 
     @staticmethod
     def _set_flag(flags: int, flag: int, enabled: bool) -> int:
+        """Set or clear one Mesh Beacon bitfield flag."""
         return flags | flag if enabled else flags & ~flag
 
     def _configure_broadcast(
@@ -236,6 +245,7 @@ class Plugin(BasePlugin):
         lora: Any,
         desired: Any,
     ) -> None:
+        """Populate broadcast values that are safe for the connected radio."""
         if not bool(getattr(lora, "use_preset", False)):
             raise MeshBeaconConfigError(
                 "broadcast requires the radio to use a standard LoRa modem preset"
@@ -273,34 +283,29 @@ class Plugin(BasePlugin):
         self._configure_targets(interface, local_node, lora, desired)
 
     def _configure_offer_channel(self, local_node: Any, desired: Any) -> None:
-        if (
-            "offer_channel_index" in self.config
-            and self.config["offer_channel_index"] is None
-        ):
+        """Copy only an explicitly selected channel into the advertised join offer."""
+        if "offer_channel_index" not in self.config:
+            raise MeshBeaconConfigError(
+                "offer_channel_index must be set explicitly to an integer or null"
+            )
+
+        configured_index = self.config["offer_channel_index"]
+        if configured_index is None:
             desired.ClearField("broadcast_offer_channel")
             return
+        if isinstance(configured_index, bool) or not isinstance(configured_index, int):
+            raise MeshBeaconConfigError(
+                "offer_channel_index must be an integer or null"
+            )
 
         channels = list(getattr(local_node, "channels", ()) or ())
         if not channels:
             raise MeshBeaconConfigError("channel configuration is not available")
-
-        configured_index = self.config.get("offer_channel_index")
-        if configured_index is None:
-            channel = _primary_channel(channels)
-            if channel is None:
-                raise MeshBeaconConfigError("primary channel is not available")
-        else:
-            if isinstance(configured_index, bool) or not isinstance(
-                configured_index, int
-            ):
-                raise MeshBeaconConfigError(
-                    "offer_channel_index must be an integer or null"
-                )
-            channel = _find_channel(channels, configured_index)
-            if channel is None:
-                raise MeshBeaconConfigError(
-                    f"offer_channel_index {configured_index} is not configured"
-                )
+        channel = _find_channel(channels, configured_index)
+        if channel is None:
+            raise MeshBeaconConfigError(
+                f"offer_channel_index {configured_index} is not configured"
+            )
 
         allow_blank_primary = int(getattr(channel, "role", 0)) == 1
         if not _channel_is_usable(channel, allow_blank_primary=allow_blank_primary):
@@ -321,6 +326,7 @@ class Plugin(BasePlugin):
         lora: Any,
         desired: Any,
     ) -> None:
+        """Validate explicit cross-preset TX destinations and write target entries."""
         raw_targets = self.config.get("targets")
         if not isinstance(raw_targets, list) or not raw_targets:
             raise MeshBeaconConfigError(
@@ -335,7 +341,7 @@ class Plugin(BasePlugin):
         current_preset = int(lora.modem_preset)
         allowed = self._allowed_presets(interface, lora, current_region)
         channels = list(getattr(local_node, "channels", ()) or ())
-        seen: set[tuple[int, int | None]] = set()
+        seen: set[tuple[int, int]] = set()
         has_cross_preset = False
 
         desired.ClearField("broadcast_targets")
@@ -355,23 +361,24 @@ class Plugin(BasePlugin):
                     f"in region {region_name}"
                 )
 
-            channel_index = raw_target.get("channel_index")
-            if channel_index is not None:
-                if isinstance(channel_index, bool) or not isinstance(
-                    channel_index, int
-                ):
-                    raise MeshBeaconConfigError(
-                        f"targets[{index}].channel_index must be an integer"
-                    )
-                channel = _find_channel(channels, channel_index)
-                if channel is None or not _channel_is_usable(
-                    channel,
-                    allow_blank_primary=int(getattr(channel, "role", 0)) == 1,
-                ):
-                    raise MeshBeaconConfigError(
-                        f"targets[{index}].channel_index {channel_index} is not an "
-                        "enabled configured channel"
-                    )
+            if "channel_index" not in raw_target:
+                raise MeshBeaconConfigError(
+                    f"targets[{index}].channel_index must be specified explicitly"
+                )
+            channel_index = raw_target["channel_index"]
+            if isinstance(channel_index, bool) or not isinstance(channel_index, int):
+                raise MeshBeaconConfigError(
+                    f"targets[{index}].channel_index must be an integer"
+                )
+            channel = _find_channel(channels, channel_index)
+            if channel is None or not _channel_is_usable(
+                channel,
+                allow_blank_primary=int(getattr(channel, "role", 0)) == 1,
+            ):
+                raise MeshBeaconConfigError(
+                    f"targets[{index}].channel_index {channel_index} is not an "
+                    "enabled configured channel"
+                )
 
             identity = (preset, channel_index)
             if identity in seen:
@@ -384,8 +391,7 @@ class Plugin(BasePlugin):
             target = desired.broadcast_targets.add()
             target.preset = preset
             target.region = current_region
-            if channel_index is not None:
-                target.channel_index = channel_index
+            target.channel_index = channel_index
 
         if not has_cross_preset:
             current_name = _enum_name(lora, "modem_preset", current_preset)
@@ -396,6 +402,7 @@ class Plugin(BasePlugin):
 
     @staticmethod
     def _allowed_presets(interface: Any, lora: Any, region: int) -> set[int]:
+        """Return region-valid presets, using a conservative compatibility fallback."""
         getter = getattr(interface, "get_allowed_modem_presets", None)
         if callable(getter):
             allowed = getter(region)
@@ -413,6 +420,7 @@ class Plugin(BasePlugin):
         longname: str,
         meshnet_name: str,
     ) -> bool:
+        """Decline Meshtastic messages; the firmware owns beacon packet handling."""
         _ = packet, formatted_message, longname, meshnet_name
         return False
 
@@ -422,5 +430,6 @@ class Plugin(BasePlugin):
         event: Any,
         full_message: str,
     ) -> bool:
+        """Decline Matrix events because this plugin is configuration-only."""
         _ = room, event, full_message
         return False
