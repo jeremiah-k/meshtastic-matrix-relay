@@ -16,11 +16,18 @@ import unittest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.constants.formats import DATE_FORMAT_LONG
-from mmrelay.plugins.nodes_plugin import Plugin, get_relative_time
+from mmrelay.plugins.nodes_plugin import (
+    Plugin,
+    _format_last_seen,
+    _last_heard_sort_value,
+    get_relative_time,
+)
 
 
 class TestGetRelativeTime(unittest.TestCase):
@@ -873,6 +880,15 @@ class TestNodesPlugin(unittest.TestCase):
         import asyncio
 
         asyncio.run(run_test())
+
+
+@pytest.mark.parametrize(
+    "value", [float("inf"), float("-inf"), float("nan"), 0, -1]
+)
+def test_invalid_last_heard_values_are_unknown(value: float) -> None:
+    """Invalid timestamps render and sort like unknown timestamps."""
+    assert _last_heard_sort_value({"lastHeard": value}) == 0
+    assert _format_last_seen(value) == "?"
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import math
 from datetime import datetime
 from typing import Any
 
@@ -143,7 +144,9 @@ def _format_last_seen(value: Any) -> str:
         return "?"
     try:
         timestamp = float(value)
-        return get_relative_time(timestamp) if timestamp > 0 else "?"
+        if timestamp <= 0 or not math.isfinite(timestamp):
+            return "?"
+        return get_relative_time(timestamp)
     except (TypeError, ValueError, OverflowError, OSError):
         logger.debug("Failed to parse lastHeard timestamp: %s", value)
         return "?"
@@ -151,7 +154,8 @@ def _format_last_seen(value: Any) -> str:
 
 def _last_heard_sort_value(info: dict[str, Any]) -> float:
     try:
-        return float(info.get("lastHeard") or 0)
+        timestamp = float(info.get("lastHeard") or 0)
+        return timestamp if timestamp > 0 and math.isfinite(timestamp) else 0
     except (TypeError, ValueError, OverflowError):
         return 0
 
