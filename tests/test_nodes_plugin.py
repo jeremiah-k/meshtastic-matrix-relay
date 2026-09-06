@@ -253,7 +253,6 @@ class TestNodesPlugin(unittest.TestCase):
         self.assertIn("minutes ago", response)
         self.assertIn("hours ago", response)
 
-
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_missing_data(self, mock_connect):
         """
@@ -690,12 +689,6 @@ class TestNodesPlugin(unittest.TestCase):
         # Should have two instances of "? hops away"
         self.assertEqual(response.count("? hops away"), 2)
 
-
-
-
-
-
-
     def test_handle_room_message_exception_handler(self):
         """Test exception handler in handle_room_message (lines 224-227)."""
         self.plugin.matches = MagicMock(return_value=True)
@@ -963,9 +956,7 @@ def test_relative_time_under_one_minute_is_just_now() -> None:
     assert get_relative_time(timestamp) == "Just now"
 
 
-@pytest.mark.parametrize(
-    "value", [float("inf"), float("-inf"), float("nan"), 0, -1]
-)
+@pytest.mark.parametrize("value", [float("inf"), float("-inf"), float("nan"), 0, -1])
 def test_invalid_last_heard_values_are_unknown(value: float) -> None:
     """Invalid timestamps render and sort like unknown timestamps."""
     assert _last_heard_sort_value({"lastHeard": value}) == 0
