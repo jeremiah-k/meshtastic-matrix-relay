@@ -68,9 +68,7 @@ FIELD_LABELS = {
     "longitude": "lon",
     "altitude": "alt",
 }
-AVAILABLE_FIELDS = tuple(
-    ["name", "power", *FIELD_PATHS.keys(), "<dotted node path>"]
-)
+AVAILABLE_FIELDS = tuple(["name", "power", *FIELD_PATHS.keys(), "<dotted node path>"])
 
 
 def get_relative_time(timestamp: float) -> str:
@@ -234,7 +232,9 @@ class Plugin(BasePlugin):
             return DEFAULT_FIELDS.copy()
         return configured
 
-    def _render_field(self, field: str, node_key: Any, info: dict[str, Any]) -> str | None:
+    def _render_field(
+        self, field: str, node_key: Any, info: dict[str, Any]
+    ) -> str | None:
         if field == "name":
             short_name = _get_field_value(info, "user.shortName") or UNKNOWN_NODE_VALUE
             long_name = _get_field_value(info, "user.longName") or UNKNOWN_NODE_VALUE
@@ -300,7 +300,11 @@ class Plugin(BasePlugin):
                 for field in fields
                 if (rendered := self._render_field(field, node_key, info)) is not None
             ]
-            node_text = " / ".join(rendered_fields) if rendered_fields else "No fields available"
+            node_text = (
+                " / ".join(rendered_fields)
+                if rendered_fields
+                else "No fields available"
+            )
             node_lines.append(node_text + "\n")
 
         response = f"Nodes: {len(node_entries)}\n"
