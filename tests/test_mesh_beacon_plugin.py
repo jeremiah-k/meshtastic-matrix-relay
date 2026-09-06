@@ -357,7 +357,9 @@ def test_plugin_does_not_claim_matrix_or_mesh_messages() -> None:
     assert asyncio.run(plugin.handle_room_message(None, None, "")) is False
 
 
-def test_lifecycle_subscribes_to_connection_events(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_lifecycle_subscribes_to_connection_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     plugin = _plugin()
     mock_pub = MagicMock()
     monkeypatch.setattr("mmrelay.plugins.mesh_beacon_plugin.pub", mock_pub)
@@ -437,7 +439,10 @@ def test_rejects_missing_channel_table_for_explicit_offer() -> None:
         ([{"preset": None, "channel_index": 0}], "must be a preset name"),
         ([{"preset": "NOT_A_PRESET", "channel_index": 0}], "unknown modem_preset"),
         ([{"preset": "MEDIUM_FAST", "channel_index": True}], "must be an integer"),
-        ([{"preset": "MEDIUM_FAST", "channel_index": 99}], "enabled configured channel"),
+        (
+            [{"preset": "MEDIUM_FAST", "channel_index": 99}],
+            "enabled configured channel",
+        ),
         (
             [
                 {"preset": "MEDIUM_FAST", "channel_index": 0},
@@ -495,7 +500,9 @@ def test_rejects_incomplete_connected_radio_state(mutation: str, message: str) -
     elif mutation == "no_module_config":
         interface.localNode.moduleConfig = None
     elif mutation == "bad_schema":
-        interface.localNode.moduleConfig.HasField = MagicMock(side_effect=ValueError("old schema"))
+        interface.localNode.moduleConfig.HasField = MagicMock(
+            side_effect=ValueError("old schema")
+        )
     else:
         interface.localNode.localConfig.lora = None
 
@@ -507,7 +514,9 @@ def test_enum_and_channel_helpers_cover_schema_and_channel_edge_cases() -> None:
     """Low-level validation helpers fail closed for missing schema and unusable slots."""
     with pytest.raises(MeshBeaconConfigError, match="enum metadata"):
         _enum_number(SimpleNamespace(), "modem_preset", "LONG_FAST")
-    assert _enum_number(_Lora(), "modem_preset", "medium-fast") == _PRESETS["MEDIUM_FAST"]
+    assert (
+        _enum_number(_Lora(), "modem_preset", "medium-fast") == _PRESETS["MEDIUM_FAST"]
+    )
     assert _enum_name(_Lora(), "region", 999) == "999"
     assert _find_channel([], 0) is None
     assert _channel_is_usable(None) is False

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Mapping, Sequence
-from typing import Any
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any, cast
 
 from pubsub import pub
 
@@ -109,9 +109,7 @@ def _channel_is_usable(channel: Any, *, allow_blank_primary: bool = False) -> bo
         return False
     if allow_blank_primary and int(getattr(channel, "role", 0)) == 1:
         return True
-    return bool(
-        getattr(settings, "name", "") or bytes(getattr(settings, "psk", b""))
-    )
+    return bool(getattr(settings, "name", "") or bytes(getattr(settings, "psk", b"")))
 
 
 class Plugin(BasePlugin):
@@ -405,12 +403,11 @@ class Plugin(BasePlugin):
         """Return region-valid presets, using a conservative compatibility fallback."""
         getter = getattr(interface, "get_allowed_modem_presets", None)
         if callable(getter):
-            allowed = getter(region)
+            allowed = cast(Iterable[int] | None, getter(region))
             if allowed is not None:
                 return {int(value) for value in allowed}
         return {
-            _enum_number(lora, "modem_preset", name)
-            for name in _CONSERVATIVE_PRESETS
+            _enum_number(lora, "modem_preset", name) for name in _CONSERVATIVE_PRESETS
         }
 
     async def handle_meshtastic_message(
