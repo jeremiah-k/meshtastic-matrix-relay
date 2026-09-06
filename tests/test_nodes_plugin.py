@@ -764,9 +764,7 @@ class TestNodesPlugin(unittest.TestCase):
         self.assertEqual(response, "Nodes: 1\nNo fields available\n")
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_generate_response_formats_supported_custom_field_types(
-        self, mock_connect
-    ):
+    def test_generate_response_formats_supported_custom_field_types(self, mock_connect):
         """Configured aliases format metrics, location, flags, keys, and raw binary values."""
         client = MagicMock()
         client.nodes = {
