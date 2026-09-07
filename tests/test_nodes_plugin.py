@@ -16,11 +16,18 @@ import unittest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.constants.formats import DATE_FORMAT_LONG
-from mmrelay.plugins.nodes_plugin import Plugin, get_relative_time
+from mmrelay.plugins.nodes_plugin import (
+    Plugin,
+    _format_last_seen,
+    _last_heard_sort_value,
+    get_relative_time,
+)
 
 
 class TestGetRelativeTime(unittest.TestCase):
@@ -202,16 +209,13 @@ class TestNodesPlugin(unittest.TestCase):
 
     def test_description_property(self):
         """
-        Verify that the plugin's description property contains expected placeholders and descriptive text for node data fields.
+        Verify that the plugin description documents configurable node fields.
         """
         description = self.plugin.description
 
         self.assertIn("Show mesh radios and node data", description)
-        self.assertIn("$shortname $longname", description)
-        self.assertIn("$devicemodel", description)
-        self.assertIn("$battery $voltage", description)
-        self.assertIn("$snr", description)
-        self.assertIn("$lastseen", description)
+        self.assertIn("plugins.nodes.fields", description)
+        self.assertIn("status", description)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_full_data(self, mock_connect):
@@ -707,6 +711,256 @@ class TestNodesPlugin(unittest.TestCase):
         import asyncio
 
         asyncio.run(run_test())
+
+
+@pytest.fixture
+def feature_plugin() -> Plugin:
+    """Provide an isolated nodes plugin for feature-focused pytest coverage."""
+    plugin = Plugin()
+    plugin.logger = MagicMock()
+    plugin.send_matrix_message = AsyncMock()
+    plugin.send_matrix_reaction = AsyncMock()
+    return plugin
+
+
+@pytest.fixture
+def feature_meshtastic_client() -> MagicMock:
+    """Provide representative node data for configurable-field tests."""
+    client = MagicMock()
+    client.nodes = {
+        "node1": {
+            "user": {
+                "shortName": "N1",
+                "longName": "Node One",
+                "hwModel": "HELTEC_V3",
+            },
+            "snr": 12.5,
+            "lastHeard": (datetime.now() - timedelta(minutes=5)).timestamp(),
+            "deviceMetrics": {"voltage": 4.2, "batteryLevel": 85},
+        },
+        "node2": {
+            "user": {"shortName": "N2", "longName": "Node Two", "hwModel": "TBEAM"},
+            "snr": -8.0,
+            "lastHeard": (datetime.now() - timedelta(hours=2)).timestamp(),
+            "deviceMetrics": {"voltage": 3.8, "batteryLevel": 45},
+        },
+        "node3": {
+            "user": {
+                "shortName": "N3",
+                "longName": "Node Three",
+                "hwModel": "LORA32_V2_1",
+            }
+        },
+    }
+    return client
+
+
+def test_generate_response_includes_status_when_available(
+    feature_plugin: Plugin, feature_meshtastic_client: MagicMock
+) -> None:
+    """Firmware 2.8 status messages appear in the default view when cached."""
+    feature_meshtastic_client.nodes["node1"]["status"] = "At the trailhead"
+    with patch(
+        "mmrelay.meshtastic_utils.connect_meshtastic",
+        return_value=feature_meshtastic_client,
+    ):
+        response = feature_plugin.generate_response()
+    assert "status: At the trailhead" in response
+
+
+def test_generate_response_supports_configured_fields(feature_plugin: Plugin) -> None:
+    """Configured aliases and raw dotted paths render in configured order."""
+    client = MagicMock()
+    client.nodes = {
+        "!12345678": {
+            "num": 0x12345678,
+            "user": {
+                "id": "!12345678",
+                "publicKey": bytes(range(32)),
+                "role": "ROUTER",
+            },
+            "status": "Relay online",
+            "environmentMetrics": {"temperature": 21.5},
+        }
+    }
+    feature_plugin.config["fields"] = [
+        "node_id",
+        "role",
+        "status",
+        "public_key",
+        "environmentMetrics.temperature",
+    ]
+    with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
+        response = feature_plugin.generate_response()
+    expected_key = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+    assert response.splitlines()[1] == (
+        "id: !12345678 / role: ROUTER / status: Relay online / "
+        f"key: {expected_key} / environmentMetrics.temperature: 21.5"
+    )
+
+
+@pytest.mark.parametrize(
+    "invalid_last_heard", [float("inf"), float("-inf"), float("nan"), 0, -1]
+)
+def test_generate_response_sorts_invalid_timestamps_with_unknowns(
+    feature_plugin: Plugin, invalid_last_heard: float
+) -> None:
+    """Non-finite and non-positive timestamps sort with unknown timestamps."""
+    client = MagicMock()
+    client.nodes = {
+        "invalid": {
+            "user": {"shortName": "BAD", "longName": "Invalid"},
+            "lastHeard": invalid_last_heard,
+        },
+        "valid": {
+            "user": {"shortName": "NEW", "longName": "Valid"},
+            "lastHeard": 200,
+        },
+        "unknown": {"user": {"shortName": "UNK", "longName": "Unknown"}},
+    }
+    feature_plugin.config["fields"] = ["name", "last_seen"]
+    with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
+        response = feature_plugin.generate_response().splitlines()
+    assert response[1].startswith("NEW Valid / ")
+    assert set(response[2:]) == {"BAD Invalid / ?", "UNK Unknown / ?"}
+
+
+def test_generate_response_sorts_nodes_by_recency(feature_plugin: Plugin) -> None:
+    """The most recently heard node is listed first."""
+    client = MagicMock()
+    client.nodes = {
+        "older": {
+            "user": {"shortName": "OLD", "longName": "Older"},
+            "lastHeard": 100,
+        },
+        "newer": {
+            "user": {"shortName": "NEW", "longName": "Newer"},
+            "lastHeard": 200,
+        },
+        "unknown": {"user": {"shortName": "UNK", "longName": "Unknown"}},
+    }
+    feature_plugin.config["fields"] = ["name"]
+    with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
+        response = feature_plugin.generate_response().splitlines()
+    assert response[1:] == ["NEW Newer", "OLD Older", "UNK Unknown"]
+
+
+def test_generate_response_marks_nodes_with_no_renderable_fields(
+    feature_plugin: Plugin,
+) -> None:
+    """Nodes remain countable when selected data has not been reported."""
+    client = MagicMock()
+    client.nodes = {"node1": {"user": {"shortName": "N1"}}}
+    feature_plugin.config["fields"] = ["status"]
+    with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
+        response = feature_plugin.generate_response()
+    assert response == "Nodes: 1\nNo fields available\n"
+
+
+def test_generate_response_formats_supported_custom_field_types(
+    feature_plugin: Plugin,
+) -> None:
+    """Configured aliases format metrics, location, flags, keys, and raw values."""
+    client = MagicMock()
+    client.nodes = {
+        "!deadbeef": {
+            "user": {"publicKey": bytearray(b"key")},
+            "deviceMetrics": {
+                "batteryLevel": 91,
+                "voltage": 4.1,
+                "channelUtilization": 12.5,
+                "airUtilTx": 3.25,
+                "uptimeSeconds": 42,
+            },
+            "position": {"latitude": 1.5, "longitude": -2.5, "altitude": 123},
+            "isFavorite": False,
+            "rawBytes": b"\x00\xff",
+            "rawBytearray": bytearray(b"ab"),
+            "rawBool": True,
+        }
+    }
+    feature_plugin.config["fields"] = [
+        "node_id",
+        "public_key",
+        "battery",
+        "voltage",
+        "channel_utilization",
+        "air_util_tx",
+        "uptime",
+        "latitude",
+        "longitude",
+        "altitude",
+        "favorite",
+        "rawBytes",
+        "rawBytearray",
+        "rawBool",
+    ]
+    with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
+        response = feature_plugin.generate_response()
+    for expected in (
+        "id: !deadbeef",
+        "key: a2V5",
+        "battery: 91%",
+        "voltage: 4.1V",
+        "channel util: 12.5%",
+        "air util tx: 3.25%",
+        "uptime: 42s",
+        "lat: 1.5°",
+        "lon: -2.5°",
+        "alt: 123m",
+        "favorite: no",
+        "rawBytes: AP8=",
+        "rawBytearray: YWI=",
+        "rawBool: yes",
+    ):
+        assert expected in response
+
+
+@pytest.mark.parametrize("fields", ["status", [None, 1, "   "]])
+def test_invalid_field_configurations_fall_back_to_defaults(
+    feature_plugin: Plugin, fields: object
+) -> None:
+    """Malformed or empty field selections retain the established default view."""
+    client = MagicMock()
+    client.nodes = {"node1": {"user": {"shortName": "N1", "longName": "Node"}}}
+    feature_plugin.config["fields"] = fields
+    with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
+        response = feature_plugin.generate_response()
+    assert "N1 Node / Unknown" in response
+    feature_plugin.logger.warning.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("already-encoded", "already-encoded"),
+        ("", None),
+        (123, "123"),
+        (None, None),
+        (b"", None),
+        (bytearray(), None),
+    ],
+)
+def test_public_key_formatter_accepts_string_and_scalar_values(
+    value: object, expected: str | None
+) -> None:
+    """Public-key rendering tolerates alternate serialized node sources."""
+    from mmrelay.plugins.nodes_plugin import _format_public_key
+
+    assert _format_public_key(value) == expected
+
+
+def test_relative_time_under_one_minute_is_just_now() -> None:
+    """A recent past timestamp takes the final sub-minute branch."""
+    timestamp = (datetime.now() - timedelta(seconds=30)).timestamp()
+    assert get_relative_time(timestamp) == "Just now"
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("-inf"), float("nan"), 0, -1])
+def test_invalid_last_heard_values_are_unknown(value: float) -> None:
+    """Invalid timestamps render and sort like unknown timestamps."""
+    assert _last_heard_sort_value({"lastHeard": value}) == 0
+    assert _format_last_seen(value) == "?"
 
 
 if __name__ == "__main__":

@@ -138,6 +138,13 @@ plugins:
     active: true
     #require_bot_mention: true  # Override global setting for this plugin only
     # Does not need to specify channels, as it's a Matrix-only plugin
+    # Output is newest-node-first. The default fields preserve the compact legacy view
+    # and add Firmware 2.8 status messages when mtjk has received one.
+    #fields: ["name", "hardware", "power", "snr", "hops", "last_seen", "status"]
+    # Other aliases: short_name, long_name, node_id, node_num, role, public_key,
+    # battery, voltage, channel_utilization, air_util_tx, uptime, channel, favorite,
+    # latitude, longitude, altitude. Any raw dotted node path is also accepted, for
+    # example environmentMetrics.temperature or hostMetrics.freeMemory.
 
 #community-plugins:
 #  sample_plugin:
