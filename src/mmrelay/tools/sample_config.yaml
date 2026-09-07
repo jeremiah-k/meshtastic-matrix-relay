@@ -138,6 +138,31 @@ plugins:
     active: true
     #require_bot_mention: true  # Override global setting for this plugin only
     # Does not need to specify channels, as it's a Matrix-only plugin
+  mesh_beacon:
+    active: false
+    # Configures Firmware 2.8's native Mesh Beacon broadcaster. Firmware performs
+    # each temporary preset switch and restores the normal radio configuration.
+    # MMRelay refuses same-preset-only target lists and custom (non-preset)
+    # LoRa configurations.
+    broadcast: true
+    #message: "Join our mesh" # Max 100 UTF-8 bytes; omitted preserves current value
+    #interval_seconds: 3600 # Firmware minimum is one hour
+    #listen: true # Omitted preserves the radio's current listen flag
+    #legacy_split: false # Omitted preserves the radio's current compatibility setting
+    # Required: choose a configured channel index to share its name/PSK, or null
+    # to advertise no channel credentials. MMRelay never chooses one implicitly.
+    offer_channel_index: null
+    # Up to four targets. Every target must name an already-configured channel
+    # index explicitly; update these channel slots before enabling the plugin.
+    targets:
+      - preset: "LONG_FAST"
+        channel_index: 0
+      - preset: "LONG_MODERATE"
+        channel_index: 0
+      - preset: "MEDIUM_FAST"
+        channel_index: 0
+      - preset: "SHORT_FAST"
+        channel_index: 0
 
 #community-plugins:
 #  sample_plugin:
