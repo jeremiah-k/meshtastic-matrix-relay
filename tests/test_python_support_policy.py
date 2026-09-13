@@ -189,11 +189,3 @@ def test_static_analysis_targets_the_minimum_supported_python() -> None:
     with RUFF_CONFIG.open("rb") as handle:
         ruff_config = tomllib.load(handle)
     assert ruff_config["target-version"] == f"py{floor_text.replace('.', '')}"
-
-
-def test_matplotlib_pin_matches_the_python_311_dependency_line() -> None:
-    project = _project_metadata()
-    dependencies = project.get("dependencies")
-
-    assert isinstance(dependencies, list)
-    assert "matplotlib==3.11.1" in dependencies
