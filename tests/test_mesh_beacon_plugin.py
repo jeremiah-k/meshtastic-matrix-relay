@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import copy
 from types import SimpleNamespace
 from typing import Any
@@ -350,11 +349,12 @@ def test_disabled_broadcast_only_clears_broadcast_flag() -> None:
     assert beacon.broadcast_message == "existing"
 
 
-def test_plugin_does_not_claim_matrix_or_mesh_messages() -> None:
+@pytest.mark.asyncio
+async def test_plugin_does_not_claim_matrix_or_mesh_messages() -> None:
     plugin = _plugin()
     assert plugin.get_matrix_commands() == []
-    assert asyncio.run(plugin.handle_meshtastic_message({}, "", "", "")) is False
-    assert asyncio.run(plugin.handle_room_message(None, None, "")) is False
+    assert await plugin.handle_meshtastic_message({}, "", "", "") is False
+    assert await plugin.handle_room_message(None, None, "") is False
 
 
 def test_lifecycle_subscribes_to_connection_events(
