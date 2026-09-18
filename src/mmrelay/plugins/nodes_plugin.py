@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import math
+import re
 from datetime import datetime
 from typing import Any
 
@@ -70,6 +71,42 @@ FIELD_LABELS = {
     "altitude": "alt",
 }
 AVAILABLE_FIELDS = tuple(["name", "power", *FIELD_PATHS.keys(), "<dotted node path>"])
+# Secret-bearing path segments (compared against lowercased alphanumeric
+# forms) that are never rendered, even when explicitly configured, so future
+# mtjk schema additions cannot leak credentials through raw node paths.
+SENSITIVE_FIELD_TOKENS = frozenset(
+    {
+        "adminkey",
+        "fixedpin",
+        "passwd",
+        "password",
+        "privatekey",
+        "psk",
+        "secret",
+        "sessionkey",
+        "wifi",
+    }
+)
+
+
+def _is_sensitive_field_path(field_path: str) -> bool:
+    """
+    Check whether a dotted node-data path may carry secret material.
+
+    Parameters:
+        field_path (str): Dotted field path (e.g. "user.publicKey" or a raw
+            configured path such as "config.network.wifiPsk").
+
+    Returns:
+        bool: True when any dot-separated segment, normalized to lowercase
+        alphanumerics, contains a known secret-bearing token. Public keys and
+        other intentional aliases remain allowed.
+    """
+    for segment in field_path.split("."):
+        normalized = re.sub(r"[^a-z0-9]", "", segment.lower())
+        if any(token in normalized for token in SENSITIVE_FIELD_TOKENS):
+            return True
+    return False
 
 
 def get_relative_time(timestamp: float) -> str:
@@ -171,6 +208,10 @@ def _format_hops(value: Any) -> str:
 
 
 def _format_field_value(field: str, value: Any) -> str | None:
+    if isinstance(value, (dict, list)):
+        # Never stringify whole containers; select leaf paths explicitly so
+        # secret-bearing keys added upstream cannot be dumped wholesale.
+        return None
     if field == "public_key":
         return _format_public_key(value)
     if field == "last_seen":
@@ -217,7 +258,9 @@ class Plugin(BasePlugin):
         return (
             "Show mesh radios and node data. Output fields can be selected with "
             "plugins.nodes.fields.\n\n"
-            "Default: name / hardware / power / snr / hops / last_seen / status"
+            "Default: name / hardware / power / snr / hops / last_seen / status\n\n"
+            "Potentially secret-bearing paths (private keys, PSKs, passwords, "
+            "wifi settings, ...) are never rendered, even when configured."
         )
 
     def _configured_fields(self) -> list[str]:
@@ -232,6 +275,23 @@ class Plugin(BasePlugin):
         if not configured:
             self.logger.warning(
                 "Plugin 'nodes': fields contains no valid field names; using defaults."
+            )
+            return DEFAULT_FIELDS.copy()
+        withheld = [
+            field
+            for field in configured
+            if _is_sensitive_field_path(FIELD_PATHS.get(field, field))
+        ]
+        if withheld:
+            self.logger.warning(
+                "Plugin 'nodes': ignoring potentially secret-bearing fields: %s",
+                ", ".join(withheld),
+            )
+            configured = [field for field in configured if field not in withheld]
+        if not configured:
+            self.logger.warning(
+                "Plugin 'nodes': all configured fields are potentially "
+                "secret-bearing; using defaults."
             )
             return DEFAULT_FIELDS.copy()
         return configured
@@ -274,7 +334,9 @@ class Plugin(BasePlugin):
 
         The response begins with "Nodes: <count>" and lists nodes newest-first.
         Fields come from ``plugins.nodes.fields`` and may be aliases or raw dotted
-        node-data paths. If the Meshtastic device cannot be contacted, returns the
+        node-data paths. Potentially secret-bearing paths are withheld and
+        container-valued paths render nothing rather than dumping raw data.
+        If the Meshtastic device cannot be contacted, returns the
         error message "Unable to connect to Meshtastic device."
 
         Returns:

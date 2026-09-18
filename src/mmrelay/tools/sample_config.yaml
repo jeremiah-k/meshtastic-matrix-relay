@@ -145,6 +145,8 @@ plugins:
     # battery, voltage, channel_utilization, air_util_tx, uptime, channel, favorite,
     # latitude, longitude, altitude. Any raw dotted node path is also accepted, for
     # example environmentMetrics.temperature or hostMetrics.freeMemory.
+    # Potentially secret-bearing paths (private keys, PSKs, passwords, wifi or
+    # bluetooth pairing settings, ...) are always withheld, even when configured.
 
 #community-plugins:
 #  sample_plugin:
