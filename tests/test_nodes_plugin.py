@@ -23,8 +23,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.constants.formats import DATE_FORMAT_LONG
 from mmrelay.plugins.nodes_plugin import (
+    FIELD_PATHS,
     Plugin,
     _format_last_seen,
+    _is_sensitive_field_path,
     _last_heard_sort_value,
     get_relative_time,
 )
@@ -961,6 +963,123 @@ def test_invalid_last_heard_values_are_unknown(value: float) -> None:
     """Invalid timestamps render and sort like unknown timestamps."""
     assert _last_heard_sort_value({"lastHeard": value}) == 0
     assert _format_last_seen(value) == "?"
+
+
+@pytest.mark.parametrize(
+    "field_path",
+    [
+        "config.security.privateKey",
+        "config.security.private_key",
+        "network.wifiPsk",
+        "network.wifi_ssid",
+        "wifiPassword",
+        "psk",
+        "channelSettings.psk",
+        "config.security.adminKey",
+        "config.security.admin_key",
+        "config.security.sessionKey",
+        "someSecretValue",
+        "bluetooth.fixedPin",
+    ],
+)
+def test_sensitive_field_paths_are_detected(field_path: str) -> None:
+    """Secret-bearing dotted paths are flagged regardless of spelling."""
+    assert _is_sensitive_field_path(field_path) is True
+
+
+@pytest.mark.parametrize(
+    "field_path",
+    [
+        "user.publicKey",
+        "user.public_key",
+        "user.hwModel",
+        "deviceMetrics.batteryLevel",
+        "environmentMetrics.temperature",
+        "position.latitude",
+        "lastHeard",
+        "hopsAway",
+        "status",
+    ],
+)
+def test_public_data_field_paths_are_allowed(field_path: str) -> None:
+    """Public node data paths, including public keys, stay renderable."""
+    assert _is_sensitive_field_path(field_path) is False
+
+
+def test_all_field_aliases_avoid_sensitive_tokens() -> None:
+    """Every alias the plugin resolves must survive the sensitive-path screen."""
+    assert all(not _is_sensitive_field_path(path) for path in FIELD_PATHS.values())
+
+
+def test_generate_response_withholds_configured_secret_fields(
+    feature_plugin: Plugin,
+) -> None:
+    """Secret-bearing configured fields are skipped and logged, not rendered."""
+    client = MagicMock()
+    client.nodes = {
+        "node1": {
+            "user": {
+                "shortName": "SEC",
+                "longName": "Secret Holder",
+                "privateKey": b"super-secret-key",
+            },
+            "config": {"security": {"privateKey": b"super-secret-key"}},
+        }
+    }
+    feature_plugin.config["fields"] = [
+        "name",
+        "user.privateKey",
+        "config.security.privateKey",
+    ]
+    with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
+        response = feature_plugin.generate_response()
+    assert "SEC Secret Holder" in response
+    assert "super-secret-key" not in response
+    feature_plugin.logger.warning.assert_called_once()
+    warned_args = feature_plugin.logger.warning.call_args.args
+    assert "user.privateKey" in warned_args[1]
+    assert "config.security.privateKey" in warned_args[1]
+
+
+def test_generate_response_all_sensitive_fields_use_defaults(
+    feature_plugin: Plugin,
+) -> None:
+    """A fully sensitive field selection falls back to the default view."""
+    client = MagicMock()
+    client.nodes = {
+        "node1": {
+            "user": {"shortName": "N1", "longName": "Node", "hwModel": "TBEAM"},
+            "psk": b"not-for-matrix",
+        }
+    }
+    feature_plugin.config["fields"] = ["psk", "wifiPassword"]
+    with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
+        response = feature_plugin.generate_response()
+    assert "N1 Node / TBEAM" in response
+    assert "not-for-matrix" not in response
+    assert feature_plugin.logger.warning.call_count == 2
+
+
+def test_generate_response_does_not_dump_container_values(
+    feature_plugin: Plugin,
+) -> None:
+    """Bare parent paths render nothing instead of stringifying nested dicts."""
+    client = MagicMock()
+    client.nodes = {
+        "node1": {
+            "user": {
+                "shortName": "DICT",
+                "longName": "Dict Node",
+                "privateKey": b"nested-secret",
+            }
+        }
+    }
+    feature_plugin.config["fields"] = ["user", "name"]
+    with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
+        response = feature_plugin.generate_response()
+    assert "DICT Dict Node" in response
+    assert "{" not in response
+    assert "nested-secret" not in response
 
 
 if __name__ == "__main__":
