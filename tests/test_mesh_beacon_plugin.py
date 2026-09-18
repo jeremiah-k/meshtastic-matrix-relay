@@ -514,6 +514,8 @@ def test_enum_and_channel_helpers_cover_schema_and_channel_edge_cases() -> None:
     """Low-level validation helpers fail closed for missing schema and unusable slots."""
     with pytest.raises(MeshBeaconConfigError, match="enum metadata"):
         _enum_number(SimpleNamespace(), "modem_preset", "LONG_FAST")
+    with pytest.raises(MeshBeaconConfigError, match="enum metadata"):
+        _enum_number(_Lora(), "missing_enum", "LONG_FAST")
     assert (
         _enum_number(_Lora(), "modem_preset", "medium-fast") == _PRESETS["MEDIUM_FAST"]
     )
@@ -528,9 +530,11 @@ def test_enum_and_channel_helpers_cover_schema_and_channel_edge_cases() -> None:
     assert _channel_is_usable(_Channel(3, 2, "", b"key")) is True
 
 
-def test_allowed_presets_falls_back_without_interface_helper() -> None:
-    """Conservative preset validation remains available on older mtjk interfaces."""
-    allowed = Plugin._allowed_presets(SimpleNamespace(), _Lora(), _REGIONS["US"])
+def test_allowed_presets_falls_back_when_region_map_is_unavailable() -> None:
+    """Conservative preset validation remains available without region metadata."""
+    allowed = Plugin._allowed_presets(
+        _Interface(allowed=None), _Lora(), _REGIONS["US"]
+    )
     assert _PRESETS["LONG_FAST"] in allowed
     assert _PRESETS["SHORT_TURBO"] not in allowed
 

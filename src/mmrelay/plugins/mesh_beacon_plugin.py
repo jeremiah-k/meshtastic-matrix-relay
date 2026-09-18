@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Iterable, Mapping, Sequence
-from typing import Any, cast
+from collections.abc import Mapping, Sequence
+from copy import deepcopy
+from typing import Any, Protocol, TypeVar, cast
 
+from nio import (
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 from pubsub import pub
 
 from mmrelay.plugins.base_plugin import BasePlugin
@@ -28,12 +36,108 @@ _CONSERVATIVE_PRESETS = frozenset(
 )
 
 
+class _EnumValueProtocol(Protocol):
+    name: str
+    number: int
+
+
+class _EnumDescriptorProtocol(Protocol):
+    values_by_name: Mapping[str, _EnumValueProtocol]
+    values_by_number: Mapping[int, _EnumValueProtocol]
+
+
+class _FieldDescriptorProtocol(Protocol):
+    enum_type: _EnumDescriptorProtocol | None
+
+
+class _MessageDescriptorProtocol(Protocol):
+    fields_by_name: Mapping[str, _FieldDescriptorProtocol]
+
+
+class _EnumMessageProtocol(Protocol):
+    DESCRIPTOR: _MessageDescriptorProtocol
+
+
+class _ChannelSettingsProtocol(Protocol):
+    name: str
+    psk: bytes
+
+
+class _ChannelProtocol(Protocol):
+    index: int
+    role: int
+    settings: _ChannelSettingsProtocol | None
+
+
+class _LoRaConfigProtocol(_EnumMessageProtocol, Protocol):
+    use_preset: bool
+    region: int
+    modem_preset: int
+
+
+class _BroadcastTargetProtocol(Protocol):
+    preset: int
+    region: int
+    channel_index: int
+
+
+class _BroadcastTargetsProtocol(Protocol):
+    def add(self) -> _BroadcastTargetProtocol: ...
+
+
+class _MeshBeaconConfigProtocol(Protocol):
+    flags: int
+    broadcast_message: str
+    broadcast_offer_channel: _ChannelSettingsProtocol
+    broadcast_offer_region: int
+    broadcast_offer_preset: int
+    broadcast_interval_secs: int
+    broadcast_targets: _BroadcastTargetsProtocol
+
+    def ClearField(self, field_name: str) -> None: ...
+
+    def CopyFrom(self, other: _MeshBeaconConfigProtocol) -> None: ...
+
+
+class _ModuleConfigProtocol(Protocol):
+    mesh_beacon: _MeshBeaconConfigProtocol
+
+    def HasField(self, field_name: str) -> bool: ...
+
+
+class _LocalConfigProtocol(Protocol):
+    lora: _LoRaConfigProtocol | None
+
+
+class _LocalNodeProtocol(Protocol):
+    @property
+    def localConfig(self) -> _LocalConfigProtocol | None: ...
+
+    @property
+    def moduleConfig(self) -> _ModuleConfigProtocol | None: ...
+
+    @property
+    def channels(self) -> Sequence[_ChannelProtocol] | None: ...
+
+    def writeConfig(self, config_name: str) -> None: ...
+
+
+class _MeshInterfaceProtocol(Protocol):
+    @property
+    def localNode(self) -> _LocalNodeProtocol | None: ...
+
+    def get_allowed_modem_presets(self, region: int) -> tuple[int, ...] | None: ...
+
+
+_MessageT = TypeVar("_MessageT")
+
+
 class MeshBeaconConfigError(ValueError):
     """Raised when the configured firmware Mesh Beacon policy is invalid."""
 
 
 def _strict_bool(
-    config: Mapping[str, Any], key: str, default: bool | None
+    config: Mapping[str, object], key: str, default: bool | None
 ) -> bool | None:
     """Return a boolean option without accepting truthy non-boolean values."""
     if key not in config:
@@ -49,12 +153,18 @@ def _normalize_enum_name(value: str) -> str:
     return value.strip().upper().replace("-", "_").replace(" ", "_")
 
 
-def _enum_descriptor(message: Any, field_name: str) -> Any:
+def _enum_descriptor(
+    message: _EnumMessageProtocol, field_name: str
+) -> _EnumDescriptorProtocol:
     """Return enum metadata for a protobuf field or fail closed."""
-    descriptor = getattr(message, "DESCRIPTOR", None)
-    fields = getattr(descriptor, "fields_by_name", {})
-    field = fields.get(field_name) if hasattr(fields, "get") else None
-    enum = getattr(field, "enum_type", None)
+    try:
+        fields = message.DESCRIPTOR.fields_by_name
+    except AttributeError as exc:
+        raise MeshBeaconConfigError(
+            f"connected mtjk schema does not expose enum metadata for {field_name}"
+        ) from exc
+    field = fields.get(field_name)
+    enum = field.enum_type if field is not None else None
     if enum is None:
         raise MeshBeaconConfigError(
             f"connected mtjk schema does not expose enum metadata for {field_name}"
@@ -62,14 +172,15 @@ def _enum_descriptor(message: Any, field_name: str) -> Any:
     return enum
 
 
-def _enum_number(message: Any, field_name: str, configured_name: str) -> int:
+def _enum_number(
+    message: _EnumMessageProtocol, field_name: str, configured_name: str
+) -> int:
     """Resolve a configured enum name to its protobuf numeric value."""
     enum = _enum_descriptor(message, field_name)
     name = _normalize_enum_name(configured_name)
-    values = getattr(enum, "values_by_name", {})
-    value = values.get(name) if hasattr(values, "get") else None
+    value = enum.values_by_name.get(name)
     if value is None:
-        choices = ", ".join(sorted(str(item) for item in values))
+        choices = ", ".join(sorted(enum.values_by_name))
         raise MeshBeaconConfigError(
             f"unknown {field_name} value {configured_name!r}; "
             f"expected one of: {choices}"
@@ -77,39 +188,40 @@ def _enum_number(message: Any, field_name: str, configured_name: str) -> int:
     return int(value.number)
 
 
-def _enum_name(message: Any, field_name: str, number: int) -> str:
+def _enum_name(message: _EnumMessageProtocol, field_name: str, number: int) -> str:
     """Resolve an enum number to its name, preserving unknown numbers as text."""
     enum = _enum_descriptor(message, field_name)
-    values = getattr(enum, "values_by_number", {})
-    value = values.get(int(number)) if hasattr(values, "get") else None
+    value = enum.values_by_number.get(int(number))
     return str(value.name) if value is not None else str(number)
 
 
-def _copy_message(message: Any) -> Any:
+def _copy_message(message: _MessageT) -> _MessageT:
     """Clone a protobuf-style message without sharing mutable state."""
-    clone = type(message)()
-    clone.CopyFrom(message)
-    return clone
+    return deepcopy(message)
 
 
-def _find_channel(channels: Sequence[Any], channel_index: int) -> Any | None:
+def _find_channel(
+    channels: Sequence[_ChannelProtocol], channel_index: int
+) -> _ChannelProtocol | None:
     """Find a configured channel by its device slot index."""
     for channel in channels:
-        if int(getattr(channel, "index", -1)) == channel_index:
+        if int(channel.index) == channel_index:
             return channel
     return None
 
 
-def _channel_is_usable(channel: Any, *, allow_blank_primary: bool = False) -> bool:
+def _channel_is_usable(
+    channel: _ChannelProtocol | None, *, allow_blank_primary: bool = False
+) -> bool:
     """Return whether a channel slot can be used for beacon offer or TX."""
-    if channel is None or int(getattr(channel, "role", 0)) == 0:
+    if channel is None or int(channel.role) == 0:
         return False
-    settings = getattr(channel, "settings", None)
+    settings = channel.settings
     if settings is None:
         return False
-    if allow_blank_primary and int(getattr(channel, "role", 0)) == 1:
+    if allow_blank_primary and int(channel.role) == 1:
         return True
-    return bool(getattr(settings, "name", "") or bytes(getattr(settings, "psk", b"")))
+    return bool(settings.name or bytes(settings.psk))
 
 
 class Plugin(BasePlugin):
@@ -139,8 +251,10 @@ class Plugin(BasePlugin):
 
         from mmrelay import meshtastic_utils
 
-        interface = meshtastic_utils.meshtastic_client
-        if interface is not None and getattr(interface, "localNode", None) is not None:
+        interface = cast(
+            _MeshInterfaceProtocol | None, meshtastic_utils.meshtastic_client
+        )
+        if interface is not None and interface.localNode is not None:
             self._apply_safely(interface)
 
     def on_stop(self) -> None:
@@ -156,11 +270,11 @@ class Plugin(BasePlugin):
             )
         self._connection_subscribed = False
 
-    def _on_connection_established(self, interface: Any) -> None:
+    def _on_connection_established(self, interface: _MeshInterfaceProtocol) -> None:
         """Apply beacon policy whenever mtjk establishes a radio connection."""
         self._apply_safely(interface)
 
-    def _apply_safely(self, interface: Any) -> None:
+    def _apply_safely(self, interface: _MeshInterfaceProtocol) -> None:
         """Apply configuration while containing policy and transport failures."""
         try:
             with self._configure_lock:
@@ -177,13 +291,13 @@ class Plugin(BasePlugin):
                     "Firmware Mesh Beacon configuration is already current"
                 )
 
-    def configure_firmware(self, interface: Any) -> bool:
+    def configure_firmware(self, interface: _MeshInterfaceProtocol) -> bool:
         """Validate and write the desired native Mesh Beacon module configuration."""
-        local_node = getattr(interface, "localNode", None)
+        local_node = interface.localNode
         if local_node is None:
             raise MeshBeaconConfigError("connected interface has no local node")
 
-        module_config = getattr(local_node, "moduleConfig", None)
+        module_config = local_node.moduleConfig
         if module_config is None:
             raise MeshBeaconConfigError("local module configuration is not available")
         try:
@@ -197,8 +311,8 @@ class Plugin(BasePlugin):
                 "connected firmware does not expose the Firmware 2.8 Mesh Beacon module"
             )
 
-        local_config = getattr(local_node, "localConfig", None)
-        lora = getattr(local_config, "lora", None)
+        local_config = local_node.localConfig
+        lora = local_config.lora if local_config is not None else None
         if lora is None:
             raise MeshBeaconConfigError("local LoRa configuration is not available")
 
@@ -208,7 +322,7 @@ class Plugin(BasePlugin):
         listen = _strict_bool(self.config, "listen", None)
         legacy_split = _strict_bool(self.config, "legacy_split", None)
 
-        flags = int(getattr(desired, "flags", 0))
+        flags = int(desired.flags)
         flags = self._set_flag(flags, _FLAG_BROADCAST_ENABLED, bool(broadcast))
         if listen is not None:
             flags = self._set_flag(flags, _FLAG_LISTEN_ENABLED, listen)
@@ -238,23 +352,23 @@ class Plugin(BasePlugin):
 
     def _configure_broadcast(
         self,
-        interface: Any,
-        local_node: Any,
-        lora: Any,
-        desired: Any,
+        interface: _MeshInterfaceProtocol,
+        local_node: _LocalNodeProtocol,
+        lora: _LoRaConfigProtocol,
+        desired: _MeshBeaconConfigProtocol,
     ) -> None:
         """Populate broadcast values that are safe for the connected radio."""
-        if not bool(getattr(lora, "use_preset", False)):
+        if not bool(lora.use_preset):
             raise MeshBeaconConfigError(
                 "broadcast requires the radio to use a standard LoRa modem preset"
             )
 
-        current_region = int(getattr(lora, "region", 0))
+        current_region = int(lora.region)
         if current_region == 0:
             raise MeshBeaconConfigError("broadcast requires a configured LoRa region")
-        current_preset = int(getattr(lora, "modem_preset", 0))
+        current_preset = int(lora.modem_preset)
 
-        message = self.config.get("message", getattr(desired, "broadcast_message", ""))
+        message = self.config.get("message", desired.broadcast_message)
         if not isinstance(message, str):
             raise MeshBeaconConfigError("message must be a string")
         if len(message.encode("utf-8")) > _MAX_MESSAGE_BYTES:
@@ -263,7 +377,7 @@ class Plugin(BasePlugin):
             )
         desired.broadcast_message = message
 
-        current_interval = int(getattr(desired, "broadcast_interval_secs", 0))
+        current_interval = int(desired.broadcast_interval_secs)
         default_interval = max(current_interval, _MIN_INTERVAL_SECONDS)
         interval = self.config.get("interval_seconds", default_interval)
         if isinstance(interval, bool) or not isinstance(interval, int):
@@ -280,7 +394,9 @@ class Plugin(BasePlugin):
         self._configure_offer_channel(local_node, desired)
         self._configure_targets(interface, local_node, lora, desired)
 
-    def _configure_offer_channel(self, local_node: Any, desired: Any) -> None:
+    def _configure_offer_channel(
+        self, local_node: _LocalNodeProtocol, desired: _MeshBeaconConfigProtocol
+    ) -> None:
         """Copy only an explicitly selected channel into the advertised join offer."""
         if "offer_channel_index" not in self.config:
             raise MeshBeaconConfigError(
@@ -296,7 +412,7 @@ class Plugin(BasePlugin):
                 "offer_channel_index must be an integer or null"
             )
 
-        channels = list(getattr(local_node, "channels", ()) or ())
+        channels = list(local_node.channels or ())
         if not channels:
             raise MeshBeaconConfigError("channel configuration is not available")
         channel = _find_channel(channels, configured_index)
@@ -305,24 +421,24 @@ class Plugin(BasePlugin):
                 f"offer_channel_index {configured_index} is not configured"
             )
 
-        allow_blank_primary = int(getattr(channel, "role", 0)) == 1
+        allow_blank_primary = int(channel.role) == 1
         if not _channel_is_usable(channel, allow_blank_primary=allow_blank_primary):
             raise MeshBeaconConfigError(
                 "offer channel index "
-                f"{getattr(channel, 'index', '?')} is disabled or blank"
+                f"{channel.index} is disabled or blank"
             )
 
-        settings = channel.settings
+        settings = cast(_ChannelSettingsProtocol, channel.settings)
         desired.ClearField("broadcast_offer_channel")
-        desired.broadcast_offer_channel.name = str(getattr(settings, "name", ""))
-        desired.broadcast_offer_channel.psk = bytes(getattr(settings, "psk", b""))
+        desired.broadcast_offer_channel.name = str(settings.name)
+        desired.broadcast_offer_channel.psk = bytes(settings.psk)
 
     def _configure_targets(
         self,
-        interface: Any,
-        local_node: Any,
-        lora: Any,
-        desired: Any,
+        interface: _MeshInterfaceProtocol,
+        local_node: _LocalNodeProtocol,
+        lora: _LoRaConfigProtocol,
+        desired: _MeshBeaconConfigProtocol,
     ) -> None:
         """Validate explicit cross-preset TX destinations and write target entries."""
         raw_targets = self.config.get("targets")
@@ -338,7 +454,7 @@ class Plugin(BasePlugin):
         current_region = int(lora.region)
         current_preset = int(lora.modem_preset)
         allowed = self._allowed_presets(interface, lora, current_region)
-        channels = list(getattr(local_node, "channels", ()) or ())
+        channels = list(local_node.channels or ())
         seen: set[tuple[int, int]] = set()
         has_cross_preset = False
 
@@ -371,7 +487,7 @@ class Plugin(BasePlugin):
             channel = _find_channel(channels, channel_index)
             if channel is None or not _channel_is_usable(
                 channel,
-                allow_blank_primary=int(getattr(channel, "role", 0)) == 1,
+                allow_blank_primary=int(channel.role) == 1,
             ):
                 raise MeshBeaconConfigError(
                     f"targets[{index}].channel_index {channel_index} is not an "
@@ -399,13 +515,13 @@ class Plugin(BasePlugin):
             )
 
     @staticmethod
-    def _allowed_presets(interface: Any, lora: Any, region: int) -> set[int]:
+    def _allowed_presets(
+        interface: _MeshInterfaceProtocol, lora: _LoRaConfigProtocol, region: int
+    ) -> set[int]:
         """Return region-valid presets, using a conservative compatibility fallback."""
-        getter = getattr(interface, "get_allowed_modem_presets", None)
-        if callable(getter):
-            allowed = cast(Iterable[int] | None, getter(region))
-            if allowed is not None:
-                return {int(value) for value in allowed}
+        allowed = interface.get_allowed_modem_presets(region)
+        if allowed is not None:
+            return {int(value) for value in allowed}
         return {
             _enum_number(lora, "modem_preset", name) for name in _CONSERVATIVE_PRESETS
         }
@@ -423,8 +539,8 @@ class Plugin(BasePlugin):
 
     async def handle_room_message(
         self,
-        room: Any,
-        event: Any,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
         full_message: str,
     ) -> bool:
         """Decline Matrix events because this plugin is configuration-only."""
