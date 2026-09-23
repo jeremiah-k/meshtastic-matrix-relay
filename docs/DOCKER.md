@@ -438,7 +438,7 @@ For upgrade/migration procedures and deprecation timeline details, see the [Migr
 
 - For TCP: Verify Meshtastic device IP and port 4403
 - For Serial: Check device permissions and path
-- For BLE: Ensure host networking is enabled and AppArmor is disabled (`apparmor=unconfined`). Use privileged mode as an alternative if apparmor unconfined is not acceptable.
+- For BLE: Ensure host networking is enabled and the container runs with `apparmor=unconfined` (required for D-Bus/BlueZ access). Use privileged mode as an alternative if `apparmor=unconfined` is not acceptable.
 
 ### BLE-Specific Troubleshooting
 
@@ -455,7 +455,7 @@ docker compose exec mmrelay bluetoothctl list
 
 **Permission denied errors:**
 
-- Try the alternative configurations above (capabilities or privileged mode)
+- Try the alternative configurations above (`apparmor=unconfined` or privileged mode)
 - Check D-Bus socket: `docker compose exec mmrelay ls -la /var/run/dbus`
 - On SELinux systems, add `:Z` to volume mounts
 
@@ -507,7 +507,6 @@ docker compose logs mmrelay | grep -i e2ee
 Look for messages like:
 
 - "End-to-End Encryption (E2EE) is enabled"
-- "Using credentials from /data/matrix/credentials.json"
 - "Found X encrypted rooms out of Y total rooms"
 
 ## Switching Between Prebuilt and Source Build
