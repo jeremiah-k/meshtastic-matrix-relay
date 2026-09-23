@@ -30,12 +30,12 @@ operator guidance**. Broader conceptual and community documentation lives in the
 
 ## Runtime file locations
 
-| File          | Purpose               | Default location                    |
-| ------------- | --------------------- | ----------------------------------- |
-| Configuration | Main settings         | `~/.mmrelay/config.yaml`            |
+| File          | Purpose               | Default location                     |
+| ------------- | --------------------- | ------------------------------------ |
+| Configuration | Main settings         | `~/.mmrelay/config.yaml`             |
 | Credentials   | Matrix authentication | `~/.mmrelay/matrix/credentials.json` |
-| E2EE Store    | Encryption keys       | `~/.mmrelay/matrix/store/`          |
-| Logs          | Application logs      | `~/.mmrelay/logs/`                  |
+| E2EE Store    | Encryption keys       | `~/.mmrelay/matrix/store/`           |
+| Logs          | Application logs      | `~/.mmrelay/logs/`                   |
 
 Actual paths can vary when `MMRELAY_HOME`, installer-specific locations, or
 container mounts are used. The deployment guides document those cases.
