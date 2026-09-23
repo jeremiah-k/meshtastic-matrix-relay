@@ -1,10 +1,55 @@
 # MMRelay Instructions
 
-MMRelay works on Linux, macOS, and Windows and requires Python 3.11+.
+MMRelay runs on Linux, macOS, and Windows. Native installs require Python
+3.11+; Docker installs run MMRelay in a container and use the host only for
+configuration and the one-time Matrix login.
 
-## Installation
+## Choose an installation method
 
-### Quick Install
+MMRelay runs natively via pipx or as a Docker container. Both use the same
+configuration file (`~/.mmrelay/config.yaml`), the same authentication step
+(`mmrelay auth login`), and store all runtime data in `~/.mmrelay/` — moving
+between them is a copy of that directory.
+
+|                   | Docker                                         | pipx (native)                          |
+| ----------------- | ---------------------------------------------- | -------------------------------------- |
+| Best for          | Always-on servers, NAS boxes, VPS hosts        | Desktops, laptops, Raspberry Pi boards |
+| Host needs        | Docker                                         | Python 3.11+                           |
+| BLE / serial node | BLE on Linux hosts only; extra compose options | Direct device access; simplest setup   |
+| Upgrades          | `docker compose pull` or one-line Watchtower   | `pipx upgrade mmrelay`                 |
+
+**Rule of thumb:** headless server with a TCP-connected node → Docker.
+Node attached over USB/serial or Bluetooth → native. For Kubernetes, see the
+[Helm Guide](HELM.md) or [Kubernetes Guide](KUBERNETES.md).
+
+### Docker install (recommended for servers)
+
+```bash
+# Clone the repository
+git clone https://github.com/jeremiah-k/meshtastic-matrix-relay.git
+cd meshtastic-matrix-relay
+
+# Copy the sample config, create .env and docker-compose.yaml,
+# then open the config in your editor
+make setup-prebuilt
+
+# Authenticate to Matrix
+# (needs the mmrelay CLI on the host: pipx install mmrelay)
+mmrelay auth login
+
+# Pull and start the official prebuilt image
+make run
+make logs
+```
+
+Prefer not to clone the repository? The [Docker Guide](DOCKER.md) has a
+curl-only Quick Start, Portainer instructions, compose snippets for each
+connection type, and full troubleshooting. To build the image from source
+instead of pulling it, run `make setup` and choose "Build from source".
+Upgrading from an older MMRelay layout? See the
+[Migration Guide for v1.3](MIGRATION_1.3.md).
+
+### Native install (pipx)
 
 ```bash
 # Install using pipx for isolated installation
@@ -47,6 +92,9 @@ MMRelay looks for configuration files in the following locations (in order):
 3. Current directory `config.yaml` (for backward compatibility)
 
 ### Setting Up Your Configuration
+
+> **Docker installs:** `make setup-prebuilt` already copied the sample config
+> to `~/.mmrelay/config.yaml`. Skip `config generate` and edit that file.
 
 MMRelay includes a built-in command to generate a sample configuration file in the recommended location:
 
@@ -167,7 +215,11 @@ mmrelay doctor
 
 ### Systemd Service (Linux)
 
-For automatic startup and management on Linux systems, MMRelay includes a built-in command to set up a systemd user service:
+For automatic startup and management on Linux systems (native installs),
+MMRelay includes a built-in command to set up a systemd user service:
+
+Docker deployments don't need this — the container restarts automatically
+through the compose `restart: unless-stopped` policy.
 
 ```bash
 mmrelay service install
@@ -207,28 +259,6 @@ journalctl --user -u mmrelay.service
 # Or watch the application log file in real-time
 tail -f ~/.mmrelay/logs/mmrelay.log
 ```
-
-## Docker
-
-MMRelay includes official Docker support for easy deployment and management. Docker provides isolated environment, automatic dependency management, easy updates, and consistent deployment across different systems.
-
-### Quick Docker Setup
-
-```bash
-# Clone the repository (if you haven't already)
-git clone https://github.com/jeremiah-k/meshtastic-matrix-relay.git
-cd meshtastic-matrix-relay
-
-# Set up configuration and start
-make setup    # Copy config and open editor (first time)
-make build    # Build the Docker image
-make run      # Start the container
-make logs     # View logs
-```
-
-For detailed Docker commands, configuration options, connection types, and troubleshooting, see the [Docker Guide](DOCKER.md).
-
-If you are upgrading from an older MMRelay layout, see the [Migration Guide for v1.3](MIGRATION_1.3.md).
 
 ## Kubernetes
 

@@ -6,6 +6,7 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
+- [Upgrading from Older Layouts](#upgrading-from-older-layouts)
 - [Deployment Methods](#deployment-methods)
   - [Prebuilt Images with Make](#prebuilt-images-with-make)
   - [Portainer/GUI Tools](#portainergui-tools)
@@ -16,9 +17,10 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 - [Make Commands Reference](#make-commands-reference)
 - [Connection Types](#connection-types)
 - [Data Persistence](#data-persistence)
-- [Switching Between Prebuilt and Source Build](#switching-between-prebuilt-and-source-build)
+- [Health Checks](#health-checks)
 - [Troubleshooting](#troubleshooting)
 - [Complete Docker Example](#complete-docker-example)
+- [Switching Between Prebuilt and Source Build](#switching-between-prebuilt-and-source-build)
 - [Updates](#updates)
 - [Advanced Configuration](#advanced-configuration)
 
@@ -41,6 +43,10 @@ curl -Lo ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/mes
 chmod 600 ~/.mmrelay/config.yaml
 nano ~/.mmrelay/config.yaml
 
+# Authenticate to Matrix (creates ~/.mmrelay/matrix/credentials.json)
+# Requires the mmrelay CLI on the host: pipx install mmrelay
+mmrelay auth login
+
 # Set up environment and get docker-compose file
 grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null || echo "MMRELAY_HOST_HOME=${HOME}" >> .env
 grep -q '^UID=' .env 2>/dev/null || echo "UID=$(id -u)" >> .env
@@ -55,7 +61,7 @@ docker compose up -d
 docker compose logs -f
 ```
 
-**That's it!** Your MMRelay is now running with the official prebuilt image.
+**That's it!** Your MMRelay is now running with the official prebuilt image. See [Matrix Authentication](#matrix-authentication) below if you need more detail on the auth step.
 
 > **Production deployment**: The `:latest` tag is mutable and may change. For production deployments, pin a specific version tag or digest to ensure reproducible deployments. See the [Kubernetes Guide](KUBERNETES.md#pinning-digests-for-production) for digest pinning examples.
 
@@ -432,7 +438,7 @@ For upgrade/migration procedures and deprecation timeline details, see the [Migr
 
 - For TCP: Verify Meshtastic device IP and port 4403
 - For Serial: Check device permissions and path
-- For BLE: Ensure host networking is enabled and AppArmor is disabled (`apparmor=unconfined`). Use privileged mode as an alternative if apparmor unconfined is not acceptable.
+- For BLE: Ensure host networking is enabled and the container runs with `apparmor=unconfined` (required for D-Bus/BlueZ access). Use privileged mode as an alternative if `apparmor=unconfined` is not acceptable.
 
 ### BLE-Specific Troubleshooting
 
@@ -449,7 +455,7 @@ docker compose exec mmrelay bluetoothctl list
 
 **Permission denied errors:**
 
-- Try the alternative configurations above (capabilities or privileged mode)
+- Try the alternative configurations above (`apparmor=unconfined` or privileged mode)
 - Check D-Bus socket: `docker compose exec mmrelay ls -la /var/run/dbus`
 - On SELinux systems, add `:Z` to volume mounts
 
@@ -469,73 +475,28 @@ sudo rfkill unblock bluetooth
 
 ## Complete Docker Example
 
-Here's a complete example showing the recommended setup:
+The recommended deployment is exactly what the [Quick Start](#quick-start)
+downloads — there is no separate "complete" configuration to maintain:
 
-### Step 1: Set up authentication
+- Compose file: [sample-docker-compose-prebuilt.yaml](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml)
+- Config: `~/.mmrelay/config.yaml` (from `sample_config.yaml`)
+- Credentials: `~/.mmrelay/matrix/credentials.json` (from `mmrelay auth login`)
 
-```bash
-mmrelay auth login
-```
+The sample compose file already includes:
 
-### Step 2: Create and configure config.yaml
+- `MMRELAY_HOME=/data` and the `${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data` volume mount
+- UID/GID passthrough from your `.env` file for permission handling
+- A health check based on the ready file (`MMRELAY_READY_FILE`)
+- A commented-out Watchtower service you can enable for automatic daily updates
 
-```bash
-mkdir -p ~/.mmrelay
-curl -o ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
-nano ~/.mmrelay/config.yaml  # Configure your settings
-```
-
-### Step 3: Create docker-compose.yaml
-
-```yaml
-services:
-  mmrelay:
-    image: ghcr.io/jeremiah-k/mmrelay:latest
-    container_name: meshtastic-matrix-relay
-    restart: unless-stopped
-    user: "${UID:-1000}:${GID:-1000}"
-    environment:
-      - MMRELAY_HOME=/data
-      - MMRELAY_READY_FILE=/tmp/mmrelay-ready
-    volumes:
-      # Use MMRELAY_HOST_HOME for host paths (not MMRELAY_HOME to avoid conflict)
-      # For non-SELinux systems (most common):
-      - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data
-      # For SELinux systems (RHEL/CentOS/Fedora), add :Z flag to prevent permission denied errors:
-      # - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data:Z
-
-    # Readiness check (checks readiness file freshness periodically updated by app)
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "test -f $${MMRELAY_READY_FILE:-/tmp/mmrelay-ready} && find $${MMRELAY_READY_FILE:-/tmp/mmrelay-ready} -mmin -2 | grep -q .",
-        ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 60s
-```
-
-### Step 4: Start the container
-
-```bash
-# The following commands set up your environment to prevent permission issues
-grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null || echo "MMRELAY_HOST_HOME=${HOME}" >> .env
-grep -q '^UID=' .env 2>/dev/null || echo "UID=$(id -u)" >> .env
-grep -q '^GID=' .env 2>/dev/null || echo "GID=$(id -g)" >> .env
-docker compose up -d
-docker compose logs -f
-```
-
-**This provides:**
+Together this provides:
 
 - E2EE support for encrypted Matrix rooms
 - Persistent device identity (no "new device" notifications)
 - All configuration in one file (`config.yaml`)
 - Simple, minimal setup
 
-### Step 5: Verify E2EE Status (Optional)
+### Verify E2EE Status (Optional)
 
 If you have enabled E2EE, you can verify its status by checking the logs:
 
@@ -546,21 +507,7 @@ docker compose logs mmrelay | grep -i e2ee
 Look for messages like:
 
 - "End-to-End Encryption (E2EE) is enabled"
-- "Using credentials from /data/matrix/credentials.json"
 - "Found X encrypted rooms out of Y total rooms"
-
-## Data Directory Structure
-
-The unified `MMRELAY_HOME` model is now the default. All runtime state lives under `/data` inside the container:
-
-- `matrix/credentials.json` - Matrix authentication credentials (auto-created)
-- `database/meshtastic.sqlite` - SQLite database for node information
-- `logs/` - Application logs
-- `matrix/store/` - E2EE encryption store (if enabled)
-- `plugins/custom/` - Custom plugins
-- `plugins/community/` - Community plugins
-
-This provides a clean, predictable structure for all persistent data.
 
 ## Switching Between Prebuilt and Source Build
 
