@@ -219,12 +219,13 @@ MMRelay includes official Docker support for easy deployment and management. Doc
 git clone https://github.com/jeremiah-k/meshtastic-matrix-relay.git
 cd meshtastic-matrix-relay
 
-# Set up configuration and start
-make setup    # Copy config and open editor (first time)
-make build    # Build the Docker image
-make run      # Start the container
-make logs     # View logs
+# Set up configuration and start with the official prebuilt image (recommended)
+make setup-prebuilt    # Copy config, .env, and docker-compose.yaml, then opens editor
+make run               # Pull and start the prebuilt image
+make logs              # View logs
 ```
+
+To build the image from source instead, run `make setup` and choose "Build from source", then `make build && make run`.
 
 For detailed Docker commands, configuration options, connection types, and troubleshooting, see the [Docker Guide](DOCKER.md).
 
