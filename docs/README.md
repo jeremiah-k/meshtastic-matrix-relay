@@ -11,7 +11,7 @@ operator guidance**. Broader conceptual and community documentation lives in the
 
 ## Install and deploy
 
-- **[Installation Guide](INSTRUCTIONS.md)** — pip/pipx setup and primary configuration workflow
+- **[Installation Guide](INSTRUCTIONS.md)** — Docker or native (pipx) setup and primary configuration workflow
 - **[Docker Guide](DOCKER.md)** — Docker deployment
 - **[Helm Guide](HELM.md)** — Kubernetes deployment with Helm
 - **[Kubernetes Guide](KUBERNETES.md)** — static-manifest deployment
