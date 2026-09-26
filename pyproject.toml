@@ -28,7 +28,7 @@ dependencies = [
   "mindroom-nio==0.40.0",
   "matplotlib==3.11.2",
   "requests==2.34.2",
-  "markdown==3.10.3",
+  "markdown==3.11",
   "nh3==0.3.7",
   "haversine==2.9.0",
   "schedule==1.2.2",
