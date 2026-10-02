@@ -18,8 +18,10 @@ from mmrelay.plugins.base_plugin import BasePlugin
 
 _CONNECTION_TOPIC = "meshtastic.connection.established"
 _MIN_INTERVAL_SECONDS = 3600
-_MAX_INTERVAL_SECONDS = 0xFFFFFFFF
-_MAX_MESSAGE_BYTES = 100
+# Older firmware schedules signed 32-bit millisecond delays.
+_MAX_INTERVAL_SECONDS = 0x7FFFFFFF // 1000
+# Common limit across the initial and frequency-slot beacon schemas.
+_MAX_MESSAGE_BYTES = 60
 _MAX_TARGETS = 4
 _FLAG_LISTEN_ENABLED = 1
 _FLAG_BROADCAST_ENABLED = 2
@@ -73,6 +75,8 @@ class _LoRaConfigProtocol(_EnumMessageProtocol, Protocol):
     use_preset: bool
     region: int
     modem_preset: int
+    channel_num: int
+    override_frequency: float
 
 
 class _BroadcastTargetProtocol(Protocol):
@@ -97,6 +101,8 @@ class _MeshBeaconConfigProtocol(Protocol):
     def ClearField(self, field_name: str) -> None: ...
 
     def CopyFrom(self, other: _MeshBeaconConfigProtocol) -> None: ...
+
+    def DiscardUnknownFields(self) -> None: ...
 
 
 class _ModuleConfigProtocol(Protocol):
@@ -221,6 +227,7 @@ def _channel_is_usable(
         return False
     if allow_blank_primary and int(channel.role) == 1:
         return True
+    # Initial firmware falls back to another channel for an empty secondary slot.
     return bool(settings.name or bytes(settings.psk))
 
 
@@ -358,9 +365,23 @@ class Plugin(BasePlugin):
         desired: _MeshBeaconConfigProtocol,
     ) -> None:
         """Populate broadcast values that are safe for the connected radio."""
+        known_settings = _copy_message(desired)
+        known_settings.DiscardUnknownFields()
+        if known_settings != desired:
+            raise MeshBeaconConfigError(
+                "connected firmware has unrecognized beacon settings; upgrade "
+                "the client schema before rewriting its broadcast policy"
+            )
         if not bool(lora.use_preset):
             raise MeshBeaconConfigError(
                 "broadcast requires the radio to use a standard LoRa modem preset"
+            )
+
+        if int(lora.channel_num) != 0 or float(lora.override_frequency) != 0:
+            raise MeshBeaconConfigError(
+                "broadcast requires an automatically derived frequency slot and "
+                "no frequency override; pinned-slot offers require firmware "
+                "capabilities not shared by both beacon schemas"
             )
 
         current_region = int(lora.region)
@@ -371,6 +392,8 @@ class Plugin(BasePlugin):
         message = self.config.get("message", desired.broadcast_message)
         if not isinstance(message, str):
             raise MeshBeaconConfigError("message must be a string")
+        if "\0" in message:
+            raise MeshBeaconConfigError("message must not contain NUL characters")
         if len(message.encode("utf-8")) > _MAX_MESSAGE_BYTES:
             raise MeshBeaconConfigError(
                 f"message must be at most {_MAX_MESSAGE_BYTES} UTF-8 bytes"
@@ -391,6 +414,9 @@ class Plugin(BasePlugin):
 
         desired.broadcast_offer_region = current_region
         desired.broadcast_offer_preset = current_preset
+        # A previous newer-schema offer must not pin a newly configured mesh.
+        if hasattr(desired, "broadcast_offer_frequency_slot"):
+            desired.ClearField("broadcast_offer_frequency_slot")
         self._configure_offer_channel(local_node, desired)
         self._configure_targets(interface, local_node, lora, desired)
 
@@ -424,11 +450,28 @@ class Plugin(BasePlugin):
         allow_blank_primary = int(channel.role) == 1
         if not _channel_is_usable(channel, allow_blank_primary=allow_blank_primary):
             raise MeshBeaconConfigError(
-                "offer channel index "
-                f"{channel.index} is disabled or blank"
+                "offer channel index " f"{channel.index} is disabled or blank"
             )
 
         settings = cast(_ChannelSettingsProtocol, channel.settings)
+        if "\0" in settings.name:
+            raise MeshBeaconConfigError(
+                "offer channel name must not contain NUL characters"
+            )
+        if int(channel.role) != 1 and not settings.psk:
+            raise MeshBeaconConfigError(
+                "offer channel inherits its PSK from the primary; configure an "
+                "explicit PSK on the offered channel so receivers use the same key"
+            )
+        if len(settings.name.encode("utf-8")) > 11 or len(settings.psk) > 32:
+            raise MeshBeaconConfigError(
+                "offer channel exceeds firmware limits (11 UTF-8 name bytes, "
+                "32 PSK bytes)"
+            )
+        if getattr(settings, "channel_num", 0):
+            raise MeshBeaconConfigError(
+                "offer channel has a legacy frequency slot not shared by both schemas"
+            )
         desired.ClearField("broadcast_offer_channel")
         desired.broadcast_offer_channel.name = str(settings.name)
         desired.broadcast_offer_channel.psk = bytes(settings.psk)
@@ -462,6 +505,11 @@ class Plugin(BasePlugin):
         for index, raw_target in enumerate(raw_targets):
             if not isinstance(raw_target, Mapping):
                 raise MeshBeaconConfigError(f"targets[{index}] must be a mapping")
+            if set(raw_target) - {"preset", "channel_index"}:
+                raise MeshBeaconConfigError(
+                    f"targets[{index}] supports only preset and channel_index; "
+                    "per-target regions and frequency slots are not supported"
+                )
             preset_name = raw_target.get("preset")
             if not isinstance(preset_name, str) or not preset_name.strip():
                 raise MeshBeaconConfigError(
@@ -492,6 +540,18 @@ class Plugin(BasePlugin):
                 raise MeshBeaconConfigError(
                     f"targets[{index}].channel_index {channel_index} is not an "
                     "enabled configured channel"
+                )
+
+            settings = cast(_ChannelSettingsProtocol, channel.settings)
+            if int(channel.role) != 1 and not settings.psk:
+                raise MeshBeaconConfigError(
+                    f"targets[{index}] channel needs an explicit PSK; inherited "
+                    "secondary keys behave differently across beacon firmware"
+                )
+            if getattr(settings, "channel_num", 0):
+                raise MeshBeaconConfigError(
+                    f"targets[{index}] channel has a legacy frequency slot "
+                    "not shared by both schemas"
                 )
 
             identity = (preset, channel_index)

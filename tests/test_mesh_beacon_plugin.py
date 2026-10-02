@@ -65,10 +65,14 @@ class _Lora:
         use_preset: bool = True,
         region: int = _REGIONS["US"],
         modem_preset: int = _PRESETS["LONG_FAST"],
+        channel_num: int = 0,
+        override_frequency: float = 0,
     ) -> None:
         self.use_preset = use_preset
         self.region = region
         self.modem_preset = modem_preset
+        self.channel_num = channel_num
+        self.override_frequency = override_frequency
 
 
 class _ChannelSettings:
@@ -120,6 +124,7 @@ class _BeaconConfig:
         self.broadcast_offer_preset = 0
         self.broadcast_interval_secs = 0
         self.broadcast_targets = _Targets()
+        self.unknown_fields = b""
 
     def CopyFrom(self, other: _BeaconConfig) -> None:
         self.flags = other.flags
@@ -129,6 +134,7 @@ class _BeaconConfig:
         self.broadcast_offer_preset = other.broadcast_offer_preset
         self.broadcast_interval_secs = other.broadcast_interval_secs
         self.broadcast_targets = _Targets(copy.deepcopy(list(other.broadcast_targets)))
+        self.unknown_fields = other.unknown_fields
 
     def ClearField(self, field_name: str) -> None:
         if field_name == "broadcast_offer_channel":
@@ -137,6 +143,10 @@ class _BeaconConfig:
             self.broadcast_targets = _Targets()
         else:
             raise ValueError(field_name)
+
+    def DiscardUnknownFields(self) -> None:
+        """Model protobuf's removal of opaque fields without changing known ones."""
+        self.unknown_fields = b""
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, _BeaconConfig) and (
@@ -148,6 +158,7 @@ class _BeaconConfig:
             self.broadcast_offer_preset,
             self.broadcast_interval_secs,
             list(self.broadcast_targets),
+            self.unknown_fields,
         ) == (
             other.flags,
             other.broadcast_message,
@@ -157,6 +168,7 @@ class _BeaconConfig:
             other.broadcast_offer_preset,
             other.broadcast_interval_secs,
             list(other.broadcast_targets),
+            other.unknown_fields,
         )
 
 
@@ -177,7 +189,7 @@ class _LocalNode:
         self.moduleConfig = _ModuleConfig(supported=supported)
         self.channels = [
             _Channel(0, 1, "HomeMesh", b"home-key"),
-            _Channel(1, 2, "BeaconPublic", b"\x01"),
+            _Channel(1, 2, "BeaconOpen", b"\x01"),
             _Channel(2, 0, "", b""),
         ]
         self.writeConfig = MagicMock()
@@ -286,7 +298,7 @@ def test_rejects_custom_lora_configuration() -> None:
     ("override", "message"),
     [
         ({"interval_seconds": 3599}, "interval_seconds"),
-        ({"message": "é" * 51}, "100 UTF-8 bytes"),
+        ({"message": "é" * 31}, "60 UTF-8 bytes"),
         ({"targets": [{"preset": "MEDIUM_FAST", "channel_index": 0}] * 5}, "at most 4"),
         (
             {"targets": [{"preset": "MEDIUM_FAST", "channel_index": 2}]},
@@ -401,7 +413,7 @@ def test_explicit_secondary_offer_channel_shares_only_selected_credentials() -> 
     assert plugin.configure_firmware(interface) is True
 
     offer = interface.localNode.moduleConfig.mesh_beacon.broadcast_offer_channel
-    assert offer.name == "BeaconPublic"
+    assert offer.name == "BeaconOpen"
     assert offer.psk == b"\x01"
 
 
@@ -532,9 +544,7 @@ def test_enum_and_channel_helpers_cover_schema_and_channel_edge_cases() -> None:
 
 def test_allowed_presets_falls_back_when_region_map_is_unavailable() -> None:
     """Conservative preset validation remains available without region metadata."""
-    allowed = Plugin._allowed_presets(
-        _Interface(allowed=None), _Lora(), _REGIONS["US"]
-    )
+    allowed = Plugin._allowed_presets(_Interface(allowed=None), _Lora(), _REGIONS["US"])
     assert _PRESETS["LONG_FAST"] in allowed
     assert _PRESETS["SHORT_TURBO"] not in allowed
 
@@ -603,3 +613,133 @@ def test_description_identifies_firmware_native_cross_preset_behavior() -> None:
     """The core plugin description states the native cross-preset scope."""
     assert "Firmware 2.8" in _plugin().description
     assert "cross-preset" in _plugin().description
+
+
+@pytest.mark.parametrize("message", ["x" * 60, "é" * 30])
+def test_accepts_common_utf8_message_limit(message: str) -> None:
+    interface = _Interface()
+    assert _plugin(message=message).configure_firmware(interface)
+    assert interface.localNode.moduleConfig.mesh_beacon.broadcast_message == message
+
+
+@pytest.mark.parametrize("message", ["\0hidden", "Join\0hidden"])
+def test_rejects_messages_that_firmware_would_truncate(message: str) -> None:
+    interface = _Interface()
+    original = copy.deepcopy(interface.localNode.moduleConfig.mesh_beacon)
+    with pytest.raises(MeshBeaconConfigError, match="NUL"):
+        _plugin(message=message).configure_firmware(interface)
+    assert interface.localNode.moduleConfig.mesh_beacon == original
+    interface.localNode.writeConfig.assert_not_called()
+
+
+def test_rejects_offered_channel_names_that_firmware_would_truncate() -> None:
+    interface = _Interface()
+    interface.localNode.channels[0].settings.name = "Home\0hidden"
+    original = copy.deepcopy(interface.localNode.moduleConfig.mesh_beacon)
+    with pytest.raises(MeshBeaconConfigError, match="NUL"):
+        _plugin().configure_firmware(interface)
+    assert interface.localNode.moduleConfig.mesh_beacon == original
+    interface.localNode.writeConfig.assert_not_called()
+
+
+def test_unrecognized_device_fields_prevent_broadcast_rewrites() -> None:
+    interface = _Interface()
+    beacon = interface.localNode.moduleConfig.mesh_beacon
+    beacon.unknown_fields = b"\x10\x17"
+    original = copy.deepcopy(beacon)
+    with pytest.raises(MeshBeaconConfigError, match="unrecognized beacon settings"):
+        _plugin().configure_firmware(interface)
+    assert beacon == original
+    interface.localNode.writeConfig.assert_not_called()
+
+
+def test_broadcast_can_be_disabled_while_preserving_unknown_device_fields() -> None:
+    interface = _Interface()
+    beacon = interface.localNode.moduleConfig.mesh_beacon
+    beacon.flags |= _BeaconConfig.FLAG_BROADCAST_ENABLED
+    beacon.unknown_fields = b"\x10\x17"
+    assert _plugin(broadcast=False).configure_firmware(interface)
+    assert not beacon.flags & _BeaconConfig.FLAG_BROADCAST_ENABLED
+    assert beacon.unknown_fields == b"\x10\x17"
+
+
+@pytest.mark.parametrize("interval", [2147484, 4294967, 0xFFFFFFFF])
+def test_rejects_intervals_that_overflow_firmware_timer(interval: int) -> None:
+    interface = _Interface()
+    with pytest.raises(MeshBeaconConfigError, match="interval_seconds"):
+        _plugin(interval_seconds=interval).configure_firmware(interface)
+    interface.localNode.writeConfig.assert_not_called()
+
+
+def test_accepts_largest_signed_millisecond_interval() -> None:
+    assert _plugin(interval_seconds=2147483).configure_firmware(_Interface())
+
+
+@pytest.mark.parametrize(
+    "lora", [_Lora(channel_num=20), _Lora(override_frequency=915.5)]
+)
+def test_refuses_frequency_settings_that_cannot_be_advertised_on_both_schemas(
+    lora: _Lora,
+) -> None:
+    interface = _Interface(lora=lora)
+    with pytest.raises(MeshBeaconConfigError, match="automatically derived"):
+        _plugin().configure_firmware(interface)
+    interface.localNode.writeConfig.assert_not_called()
+
+
+def test_blank_secondary_target_is_refused_until_firmware_semantics_match() -> None:
+    interface = _Interface()
+    interface.localNode.channels[1].settings = _ChannelSettings()
+    with pytest.raises(MeshBeaconConfigError, match="enabled configured channel"):
+        _plugin(
+            targets=[{"preset": "MEDIUM_FAST", "channel_index": 1}]
+        ).configure_firmware(interface)
+
+
+def test_named_secondary_target_requires_explicit_key_across_schemas() -> None:
+    interface = _Interface()
+    interface.localNode.channels[1].settings.psk = b""
+    with pytest.raises(MeshBeaconConfigError, match="channel needs an explicit PSK"):
+        _plugin(
+            targets=[{"preset": "MEDIUM_FAST", "channel_index": 1}]
+        ).configure_firmware(interface)
+
+
+def test_legacy_channel_frequency_slot_is_not_silently_ignored() -> None:
+    interface = _Interface()
+    interface.localNode.channels[1].settings.channel_num = 20
+    with pytest.raises(MeshBeaconConfigError, match="legacy frequency slot"):
+        _plugin(
+            targets=[{"preset": "MEDIUM_FAST", "channel_index": 1}]
+        ).configure_firmware(interface)
+
+
+def test_inherited_secondary_psk_is_not_advertised_as_a_blank_key() -> None:
+    interface = _Interface()
+    interface.localNode.channels[1].settings.psk = b""
+    with pytest.raises(MeshBeaconConfigError, match="inherits its PSK"):
+        _plugin(offer_channel_index=1).configure_firmware(interface)
+    interface.localNode.writeConfig.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [_ChannelSettings("é" * 6, b"\x01"), _ChannelSettings("Join", b"x" * 33)],
+)
+def test_rejects_offers_exceeding_firmware_channel_limits(
+    settings: _ChannelSettings,
+) -> None:
+    interface = _Interface()
+    interface.localNode.channels[0].settings = settings
+    with pytest.raises(MeshBeaconConfigError, match="offer channel exceeds"):
+        _plugin().configure_firmware(interface)
+
+
+@pytest.mark.parametrize("extra", [{"frequency_slot": 20}, {"region": "US"}])
+def test_unsupported_target_settings_are_not_silently_ignored(
+    extra: dict[str, object],
+) -> None:
+    with pytest.raises(MeshBeaconConfigError, match="supports only"):
+        _plugin(
+            targets=[{"preset": "MEDIUM_FAST", "channel_index": 0, **extra}]
+        ).configure_firmware(_Interface())
