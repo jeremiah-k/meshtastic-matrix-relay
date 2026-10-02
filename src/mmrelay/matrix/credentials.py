@@ -110,6 +110,52 @@ async def _resolve_and_load_credentials(
     e2ee_device_id: Optional[str] = None
     credentials_path: str | None = None
 
+    # OAuth records carry refresh secrets and must not fall through to password
+    # login if incomplete. Preserve their actual source path for token rotation.
+    from mmrelay.config import get_config_paths, get_credentials_search_paths
+    from mmrelay.matrix.oauth import OAuthError, OAuthSession
+    from mmrelay.matrix.oauth_store import OAuthStore
+
+    def resolve_oauth_paths() -> list[str]:
+        """Resolve all candidate credential paths away from the event loop."""
+        explicit_path = facade.get_explicit_credentials_path(config_data)
+        return get_credentials_search_paths(
+            explicit_path=explicit_path,
+            config_paths=(
+                [config_path_override] if config_path_override else get_config_paths()
+            ),
+        )
+
+    try:
+        oauth_paths = await asyncio.to_thread(resolve_oauth_paths)
+    except (InvalidCredentialsPathTypeError, TypeError, OSError, ValueError) as exc:
+        facade.logger.warning("Error resolving credentials path: %s", exc)
+        oauth_paths = []
+
+    for path in oauth_paths:
+        try:
+            store = await asyncio.to_thread(OAuthStore, path)
+            record = await store.load()
+        except (OSError, ValueError, RuntimeError):
+            raise OAuthError(
+                "Stored Matrix credentials could not be read safely. Repair the "
+                "file or deliberately remove it before authenticating again; "
+                "password login was not attempted."
+            ) from None
+        if record is not None:
+            if record.get("auth_type") == "oauth":
+                session = OAuthSession.parse(record)
+                return facade.MatrixAuthInfo(
+                    homeserver=session.homeserver,
+                    access_token=session.access_token,
+                    user_id=session.user_id,
+                    device_id=session.device_id,
+                    credentials=record,
+                    credentials_path=str(store.path),
+                )
+            # The first readable record owns precedence regardless of auth type.
+            break
+
     candidate_path = await asyncio.to_thread(
         _resolve_credentials_save_path, config_data
     )
