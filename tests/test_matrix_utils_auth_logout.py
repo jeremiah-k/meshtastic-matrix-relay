@@ -1,6 +1,7 @@
 """Tests for Matrix logout functionality."""
 
 import asyncio
+from pathlib import Path
 from typing import NoReturn
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -115,7 +116,7 @@ async def test_logout_matrix_bot_password_verification_failure():
 
 @pytest.mark.asyncio
 async def test_logout_matrix_bot_server_logout_failure():
-    """Test logout when server logout fails but local cleanup succeeds."""
+    """Retain credentials when server logout fails."""
     mock_credentials = {
         "homeserver": "https://matrix.org",
         "user_id": "@test:matrix.org",
@@ -148,8 +149,8 @@ async def test_logout_matrix_bot_server_logout_failure():
 
         result = await logout_matrix_bot(password="test_password")
 
-        assert result is True
-        mock_cleanup.assert_called_once()
+        assert result is False
+        mock_cleanup.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -260,3 +261,32 @@ async def test_logout_matrix_bot_timeout():
 
     assert result is False
     mock_temp_client.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code_field", ["status_code", "errcode"])
+async def test_password_logout_removes_an_invalid_session_without_password(
+    tmp_path: Path, code_field: str
+) -> None:
+    import json
+
+    from mmrelay.cli_utils import LogoutError
+
+    credentials = tmp_path / "credentials.json"
+    credentials.write_text(json.dumps({
+        "homeserver": "https://matrix.example.com", "user_id": "@bot:example.com",
+        "device_id": "DEVICE", "access_token": "test-invalid-token",
+    }))
+    response = MagicMock(spec=LogoutError)
+    response.errcode = None
+    response.status_code = None
+    setattr(response, code_field, "M_UNKNOWN_TOKEN")
+    client = MagicMock()
+    client.logout = AsyncMock(return_value=response)
+    client.close = AsyncMock()
+    client.login = AsyncMock(side_effect=AssertionError("Password verification"))
+    with patch("mmrelay.cli_utils.AsyncClient", return_value=client):
+        assert await logout_matrix_bot(credentials_path=str(credentials)) is True
+    assert not credentials.exists()
+    client.login.assert_not_awaited()
+    client.logout.assert_awaited_once()

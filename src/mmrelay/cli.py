@@ -407,12 +407,17 @@ def parse_arguments() -> argparse.Namespace:
         description="Set up Matrix authentication for E2EE support",
     )
     login_parser.add_argument(
+        "--oauth",
+        action="store_true",
+        help="Create a native OAuth device session using browser approval (experimental). Does not accept --password.",
+    )
+    login_parser.add_argument(
         "--homeserver",
-        help="Matrix homeserver URL (e.g., https://matrix.org). If provided, --username and --password are also required.",
+        help="Matrix server name or URL (e.g., matrix.org or https://matrix.org). Password login also requires --username and --password; OAuth requires HTTPS.",
     )
     login_parser.add_argument(
         "--username",
-        help="Matrix username localpart (recommended, e.g., bot) or full user ID (e.g., @bot:example.com). If provided, --homeserver and --password are also required.",
+        help="Matrix username localpart or full user ID. With --oauth, an optional localpart or full user ID restricts the approved account. Password login also requires --homeserver and --password.",
     )
     login_parser.add_argument(
         "--password",
@@ -425,7 +430,8 @@ def parse_arguments() -> argparse.Namespace:
         help=(
             "Replace an existing Matrix cross-signing identity when MMRelay's "
             "local sidecar is missing. Reuses the current device when possible "
-            "and may require other clients to verify the identity again."
+            "and may require other clients to verify the identity again. "
+            "OAuth sessions use browser approval when required."
         ),
     )
 
@@ -437,14 +443,14 @@ def parse_arguments() -> argparse.Namespace:
 
     logout_parser = auth_subparsers.add_parser(
         "logout",
-        help="Log out and clear all sessions",
-        description="Clear all Matrix authentication data and E2EE store",
+        help="Revoke the Matrix login session",
+        description="Revoke the saved session and remove credentials; retain encryption and cross-signing keys",
     )
     logout_parser.add_argument(
         "--password",
         nargs="?",
         const=_PASSWORD_PROMPT_SENTINEL,
-        help="Password for verification. If no value provided, will prompt securely.",
+        help="Optional password verification for password sessions. A bare --password prompts securely; ordinary logout needs no password.",
     )
     logout_parser.add_argument(
         "-y",
@@ -2201,6 +2207,11 @@ def handle_auth_login(args: argparse.Namespace) -> int:
 
     from mmrelay.matrix_utils import login_matrix_bot
 
+    if getattr(args, "oauth", False) is True:
+        from mmrelay.matrix.oauth_cli import handle_login
+
+        return handle_login(args)
+
     # Ensure the HOME layout exists before interactive/non-interactive auth flows.
     # This prevents first-run logins from falling back to ad-hoc credential paths.
     try:
@@ -2279,6 +2290,25 @@ def handle_auth_login(args: argparse.Namespace) -> int:
         _get_logger().debug(
             "Could not load config for Matrix authentication paths: %s", e
         )
+
+    # Do not replace rotating credentials with a password-generated token.
+    from mmrelay.matrix.oauth_cli import existing_oauth_store
+
+    try:
+        if existing_oauth_store(args, config_for_paths or {}) is not None:
+            if reset_cross_signing and password is None:
+                from mmrelay.matrix.oauth_cli import handle_login
+
+                return handle_login(args)
+            print(
+                "An OAuth session already exists. Use 'mmrelay auth login --oauth' "
+                "to retry own-device signing, or stop the relay and log out before "
+                "changing authentication methods."
+            )
+            return 1
+    except (OSError, RuntimeError, ValueError, TypeError):
+        print("Could not inspect existing credentials; refusing to overwrite them.")
+        return 1
 
     try:
         login_kwargs: dict[str, Any] = {
@@ -2440,32 +2470,28 @@ def handle_auth_status(args: argparse.Namespace) -> int:
 
 
 def handle_auth_logout(args: argparse.Namespace) -> int:
-    """
-    Log out the Matrix bot, clear local session data, and invalidate the bot's access token.
-
-    Prompts for a verification password if args.password is None or empty, and asks for confirmation
-    unless args.yes is True. On success this removes local credentials, clears any E2EE store, and
-    attempts to revoke the remote access token.
-
-    Parameters:
-        args (argparse.Namespace): CLI arguments. Expected attributes:
-            password (str | None): Verification password; if None or an empty string the function prompts securely.
-            yes (bool): If True, skip the interactive confirmation prompt.
-
-    Returns:
-        int: 0 on successful logout, 1 if the operation fails or is cancelled.
-    """
+    """Revoke the saved session with confirmation and retain encryption keys."""
     import asyncio
 
     from mmrelay.cli_utils import logout_matrix_bot
+    from mmrelay.matrix.oauth_cli import credential_store, handle_logout
+
+    try:
+        store = credential_store(args)
+        record = store.load_sync()
+        if record is not None and record.get("auth_type") == "oauth":
+            return handle_logout(args, store)
+    except (OSError, RuntimeError, ValueError, TypeError):
+        print("Could not inspect credentials; logout was not attempted.")
+        return 1
 
     # Show header
     print("Matrix Bot Logout")
     print("=================")
     print()
-    print("This will log out from Matrix and clear all local session data:")
+    print("This will revoke the saved Matrix session:")
     print("• Remove credentials.json")
-    print("• Clear E2EE encryption store")
+    print("• Retain encryption and cross-signing keys")
     print("• Invalidate Matrix access token")
     print()
 
@@ -2473,8 +2499,8 @@ def handle_auth_logout(args: argparse.Namespace) -> int:
         # Handle password input
         password = getattr(args, "password", None)
 
-        if password is None or password is _PASSWORD_PROMPT_SENTINEL:
-            # No --password flag (None) or bare --password (sentinel), prompt securely
+        if password is _PASSWORD_PROMPT_SENTINEL:
+            # Explicit verification request without a value: prompt securely.
             import getpass
 
             password = getpass.getpass("Enter Matrix password for verification: ")
@@ -2496,9 +2522,11 @@ def handle_auth_logout(args: argparse.Namespace) -> int:
                 return 0
 
         # Run the logout process
-        result = asyncio.run(logout_matrix_bot(password=password))
+        result = asyncio.run(
+            logout_matrix_bot(password=password, credentials_path=str(store.path))
+        )
         return 0 if result else 1
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):
         print("\nLogout cancelled by user.")
         return 1
     except (

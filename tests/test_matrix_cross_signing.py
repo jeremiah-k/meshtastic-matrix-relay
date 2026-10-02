@@ -389,6 +389,69 @@ async def test_missing_sidecar_reset_requires_password(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("reset", [False, True])
+async def test_oauth_session_requires_explicit_reset_for_missing_sidecar(
+    reset: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    logger = MagicMock()
+    monkeypatch.setattr(e2ee_identity, "logger", logger)
+    client = _GuardedCrossSigningClient(has_master=True)
+
+    result = await matrix_utils._ensure_own_device_cross_signed(
+        client, oauth_authenticated=True, reset_cross_signing=reset
+    )
+
+    assert client.query_calls == 1
+    assert result == ("uploaded_and_signed" if reset else None)
+    assert client.passwords == ([None] if reset else [])
+    if not reset:
+        assert any(
+            "mmrelay auth login --oauth --reset-cross-signing" in call.args
+            for call in logger.warning.call_args_list
+        )
+
+
+@pytest.mark.asyncio
+async def test_unuploaded_sidecar_does_not_bypass_existing_identity_guard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    logger = MagicMock()
+    monkeypatch.setattr(e2ee_identity, "logger", logger)
+    class PendingIdentityClient(_NoIdentityPropertyClient):
+        cross_signing_identity = SimpleNamespace(uploaded=False)
+
+    client = PendingIdentityClient(has_master=True)
+
+    result = await matrix_utils._ensure_own_device_cross_signed(
+        client, oauth_authenticated=True
+    )
+
+    assert result is None
+    assert client.passwords == []
+
+
+@pytest.mark.asyncio
+async def test_upload_state_getter_failure_preserves_signing_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class UnreadableUploadState:
+        @property
+        def uploaded(self) -> bool:
+            raise RuntimeError("unreadable signing state")
+
+    class Client(_CrossSigningClient):
+        cross_signing_identity = UnreadableUploadState()
+
+    monkeypatch.setattr(e2ee_identity, "logger", MagicMock())
+    client = Client()
+
+    assert await matrix_utils._ensure_own_device_cross_signed(client) is None
+    assert client.passwords == []
+
+
+@pytest.mark.asyncio
 async def test_provider_without_identity_property_preserves_server_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

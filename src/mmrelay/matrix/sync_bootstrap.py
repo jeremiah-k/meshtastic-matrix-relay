@@ -29,6 +29,11 @@ from mmrelay.constants.config import (
 from mmrelay.constants.network import (
     MATRIX_LOGIN_TIMEOUT,
 )
+from mmrelay.matrix.auth_input import (
+    LoginInputError,
+    normalize_homeserver,
+    normalize_username,
+)
 from mmrelay.paths import E2EENotSupportedError
 
 NIO_COMM_EXCEPTIONS = facade.NIO_COMM_EXCEPTIONS
@@ -520,7 +525,12 @@ async def connect_matrix(
 
             if e2ee_enabled:
                 await facade._maybe_upload_e2ee_keys(client)
-                await facade._ensure_own_device_cross_signed(client)
+                if (auth_info.credentials or {}).get("auth_type") == "oauth":
+                    await facade._ensure_own_device_cross_signed(
+                        client, oauth_authenticated=True
+                    )
+                else:
+                    await facade._ensure_own_device_cross_signed(client)
 
             facade.logger.debug("Performing initial sync to initialize rooms...")
             sync_response = await _perform_initial_sync(client, local_homeserver)
@@ -588,12 +598,11 @@ async def login_matrix_bot(
 
         if not homeserver:
             homeserver = facade.input(
-                "Enter Matrix homeserver URL (e.g., https://matrix.org): "
+                "Matrix homeserver (server name or URL, e.g., matrix.org): "
             )
             prompted_for_credentials = True
 
-        if not homeserver.startswith(("https://", "http://")):
-            homeserver = "https://" + homeserver
+        homeserver = normalize_homeserver(homeserver)
 
         parsed = urlparse(homeserver)
         original_domain = parsed.hostname or urlparse(f"//{homeserver}").hostname
@@ -661,7 +670,8 @@ async def login_matrix_bot(
                 "Enter Matrix username (localpart, e.g., bot) or full user ID (e.g., @bot:example.com): "
             )
             prompted_for_credentials = True
-        raw_username = username.strip() if isinstance(username, str) else ""
+        username = normalize_username(username)
+        raw_username = username
         username_included_serverpart = ":" in raw_username.lstrip("@")
 
         if original_domain:
@@ -1140,6 +1150,11 @@ async def login_matrix_bot(
             await client.close()
             return False
 
+    except LoginInputError as exc:
+        print(f"Authentication failed: {exc}")
+        if client is not None:
+            await client.close()
+        return False
     except facade.LOGIN_EXCEPTIONS:
         facade.logger.exception("Error during login")
         try:
