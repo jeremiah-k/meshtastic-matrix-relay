@@ -115,9 +115,7 @@ async def _query_own_keys(
     failures = payload.get("failures")
     if isinstance(failures, dict) and failures:
         summary = _summarize_keys_query_failures(failures)
-        raise RuntimeError(
-            f"Matrix keys/query reported homeserver failures: {summary}"
-        )
+        raise RuntimeError(f"Matrix keys/query reported homeserver failures: {summary}")
     return user_id, cast(dict[str, object], payload)
 
 
@@ -279,8 +277,8 @@ async def _server_own_device_cross_signing_status(
 async def _republish_own_device_signature(client: object, identity: object) -> bool:
     """Re-publish mindroom-nio's signature over its *local* current-device keys.
 
-    mindroom-nio 0.40 has no public force-refresh operation. This compatibility
-    hook deliberately delegates payload construction to the provider's own upload
+    Supported mindroom-nio providers have no public force-refresh operation.
+    This compatibility hook delegates payload construction to the provider's upload
     helper, and is used only after the server master/self-signing public keys have
     been matched to the persisted local identity. It never rotates identity keys.
     """

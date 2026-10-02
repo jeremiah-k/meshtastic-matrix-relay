@@ -45,7 +45,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e '.[test,e2e]'
 
+      - name: Verify Matrix provider selection and dependency consistency
+        run: |
+          python -m pip check
+          python -c 'import sys; from importlib.metadata import version; expected = "0.40.0" if sys.version_info < (3, 12) else "1.1.2"; actual = version("mindroom-nio"); assert actual == expected, (actual, expected); print(f"mindroom-nio {actual}")'
+
+      - name: Prepare previous Matrix provider for store upgrade contract
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m venv .sdk-previous
+          .sdk-previous/bin/python -m pip install 'mindroom-nio[e2e]==0.40.0'
+
       - name: Run tests with coverage
+        env:
+          MMRELAY_PREVIOUS_SDK_PYTHON: ${{ matrix.python-version == '3.12' && '.sdk-previous/bin/python' || '' }}
         run: |
           # Run full suite (including performance tests) now that they are fast and deterministic
           python -m pytest tests/ -v --cov --cov-report=xml --cov-report=html --junitxml=junit.xml
