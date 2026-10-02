@@ -543,7 +543,7 @@ async def connect_matrix(
             facade.config = local_config_dict  # type: ignore[assignment]
             config_module.relay_config = local_config_dict
         facade.matrix_homeserver = local_homeserver  # type: ignore[assignment]
-        facade.matrix_access_token = local_access_token  # type: ignore[assignment]
+        facade.matrix_access_token = auth_info.access_token
         facade.bot_user_id = effective_bot_user_id  # type: ignore[assignment]
         facade.matrix_rooms = local_matrix_rooms  # type: ignore[assignment]
         facade.matrix_client = client
@@ -744,6 +744,11 @@ async def login_matrix_bot(
                     _load_direct, existing_credentials_path
                 )
                 if existing_creds:
+                    if existing_creds.get("auth_type") == "oauth":
+                        facade.logger.error(
+                            "An OAuth session exists; log out before using password login."
+                        )
+                        return False
                     existing_user_id = facade._first_nonblank_str(
                         existing_creds.get(CONFIG_KEY_USER_ID),
                         existing_creds.get(CONFIG_KEY_BOT_USER_ID),
