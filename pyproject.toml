@@ -25,7 +25,8 @@ dependencies = [
   "mtjk==2.7.11.post7",
   "Pillow==12.3.0",
   "aiohttp==3.14.3",
-  "mindroom-nio==0.40.0",
+  "mindroom-nio==0.40.0; python_version < '3.12'",
+  "mindroom-nio==1.1.2; python_version >= '3.12'",
   "matplotlib==3.11.2",
   "requests==2.34.2",
   "markdown==3.11",
@@ -39,7 +40,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-e2e = ["mindroom-nio[e2e]==0.40.0"]
+e2e = [
+  "mindroom-nio[e2e]==0.40.0; python_version < '3.12'",
+  "mindroom-nio[e2e]==1.1.2; python_version >= '3.12'",
+]
 test = [
   "coverage==7.16.2",
   "pytest==9.1.1",
