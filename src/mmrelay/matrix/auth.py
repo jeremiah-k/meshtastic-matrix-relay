@@ -224,6 +224,31 @@ async def _perform_matrix_login(
     """
     from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID, CONFIG_KEY_USER_ID
 
+    if auth_info.credentials and auth_info.credentials.get("auth_type") == "oauth":
+        from mmrelay.matrix.oauth import OAuthError, OAuthSession
+        from mmrelay.matrix.oauth_session import (
+            OAuthSessionManager,
+            attach_oauth_session,
+        )
+        from mmrelay.matrix.oauth_store import OAuthStore
+
+        session = OAuthSession.parse(auth_info.credentials)
+        if not auth_info.credentials_path:
+            raise OAuthError("OAuth sessions require a persistent credentials file.")
+        store = await asyncio.to_thread(OAuthStore, auth_info.credentials_path)
+        manager = OAuthSessionManager(session, store)
+        token = await manager.access_token()
+        client.restore_login(session.user_id, session.device_id, token)
+
+        def update_token(value: str) -> None:
+            auth_info.access_token = value
+            auth_info.credentials = manager.session.credentials()
+            facade.matrix_access_token = value
+
+        update_token(token)
+        attach_oauth_session(client, manager, update_token)
+        return session.device_id
+
     e2ee_device_id = auth_info.device_id
     user_id = auth_info.user_id
     access_token = auth_info.access_token
