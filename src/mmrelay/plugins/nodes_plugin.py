@@ -79,6 +79,7 @@ SENSITIVE_FIELD_TOKENS = frozenset(
         "adminkey",
         "fixedpin",
         "passwd",
+        "passkey",
         "password",
         "privatekey",
         "psk",
@@ -163,7 +164,8 @@ def _get_field_value(node: dict[str, Any], field_path: str) -> Any:
         if not isinstance(value, dict):
             return None
         value = value.get(key)
-    return value
+    # Only leaf values belong in summaries, including the combined name/power fields.
+    return None if isinstance(value, (dict, list, tuple, set)) else value
 
 
 def _format_public_key(value: Any) -> str | None:
@@ -208,9 +210,11 @@ def _format_hops(value: Any) -> str:
 
 
 def _format_field_value(field: str, value: Any) -> str | None:
-    if isinstance(value, (dict, list)):
+    if isinstance(value, (dict, list, tuple, set)):
         # Never stringify whole containers; select leaf paths explicitly so
         # secret-bearing keys added upstream cannot be dumped wholesale.
+        return None
+    if isinstance(value, str) and not value.strip():
         return None
     if field == "public_key":
         return _format_public_key(value)
@@ -314,7 +318,7 @@ class Plugin(BasePlugin):
         value = _get_field_value(info, field_path)
         if field == "node_id" and value is None and isinstance(node_key, str):
             value = node_key
-        if field == "hardware" and value is None:
+        if field == "hardware" and (value is None or value == ""):
             value = UNKNOWN_NODE_VALUE
 
         rendered = _format_field_value(field, value)
