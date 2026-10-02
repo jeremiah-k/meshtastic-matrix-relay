@@ -407,12 +407,17 @@ def parse_arguments() -> argparse.Namespace:
         description="Set up Matrix authentication for E2EE support",
     )
     login_parser.add_argument(
+        "--oauth",
+        action="store_true",
+        help="Create a native OAuth device session using browser approval (experimental). Does not accept --password.",
+    )
+    login_parser.add_argument(
         "--homeserver",
-        help="Matrix homeserver URL (e.g., https://matrix.org). If provided, --username and --password are also required.",
+        help="Matrix homeserver URL (e.g., https://matrix.org). Password login also requires --username and --password; OAuth requires HTTPS.",
     )
     login_parser.add_argument(
         "--username",
-        help="Matrix username localpart (recommended, e.g., bot) or full user ID (e.g., @bot:example.com). If provided, --homeserver and --password are also required.",
+        help="Matrix username localpart or full user ID. With --oauth, an optional full user ID restricts the approved account. Password login also requires --homeserver and --password.",
     )
     login_parser.add_argument(
         "--password",
@@ -437,8 +442,8 @@ def parse_arguments() -> argparse.Namespace:
 
     logout_parser = auth_subparsers.add_parser(
         "logout",
-        help="Log out and clear all sessions",
-        description="Clear all Matrix authentication data and E2EE store",
+        help="Revoke the Matrix login session",
+        description="Revoke authentication; OAuth logout retains encryption keys, while password logout clears the E2EE store",
     )
     logout_parser.add_argument(
         "--password",
@@ -2201,6 +2206,11 @@ def handle_auth_login(args: argparse.Namespace) -> int:
 
     from mmrelay.matrix_utils import login_matrix_bot
 
+    if getattr(args, "oauth", False) is True:
+        from mmrelay.matrix.oauth_cli import handle_login
+
+        return handle_login(args)
+
     # Ensure the HOME layout exists before interactive/non-interactive auth flows.
     # This prevents first-run logins from falling back to ad-hoc credential paths.
     try:
@@ -2279,6 +2289,19 @@ def handle_auth_login(args: argparse.Namespace) -> int:
         _get_logger().debug(
             "Could not load config for Matrix authentication paths: %s", e
         )
+
+    # Do not replace rotating credentials with a password-generated token.
+    from mmrelay.matrix.oauth_cli import existing_oauth_store
+
+    try:
+        if existing_oauth_store(args, config_for_paths or {}) is not None:
+            print(
+                "An OAuth session already exists. Stop the relay and log out before changing authentication methods."
+            )
+            return 1
+    except (OSError, RuntimeError, ValueError, TypeError):
+        print("Could not inspect existing credentials; refusing to overwrite them.")
+        return 1
 
     try:
         login_kwargs: dict[str, Any] = {
@@ -2458,6 +2481,15 @@ def handle_auth_logout(args: argparse.Namespace) -> int:
     import asyncio
 
     from mmrelay.cli_utils import logout_matrix_bot
+    from mmrelay.matrix.oauth_cli import existing_oauth_store, handle_logout
+
+    try:
+        oauth_store = existing_oauth_store(args)
+        if oauth_store is not None:
+            return handle_logout(args, oauth_store)
+    except (OSError, RuntimeError, ValueError, TypeError):
+        print("Could not inspect credentials; logout was not attempted.")
+        return 1
 
     # Show header
     print("Matrix Bot Logout")
