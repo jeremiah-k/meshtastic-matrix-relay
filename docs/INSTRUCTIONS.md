@@ -1,22 +1,24 @@
 # MMRelay Instructions
 
 MMRelay runs on Linux, macOS, and Windows. Native installs require Python
-3.11+; Docker installs run MMRelay in a container and use the host only for
-configuration and the one-time Matrix login.
+3.11+; Docker installs run MMRelay and the one-time Matrix login in containers.
 
 ## Choose an installation method
 
 MMRelay runs natively via pipx or as a Docker container. Both use the same
-configuration file (`~/.mmrelay/config.yaml`), the same authentication step
-(`mmrelay auth login`), and store all runtime data in `~/.mmrelay/` — moving
-between them is a copy of that directory.
+configuration format and authentication command (`mmrelay auth login`). Native
+Linux/macOS installs use `~/.mmrelay/` by default; Windows native installs use
+AppData. Docker mounts a host data directory at `/data`. To move between
+installations, copy the complete data directory, including `matrix/`, while
+the relay is stopped. See the [Docker Guide](DOCKER.md#data-persistence) for
+mounts and custom locations.
 
 |                   | Docker                                         | pipx (native)                          |
 | ----------------- | ---------------------------------------------- | -------------------------------------- |
 | Best for          | Always-on servers, NAS boxes, VPS hosts        | Desktops, laptops, Raspberry Pi boards |
 | Host needs        | Docker                                         | Python 3.11+                           |
 | BLE / serial node | BLE on Linux hosts only; extra compose options | Direct device access; simplest setup   |
-| Upgrades          | `docker compose pull` or one-line Watchtower   | `pipx upgrade mmrelay`                 |
+| Upgrades          | `docker compose pull && docker compose up -d`  | `pipx upgrade mmrelay`                 |
 
 **Rule of thumb:** headless server with a TCP-connected node → Docker.
 Node attached over USB/serial or Bluetooth → native. For Kubernetes, see the
@@ -25,6 +27,7 @@ Node attached over USB/serial or Bluetooth → native. For Kubernetes, see the
 ### Docker install (recommended for servers)
 
 ```bash
+# These commands use a Unix shell and require Git and Make.
 # Clone the repository
 git clone https://github.com/jeremiah-k/meshtastic-matrix-relay.git
 cd meshtastic-matrix-relay
@@ -33,11 +36,11 @@ cd meshtastic-matrix-relay
 # then open the config in your editor
 make setup-prebuilt
 
-# Authenticate to Matrix
-# (needs the mmrelay CLI on the host: pipx install mmrelay)
-mmrelay auth login
+# Download the image and authenticate with the relay bot account
+docker compose pull mmrelay
+docker compose run --rm --no-deps mmrelay mmrelay auth login
 
-# Pull and start the official prebuilt image
+# Start the official prebuilt image
 make run
 make logs
 ```
@@ -60,6 +63,11 @@ pip install mmrelay
 ```
 
 For pipx installation instructions, see: [pipx installation guide](https://pipx.pypa.io/stable/installation/#on-linux)
+
+For encrypted Matrix rooms on supported native platforms, install
+`pipx install 'mmrelay[e2e]'` instead (or `pip install 'mmrelay[e2e]'`). The sample
+configuration enables E2EE by default. See the [E2EE Guide](E2EE.md) for platform
+requirements; the Docker image already includes these dependencies.
 
 ### Developer Install
 
@@ -117,7 +125,11 @@ This command will:
 **Standard Method (v1.2+)**: Use the built-in authentication command:
 
 ```bash
+# Native installation
 mmrelay auth login
+
+# Docker installation (before starting the relay)
+docker compose run --rm --no-deps mmrelay mmrelay auth login
 ```
 
 This interactive command will:

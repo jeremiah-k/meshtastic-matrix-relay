@@ -26,7 +26,7 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 
 ## Prerequisites
 
-You need Docker installed on your system. Follow the [official Docker installation guide](https://docs.docker.com/engine/install/).
+You need Docker with the Compose plugin installed on your system. Follow the [official Docker installation guide](https://docs.docker.com/engine/install/). The commands below use a Unix shell; Docker Desktop users should adapt host paths and user IDs for their platform. Matrix login runs inside the image, so a host Python installation is unnecessary.
 
 ## Quick Start
 
@@ -43,15 +43,16 @@ curl -Lo ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/mes
 chmod 600 ~/.mmrelay/config.yaml
 nano ~/.mmrelay/config.yaml
 
-# Authenticate to Matrix (creates ~/.mmrelay/matrix/credentials.json)
-# Requires the mmrelay CLI on the host: pipx install mmrelay
-mmrelay auth login
-
 # Set up environment and get docker-compose file
 grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null || echo "MMRELAY_HOST_HOME=${HOME}" >> .env
 grep -q '^UID=' .env 2>/dev/null || echo "UID=$(id -u)" >> .env
 grep -q '^GID=' .env 2>/dev/null || echo "GID=$(id -g)" >> .env
 curl -o docker-compose.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml
+
+# Download the image and authenticate with the relay bot account
+# Creates credentials and encryption data in the mounted ~/.mmrelay/matrix/
+docker compose pull mmrelay
+docker compose run --rm --no-deps mmrelay mmrelay auth login
 
 # Optional: Enable automatic updates before first startup
 nano docker-compose.yaml  # Uncomment the watchtower section
@@ -89,7 +90,9 @@ If you've cloned the repository locally, use the convenient Make commands:
 
 ```bash
 make setup-prebuilt  # Copy config, .env, and docker-compose.yaml, then opens editor
-make run             # Start container (pulls official image)
+docker compose pull mmrelay
+docker compose run --rm --no-deps mmrelay mmrelay auth login
+make run             # Start container
 make logs            # View logs
 ```
 
@@ -102,6 +105,7 @@ For users who prefer web-based Docker management:
    ```bash
    mkdir -p ~/.mmrelay
    curl -o ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
+   chmod 600 ~/.mmrelay/config.yaml
    nano ~/.mmrelay/config.yaml
    ```
 
@@ -130,6 +134,8 @@ For users who prefer web-based Docker management:
 
    Replace `/home/yourusername` with your actual home directory.
 
+4. **Authenticate before starting the stack:** On the Docker host, save the same stack definition as `docker-compose.yaml`, then run `docker compose run --rm --no-deps mmrelay mmrelay auth login`. Use the same data mount and user IDs as Portainer. The login writes credentials and encryption data to that mounted directory. For a remote Docker host, run this command there. Start the Portainer stack after login succeeds.
+
 ### Build from Source with Make
 
 For developers who want to build their own image:
@@ -137,6 +143,7 @@ For developers who want to build their own image:
 ```bash
 make setup    # Interactive setup - choose "Build from source"
 make build    # Build Docker image from source (uses layer caching)
+docker compose run --rm --no-deps mmrelay mmrelay auth login
 make run      # Start container
 make logs     # View logs
 ```
@@ -151,14 +158,19 @@ If you prefer not to use Make commands:
 # After cloning the repository:
 mkdir -p ~/.mmrelay
 cp src/mmrelay/tools/sample_config.yaml ~/.mmrelay/config.yaml
+chmod 600 ~/.mmrelay/config.yaml
 nano ~/.mmrelay/config.yaml  # Edit your settings
 
 # Set up docker compose files
 cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml
 cp src/mmrelay/tools/sample-docker-compose-override.yaml docker-compose.override.yaml
+grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null || echo "MMRELAY_HOST_HOME=${HOME}" >> .env
+grep -q '^UID=' .env 2>/dev/null || echo "UID=$(id -u)" >> .env
+grep -q '^GID=' .env 2>/dev/null || echo "GID=$(id -g)" >> .env
 
 # Build and start:
 docker compose build
+docker compose run --rm --no-deps mmrelay mmrelay auth login
 docker compose up -d
 docker compose logs -f
 ```
@@ -188,20 +200,22 @@ MMRelay requires Matrix authentication. Use the auth system for secure authentic
 
 ### Auth System (`mmrelay auth login`)
 
-Run this on your host system (not in Docker):
+After configuring the Compose data mount and user IDs, authenticate in a one-off container before starting the relay:
 
 ```bash
-mmrelay auth login
+docker compose run --rm --no-deps mmrelay mmrelay auth login
 ```
 
-This creates `~/.mmrelay/matrix/credentials.json` with:
+The image includes the E2EE dependencies. Use the dedicated Matrix bot account. Login creates `/data/matrix/credentials.json` and encryption data in the mounted host directory (`~/.mmrelay/matrix/` with the sample Compose file), with:
 
 - E2EE support for encrypted rooms
 - Persistent device identity (no "new device" notifications)
-- Automatic token refresh and key management
+- Reuse of saved credentials and encryption keys across restarts
 - Matrix 2.0 / MAS (Authentication Service) compatibility
 
-The `credentials.json` file is automatically available at `/data/matrix/credentials.json` in the container.
+To authenticate again, stop the running relay first (`docker compose stop mmrelay`), repeat the login command, then restart it. This keeps a single process using the Matrix store.
+
+If you prefer host login, install `pipx install 'mmrelay[e2e]'` on a supported host and run `mmrelay auth login` with the same data directory. Windows native installations default to AppData; use an explicit `MMRELAY_HOME` matching the Docker host's data directory when sharing credentials. See the [E2EE Guide](E2EE.md) for platform requirements.
 
 ### Authentication Precedence
 
@@ -209,6 +223,7 @@ MMRelay checks for authentication in this order:
 
 1. **`matrix/credentials.json`** (from `mmrelay auth login`) - recommended
 2. **`config.yaml` matrix section (password)** - fallback; password in config file automatically creates `matrix/credentials.json`
+3. **`config.yaml` matrix section (access token)** - deprecated fallback for existing deployments; does not perform login
 
 > **Note**: For security and full functionality, use `mmrelay auth login`. The password-based method in `config.yaml` is available as a fallback option.
 
@@ -356,13 +371,15 @@ environment:
 Inside the container, `MMRELAY_HOME` drives all runtime paths (credentials, database, logs, E2EE store, plugins).
 
 **Custom Host Data Location:**
-To use a different location on your host, use the `MMRELAY_HOST_HOME` variable in your `.env` file or compose file:
+`MMRELAY_HOST_HOME` selects the parent of `.mmrelay`, rather than the data directory itself. For example, this `.env` value mounts `/srv/relay/.mmrelay` at `/data`:
 
 ```bash
-MMRELAY_HOST_HOME=/path/to/your/data
+MMRELAY_HOST_HOME=/srv/relay
 ```
 
 Note: Use `MMRELAY_HOST_HOME` for host paths to avoid conflict with the container's `MMRELAY_HOME` environment variable.
+
+To use an exact directory such as `/srv/mmrelay-data`, edit the volume source to `/srv/mmrelay-data:/data`. Create and edit `config.yaml` there before running the container login; all authentication data will then be stored there too.
 
 ## Health Checks
 
@@ -374,11 +391,11 @@ The Docker image includes a built-in health check that uses the ready file mecha
 - When MMRelay starts successfully, it creates a ready file at that path
 - The health check verifies this file exists and was modified recently (within 2 minutes)
 - The file is periodically updated (every 60 seconds by default) to show the application is still responsive
-- If the application crashes or fails to start, the ready file is not created/removed, and the container is marked as unhealthy
+- If the application fails to start, no ready file is created; if its heartbeat stops, the file becomes stale and the container is marked unhealthy
 
 **Benefits:**
 
-- Tools like Watchtower wait for the health check to pass before considering an update successful
+- Monitoring tools can use the health status when assessing a deployment
 - Docker compose shows health status in `docker compose ps`
 - Monitoring tools can detect when the app is truly ready vs. just running
 
@@ -480,7 +497,7 @@ downloads — there is no separate "complete" configuration to maintain:
 
 - Compose file: [sample-docker-compose-prebuilt.yaml](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml)
 - Config: `~/.mmrelay/config.yaml` (from `sample_config.yaml`)
-- Credentials: `~/.mmrelay/matrix/credentials.json` (from `mmrelay auth login`)
+- Credentials: `~/.mmrelay/matrix/credentials.json` (from the container login command)
 
 The sample compose file already includes:
 
@@ -518,7 +535,7 @@ MMRelay uses Docker Compose's standard override mechanism to support both prebui
 - **`docker-compose.yaml`** - Base configuration (uses prebuilt image)
 - **`docker-compose.override.yaml`** - Optional override (builds from source)
 
-Docker Compose automatically merges these files when you run `docker compose up`. If the override file exists, it builds from source. If not, it uses the prebuilt image.
+Docker Compose automatically merges these files when you run `docker compose up`. When the override exists, run `docker compose build` (or `make build`) first to build the source image. Without an override, Compose uses the prebuilt image.
 
 ### Quick Switching
 
