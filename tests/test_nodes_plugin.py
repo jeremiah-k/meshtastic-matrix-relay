@@ -978,6 +978,8 @@ def test_invalid_last_heard_values_are_unknown(value: float) -> None:
         "config.security.adminKey",
         "config.security.admin_key",
         "config.security.sessionKey",
+        "adminSessionPassKey",
+        "admin.session_passkey",
         "someSecretValue",
         "bluetooth.fixedPin",
     ],
@@ -1080,6 +1082,45 @@ def test_generate_response_does_not_dump_container_values(
     assert "DICT Dict Node" in response
     assert "{" not in response
     assert "nested-secret" not in response
+
+
+def test_generate_response_withholds_cached_admin_session_passkey(
+    feature_plugin: Plugin,
+) -> None:
+    client = MagicMock()
+    client.nodes = {
+        "node1": {"status": "Ready", "adminSessionPassKey": b"session-token"}
+    }
+    feature_plugin.config["fields"] = ["status", "adminSessionPassKey"]
+    with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
+        response = feature_plugin.generate_response()
+    assert response == "Nodes: 1\nstatus: Ready\n"
+
+
+@pytest.mark.parametrize("container", [{"privateKey": "nested-secret"}, ["secret"]])
+def test_default_name_and_power_fields_do_not_dump_containers(
+    feature_plugin: Plugin, container: object
+) -> None:
+    client = MagicMock()
+    client.nodes = {
+        "node1": {
+            "user": {"shortName": container, "longName": container},
+            "deviceMetrics": {"batteryLevel": container, "voltage": container},
+        }
+    }
+    feature_plugin.config["fields"] = ["name", "power"]
+    with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
+        response = feature_plugin.generate_response()
+    assert response == "Nodes: 1\nUnknown Unknown / ?% ?V\n"
+
+
+def test_empty_status_is_omitted(feature_plugin: Plugin) -> None:
+    client = MagicMock()
+    client.nodes = {"node1": {"status": ""}}
+    feature_plugin.config["fields"] = ["status"]
+    with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
+        response = feature_plugin.generate_response()
+    assert response == "Nodes: 1\nNo fields available\n"
 
 
 if __name__ == "__main__":
