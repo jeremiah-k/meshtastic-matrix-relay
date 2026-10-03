@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -836,6 +837,7 @@ async def test_connect_matrix_e2ee_store_missing_db_files_warns(
     mock_listdir.return_value = ["notes.txt"]
 
     def exists_side_effect(path):
+        path = os.fspath(path)
         if path.endswith(CREDENTIALS_FILENAME):
             return False
         if path == "/test/store":
@@ -843,6 +845,7 @@ async def test_connect_matrix_e2ee_store_missing_db_files_warns(
         return False
 
     mock_exists.side_effect = exists_side_effect
+    assert mock_exists(Path("/test/store")) is True
     mock_ssl_context.return_value = MagicMock()
 
     mock_client_instance = MagicMock()
