@@ -147,6 +147,35 @@ plugins:
     # example environmentMetrics.temperature or hostMetrics.freeMemory.
     # Potentially secret-bearing paths (private keys, PSKs, passwords, wifi or
     # bluetooth pairing settings, ...) are always withheld, even when configured.
+  mesh_beacon:
+    active: false
+    # Configures Firmware 2.8's native Mesh Beacon broadcaster. Firmware performs
+    # each temporary preset switch and restores the normal radio configuration.
+    # MMRelay refuses same-preset-only target lists and custom (non-preset)
+    # LoRa configurations, pinned frequency slots, and frequency overrides.
+    # Uses the fields shared by the initial and newer frequency-slot schemas.
+    # Unknown device settings require a newer client schema before broadcast edits.
+    broadcast: true
+    #message: "Join our mesh" # Max 60 UTF-8 bytes; omitted preserves current value
+    #interval_seconds: 3600 # Range: 3600..2147483 seconds (older firmware timer limit)
+    #listen: true # Omitted preserves the radio's current listen flag
+    #legacy_split: false # Omitted preserves the radio's current compatibility setting
+    # Required: choose a configured channel index to share its name/PSK, or null
+    # to advertise no channel credentials. MMRelay never chooses one implicitly.
+    # Secondary offers and targets need explicit PSKs; inheritance differs across firmware.
+    offer_channel_index: null
+    # Up to four targets. Every target must name an already-configured channel
+    # index explicitly; update these channel slots before enabling the plugin.
+    # Regions and frequency slots are deliberately not accepted in target entries.
+    targets:
+      - preset: "LONG_FAST"
+        channel_index: 0
+      - preset: "LONG_MODERATE"
+        channel_index: 0
+      - preset: "MEDIUM_FAST"
+        channel_index: 0
+      - preset: "SHORT_FAST"
+        channel_index: 0
 
 #community-plugins:
 #  sample_plugin:
