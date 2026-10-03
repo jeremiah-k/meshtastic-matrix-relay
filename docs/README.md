@@ -47,6 +47,7 @@ container mounts are used. The deployment guides document those cases.
 - **[Windows Installer Build Guide](dev/INNO_SETUP_GUIDE.md)** — installer maintenance
 - **[BLE Compatibility Notes](dev/BLE_DUAL_LIBRARY_COMPATIBILITY.md)** — BLE library compatibility design
 - **[Matrix Compatibility Plan](dev/MATRIX_DUAL_LIBRARY_COMPATIBILITY_PLAN.md)** — Matrix-provider compatibility design
+- **[mindroom-nio 1.x compatibility draft](dev/MINDROOM_NIO_UPGRADE.md)** — Python-specific SDK selection, ordinary-client contracts, and live-validation requirements
 - **[Archived implementation notes](dev/archive/)** — historical design and migration material
 
 ## Getting help
