@@ -84,6 +84,7 @@ class _BeaconRecord:
     fallback_region: int | None = None
     fallback_preset: int | None = None
     announced_rooms: list[str] = field(default_factory=list)
+    dismissed_rooms: list[str] = field(default_factory=list)
 
     @property
     def key(self) -> str:
@@ -112,6 +113,11 @@ class _BeaconRecord:
             announced, (str, bytes, bytearray)
         ):
             announced = []
+        dismissed = value.get("dismissed_rooms", [])
+        if not isinstance(dismissed, Sequence) or isinstance(
+            dismissed, (str, bytes, bytearray)
+        ):
+            dismissed = []
         try:
             record = cls(
                 sender_key=str(value["sender_key"]),
@@ -127,6 +133,9 @@ class _BeaconRecord:
                 fallback_preset=_channel_number(value.get("fallback_preset")),
                 announced_rooms=[
                     room_id for room_id in announced if isinstance(room_id, str)
+                ],
+                dismissed_rooms=[
+                    room_id for room_id in dismissed if isinstance(room_id, str)
                 ],
             )
             beacon = record.beacon()
@@ -456,6 +465,7 @@ class Plugin(BasePlugin):
                 )
                 if payload_changed:
                     record.announced_rooms.clear()
+                    record.dismissed_rooms.clear()
                 self._received_beacons.insert(0, self._received_beacons.pop(index))
                 return record, False
 
@@ -553,8 +563,11 @@ class Plugin(BasePlugin):
         body = self._announcement_text(record)
         changed = False
         for room_id in rooms:
-            if not repeats and room_id in record.announced_rooms:
-                continue
+            with self._history_lock:
+                if room_id in record.dismissed_rooms:
+                    continue
+                if not repeats and room_id in record.announced_rooms:
+                    continue
             try:
                 response = await self.send_matrix_message(room_id, body, formatted=True)
             except Exception:
@@ -611,10 +624,24 @@ class Plugin(BasePlugin):
         room_channel = self._room_channel(room_id)
         relay_channel = self._configured_relay_channel()
         with self._history_lock:
-            records = list(self._received_beacons)
+            records = [
+                record
+                for record in self._received_beacons
+                if room_id not in record.dismissed_rooms
+            ]
         if relay_channel is not None and room_channel == relay_channel:
             return records
         return [record for record in records if record.source_channel == room_channel]
+
+    @staticmethod
+    def _can_manage_history(room: MatrixRoom, sender: object) -> bool:
+        """Use the room's moderation policy for room-scoped destructive actions."""
+        if not isinstance(sender, str) or not sender:
+            return False
+        try:
+            return bool(room.power_levels.can_user_redact(sender))
+        except (AttributeError, TypeError, ValueError):
+            return False
 
     def _announcement_text(self, record: _BeaconRecord) -> str:
         beacon = record.beacon()
@@ -674,13 +701,14 @@ class Plugin(BasePlugin):
         subcommand = parts[0].lower() if parts else "list"
         argument = parts[1] if len(parts) > 1 else ""
         records = self._visible_records(room.room_id)
+        can_manage = self._can_manage_history(room, getattr(event, "sender", None))
 
         if subcommand in {"list", "help"}:
             reply = self._beacon_list_text(records)
         elif subcommand in {"show", "detail"} and argument:
             record = self._find_beacon_record(argument, records)
             reply = (
-                self._beacon_detail_text(record)
+                self._beacon_detail_text(record, can_manage=can_manage)
                 if record is not None
                 else self._unknown_beacon_text(argument)
             )
@@ -702,24 +730,34 @@ class Plugin(BasePlugin):
             record = self._find_beacon_record(argument, records)
             if record is None:
                 reply = self._unknown_beacon_text(argument)
+            elif not can_manage:
+                reply = self._management_denied_text()
             else:
-                self._dismiss_record(record)
+                self._dismiss_record(record, room.room_id)
                 await self._persist_history()
-                reply = f"Dismissed Mesh Beacon `{record.record_id}`."
+                reply = (
+                    f"Dismissed Mesh Beacon `{record.record_id}` from this room."
+                )
         elif subcommand == "clear":
-            count = self._clear_visible_records(records)
-            await self._persist_history()
-            suffix = "s" if count != 1 else ""
-            reply = f"Cleared {count} saved Mesh Beacon invitation{suffix}."
+            if not can_manage:
+                reply = self._management_denied_text()
+            else:
+                count = self._clear_visible_records(records, room.room_id)
+                await self._persist_history()
+                suffix = "s" if count != 1 else ""
+                reply = (
+                    f"Cleared {count} saved Mesh Beacon invitation{suffix} "
+                    "from this room."
+                )
         elif len(parts) == 1:
             record = self._find_beacon_record(subcommand, records)
             reply = (
-                self._beacon_detail_text(record)
+                self._beacon_detail_text(record, can_manage=can_manage)
                 if record is not None
-                else self._usage_text()
+                else self._usage_text(can_manage=can_manage)
             )
         else:
-            reply = self._usage_text()
+            reply = self._usage_text(can_manage=can_manage)
 
         await self.send_matrix_message(room.room_id, reply, formatted=True)
         return True
@@ -740,19 +778,26 @@ class Plugin(BasePlugin):
             return records[index - 1]
         return None
 
-    def _dismiss_record(self, target: _BeaconRecord) -> None:
+    def _dismiss_record(self, target: _BeaconRecord, room_id: str) -> None:
         with self._history_lock:
-            self._received_beacons = [
-                record for record in self._received_beacons if record.key != target.key
-            ]
+            if room_id not in target.dismissed_rooms:
+                target.dismissed_rooms.append(room_id)
 
-    def _clear_visible_records(self, visible: Sequence[_BeaconRecord]) -> int:
-        keys = {record.key for record in visible}
+    def _clear_visible_records(
+        self, visible: Sequence[_BeaconRecord], room_id: str
+    ) -> int:
         with self._history_lock:
-            self._received_beacons = [
-                record for record in self._received_beacons if record.key not in keys
-            ]
-        return len(keys)
+            for record in visible:
+                if room_id not in record.dismissed_rooms:
+                    record.dismissed_rooms.append(room_id)
+        return len(visible)
+
+    @staticmethod
+    def _management_denied_text() -> str:
+        return (
+            "Dismissing saved Mesh Beacon invitations requires Matrix room "
+            "moderation permission (the ability to redact events)."
+        )
 
     @staticmethod
     def _unknown_beacon_text(selector: str) -> str:
@@ -763,11 +808,14 @@ class Plugin(BasePlugin):
         )
 
     @staticmethod
-    def _usage_text() -> str:
-        return (
+    def _usage_text(*, can_manage: bool = False) -> str:
+        commands = (
             "Usage: `!beacons [list]`, `!beacons show ID`, `!beacons url ID`, "
-            "`!beacons qr ID`, `!beacons dismiss ID`, or `!beacons clear`."
+            "or `!beacons qr ID`"
         )
+        if can_manage:
+            commands += ", plus moderator-only `!beacons dismiss ID` / `!beacons clear`"
+        return commands + "."
 
     @staticmethod
     def _beacon_list_text(records: Sequence[_BeaconRecord]) -> str:
@@ -794,7 +842,9 @@ class Plugin(BasePlugin):
         )
         return "\n".join(lines)
 
-    def _beacon_detail_text(self, record: _BeaconRecord) -> str:
+    def _beacon_detail_text(
+        self, record: _BeaconRecord, *, can_manage: bool = False
+    ) -> str:
         beacon = record.beacon()
         name = _markdown_text(beacon.offer_channel.name or "Default", limit=80)
         sender = _markdown_text(record.sender, limit=80)
@@ -836,15 +886,19 @@ class Plugin(BasePlugin):
             f"**Seen:** {record.count}× · first {_age_text(record.first_seen)} · "
             f"last {_age_text(record.last_seen)}"
         )
+        actions = (
+            f"`!beacons url {record.record_id}` · "
+            f"`!beacons qr {record.record_id}`"
+        )
+        if can_manage:
+            actions += f" · `!beacons dismiss {record.record_id}`"
         lines.extend(
             [
                 "",
                 "_Mesh Beacons are unsigned, zero-hop RF advertisements. Review the "
                 "invitation before applying it._",
                 "",
-                f"`!beacons url {record.record_id}` · "
-                f"`!beacons qr {record.record_id}` · "
-                f"`!beacons dismiss {record.record_id}`",
+                actions,
             ]
         )
         return "\n".join(lines)

@@ -189,6 +189,19 @@ def _record(beacon: _FakeBeacon | None = None, *, channel: int = 0) -> _BeaconRe
     )
 
 
+def _room(room_id: str = "!room:example", *, can_redact: bool = False) -> Any:
+    return SimpleNamespace(
+        room_id=room_id,
+        power_levels=SimpleNamespace(
+            can_user_redact=MagicMock(return_value=can_redact)
+        ),
+    )
+
+
+def _event(sender: str = "@user:example") -> Any:
+    return SimpleNamespace(sender=sender)
+
+
 @pytest.fixture(autouse=True)
 def fake_beacon_proto(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_fake_beacon_proto(monkeypatch)
@@ -471,6 +484,30 @@ async def test_announce_repeats_posts_every_packet(
 
 
 @pytest.mark.asyncio
+async def test_room_dismissal_suppresses_unchanged_ambient_repeats(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin = _plugin(announce_repeats=True)
+    plugin.send_matrix_message = AsyncMock(return_value=object())
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms",
+        [{"id": "!mesh:example", "meshtastic_channel": 0}],
+    )
+    monkeypatch.setattr(
+        "mmrelay.meshtastic_utils.meshtastic_client", _Interface(flags=1)
+    )
+    packet = _packet(_FakeBeacon())
+
+    await plugin.handle_meshtastic_message(packet, None, "Alice", None)
+    record = plugin._received_beacons[0]
+    plugin._dismiss_record(record, "!mesh:example")
+    await plugin.handle_meshtastic_message(packet, None, "Alice", None)
+
+    assert plugin.send_matrix_message.await_count == 1
+    assert record.dismissed_rooms == ["!mesh:example"]
+
+
+@pytest.mark.asyncio
 async def test_invalid_relay_channel_fails_closed_for_ambient_announcements(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -654,7 +691,7 @@ async def test_room_commands_use_scoped_records(
 
 
 @pytest.mark.asyncio
-async def test_clear_removes_only_room_visible_records(
+async def test_clear_dismisses_only_room_visible_records_for_moderator(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     plugin = _plugin()
@@ -670,11 +707,94 @@ async def test_clear_removes_only_room_visible_records(
         [{"id": "!room:example", "meshtastic_channel": 0}],
     )
 
-    await plugin.handle_room_message(
-        SimpleNamespace(room_id="!room:example"), object(), ""
+    await plugin.handle_room_message(_room(can_redact=True), _event("@mod:example"), "")
+
+    assert [record.key for record in plugin._received_beacons] == [first.key, second.key]
+    assert first.dismissed_rooms == ["!room:example"]
+    assert second.dismissed_rooms == []
+    assert plugin._visible_records("!room:example") == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("command", ["clear", "dismiss 1"])
+async def test_destructive_commands_require_room_moderation_permission(
+    monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    plugin = _plugin()
+    record = _record(channel=0)
+    plugin._received_beacons = [record]
+    plugin.send_matrix_message = AsyncMock(return_value=object())
+    plugin.get_matching_matrix_command_with_args = MagicMock(
+        return_value=("beacons", command)
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms",
+        [{"id": "!room:example", "meshtastic_channel": 0}],
     )
 
-    assert [record.key for record in plugin._received_beacons] == [second.key]
+    await plugin.handle_room_message(_room(can_redact=False), _event(), "")
+
+    assert record.dismissed_rooms == []
+    plugin.set_node_data.assert_not_called()
+    body = plugin.send_matrix_message.await_args.args[1]
+    assert "requires Matrix room moderation permission" in body
+
+
+def test_room_scoped_dismissal_does_not_hide_other_rooms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin = _plugin()
+    record = _record(channel=0)
+    plugin._received_beacons = [record]
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms",
+        [
+            {"id": "!one:example", "meshtastic_channel": 0},
+            {"id": "!two:example", "meshtastic_channel": 0},
+        ],
+    )
+
+    plugin._dismiss_record(record, "!one:example")
+
+    assert plugin._visible_records("!one:example") == []
+    assert plugin._visible_records("!two:example") == [record]
+
+
+def test_changed_offer_revives_room_dismissal() -> None:
+    plugin = _plugin()
+    record, _ = plugin._store_received_beacon(
+        sender="Some Node",
+        sender_key="123",
+        beacon=_FakeBeacon(message="one"),
+        source_channel=0,
+        rssi=None,
+        snr=None,
+    )
+    record.dismissed_rooms.append("!room:example")
+
+    refreshed, _ = plugin._store_received_beacon(
+        sender="Some Node",
+        sender_key="123",
+        beacon=_FakeBeacon(message="two"),
+        source_channel=0,
+        rssi=None,
+        snr=None,
+    )
+
+    assert refreshed is record
+    assert record.dismissed_rooms == []
+
+
+def test_history_loader_accepts_records_without_dismissal_metadata() -> None:
+    record = _record()
+    stored = record.to_dict()
+    stored.pop("dismissed_rooms")
+    plugin = _plugin()
+    plugin.get_node_data = MagicMock(return_value=[stored])
+
+    plugin._load_history()
+
+    assert plugin._received_beacons[0].dismissed_rooms == []
 
 
 @pytest.mark.asyncio
