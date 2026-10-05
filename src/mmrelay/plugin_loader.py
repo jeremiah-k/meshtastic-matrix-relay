@@ -3266,6 +3266,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
     from mmrelay.plugins.health_plugin import Plugin as HealthPlugin
     from mmrelay.plugins.help_plugin import Plugin as HelpPlugin
     from mmrelay.plugins.map_plugin import Plugin as MapPlugin
+    from mmrelay.plugins.mesh_beacon_plugin import Plugin as MeshBeaconPlugin
     from mmrelay.plugins.mesh_relay_plugin import Plugin as MeshRelayPlugin
     from mmrelay.plugins.nodes_plugin import Plugin as NodesPlugin
     from mmrelay.plugins.ping_plugin import Plugin as PingPlugin
@@ -3276,6 +3277,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
     core_plugins = [
         HealthPlugin(),
         MapPlugin(),
+        MeshBeaconPlugin(),
         MeshRelayPlugin(),
         PingPlugin(),
         TelemetryPlugin(),
