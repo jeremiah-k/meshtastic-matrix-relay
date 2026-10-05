@@ -9,11 +9,41 @@ import asyncio
 import contextlib
 import sys
 import threading
+from collections.abc import Iterable
 from typing import Any, Callable, TypeVar, cast
 
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 from pubsub import pub
 
 T = TypeVar("T")
+
+
+def select_mindroom_requirements(
+    requirements: Iterable[str], environment: dict[str, str] | None = None
+) -> list[Requirement]:
+    """
+    Return the mindroom-nio requirements whose markers apply in an environment.
+
+    This helper centralizes provider-pin selection so the requirements manifest
+    test and the installed-provider contract test share one filter.
+
+    Parameters:
+        requirements (Iterable[str]): Dependency requirement strings to inspect.
+        environment (dict[str, str] | None): Marker environment to evaluate
+            against, or None for the current interpreter.
+
+    Returns:
+        list[Requirement]: Matching requirements, without extras filtering.
+    """
+    selected: list[Requirement] = []
+    for value in requirements:
+        requirement = Requirement(value)
+        if canonicalize_name(requirement.name) == "mindroom-nio" and (
+            requirement.marker is None or requirement.marker.evaluate(environment)
+        ):
+            selected.append(requirement)
+    return selected
 
 
 class InlineExecutorLoop:

@@ -190,7 +190,6 @@ _STORE_READER = """
     import base64
     import json
     import sys
-    import mmrelay.matrix_utils as facade
     from pathlib import Path
     from nio import AsyncClient
     from vodozemac import AnyOlmMessage

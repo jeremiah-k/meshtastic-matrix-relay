@@ -4,7 +4,8 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from packaging.requirements import Requirement
+
+from tests.helpers import select_mindroom_requirements
 
 
 @pytest.mark.parametrize(
@@ -20,14 +21,9 @@ def test_python_selects_one_provider_for_base_and_encryption_extra(
         project["dependencies"],
         project["optional-dependencies"]["e2e"],
     ]:
-        selected = []
-        for value in requirements:
-            requirement = Requirement(value)
-            if requirement.name == "mindroom-nio" and (
-                requirement.marker is None
-                or requirement.marker.evaluate({"python_version": python_version})
-            ):
-                selected.append(requirement)
+        selected = select_mindroom_requirements(
+            requirements, {"python_version": python_version}
+        )
         assert len(selected) == 1
         assert str(selected[0].specifier) == "==" + expected
     assert project["requires-python"] == ">=3.11"
