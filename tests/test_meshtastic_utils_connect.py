@@ -737,6 +737,44 @@ def test_connect_meshtastic_publishes_ready_after_successful_setup(
     send_message.assert_called_once_with(MESHTASTIC_READY_TOPIC, interface=mock_client)
 
 
+def test_connect_meshtastic_ready_publish_failure_does_not_break_connection(
+    reset_meshtastic_globals,
+):
+    """A failing readiness subscriber is logged without failing the connection."""
+    mock_client = MagicMock()
+    mock_client.getMyNodeInfo.return_value = {
+        "user": {"shortName": "test", "hwModel": "test"}
+    }
+    config = {
+        "meshtastic": {
+            "connection_type": CONNECTION_TYPE_SERIAL,
+            "serial_port": "/dev/ttyUSB0",
+            "retries": 1,
+        }
+    }
+
+    with (
+        patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True),
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface",
+            return_value=mock_client,
+        ),
+        patch(
+            "mmrelay.meshtastic_utils._get_device_metadata",
+            return_value={"firmware_version": "2.8.1", "success": True},
+        ),
+        patch(
+            "mmrelay.meshtastic_utils.pub.sendMessage",
+            side_effect=RuntimeError("listener boom"),
+        ),
+        patch("mmrelay.meshtastic_utils.logger") as logger,
+    ):
+        result = connect_meshtastic(passed_config=config)
+
+    assert result is mock_client
+    logger.exception.assert_called_once_with("Meshtastic ready callback failed")
+
+
 @patch("mmrelay.meshtastic_utils.time.sleep")
 @patch("mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface")
 def test_connect_meshtastic_retry_exhausted(
