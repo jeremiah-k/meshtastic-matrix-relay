@@ -5,6 +5,12 @@ This draft uses mindroom-nio 1.1.2 on Python 3.12+ and retains 0.40.0 on Python
 MMRelay's Python minimum remains 3.11. No environment should install multiple
 packages that own the `nio` import namespace.
 
+The dual selection is a bridge, not a permanent state: it exists so Python 3.11
+hosts — notably Raspberry Pi OS Bookworm and Debian 12 systems installing
+natively — keep working until the Python floor moves. When `requires-python`
+moves past 3.11, collapse both requirements to a single mindroom-nio 1.x pin
+and drop the 0.40.0 CI lane and store-upgrade contract in the same change.
+
 ## Compatibility boundary
 
 The [upstream changelog](https://github.com/mindroom-ai/mindroom-nio/blob/1.1.2/CHANGELOG.md)
