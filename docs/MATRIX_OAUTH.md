@@ -18,6 +18,10 @@ fragments. Servers using other endpoint layouts need additional compatibility
 work. Matrix client delegation is supported; the stable authentication metadata
 endpoint is preferred, with an unstable endpoint fallback for earlier deployments.
 
+OAuth requests do not honor `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` environment
+variables; the relay must reach the issuer directly. Route proxied deployments
+at the network layer instead.
+
 ## Create a session
 
 Stop the relay before changing its authentication. Existing credentials are not

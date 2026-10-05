@@ -24,14 +24,15 @@ Usage:
 
 from __future__ import annotations
 
-# ruff: noqa: E402
-
 import asyncio
 import logging
 import os
 import ssl
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, cast
+
+# ruff: noqa: E402
+
 
 if TYPE_CHECKING:
     from mmrelay.matrix.oauth_store import OAuthStore
@@ -603,7 +604,9 @@ async def _logout_matrix_bot(
         return True
 
     if credentials.get("auth_type") == "oauth":
-        print("OAuth credentials require native session revocation; logout was not attempted.")
+        print(
+            "OAuth credentials require native session revocation; logout was not attempted."
+        )
         return False
 
     async def remove_credentials() -> bool:
@@ -802,10 +805,14 @@ async def _logout_matrix_bot(
                 _get_logger().warning(
                     "Timeout during Matrix server logout; credentials and encryption keys retained."
                 )
-                print("⚠️  Server logout timed out; credentials and encryption keys retained.")
+                print(
+                    "⚠️  Server logout timed out; credentials and encryption keys retained."
+                )
                 return False
             else:
                 if isinstance(logout_response, (LogoutError, NioLogoutError)):
+                    # The SDK reports the Matrix error name in errcode or, for
+                    # responses without a JSON body, in status_code (a string).
                     error_codes = {
                         getattr(logout_response, "errcode", None),
                         getattr(logout_response, "status_code", None),
@@ -815,12 +822,16 @@ async def _logout_matrix_bot(
                             "Server logout failed; credentials and encryption keys retained."
                         )
                         return False
-                    print("The saved Matrix session is invalid; removing local credentials.")
+                    print(
+                        "The saved Matrix session is invalid; removing local credentials."
+                    )
                 elif hasattr(logout_response, "transport_response"):
                     _get_logger().info("Successfully logged out from Matrix server.")
                     print("✅ Successfully logged out from Matrix server.")
                 else:
-                    _get_logger().warning("Logout response unclear; credentials retained.")
+                    _get_logger().warning(
+                        "Logout response unclear; credentials retained."
+                    )
                     print(
                         "⚠️  Logout response unclear; credentials and encryption keys retained."
                     )
