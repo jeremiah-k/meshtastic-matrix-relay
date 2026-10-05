@@ -58,8 +58,10 @@ MESHTASTICD_HWID_B="${MESHTASTICD_HWID_B:-22}"
 MESHTASTICD_HWID_A_PEER="${MESHTASTICD_HWID_A_PEER:-33}"
 MESHTASTICD_HWID_B_PEER="${MESHTASTICD_HWID_B_PEER:-44}"
 MESHTASTICD_READY_TIMEOUT_SECONDS="${MESHTASTICD_READY_TIMEOUT_SECONDS:-180}"
-MESH_CHANNEL_NAME_A="${MESH_CHANNEL_NAME_A:-MMRelayMeshA}"
-MESH_CHANNEL_NAME_B="${MESH_CHANNEL_NAME_B:-MMRelayMeshB}"
+# Channel names must fit the firmware's 11-byte UTF-8 limit; the mtjk
+# client enforces it (since 2.7.11.post8) before writing to the node.
+MESH_CHANNEL_NAME_A="${MESH_CHANNEL_NAME_A:-RelayMeshA}"
+MESH_CHANNEL_NAME_B="${MESH_CHANNEL_NAME_B:-RelayMeshB}"
 MESH_PRIMARY_PSK_A="${MESH_PRIMARY_PSK_A:-0x00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff}"
 MESH_PRIMARY_PSK_B="${MESH_PRIMARY_PSK_B:-0xffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100}"
 
@@ -235,6 +237,19 @@ require_regex() {
 	local name=$3
 	if [[ ! ${value} =~ ${pattern} ]]; then
 		echo "Invalid ${name}: ${value}" >&2
+		exit 1
+	fi
+}
+
+# require_channel_name_length fails fast on names the firmware (and the mtjk
+# client) reject: channel names must not exceed 11 UTF-8 bytes.
+require_channel_name_length() {
+	local value=$1
+	local name=$2
+	local encoded_length
+	encoded_length=$(printf '%s' "${value}" | wc -c)
+	if ((encoded_length > 11)); then
+		echo "Invalid ${name}: ${value}; encoded length ${encoded_length} bytes exceeds the firmware limit of 11 bytes." >&2
 		exit 1
 	fi
 }
@@ -2033,6 +2048,8 @@ require_regex "${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" '^[0-9]+$' "NAME_PRUNE_WAIT_T
 require_regex "${NODEDB_REFRESH_INTERVAL_SECONDS}" '^[0-9]+([.][0-9]+)?$' "NODEDB_REFRESH_INTERVAL_SECONDS"
 require_regex "${MESH_CHANNEL_NAME_A}" '^[[:print:]]+$' "MESH_CHANNEL_NAME_A"
 require_regex "${MESH_CHANNEL_NAME_B}" '^[[:print:]]+$' "MESH_CHANNEL_NAME_B"
+require_channel_name_length "${MESH_CHANNEL_NAME_A}" "MESH_CHANNEL_NAME_A"
+require_channel_name_length "${MESH_CHANNEL_NAME_B}" "MESH_CHANNEL_NAME_B"
 require_regex "${MESH_PRIMARY_PSK_A}" '^0x[0-9A-Fa-f]{64}$' "MESH_PRIMARY_PSK_A"
 require_regex "${MESH_PRIMARY_PSK_B}" '^0x[0-9A-Fa-f]{64}$' "MESH_PRIMARY_PSK_B"
 
