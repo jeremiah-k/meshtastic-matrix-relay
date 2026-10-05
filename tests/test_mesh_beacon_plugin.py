@@ -14,6 +14,7 @@ from mmrelay.plugins.mesh_beacon_plugin import (
     Plugin,
     _BeaconRecord,
     _markdown_text,
+    _psk_config_value,
 )
 
 
@@ -579,14 +580,28 @@ def test_relay_room_can_recall_all_channels(monkeypatch: pytest.MonkeyPatch) -> 
     assert len(plugin._visible_records("!inbox:example")) == 2
 
 
-def test_detail_never_renders_psk() -> None:
+@pytest.mark.parametrize(
+    ("psk", "expected"),
+    [
+        (b"", "none"),
+        (b"\x00", "none"),
+        (b"\x01", "default"),
+        (b"\x17", "simple22"),
+        (b"top-secret", "base64:dG9wLXNlY3JldA=="),
+    ],
+)
+def test_psk_config_value_uses_meshtastic_cli_forms(psk: bytes, expected: str) -> None:
+    assert _psk_config_value(psk) == expected
+
+
+def test_detail_renders_public_invitation_psk() -> None:
     plugin = _plugin()
     record = _record(_FakeBeacon(psk=b"top-secret"))
 
     detail = plugin._beacon_detail_text(record)
 
+    assert "**PSK:** `base64:dG9wLXNlY3JldA==`" in detail
     assert "top-secret" not in detail
-    assert "available only in explicit URL/QR output" in detail
 
 
 def test_list_uses_stable_ids() -> None:

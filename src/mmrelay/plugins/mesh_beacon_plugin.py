@@ -212,6 +212,19 @@ def _markdown_text(value: object, *, limit: int = 180) -> str:
     return _MARKDOWN_SPECIAL.sub(r"\\\1", clean)
 
 
+def _psk_config_value(psk: object) -> str:
+    """Render a channel PSK in the same durable forms accepted by Meshtastic CLI."""
+    if not isinstance(psk, bytes):
+        return "unavailable"
+    if len(psk) == 0 or psk == b"\x00":
+        return "none"
+    if len(psk) == 1:
+        if psk == b"\x01":
+            return "default"
+        return f"simple{psk[0] - 1}"
+    return "base64:" + base64.b64encode(psk).decode("ascii")
+
+
 def _matrix_room_entries() -> list[dict[str, Any]]:
     from mmrelay import matrix_utils
 
@@ -807,7 +820,9 @@ class Plugin(BasePlugin):
             slot = int(beacon.offer_frequency_slot)
             if slot > 0:
                 lines.append(f"**Frequency slot:** `{slot}`  ")
-        lines.append("**Join credentials:** available only in explicit URL/QR output  ")
+        lines.append(
+            f"**PSK:** `{_psk_config_value(beacon.offer_channel.psk)}`  "
+        )
         if record.source_channel is not None:
             lines.append(f"**Received on local channel:** `{record.source_channel}`  ")
         if record.rssi is not None or record.snr is not None:
