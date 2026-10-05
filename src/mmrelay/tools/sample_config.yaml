@@ -147,6 +147,17 @@ plugins:
     # example environmentMetrics.temperature or hostMetrics.freeMemory.
     # Potentially secret-bearing paths (private keys, PSKs, passwords, wifi or
     # bluetooth pairing settings, ...) are always withheld, even when configured.
+  mesh_beacon:
+    active: false
+    # Listening-first Mesh Beacon support. When active, MMRelay verifies the
+    # connected radio exposes Mesh Beacon and enables only its firmware listen
+    # flag. Broadcast message/targets/offers remain owned by official clients
+    # and remote-admin tooling; MMRelay preserves those settings unchanged.
+    #announce: true # Post each new/changed invitation to Matrix (default: true)
+    #announce_repeats: false # Post every periodic repeat instead of deduplicating
+    #relay_channel: 0 # Optional Matrix routing key; omit to use receive channel
+    # Commands: !beacons, !beacons show ID, !beacons url ID, !beacons qr ID,
+    # !beacons dismiss ID, !beacons clear
 
 #community-plugins:
 #  sample_plugin:
