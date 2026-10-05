@@ -25,24 +25,26 @@ Firmware 2.8 enables Mesh Beacon listening by default, so a normal node commonly
 
 By default, a newly captured invitation is announced in the Matrix room mapped to the Meshtastic channel on which the packet was received. Set `relay_channel` to route every announcement to the room(s) mapped to one chosen Meshtastic channel instead. The override is Matrix routing only; it never changes the radio.
 
-Ambient announcements contain the offered channel name, sender, optional message, advertised radio information, receive signal, and a stable short ID. They do **not** print the offered PSK. RF-provided strings are escaped before Markdown rendering.
+Ambient announcements contain the offered channel name, sender, optional message, advertised radio information, receive signal, and a stable short ID. They do **not** print the offered PSK. RF-provided strings are escaped before Markdown rendering. `!beacons show ID` is an explicit inspection command and does show the advertised PSK in the same durable forms accepted by the Meshtastic CLI (`none`, `default`, `simpleN`, or `base64:...`). Mesh Beacon invitations are public RF advertisements; the key is part of the advertised join material rather than a relay-owned secret.
 
 Periodic repeats are deduplicated by sender plus offered channel, matching the useful part of the Android invitation model. The most recent packet refreshes the saved invitation, receive count, timestamp, and signal. If the invitation contents change, it can be announced again. Delivery is tracked per Matrix room, so one failed room does not suppress a later retry there. Set `announce_repeats: true` only when every periodic packet should be posted.
 
-The last 20 actionable invitations are retained in MMRelay's local plugin data so commands still work after restart. The stored protobuf includes the advertised channel credential because it is required to reconstruct the join URL; it is not emitted into room timelines except through an explicit URL or QR command.
+The last 20 actionable invitations are retained in MMRelay's local plugin data so commands still work after restart. The stored protobuf includes the advertised channel credential because it is required to reconstruct the join URL. The credential is emitted only through explicit inspection/join commands (`show`, `url`, or `qr`), never through ambient announcements.
 
 ## Recall commands
 
 `!beacons` and `!mesh_beacon` are aliases. Invitations are scoped to the Matrix/Meshtastic channel mapping: a room sees invitations received on its channel. When `relay_channel` is configured, the room mapped to that channel acts as the central inbox and can see all captured invitations.
 
 - `!beacons` — list standing invitations with stable IDs, sender, receive count, and last-seen age.
-- `!beacons show ID` — show decoded metadata without exposing the channel credential.
+- `!beacons show ID` — show decoded metadata, including the advertised PSK.
 - `!beacons url ID` — render a Meshtastic share URL and the equivalent `meshtastic --seturl '<url>'` command.
 - `!beacons qr ID` — post the same URL as a QR image for review/import in a Meshtastic client.
-- `!beacons dismiss ID` — remove one saved invitation.
-- `!beacons clear` — clear invitations visible from the current room.
+- `!beacons dismiss ID` — hide one saved invitation from the current room; requires Matrix room moderation permission.
+- `!beacons clear` — hide all currently visible invitations from the current room; requires Matrix room moderation permission.
 
 A numeric list position can be used instead of the stable ID, but IDs remain valid as the list is reordered by newer receptions.
+
+MMRelay does not define a separate plugin-admin or global-admin list for these commands. Destructive inbox operations use the Matrix room's existing `m.room.power_levels`: a sender must be allowed to redact events in that room. This keeps authority aligned with the room whose inbox is being changed. Dismissal is stored per room, so a moderator in one mapped room cannot erase the invitation from another room's view. If the broadcaster materially changes the invitation payload, previous dismissals are cleared and the updated offer becomes visible again.
 
 ## Join URL behavior
 
