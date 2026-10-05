@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 
 import mmrelay.meshtastic_utils as mu
+from mmrelay.constants.meshtastic import MESHTASTIC_READY_TOPIC
 from mmrelay.constants.network import (
     CONNECTION_TYPE_BLE,
     CONNECTION_TYPE_SERIAL,
@@ -700,6 +701,40 @@ def test_connect_meshtastic_retry_on_serial_exception(
     assert result == mock_client
     assert mock_serial.call_count == 2
     mock_sleep.assert_called_once()
+
+
+def test_connect_meshtastic_publishes_ready_after_successful_setup(
+    reset_meshtastic_globals,
+):
+    """Publish plugin readiness only after the connected client is fully assigned."""
+    mock_client = MagicMock()
+    mock_client.getMyNodeInfo.return_value = {
+        "user": {"shortName": "test", "hwModel": "test"}
+    }
+    config = {
+        "meshtastic": {
+            "connection_type": CONNECTION_TYPE_SERIAL,
+            "serial_port": "/dev/ttyUSB0",
+            "retries": 1,
+        }
+    }
+
+    with (
+        patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True),
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface",
+            return_value=mock_client,
+        ),
+        patch(
+            "mmrelay.meshtastic_utils._get_device_metadata",
+            return_value={"firmware_version": "2.8.1", "success": True},
+        ),
+        patch("mmrelay.meshtastic_utils.pub.sendMessage") as send_message,
+    ):
+        result = connect_meshtastic(passed_config=config)
+
+    assert result is mock_client
+    send_message.assert_called_once_with(MESHTASTIC_READY_TOPIC, interface=mock_client)
 
 
 @patch("mmrelay.meshtastic_utils.time.sleep")

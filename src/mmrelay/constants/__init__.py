@@ -11,6 +11,7 @@ This package organizes all application constants by functional area:
 - database: Database-related constants
 - config: Configuration section and key constants
 - plugins: Plugin system security and validation constants
+- meshtastic: Meshtastic radio lifecycle constants
 
 Usage:
     from mmrelay.constants import queue
@@ -38,6 +39,7 @@ from .database import (
     DEFAULT_EXTRA_PRAGMAS,
 )
 from .formats import DEFAULT_MATRIX_PREFIX, DEFAULT_MESHTASTIC_PREFIX
+from .meshtastic import MESHTASTIC_READY_TOPIC
 from .network import (
     BLE_CONN_SUPPRESSED_TOKEN,
     BLE_CONNECT_TIMEOUT_SECS,
@@ -110,6 +112,8 @@ __all__ = [
     "DEFAULT_BUSY_TIMEOUT_MS",
     "DEFAULT_ENABLE_WAL",
     "DEFAULT_EXTRA_PRAGMAS",
+    # Meshtastic constants
+    "MESHTASTIC_READY_TOPIC",
     # Network constants
     "BLE_CONNECT_TIMEOUT_SECS",
     "BLE_CONN_SUPPRESSED_TOKEN",
