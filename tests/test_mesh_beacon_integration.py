@@ -12,7 +12,7 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
-_PROBE = r'''
+_PROBE = r"""
 import base64
 import importlib
 import sys
@@ -136,7 +136,7 @@ payload2 = base64.urlsafe_b64decode(fragment2 + "=" * (-len(fragment2) % 4))
 shared2 = apponly_pb2.ChannelSet.FromString(payload2)
 assert shared2.lora_config.region == config_pb2.Config.LoRaConfig.US
 assert shared2.lora_config.modem_preset == config_pb2.Config.LoRaConfig.LONG_FAST
-'''
+"""
 
 
 def test_real_mesh_beacon_listener_and_join_url_contract(tmp_path: Path) -> None:

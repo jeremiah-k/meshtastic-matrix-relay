@@ -735,9 +735,7 @@ class Plugin(BasePlugin):
             else:
                 self._dismiss_record(record, room.room_id)
                 await self._persist_history()
-                reply = (
-                    f"Dismissed Mesh Beacon `{record.record_id}` from this room."
-                )
+                reply = f"Dismissed Mesh Beacon `{record.record_id}` from this room."
         elif subcommand == "clear":
             if not can_manage:
                 reply = self._management_denied_text()
@@ -870,9 +868,7 @@ class Plugin(BasePlugin):
             slot = int(beacon.offer_frequency_slot)
             if slot > 0:
                 lines.append(f"**Frequency slot:** `{slot}`  ")
-        lines.append(
-            f"**PSK:** `{_psk_config_value(beacon.offer_channel.psk)}`  "
-        )
+        lines.append(f"**PSK:** `{_psk_config_value(beacon.offer_channel.psk)}`  ")
         if record.source_channel is not None:
             lines.append(f"**Received on local channel:** `{record.source_channel}`  ")
         if record.rssi is not None or record.snr is not None:
@@ -887,8 +883,7 @@ class Plugin(BasePlugin):
             f"last {_age_text(record.last_seen)}"
         )
         actions = (
-            f"`!beacons url {record.record_id}` · "
-            f"`!beacons qr {record.record_id}`"
+            f"`!beacons url {record.record_id}` · " f"`!beacons qr {record.record_id}`"
         )
         if can_manage:
             actions += f" · `!beacons dismiss {record.record_id}`"

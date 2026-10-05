@@ -437,9 +437,7 @@ async def test_failed_room_delivery_remains_retryable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     plugin = _plugin()
-    plugin.send_matrix_message = AsyncMock(
-        side_effect=[object(), None, object()]
-    )
+    plugin.send_matrix_message = AsyncMock(side_effect=[object(), None, object()])
     monkeypatch.setattr(
         "mmrelay.matrix_utils.matrix_rooms",
         [
@@ -709,7 +707,10 @@ async def test_clear_dismisses_only_room_visible_records_for_moderator(
 
     await plugin.handle_room_message(_room(can_redact=True), _event("@mod:example"), "")
 
-    assert [record.key for record in plugin._received_beacons] == [first.key, second.key]
+    assert [record.key for record in plugin._received_beacons] == [
+        first.key,
+        second.key,
+    ]
     assert first.dismissed_rooms == ["!room:example"]
     assert second.dismissed_rooms == []
     assert plugin._visible_records("!room:example") == []
