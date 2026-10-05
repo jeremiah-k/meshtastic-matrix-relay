@@ -9,7 +9,13 @@ from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
-from mmrelay.matrix.oauth import OAuthError, OAuthSession, secure_url
+from mmrelay.matrix.oauth import (
+    OAuthError,
+    OAuthSession,
+    _has_control_characters,
+    read_bounded_response,
+    secure_url,
+)
 from mmrelay.matrix.oauth_async import finish_task
 from mmrelay.matrix.oauth_session import OAuthSessionManager, attach_oauth_session
 from mmrelay.matrix.oauth_store import OAuthStore
@@ -34,20 +40,17 @@ def _approval_challenge(body: object, issuer: str) -> tuple[str, str]:
         or not isinstance(params, dict)
         or not isinstance(session, str)
         or not session
-        or any(ord(char) < 32 or ord(char) == 127 for char in session)
+        or _has_control_characters(session)
     ):
         raise OAuthError("Invalid cross-signing browser authorization challenge.")
     for stage in _APPROVAL_STAGES:
         if not any(
-            isinstance(flow, dict) and flow.get("stages") == [stage]
-            for flow in flows
+            isinstance(flow, dict) and flow.get("stages") == [stage] for flow in flows
         ):
             continue
         entry = params.get(stage)
         url = entry.get("url") if isinstance(entry, dict) else None
-        if not isinstance(url, str) or any(
-            ord(char) < 32 or ord(char) == 127 for char in url
-        ):
+        if not isinstance(url, str) or _has_control_characters(url):
             break
         try:
             parsed = urlsplit(url)
@@ -66,16 +69,15 @@ def _approval_challenge(body: object, issuer: str) -> tuple[str, str]:
 
 
 async def _read_challenge(response: Any) -> object:
-    raw = bytearray()
-    async for chunk in response.content.iter_chunked(8192):
-        raw.extend(chunk)
-        if len(raw) > 65536:
-            response.release()
-            raise OAuthError("Cross-signing authorization response exceeds the limit.")
+    raw = await read_bounded_response(
+        response, "Cross-signing authorization response exceeds the limit."
+    )
     try:
         return json.loads(raw)
     except (ValueError, UnicodeDecodeError):
-        raise OAuthError("Invalid cross-signing browser authorization response.") from None
+        raise OAuthError(
+            "Invalid cross-signing browser authorization response."
+        ) from None
 
 
 def approval_sender(

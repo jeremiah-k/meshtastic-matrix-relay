@@ -102,11 +102,9 @@ class HttpTransport:
                 ) as response:
                     if 300 <= response.status < 400:
                         raise OAuthError("OAuth HTTP redirects are not accepted.")
-                    raw = bytearray()
-                    async for chunk in response.content.iter_chunked(8192):
-                        raw.extend(chunk)
-                        if len(raw) > _MAX_JSON_BYTES:
-                            raise OAuthError("OAuth response exceeds the size limit.")
+                    raw = await read_bounded_response(
+                        response, "OAuth response exceeds the size limit."
+                    )
                     if not raw and 200 <= response.status < 300:
                         return JsonResponse(response.status, {})
                     try:
@@ -176,6 +174,17 @@ def _text(body: Mapping[str, Any], name: str) -> str:
 
 def _has_control_characters(value: str) -> bool:
     return any(ord(character) < 32 or ord(character) == 127 for character in value)
+
+
+async def read_bounded_response(response: Any, limit_error: str) -> bytearray:
+    """Read an OAuth response body without trusting its declared length."""
+    raw = bytearray()
+    async for chunk in response.content.iter_chunked(8192):
+        raw.extend(chunk)
+        if len(raw) > _MAX_JSON_BYTES:
+            response.release()
+            raise OAuthError(limit_error)
+    return raw
 
 
 def _number(body: Mapping[str, Any], name: str) -> float:
