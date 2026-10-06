@@ -58,6 +58,16 @@ This mirrors the safety property of Android's switch flow: do not copy stale ban
 
 `meshtastic --seturl` has replacement semantics: it can replace the node's channel list and, when the URL carries LoRa configuration, retune the radio. QR import in an official client gives the operator a review step. Treat Mesh Beacon invitations as untrusted input: they are unsigned RF advertisements, not authenticated administrative instructions.
 
+## Beacon targets and where they can be heard
+
+A Meshtastic radio tunes to one frequency: the slot its **primary** channel name hashes to within its configured preset (unless `channel_num` or `override_frequency` pins it otherwise). Every channel on the node — primary or secondary — shares that frequency. A beacon transmitted for a broadcast target is encrypted with the target channel's PSK and sent on the target preset at the target channel's slot, so it is only audible to receivers whose radio is actually tuned there:
+
+- The target channel must exist on the sender (any index — the reference is each device's own local `channel_index`, so index order across devices is irrelevant). Out-of-range or blank indexes fall back to the target preset's default channel.
+- A receiver hears the beacon only if its radio sits on that preset **and** slot. In practice that means the target channel should be the intended receiver's primary channel, or the target preset's default channel for receivers still on a blank primary.
+- Receivers must also hold the target channel's PSK to decrypt — a beacon is an encrypted advertisement, not a broadcast shout.
+
+Advertising into a network whose nodes keep a different primary (for example, a shared secondary channel that no receiver uses as primary) produces beacons on a slot nobody monitors. Target the receiving mesh's primary channel — by name and PSK — instead.
+
 ## What gets ignored
 
 Message-only Mesh Beacons are consumed but are not retained as join invitations because they cannot produce a channel URL or QR code. Malformed decoded payloads are logged and consumed without entering the standing history. Beacons originating from the relay's own node are ignored.
