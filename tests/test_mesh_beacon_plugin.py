@@ -154,8 +154,15 @@ class _Interface:
 def _install_fake_beacon_proto(monkeypatch: pytest.MonkeyPatch) -> None:
     module = SimpleNamespace(MeshBeacon=_FakeBeacon)
     monkeypatch.setitem(sys.modules, "meshtastic.protobuf.mesh_beacon_pb2", module)
-    sys.modules["meshtastic.protobuf"].mesh_beacon_pb2 = module
-    sys.modules["meshtastic.protobuf.portnums_pb2"].PortNum.MESH_BEACON_APP = 37
+    monkeypatch.setattr(
+        sys.modules["meshtastic.protobuf"], "mesh_beacon_pb2", module, raising=False
+    )
+    monkeypatch.setattr(
+        sys.modules["meshtastic.protobuf.portnums_pb2"].PortNum,
+        "MESH_BEACON_APP",
+        37,
+        raising=False,
+    )
 
 
 def _plugin(**config: Any) -> Plugin:
