@@ -60,13 +60,16 @@ This mirrors the safety property of Android's switch flow: do not copy stale ban
 
 ## Beacon targets and where they can be heard
 
-A Meshtastic radio tunes to one frequency: the slot its **primary** channel name hashes to within its configured preset (unless `channel_num` or `override_frequency` pins it otherwise). Every channel on the node — primary or secondary — shares that frequency. A beacon transmitted for a broadcast target is encrypted with the target channel's PSK and sent on the target preset at the target channel's slot, so it is only audible to receivers whose radio is actually tuned there:
+A Meshtastic radio tunes to one frequency slot within its preset: the hash of its **primary** channel name, an explicit `channel_num` (frequency slot) set on the primary, or a region/`override_frequency` pin. Every channel on the node — primary or secondary — shares that slot. A beacon transmitted for a broadcast target is encrypted with the target channel's PSK and sent on the target preset at the target channel's slot: the target channel's own `channel_num` if it pins one, otherwise the hash of the target channel's name (a blank target name falls back to the preset display name, i.e. the preset's default slot).
 
-- The target channel must exist on the sender (any index — the reference is each device's own local `channel_index`, so index order across devices is irrelevant). Out-of-range or blank indexes fall back to the target preset's default channel.
-- A receiver hears the beacon only if its radio sits on that preset **and** slot. In practice that means the target channel should be the intended receiver's primary channel, or the target preset's default channel for receivers still on a blank primary.
-- Receivers must also hold the target channel's PSK to decrypt — a beacon is an encrypted advertisement, not a broadcast shout.
+A receiver hears the beacon when the frequencies meet and the keys agree:
 
-Advertising into a network whose nodes keep a different primary (for example, a shared secondary channel that no receiver uses as primary) produces beacons on a slot nobody monitors. Target the receiving mesh's primary channel — by name and PSK — instead.
+- **Slot**: the beacon's slot must equal the receiver's tuned slot — the receiver's primary name hash, the receiver's own `channel_num` pin, or the preset default slot the receiver still occupies on a blank primary. Communities that run custom-named primaries while staying reachable by default users typically pin their primary back to the preset's default slot for exactly this reason.
+- **PSK**: receivers must hold the target channel's PSK to decrypt — a beacon is an encrypted advertisement, not a broadcast shout.
+
+The target channel must exist on the sender (any index — the reference is each device's own local `channel_index`, so index order across devices is irrelevant). Out-of-range or blank indexes fall back to a channel derived from the sender's primary: blank target names inherit the primary's name (the preset display name is only substituted when the primary itself is blank), while a blank target PSK inherits the primary's PSK.
+
+Two practical consequences: targeting a shared secondary that has no slot pin transmits on that name's hash slot, which reaches nobody unless receivers happen to be tuned or pinned there; and targeting the default slot of a foreign preset requires a target channel whose name (or pinned slot) lands on that preset's default slot and whose PSK the target audience holds — the sender's primary PSK is only inherited when the target channel carries no PSK of its own.
 
 ## What gets ignored
 
