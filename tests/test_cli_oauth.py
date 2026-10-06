@@ -246,7 +246,10 @@ def test_cli_reuses_oauth_device_for_explicit_reset_and_retains_credentials(
         patch("mmrelay.matrix.oauth_cli.credential_store", return_value=store),
         patch("mmrelay.config.load_config_silently", return_value=config),
         patch("mmrelay.matrix.oauth_cli.self_sign_device", side_effect=sign),
-        patch("mmrelay.matrix.oauth_cli.OAuthClient", side_effect=AssertionError("Relogin")),
+        patch(
+            "mmrelay.matrix.oauth_cli.OAuthClient",
+            side_effect=AssertionError("Relogin"),
+        ),
         patch("builtins.input", side_effect=AssertionError("Login prompt")),
         patch("getpass.getpass", side_effect=AssertionError("Password prompt")),
         patch("mmrelay.cli.ensure_directories"),
@@ -275,14 +278,19 @@ def test_oauth_signing_reuse_rejects_a_different_account(tmp_path: Path) -> None
     )
     with (
         patch("mmrelay.matrix.oauth_cli.credential_store", return_value=store),
-        patch("mmrelay.matrix.oauth_cli.OAuthClient", side_effect=AssertionError("Relogin")),
+        patch(
+            "mmrelay.matrix.oauth_cli.OAuthClient",
+            side_effect=AssertionError("Relogin"),
+        ),
     ):
         assert handle_oauth_login(args) == 1
     assert store.path.read_bytes() == before
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("homeserver", ["matrix.example.com", "https://matrix.example.com/"])
+@pytest.mark.parametrize(
+    "homeserver", ["matrix.example.com", "https://matrix.example.com/"]
+)
 @pytest.mark.parametrize("username", ["bot", "@bot:example.com"])
 def test_oauth_signing_reuse_accepts_equivalent_server_and_username_inputs(
     tmp_path: Path, homeserver: str, username: str
@@ -295,9 +303,59 @@ def test_oauth_signing_reuse_accepts_equivalent_server_and_username_inputs(
         patch("mmrelay.matrix.oauth_cli.credential_store", return_value=store),
         patch("mmrelay.config.load_config_silently", return_value={}),
         patch("builtins.input", side_effect=AssertionError("Login prompt")),
-        patch("mmrelay.matrix.oauth_cli.OAuthClient", side_effect=AssertionError("Relogin")),
+        patch(
+            "mmrelay.matrix.oauth_cli.OAuthClient",
+            side_effect=AssertionError("Relogin"),
+        ),
     ):
         assert handle_oauth_login(args) == 0
+    assert store.path.read_bytes() == before
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("homeserver", ["example.com", "https://example.com"])
+def test_oauth_signing_reuse_accepts_the_saved_account_server_name(
+    tmp_path: Path, homeserver: str
+) -> None:
+    """A bare server name matches the delegated homeserver that owns the MXID."""
+    store = OAuthStore(tmp_path / "credentials.json")
+    store.path.write_text(json.dumps(session().credentials()))
+    before = store.path.read_bytes()
+    args = argparse.Namespace(homeserver=homeserver, username=None, password=None)
+    with (
+        patch("mmrelay.matrix.oauth_cli.credential_store", return_value=store),
+        patch("mmrelay.config.load_config_silently", return_value={}),
+        patch("builtins.input", side_effect=AssertionError("Login prompt")),
+        patch(
+            "mmrelay.matrix.oauth_cli.OAuthClient",
+            side_effect=AssertionError("Relogin"),
+        ),
+    ):
+        assert handle_oauth_login(args) == 0
+    assert store.path.read_bytes() == before
+
+
+@pytest.mark.integration
+def test_oauth_signing_reuse_still_rejects_a_foreign_server(
+    tmp_path: Path,
+) -> None:
+    store = OAuthStore(tmp_path / "credentials.json")
+
+    async def save() -> None:
+        async with store.locked():
+            await store.save(session())
+
+    asyncio.run(save())
+    before = store.path.read_bytes()
+    args = argparse.Namespace(homeserver="other.example", username=None, password=None)
+    with (
+        patch("mmrelay.matrix.oauth_cli.credential_store", return_value=store),
+        patch(
+            "mmrelay.matrix.oauth_cli.OAuthClient",
+            side_effect=AssertionError("Relogin"),
+        ),
+    ):
+        assert handle_oauth_login(args) == 1
     assert store.path.read_bytes() == before
 
 
@@ -308,8 +366,10 @@ def test_password_logout_retains_keys_and_uses_selected_session(
 ) -> None:
     store = OAuthStore(tmp_path / "configured-credentials.json")
     record = {
-        "homeserver": "https://matrix.example.com", "user_id": "@bot:example.com",
-        "device_id": "PASSWORD-DEVICE", "access_token": "test-password-session-token",
+        "homeserver": "https://matrix.example.com",
+        "user_id": "@bot:example.com",
+        "device_id": "PASSWORD-DEVICE",
+        "access_token": "test-password-session-token",
     }
     store.path.write_text(json.dumps(record))
     signing = tmp_path / "store" / "cross_signing.json"
@@ -370,10 +430,16 @@ def test_auth_method_switch_preserves_the_local_signing_sidecar(tmp_path: Path) 
         assert handle_auth_logout(args) == 0
         assert signing.read_text() == "test-private-signing-keys"
         # Model the saved password device between the two logout operations.
-        store.path.write_text(json.dumps({
-            "homeserver": "https://matrix.example.com", "user_id": "@bot:example.com",
-            "device_id": "PASSWORD-DEVICE", "access_token": "test-password-token",
-        }))
+        store.path.write_text(
+            json.dumps(
+                {
+                    "homeserver": "https://matrix.example.com",
+                    "user_id": "@bot:example.com",
+                    "device_id": "PASSWORD-DEVICE",
+                    "access_token": "test-password-token",
+                }
+            )
+        )
         client = Mock()
         client.logout = AsyncMock(return_value=Mock(transport_response=True))
         client.close = AsyncMock()

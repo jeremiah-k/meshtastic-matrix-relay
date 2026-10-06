@@ -133,7 +133,9 @@ async def _login_and_self_sign(
         homeserver, store, expected_user_id=expected_user_id
     )
     if saved_session is None:
-        print(f"Authenticated MMRelay as {session.user_id} with device {session.device_id}.")
+        print(
+            f"Authenticated MMRelay as {session.user_id} with device {session.device_id}."
+        )
     else:
         print(
             f"Using saved MMRelay OAuth session for {session.user_id}, "
@@ -154,7 +156,9 @@ async def _login_and_self_sign(
         print("Own-device signing failed. Check E2EE dependencies and store ownership.")
         result = None
     if result is not None:
-        print("MMRelay's own device is cross-signed. Other users' devices are unchanged.")
+        print(
+            "MMRelay's own device is cross-signed. Other users' devices are unchanged."
+        )
     else:
         print(
             "OAuth credentials are retained. If E2EE is enabled, restore the signing "
@@ -190,9 +194,15 @@ def handle_login(args: argparse.Namespace) -> int:
         if homeserver is not None:
             homeserver = normalize_homeserver(homeserver)
         if saved_session is not None:
+            # A saved session stores the delegated base URL discovery returned,
+            # so a bare server name like example.com never compares equal even
+            # though it owns the account. Accept the saved MXID's server name
+            # as the same homeserver.
+            saved_server_name = saved_session.user_id.partition(":")[2].lower()
             if (
                 homeserver is not None
                 and homeserver != normalize_homeserver(saved_session.homeserver)
+                and homeserver != normalize_homeserver(saved_server_name)
             ) or (
                 username is not None
                 and not matches_username(saved_session.user_id, username)
