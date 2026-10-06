@@ -165,3 +165,71 @@ def test_real_mesh_beacon_listener_and_join_url_contract(tmp_path: Path) -> None
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_qr_upload_encrypts_png_with_installed_matrix_provider(tmp_path: Path) -> None:
+    script = r"""
+import asyncio
+import base64
+import io
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
+from nio import AsyncClient, AsyncClientConfig, UploadResponse
+from nio.crypto.attachments import decrypt_attachment
+from PIL import Image
+from meshtastic.protobuf import mesh_beacon_pb2
+from mmrelay.plugins.mesh_beacon_plugin import Plugin, _BeaconRecord
+
+async def main():
+    beacon = mesh_beacon_pb2.MeshBeacon()
+    beacon.offer_channel.name = "Invitation"
+    beacon.offer_channel.psk = b"invitation-key!"
+    record = _BeaconRecord(
+        sender_key="123", sender="RF node", source_channel=0,
+        first_seen=1, last_seen=1,
+        payload_b64=base64.b64encode(beacon.SerializeToString()).decode(),
+    )
+    plugin = Plugin()
+    plugin.send_matrix_message = AsyncMock(return_value=object())
+    client = AsyncClient("https://matrix.example", config=AsyncClientConfig(encryption_enabled=False))
+    client.restore_login("@relay:example", "TEST", "test-token")
+    client.rooms["!room:example"] = SimpleNamespace(encrypted=True)
+    uploaded = bytearray()
+
+    async def transport(*args, **kwargs):
+        assert kwargs["content_type"] == "application/octet-stream"
+        async for chunk in await kwargs["data_provider"](0, 0):
+            uploaded.extend(chunk)
+        return UploadResponse("mxc://example/qr")
+
+    client._send = transport
+    client.room_send = AsyncMock(return_value=object())
+    try:
+        with patch("mmrelay.matrix_utils.connect_matrix", AsyncMock(return_value=client)):
+            await plugin._send_beacon_qr("!room:example", record)
+        content = client.room_send.await_args.kwargs["content"]
+        assert "url" not in content
+        info = content["file"]
+        assert info["url"] == "mxc://example/qr"
+        ciphertext = bytes(uploaded)
+        assert ciphertext and not ciphertext.startswith(b"\x89PNG")
+        png = decrypt_attachment(ciphertext, info["key"]["k"], info["hashes"]["sha256"], info["iv"])
+        assert png.startswith(b"\x89PNG")
+        with Image.open(io.BytesIO(png)) as image:
+            assert image.width > 0 and image.height > 0
+    finally:
+        await client.close()
+
+asyncio.run(main())
+"""
+    environment = {**os.environ, "MMRELAY_HOME": str(tmp_path)}
+    result = subprocess.run(
+        [sys.executable, "-W", "error", "-c", textwrap.dedent(script)],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

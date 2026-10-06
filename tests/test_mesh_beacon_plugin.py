@@ -209,6 +209,14 @@ def _record(beacon: _FakeBeacon | None = None, *, channel: int = 0) -> _BeaconRe
     )
 
 
+def _matrix_client(*, encrypted: bool = False) -> Any:
+    return SimpleNamespace(
+        rooms={"!room:example": SimpleNamespace(encrypted=encrypted)},
+        upload=AsyncMock(),
+        room_send=AsyncMock(return_value=object()),
+    )
+
+
 def _room(room_id: str = "!room:example", *, can_redact: bool = False) -> Any:
     return SimpleNamespace(
         room_id=room_id,
@@ -883,7 +891,7 @@ async def test_qr_command_posts_caption_and_image(
     monkeypatch.setattr(
         "mmrelay.plugins.mesh_beacon_plugin._qr_image", lambda _url: object()
     )
-    matrix_client = object()
+    matrix_client = _matrix_client()
     connect = AsyncMock(return_value=matrix_client)
     send_image = AsyncMock()
     monkeypatch.setattr("mmrelay.matrix_utils.connect_matrix", connect)
@@ -912,7 +920,7 @@ async def test_qr_unexpected_upload_failure_falls_back_to_url_command(
         "mmrelay.plugins.mesh_beacon_plugin._qr_image", lambda _url: object()
     )
     monkeypatch.setattr(
-        "mmrelay.matrix_utils.connect_matrix", AsyncMock(return_value=object())
+        "mmrelay.matrix_utils.connect_matrix", AsyncMock(return_value=_matrix_client())
     )
     monkeypatch.setattr(
         "mmrelay.matrix_utils.send_image",
@@ -1624,7 +1632,7 @@ async def test_qr_dispatch_renders_real_image(
     )
     send_image = AsyncMock()
     monkeypatch.setattr(
-        "mmrelay.matrix_utils.connect_matrix", AsyncMock(return_value=object())
+        "mmrelay.matrix_utils.connect_matrix", AsyncMock(return_value=_matrix_client())
     )
     monkeypatch.setattr("mmrelay.matrix_utils.send_image", send_image)
 
@@ -1691,7 +1699,7 @@ async def test_qr_upload_failure_falls_back_to_url_command(
         "mmrelay.plugins.mesh_beacon_plugin._qr_image", lambda _url: object()
     )
     monkeypatch.setattr(
-        "mmrelay.matrix_utils.connect_matrix", AsyncMock(return_value=object())
+        "mmrelay.matrix_utils.connect_matrix", AsyncMock(return_value=_matrix_client())
     )
     monkeypatch.setattr(
         "mmrelay.matrix_utils.send_image",
@@ -1763,3 +1771,77 @@ async def test_moderation_reports_database_failure_without_durable_success(
     assert "Dismissed" not in reply and "Cleared" not in reply
     assert record.dismissed_rooms == ["!room:example"]
     manager.run_sync.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("upload_failure", [False, True])
+async def test_encrypted_qr_preserves_attachment_metadata_and_never_sends_plain_url(
+    monkeypatch: pytest.MonkeyPatch, upload_failure: bool
+) -> None:
+    from PIL import Image
+
+    plugin = _plugin()
+    record = _record()
+    plugin.send_matrix_message = AsyncMock(return_value=object())
+    monkeypatch.setattr(
+        plugin, "_beacon_join_url", lambda _: "https://meshtastic.org/e/#abc"
+    )
+    monkeypatch.setattr(
+        "mmrelay.plugins.mesh_beacon_plugin._qr_image",
+        lambda _: Image.new("RGB", (8, 8)),
+    )
+    client = _matrix_client(encrypted=True)
+    encryption = {
+        "v": "v2",
+        "key": {"k": "key"},
+        "iv": "iv",
+        "hashes": {"sha256": "hash"},
+    }
+    client.upload.return_value = (
+        SimpleNamespace(content_uri="mxc://example/qr"),
+        None if upload_failure else encryption,
+    )
+    plain_send = AsyncMock()
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.connect_matrix", AsyncMock(return_value=client)
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.send_image", plain_send)
+
+    await plugin._send_beacon_qr("!room:example", record)
+
+    assert client.upload.await_args.kwargs["encrypt"] is True
+    plain_send.assert_not_awaited()
+    if upload_failure:
+        client.room_send.assert_not_awaited()
+        assert "!beacons url ID" in plugin.send_matrix_message.await_args.args[1]
+    else:
+        content = client.room_send.await_args.kwargs["content"]
+        assert content["file"] == {**encryption, "url": "mxc://example/qr"}
+        assert "url" not in content
+
+
+@pytest.mark.asyncio
+async def test_qr_unknown_room_encryption_refuses_upload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin = _plugin()
+    plugin.send_matrix_message = AsyncMock(return_value=object())
+    client = _matrix_client()
+    client.rooms.clear()
+    monkeypatch.setattr(
+        plugin, "_beacon_join_url", lambda _: "https://meshtastic.org/e/#abc"
+    )
+    monkeypatch.setattr(
+        "mmrelay.plugins.mesh_beacon_plugin._qr_image", lambda _: object()
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.connect_matrix", AsyncMock(return_value=client)
+    )
+    plain_send = AsyncMock()
+    monkeypatch.setattr("mmrelay.matrix_utils.send_image", plain_send)
+
+    await plugin._send_beacon_qr("!room:example", _record())
+
+    client.upload.assert_not_awaited()
+    plain_send.assert_not_awaited()
+    assert "!beacons url ID" in plugin.send_matrix_message.await_args.args[1]

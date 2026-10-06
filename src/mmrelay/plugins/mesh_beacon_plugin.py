@@ -1016,12 +1016,38 @@ class Plugin(BasePlugin):
                 "Scan to review this invitation in a Meshtastic client.",
                 formatted=True,
             )
-            await send_image(
-                matrix_client,
-                room_id,
-                image,
-                filename=f"mesh-beacon-{record.record_id}.png",
-            )
+            room = matrix_client.rooms.get(room_id)
+            if room is None or not isinstance(room.encrypted, bool):
+                raise ImageUploadError("Room encryption state unavailable")
+            filename = f"mesh-beacon-{record.record_id}.png"
+            if room.encrypted:
+                buffer = io.BytesIO()
+                await asyncio.to_thread(image.save, buffer, format="PNG")
+                buffer.seek(0)
+                response, encryption = await matrix_client.upload(
+                    buffer,
+                    content_type="image/png",
+                    filename=filename,
+                    filesize=len(buffer.getbuffer()),
+                    encrypt=True,
+                )
+                if not getattr(response, "content_uri", None) or not encryption:
+                    raise ImageUploadError(response)
+                content = {
+                    "msgtype": "m.image",
+                    "body": filename,
+                    "file": {**encryption, "url": response.content_uri},
+                    "info": {"mimetype": "image/png"},
+                }
+                result = await matrix_client.room_send(
+                    room_id=room_id,
+                    message_type="m.room.message",
+                    content=content,
+                )
+                if isinstance(result, RoomSendError):
+                    raise ImageUploadError(result)
+            else:
+                await send_image(matrix_client, room_id, image, filename=filename)
         except ImageUploadError:
             self.logger.exception("Failed to send Mesh Beacon QR image")
             await self.send_matrix_message(

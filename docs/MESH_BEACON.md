@@ -42,6 +42,8 @@ The last 20 actionable invitations are retained in MMRelay's local plugin data s
 - `!beacons dismiss ID` — hide one saved invitation from the current room; requires Matrix room moderation permission.
 - `!beacons clear` — hide all currently visible invitations from the current room; requires Matrix room moderation permission.
 
+QR attachments are encrypted before upload when the destination room is encrypted, and the encrypted file metadata is retained in the room event. If room encryption state is unavailable or upload fails, the command falls back to guidance for `!beacons url ID` instead of uploading a plaintext attachment.
+
 A numeric list position can be used instead of the stable ID, but IDs remain valid as the list is reordered by newer receptions.
 
 MMRelay does not define a separate plugin-admin or global-admin list for these commands. Destructive inbox operations use the Matrix room's existing `m.room.power_levels`: a sender must be allowed to redact events in that room. This keeps authority aligned with the room whose inbox is being changed. Dismissal is stored per room, so a moderator in one mapped room cannot erase the invitation from another room's view. Moderation success replies require a completed database write. If saving fails, the invitation stays hidden in memory and the reply warns that it may reappear after restart.
