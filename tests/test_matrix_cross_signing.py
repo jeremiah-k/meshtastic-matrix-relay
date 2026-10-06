@@ -300,6 +300,37 @@ async def test_cross_signing_bootstrap_timeout_is_nonfatal(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "oauth_authenticated, expected_command",
+    [(False, "mmrelay auth login"), (True, "mmrelay auth login --oauth")],
+)
+async def test_cross_signing_timeout_names_the_matching_login_command(
+    monkeypatch: pytest.MonkeyPatch, oauth_authenticated: bool, expected_command: str
+) -> None:
+    logger = MagicMock()
+    monkeypatch.setattr(e2ee_identity, "logger", logger)
+    monkeypatch.setattr(
+        e2ee_identity,
+        "_CROSS_SIGNING_OPERATION_TIMEOUT_SECONDS",
+        0.001,
+    )
+
+    result = await matrix_utils._ensure_own_device_cross_signed(
+        _HangingCrossSigningClient(),
+        oauth_authenticated=oauth_authenticated,
+    )
+
+    assert result is None
+    logged = [
+        str(argument)
+        for call in logger.warning.call_args_list
+        for argument in call.args
+    ]
+    assert any("Timed out" in message for message in logged)
+    assert expected_command in logged
+
+
+@pytest.mark.asyncio
 async def test_server_identity_precheck_timeout_is_nonfatal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -419,6 +450,7 @@ async def test_unuploaded_sidecar_does_not_bypass_existing_identity_guard(
 
     logger = MagicMock()
     monkeypatch.setattr(e2ee_identity, "logger", logger)
+
     class PendingIdentityClient(_NoIdentityPropertyClient):
         cross_signing_identity = SimpleNamespace(uploaded=False)
 

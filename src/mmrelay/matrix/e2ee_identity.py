@@ -115,9 +115,7 @@ async def _query_own_keys(
     failures = payload.get("failures")
     if isinstance(failures, dict) and failures:
         summary = _summarize_keys_query_failures(failures)
-        raise RuntimeError(
-            f"Matrix keys/query reported homeserver failures: {summary}"
-        )
+        raise RuntimeError(f"Matrix keys/query reported homeserver failures: {summary}")
     return user_id, cast(dict[str, object], payload)
 
 
@@ -609,11 +607,17 @@ async def _ensure_own_device_cross_signed(
                 _client_label(client, "device_id"),
             )
         else:
+            recovery_command = (
+                "mmrelay auth login --oauth"
+                if oauth_authenticated
+                else "mmrelay auth login"
+            )
             logger.warning(
                 "Timed out after %.0f seconds while self-verifying Matrix device %s. "
-                "MMRelay startup will continue; run 'mmrelay auth login' to retry.",
+                "MMRelay startup will continue; run '%s' to retry.",
                 _CROSS_SIGNING_OPERATION_TIMEOUT_SECONDS,
                 _client_label(client, "device_id"),
+                recovery_command,
             )
         return None
 
