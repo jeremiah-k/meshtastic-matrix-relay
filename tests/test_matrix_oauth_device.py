@@ -65,7 +65,9 @@ async def test_pending_and_slow_down_obey_poll_intervals(status: int) -> None:
         JsonResponse(status, {"error": "slow_down"}),
         OAuthTransportError("unavailable"),
     ]
-    result = await protocol(server).authorize_device("https://matrix.example.com", Mock())
+    result = await protocol(server).authorize_device(
+        "https://matrix.example.com", Mock()
+    )
     assert server.sleeps == [5, 5, 10, 20]
     assert result.user_id == "@bot:example.com"
     assert server.requests[-1][1].endswith("/whoami")
@@ -210,6 +212,58 @@ async def test_invalid_refreshed_tokens_are_revoked_before_failure(
         "token_type_hint": "refresh_token",
         "client_id": current.client_id,
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("changes", [{"token_type": "MAC"}, {"expires_in": 1e-100}])
+async def test_non_rotated_refresh_rejection_revokes_access_token_only(
+    changes: dict[str, object],
+) -> None:
+    """The refresh credential the session still uses is never revoked."""
+    server = FakeServer()
+    current = session()
+    server.polls = [
+        JsonResponse(
+            200,
+            {
+                "access_token": "renewed-access",
+                "refresh_token": current.refresh_token,
+                "token_type": "Bearer",
+                "expires_in": 300,
+                "scope": current.scope,
+                **changes,
+            },
+        )
+    ]
+
+    with pytest.raises(OAuthError):
+        await protocol(server).refresh(current)
+
+    assert server.requests[-1][1].endswith("/revoke")
+    assert server.requests[-1][2]["form"] == {
+        "token": "renewed-access",
+        "token_type_hint": "access_token",
+        "client_id": current.client_id,
+    }
+
+
+@pytest.mark.asyncio
+async def test_non_rotated_refresh_rejection_without_access_token_revokes_nothing() -> (
+    None
+):
+    server = FakeServer()
+    current = session()
+    server.polls = [
+        JsonResponse(
+            200,
+            {"refresh_token": current.refresh_token, "expires_in": 1e-100},
+        )
+    ]
+
+    with pytest.raises(OAuthError):
+        await protocol(server).refresh(current)
+
+    assert not any(request[1].endswith("/revoke") for request in server.requests)
 
 
 @pytest.mark.asyncio

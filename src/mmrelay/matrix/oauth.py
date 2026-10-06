@@ -594,7 +594,14 @@ class OAuthClient:
         except OAuthError:
             refresh_token = body.get("refresh_token")
             access_token = body.get("access_token")
-            if isinstance(refresh_token, str) and refresh_token:
+            if (
+                isinstance(refresh_token, str)
+                and refresh_token
+                and refresh_token != previous_refresh
+            ):
+                # Only revoke a newly issued refresh token. A server that does
+                # not rotate tokens returns the credential the saved session
+                # still depends on, and revoking it would destroy the session.
                 rejected_token = refresh_token
                 token_type_hint = "refresh_token"
             elif isinstance(access_token, str) and access_token:
