@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import sys
+import threading
 import time
 from types import SimpleNamespace
 from typing import Any
@@ -593,6 +595,50 @@ def test_history_loader_rejects_corrupt_and_duplicate_rows() -> None:
     assert plugin._received_beacons[0].record_id == record.record_id
 
 
+@pytest.mark.no_global_mocks
+@pytest.mark.asyncio
+async def test_persistence_cannot_land_an_older_snapshot_last() -> None:
+    plugin = _plugin()
+    record = _record(channel=0)
+    plugin._received_beacons = [record]
+    first_write_started = threading.Event()
+    release_first_write = threading.Event()
+    writes: list[list[dict[str, Any]]] = []
+    write_calls = 0
+    call_lock = threading.Lock()
+
+    def store(
+        _key: str, snapshot: list[dict[str, Any]], *, raise_on_error: bool = False
+    ) -> None:
+        nonlocal write_calls
+        with call_lock:
+            index = write_calls
+            write_calls += 1
+        if index == 0:
+            first_write_started.set()
+            assert release_first_write.wait(timeout=2)
+        writes.append(snapshot)
+
+    plugin.set_node_data = store  # type: ignore[method-assign]
+    first = asyncio.create_task(plugin._persist_history())
+    for _ in range(200):
+        if first_write_started.is_set():
+            break
+        await asyncio.sleep(0.01)
+    assert first_write_started.is_set()
+
+    record.count = 2
+    record.dismissed_rooms.append("!room:example")
+    second = asyncio.create_task(plugin._persist_history())
+    await asyncio.sleep(0.05)
+    release_first_write.set()
+    await asyncio.gather(first, second)
+
+    assert len(writes) == 2
+    assert writes[-1][0]["count"] == 2
+    assert writes[-1][0]["dismissed_rooms"] == ["!room:example"]
+
+
 def test_markdown_escape_treats_radio_text_as_data() -> None:
     assert _markdown_text("**bold** [x](https://bad) <tag>") == (
         r"\*\*bold\*\* \[x\]\(https://bad\) &lt;tag&gt;"
@@ -1091,7 +1137,7 @@ async def test_persist_history_logs_failures_without_raising() -> None:
     plugin = _plugin()
     plugin.set_node_data = MagicMock(side_effect=RuntimeError("disk full"))
 
-    await plugin._persist_history()
+    assert await plugin._persist_history() is False
 
     plugin.logger.exception.assert_called_once()
 
@@ -1681,3 +1727,39 @@ async def test_qr_missing_matrix_client_falls_back_to_url_command(
     plugin.logger.exception.assert_called_once()
     body = plugin.send_matrix_message.await_args.args[1]
     assert "Failed to upload the QR image" in body
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize("command", ["dismiss 1", "clear"])
+async def test_moderation_reports_database_failure_without_durable_success(
+    monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    import sqlite3
+
+    plugin = _plugin()
+    record = _record()
+    plugin._received_beacons = [record]
+    plugin.send_matrix_message = AsyncMock(return_value=object())
+    plugin.get_matching_matrix_command_with_args = MagicMock(
+        return_value=("beacons", command)
+    )
+    # Exercise the plugin/base/database path, failing at the SQLite boundary.
+    monkeypatch.setattr(plugin, "set_node_data", Plugin.set_node_data.__get__(plugin))
+    manager = SimpleNamespace(
+        run_sync=MagicMock(side_effect=sqlite3.OperationalError("disk full"))
+    )
+    monkeypatch.setattr("mmrelay.db_utils._get_db_manager", lambda: manager)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms",
+        [{"id": "!room:example", "meshtastic_channel": 0}],
+    )
+
+    await plugin.handle_room_message(_room(can_redact=True), _event(), "")
+
+    reply = plugin.send_matrix_message.await_args.args[1]
+    assert "saving failed" in reply
+    assert "may reappear after restart" in reply
+    assert "Dismissed" not in reply and "Cleared" not in reply
+    assert record.dismissed_rooms == ["!room:example"]
+    manager.run_sync.assert_called_once()

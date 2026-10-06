@@ -284,6 +284,7 @@ class Plugin(BasePlugin):
         self._history_loaded = False
         self._listener_lock = threading.Lock()
         self._history_lock = threading.RLock()
+        self._persist_lock = threading.Lock()
         self._received_beacons: list[_BeaconRecord] = []
 
     @property
@@ -404,12 +405,19 @@ class Plugin(BasePlugin):
         with self._history_lock:
             return [record.to_dict() for record in self._received_beacons]
 
-    async def _persist_history(self) -> None:
-        snapshot = self._history_snapshot()
+    def _persist_history_sync(self) -> None:
+        """Serialize snapshots with their writes so older state cannot land last."""
+        with self._persist_lock:
+            snapshot = self._history_snapshot()
+            self.set_node_data(_HISTORY_STORAGE_KEY, snapshot, raise_on_error=True)
+
+    async def _persist_history(self) -> bool:
         try:
-            await asyncio.to_thread(self.set_node_data, _HISTORY_STORAGE_KEY, snapshot)
+            await asyncio.to_thread(self._persist_history_sync)
         except Exception:
             self.logger.exception("Failed to persist Mesh Beacon invitations")
+            return False
+        return True
 
     @staticmethod
     def _receiver_radio_fallback() -> tuple[int | None, int | None]:
@@ -737,19 +745,25 @@ class Plugin(BasePlugin):
                 reply = self._management_denied_text()
             else:
                 self._dismiss_record(record, room.room_id)
-                await self._persist_history()
-                reply = f"Dismissed Mesh Beacon `{record.record_id}` from this room."
+                if await self._persist_history():
+                    reply = (
+                        f"Dismissed Mesh Beacon `{record.record_id}` from this room."
+                    )
+                else:
+                    reply = self._persistence_failed_text()
         elif subcommand == "clear":
             if not can_manage:
                 reply = self._management_denied_text()
             else:
                 count = self._clear_visible_records(records, room.room_id)
-                await self._persist_history()
-                suffix = "s" if count != 1 else ""
-                reply = (
-                    f"Cleared {count} saved Mesh Beacon invitation{suffix} "
-                    "from this room."
-                )
+                if await self._persist_history():
+                    suffix = "s" if count != 1 else ""
+                    reply = (
+                        f"Cleared {count} saved Mesh Beacon invitation{suffix} "
+                        "from this room."
+                    )
+                else:
+                    reply = self._persistence_failed_text()
         elif len(parts) == 1:
             record = self._find_beacon_record(subcommand, records)
             reply = (
@@ -792,6 +806,13 @@ class Plugin(BasePlugin):
                 if room_id not in record.dismissed_rooms:
                     record.dismissed_rooms.append(room_id)
         return len(visible)
+
+    @staticmethod
+    def _persistence_failed_text() -> str:
+        return (
+            "Mesh Beacon invitations are hidden in memory, but saving failed. "
+            "They may reappear after restart; check storage before restarting."
+        )
 
     @staticmethod
     def _management_denied_text() -> str:
