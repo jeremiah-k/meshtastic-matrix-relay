@@ -16,7 +16,20 @@ async def finish_task(task: asyncio.Task[_Result]) -> _Result:
             await asyncio.shield(task)
         except asyncio.CancelledError:
             cancelled = True
-    result = task.result()
+        except Exception:
+            # The task failed while being drained. Once the caller was
+            # cancelled, report the cancellation instead of its failure.
+            if cancelled:
+                raise asyncio.CancelledError from None
+            raise
+    try:
+        result = task.result()
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        if cancelled:
+            raise asyncio.CancelledError from None
+        raise
     if cancelled:
         raise asyncio.CancelledError
     return result
