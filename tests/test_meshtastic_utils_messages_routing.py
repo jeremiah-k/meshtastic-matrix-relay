@@ -680,18 +680,16 @@ def test_on_meshtastic_message_non_text_plugin_returns_none():
     plugin.plugin_name = "noawait"
     plugin.handle_meshtastic_message.return_value = None
 
-    with (
-        patch(
-            "mmrelay.matrix_utils.get_interaction_settings",
-            return_value={"reactions": False, "replies": False},
-        ),
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]),
-        patch("mmrelay.meshtastic_utils.logger"),
+    with _patch_message_deps(
+        longname="Mesh Long",
+        shortname="ML",
+        plugins=[plugin],
+        patch_logger=False,
     ):
         on_meshtastic_message(packet, _make_interface())
 
     plugin.handle_meshtastic_message.assert_called_once_with(
-        packet, formatted_message=None, longname=None, meshnet_name=None
+        packet, formatted_message=None, longname="Mesh Long", meshnet_name="TestNet"
     )
 
 
