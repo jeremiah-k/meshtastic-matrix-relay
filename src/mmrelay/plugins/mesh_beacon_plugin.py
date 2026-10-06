@@ -529,11 +529,12 @@ class Plugin(BasePlugin):
             _clean_text(longname or packet.get("fromId") or sender_key, limit=80)
             or sender_key
         )
+        packet_channel = packet["channel"] if "channel" in packet else 0
         record, _is_new = self._store_received_beacon(
             sender=sender,
             sender_key=sender_key,
             beacon=beacon,
-            source_channel=_channel_number(packet.get("channel")),
+            source_channel=_channel_number(packet_channel),
             rssi=_optional_float(packet.get("rxRssi")),
             snr=_optional_float(packet.get("rxSnr")),
         )
@@ -622,6 +623,8 @@ class Plugin(BasePlugin):
 
     def _visible_records(self, room_id: str) -> list[_BeaconRecord]:
         room_channel = self._room_channel(room_id)
+        if room_channel is None:
+            return []
         relay_channel = self._configured_relay_channel()
         with self._history_lock:
             records = [

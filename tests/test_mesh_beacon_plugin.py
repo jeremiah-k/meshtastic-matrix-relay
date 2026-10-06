@@ -1164,7 +1164,7 @@ async def test_announce_send_exception_does_not_block_other_rooms(
 
 
 @pytest.mark.asyncio
-async def test_packet_without_channel_is_captured_without_announcement(
+async def test_packet_without_channel_defaults_to_primary_channel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     plugin = _plugin()
@@ -1179,8 +1179,9 @@ async def test_packet_without_channel_is_captured_without_announcement(
     assert await plugin.handle_meshtastic_message(packet, None, None, None) is True
 
     assert len(plugin._received_beacons) == 1
-    assert plugin._received_beacons[0].source_channel is None
-    plugin.send_matrix_message.assert_not_awaited()
+    assert plugin._received_beacons[0].source_channel == 0
+    plugin.send_matrix_message.assert_awaited_once()
+    assert plugin.send_matrix_message.await_args.args[0] == "!mesh:example"
 
 
 def test_room_channel_is_none_for_unmapped_rooms(
@@ -1188,6 +1189,19 @@ def test_room_channel_is_none_for_unmapped_rooms(
 ) -> None:
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_rooms", [])
     assert _plugin()._room_channel("!unknown:example") is None
+
+
+def test_unmapped_room_cannot_recall_legacy_unknown_channel_records(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin = _plugin()
+    plugin._received_beacons = [_record(channel=None)]
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms",
+        [{"id": "!mapped:example", "meshtastic_channel": 0}],
+    )
+
+    assert plugin._visible_records("!unmapped:example") == []
 
 
 @pytest.mark.asyncio
