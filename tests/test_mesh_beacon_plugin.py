@@ -11,6 +11,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from nio import RoomSendError
 
 from mmrelay.matrix_utils import ImageUploadError
 from mmrelay.plugins.mesh_beacon_plugin import (
@@ -1845,3 +1846,155 @@ async def test_qr_unknown_room_encryption_refuses_upload(
     client.upload.assert_not_awaited()
     plain_send.assert_not_awaited()
     assert "!beacons url ID" in plugin.send_matrix_message.await_args.args[1]
+
+
+def test_announcement_rooms_without_any_channel_is_empty() -> None:
+    plugin = _plugin()
+
+    assert plugin._announcement_rooms(None) == []
+
+
+def test_announcement_text_omits_empty_message_and_metadata() -> None:
+    plugin = _plugin()
+    record = _record(_FakeBeacon(message="", region=0, preset=None, frequency_slot=0))
+    record.rssi = None
+    record.snr = None
+
+    text = plugin._announcement_text(record)
+
+    assert "Saved as" in text
+    assert "Join us" not in text
+    assert "\n> " not in text
+    assert "slot" not in text
+    assert "UNSET" not in text
+    assert "RSSI" not in text
+    assert "SNR" not in text
+
+
+def test_detail_text_omits_absent_fields_and_reports_partial_signal() -> None:
+    plugin = _plugin()
+    beacon = _FakeBeacon(message="", region=0, preset=None, frequency_slot=0)
+    record = _BeaconRecord(
+        sender_key="123",
+        sender="Some Node",
+        payload_b64=base64.b64encode(beacon.SerializeToString()).decode(),
+        source_channel=None,
+        first_seen=100,
+        last_seen=200,
+        rssi=None,
+        snr=6.25,
+        fallback_region=1,
+        fallback_preset=0,
+    )
+
+    detail = plugin._beacon_detail_text(record)
+
+    assert "**Signal:** SNR 6.25 dB" in detail
+    assert "**Message:**" not in detail
+    assert "**Region:**" not in detail
+    assert "**Preset:**" not in detail
+    assert "**Frequency slot:**" not in detail
+    assert "Received on local channel" not in detail
+    assert "RSSI" not in detail
+
+
+def test_detail_text_reports_rssi_without_snr() -> None:
+    plugin = _plugin()
+    record = _record()
+    record.snr = None
+
+    detail = plugin._beacon_detail_text(record)
+
+    assert "**Signal:** RSSI -88 dBm" in detail
+    assert "SNR" not in detail
+
+
+def test_detail_text_omits_signal_line_without_rf_metadata() -> None:
+    record = _record()
+    record.rssi = None
+    record.snr = None
+
+    assert "**Signal:**" not in _plugin()._beacon_detail_text(record)
+
+
+def test_dismiss_record_is_idempotent() -> None:
+    plugin = _plugin()
+    record = _record()
+
+    plugin._dismiss_record(record, "!room:example")
+    plugin._dismiss_record(record, "!room:example")
+
+    assert record.dismissed_rooms == ["!room:example"]
+
+
+def test_clear_visible_records_skips_already_dismissed_rooms() -> None:
+    plugin = _plugin()
+    record = _record()
+    record.dismissed_rooms.append("!room:example")
+
+    count = plugin._clear_visible_records([record], "!room:example")
+
+    assert count == 1
+    assert record.dismissed_rooms == ["!room:example"]
+
+
+def test_usage_text_hides_moderator_commands_without_permission() -> None:
+    usage = Plugin._usage_text()
+
+    assert "Usage: `!beacons [list]`" in usage
+    assert "moderator-only" not in usage
+
+
+def test_join_url_ignores_zero_frequency_slot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    apponly_pb2, _config_pb2, mesh_beacon_pb2 = _real_join_protobuf(monkeypatch)
+    record = _real_beacon_record(mesh_beacon_pb2, slot=0)
+
+    url = Plugin._beacon_join_url(record)
+
+    assert url is not None
+    fragment = url.split("#", 1)[1]
+    payload = base64.urlsafe_b64decode(fragment + "=" * (-len(fragment) % 4))
+    shared = apponly_pb2.ChannelSet.FromString(payload)
+    assert shared.lora_config.use_preset is True
+    if "offer_frequency_slot" in mesh_beacon_pb2.MeshBeacon.DESCRIPTOR.fields_by_name:
+        assert shared.lora_config.channel_num == 0
+
+
+@pytest.mark.asyncio
+async def test_qr_room_send_error_falls_back_to_url_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin = _plugin()
+    record = _record()
+    plugin.send_matrix_message = AsyncMock(return_value=object())
+    monkeypatch.setattr(
+        plugin, "_beacon_join_url", lambda _record: "https://meshtastic.org/e/#abc"
+    )
+    monkeypatch.setattr(
+        "mmrelay.plugins.mesh_beacon_plugin._qr_image", lambda _url: MagicMock()
+    )
+    matrix_client = _matrix_client(encrypted=True)
+    matrix_client.upload = AsyncMock(
+        return_value=(
+            SimpleNamespace(content_uri="mxc://example/qr"),
+            {"algorithm": "m.megolm.v1.aes-sha2"},
+        )
+    )
+    matrix_client.room_send = AsyncMock(
+        return_value=RoomSendError(message="rate limited", status_code="M_LIMITED")
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.connect_matrix", AsyncMock(return_value=matrix_client)
+    )
+
+    await plugin._send_beacon_qr("!room:example", record)
+
+    assert plugin.send_matrix_message.await_count == 2
+    assert (
+        "Failed to upload the QR image" in plugin.send_matrix_message.await_args.args[1]
+    )
+    plugin.logger.exception.assert_called_once_with(
+        "Failed to send Mesh Beacon QR image"
+    )
