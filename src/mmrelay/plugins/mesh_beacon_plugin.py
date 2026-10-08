@@ -266,7 +266,9 @@ def _qr_image(url: str) -> Any:
 
     code = segno.make(url, error="H", micro=False)
     buffer = io.BytesIO()
-    code.save(buffer, kind="png", scale=8, border=4)
+    # Scale 4 keeps a full offer URL near 260 px on a side, a comfortable
+    # inline size for Matrix clients; error correction H survives it.
+    code.save(buffer, kind="png", scale=4, border=4)
     buffer.seek(0)
     image = Image.open(buffer)
     image.load()

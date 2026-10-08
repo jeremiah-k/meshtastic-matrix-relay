@@ -1027,15 +1027,28 @@ def test_age_text_reports_relative_buckets() -> None:
     assert _age_text(now - 72 * 3600) == "3d ago"
 
 
-def test_qr_image_render_pipeline_produces_an_image() -> None:
+def test_qr_image_render_pipeline_produces_an_image(monkeypatch) -> None:
+    import segno
+
     from mmrelay.plugins.mesh_beacon_plugin import _qr_image
 
-    # The suite doubles segno/PIL; the subprocess integration contract covers
-    # real encoding. This pins the render pipeline (buffer, open, load) itself.
+    # The suite doubles PIL session-wide, so pin the render contract on the
+    # real segno call: the compact default saves at scale 4 with a 4-module
+    # quiet zone (a full offer URL lands near 260 px on a side).
+    captured: list[dict[str, object]] = []
+    real_save = segno.QRCode.save
+
+    def spy_save(self: object, target: object, **save_kwargs: object):
+        captured.append(save_kwargs)
+        return real_save(self, target, **save_kwargs)
+
+    monkeypatch.setattr(segno.QRCode, "save", spy_save)
+
     image = _qr_image("https://meshtastic.org/e/#abc123")
 
     assert image is not None
     assert image.load is not None
+    assert captured == [{"kind": "png", "scale": 4, "border": 4}]
 
 
 def test_plugin_metadata_surfaces_beacon_commands() -> None:
