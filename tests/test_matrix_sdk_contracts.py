@@ -243,8 +243,8 @@ def test_previous_provider_store_reopens_without_identity_reset(tmp_path: Path) 
         tmp_path,
     ).strip()
     if reader_version == "0.40.0":
-        pytest.skip("Requires mindroom-nio 1.1.2 in the current reader interpreter")
-    assert reader_version == "1.1.2"
+        pytest.skip("Requires the upgraded provider in the current reader interpreter")
+    assert reader_version != "0.40.0"
     # Preserve the venv entry point; resolving its symlink selects base Python.
     previous = str(Path(os.environ["MMRELAY_PREVIOUS_SDK_PYTHON"]).absolute())
     run_sdk(

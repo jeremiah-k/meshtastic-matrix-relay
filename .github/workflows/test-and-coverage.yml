@@ -48,7 +48,27 @@ jobs:
       - name: Verify Matrix provider selection and dependency consistency
         run: |
           python -m pip check
-          python -c 'import sys; from importlib.metadata import version; expected = "0.40.0" if sys.version_info < (3, 12) else "1.1.2"; actual = version("mindroom-nio"); assert actual == expected, (actual, expected); print(f"mindroom-nio {actual}")'
+          python - <<'PY'
+          import tomllib
+          from importlib.metadata import version
+          from packaging.requirements import Requirement
+
+          project = tomllib.load(open("pyproject.toml", "rb"))["project"]
+          entries = list(project["dependencies"])
+          entries += project["optional-dependencies"]["e2e"]
+          selected = {
+              str(req.specifier)
+              for raw in entries
+              for req in [Requirement(raw)]
+              if req.name == "mindroom-nio"
+              and (req.marker is None or req.marker.evaluate())
+          }
+          assert len(selected) == 1, f"conflicting mindroom-nio pins apply: {selected}"
+          expected = selected.pop().lstrip("=<>!~ ")
+          actual = version("mindroom-nio")
+          assert actual == expected, (actual, expected)
+          print(f"mindroom-nio {actual}")
+          PY
 
       - name: Prepare previous Matrix provider for store upgrade contract
         if: matrix.python-version == '3.12'
