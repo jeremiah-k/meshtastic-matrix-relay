@@ -41,7 +41,7 @@ def test_parser_does_not_abbreviate_home_into_homeserver(capsys) -> None:
             "--homeserver",
             "https://example.com",
             "--home",
-            "/tmp/mmrelay-data",
+            "/tmp/mmrelay-data",  # nosec B108 - fixed placeholder argument, never used for I/O
         ],
     ):
         args = parse_arguments()

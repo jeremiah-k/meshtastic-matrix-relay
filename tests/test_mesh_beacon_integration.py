@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-import subprocess
+import subprocess  # nosec B404 - SDK probes run only the project interpreter
 import sys
 import textwrap
 from pathlib import Path
@@ -156,7 +156,7 @@ def test_real_mesh_beacon_listener_and_join_url_contract(tmp_path: Path) -> None
         ),
         "MMRELAY_HOME": str(tmp_path),
     }
-    result = subprocess.run(
+    result = subprocess.run(  # nosec B603 - interpreter and generated probe only
         [sys.executable, "-W", "error", "-c", textwrap.dedent(_PROBE)],
         env=environment,
         capture_output=True,
@@ -237,7 +237,7 @@ async def main():
 asyncio.run(main())
 """
     environment = {**os.environ, "MMRELAY_HOME": str(tmp_path)}
-    result = subprocess.run(
+    result = subprocess.run(  # nosec B603 - interpreter and generated probe only
         [sys.executable, "-W", "error", "-c", textwrap.dedent(script)],
         env=environment,
         capture_output=True,

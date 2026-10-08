@@ -6,7 +6,7 @@ import hashlib
 import importlib
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404 - probe scripts run only the project interpreter
 import sys
 import tempfile
 from types import ModuleType

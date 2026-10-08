@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ast
-import subprocess
+import subprocess  # nosec B404 - probe scripts run only the project interpreter
 import sys
 from pathlib import Path
 
@@ -60,7 +60,7 @@ signature = payload["signatures"][identity.user_id][
 verify_json(identity.master_public_key, payload, signature)
 """
     )
-    completed = subprocess.run(
+    completed = subprocess.run(  # nosec B603 - interpreter and generated probe only
         [sys.executable, "-W", "error", "-c", probe],
         check=False,
         capture_output=True,
