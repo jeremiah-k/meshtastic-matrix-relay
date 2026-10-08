@@ -486,3 +486,42 @@ def test_run_main_legacy_layout_warning(
     assert any(
         "docs/DOCKER.md" in msg for msg in rendered
     ), f"Expected migration hint not found. Rendered: {rendered}"
+
+
+@patch("asyncio.run")
+@patch("mmrelay.main.get_logger")
+@patch("mmrelay.config.load_config")
+@patch("mmrelay.config.set_config")
+@patch("mmrelay.log_utils.configure_component_debug_logging")
+@patch("mmrelay.main.print_banner")
+def test_run_main_missing_matrix_without_credentials_mentions_auth_login(
+    mock_print_banner,
+    mock_configure_debug,
+    mock_set_config,
+    mock_load_config,
+    mock_get_logger,
+    mock_asyncio_run,
+):
+    """
+    Verify the no-credentials error points at 'mmrelay auth login' when 'matrix' is absent.
+
+    With no credentials.json on disk, a config lacking the 'matrix' section is a
+    valid configuration awaiting its first login; the error should direct the
+    user to authenticate instead of only suggesting config edits.
+    """
+    mock_load_config.return_value = {"meshtastic": {}, "matrix_rooms": []}
+
+    mock_args = MagicMock()
+    mock_args.data_dir = None
+    mock_args.log_level = None
+
+    result = run_main(mock_args)
+
+    assert result == 1
+    mock_asyncio_run.assert_not_called()
+    error_messages = [
+        str(call.args[0]) for call in mock_get_logger.return_value.error.call_args_list
+    ]
+    assert any(
+        "mmrelay auth login" in message for message in error_messages
+    ), error_messages

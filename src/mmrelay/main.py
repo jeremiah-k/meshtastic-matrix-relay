@@ -43,10 +43,10 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_DATABASE_LEGACY,
     CONFIG_SECTION_LOGGING,
     CONFIG_SECTION_MESHTASTIC,
-    REQUIRED_CONFIG_SECTIONS_WITH_CREDENTIALS,
-    REQUIRED_CONFIG_SECTIONS_WITHOUT_CREDENTIALS,
     LEGACY_LAYOUT_FINAL_MIGRATION_SERIES,
     LEGACY_LAYOUT_REMOVAL_VERSION,
+    REQUIRED_CONFIG_SECTIONS_WITH_CREDENTIALS,
+    REQUIRED_CONFIG_SECTIONS_WITHOUT_CREDENTIALS,
 )
 from mmrelay.constants.network import (
     MATRIX_CLIENT_CLOSE_TIMEOUT_SECS,
@@ -1354,6 +1354,12 @@ def run_main(args: Any) -> int:
             logger.error(f"  • {msg_suggest_check_config()}")
         else:
             logger.error(f"Configuration is missing required keys: {missing_keys}")
+            if "matrix" in missing_keys:
+                logger.error(
+                    "No Matrix credentials were found. Run 'mmrelay auth login' to "
+                    "create a session, or add a 'matrix' section with authentication "
+                    "settings to the configuration."
+                )
             logger.error("Next steps:")
             logger.error(
                 f"  • Create a valid config.yaml file or {msg_suggest_generate_config()}"
