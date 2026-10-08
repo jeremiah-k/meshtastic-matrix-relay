@@ -260,7 +260,7 @@ def _age_text(timestamp: float) -> str:
     return f"{hours // 24}d ago"
 
 
-def _qr_image(url: str) -> Any:
+def _qr_image(url: str, label: str | None = None) -> Any:
     import segno
     from PIL import Image
 
@@ -272,7 +272,79 @@ def _qr_image(url: str) -> Any:
     buffer.seek(0)
     image = Image.open(buffer)
     image.load()
-    return image
+    if label is None or not label.strip():
+        return image
+
+    # segno renders only the symbol, so composite a caption band below the
+    # quiet zone; scanning is unaffected by pixels outside the border. A
+    # font or canvas failure must never cost the QR itself.
+    try:
+        from PIL import ImageDraw, ImageFont
+
+        try:
+            font = ImageFont.load_default(size=16)
+        except TypeError:
+            font = ImageFont.load_default()
+        draw = ImageDraw.Draw(image)
+        left, top, right, bottom = draw.textbbox((0, 0), label, font=font)
+        text_width = right - left
+        text_height = bottom - top
+        padding = 8
+        band_height = text_height + padding * 2
+        canvas_width = max(image.width, text_width + padding * 2)
+        canvas = Image.new("RGB", (canvas_width, image.height + band_height), "white")
+        canvas.paste(image.convert("RGB"), ((canvas_width - image.width) // 2, 0))
+        caption = ImageDraw.Draw(canvas)
+        caption.text(
+            ((canvas_width - text_width) // 2 - left, image.height + padding - top),
+            label,
+            fill="black",
+            font=font,
+        )
+    except Exception:
+        return image
+    return canvas
+
+
+def _qr_label(record: _BeaconRecord) -> str | None:
+    """Compose an optional QR caption from the advertised offer fields.
+
+    Mirrors the join-URL resolution: beacon values when the firmware
+    carries them, receiver fallbacks when it omits them. Frequency is
+    omitted unless a firmware advertises the slot for it.
+    """
+    try:
+        beacon = record.beacon()
+    except Exception:
+        return None
+    parts: list[str] = []
+    if _has_optional_field(beacon, "offer_channel"):
+        name = _clean_text(beacon.offer_channel.name, limit=24)
+        if name:
+            parts.append(name)
+    try:
+        region = int(beacon.offer_region)
+    except (AttributeError, TypeError, ValueError):
+        region = 0
+    if region == 0:
+        region = record.fallback_region or 0
+    if _has_optional_field(beacon, "offer_preset"):
+        preset: int | None = int(beacon.offer_preset)
+    else:
+        preset = record.fallback_preset
+    region_name = _enum_name(beacon, "offer_region", region) if region else None
+    preset_name = (
+        _enum_name(beacon, "offer_preset", preset) if preset is not None else None
+    )
+    radio = " / ".join(value for value in (region_name, preset_name) if value)
+    if radio:
+        parts.append(radio)
+    if _has_optional_field(beacon, "offer_frequency_slot"):
+        slot = int(beacon.offer_frequency_slot)
+        if slot > 0:
+            parts.append(f"slot {slot}")
+    label = " · ".join(parts)
+    return label or None
 
 
 class Plugin(BasePlugin):
@@ -995,8 +1067,16 @@ class Plugin(BasePlugin):
                 formatted=True,
             )
             return
+        qr_label = self.config.get("qr_label", True)
+        if not isinstance(qr_label, bool):
+            self.logger.error("mesh_beacon.qr_label must be true or false")
+            qr_label = False
+        label = _qr_label(record) if qr_label else None
         try:
-            image = await asyncio.to_thread(_qr_image, url)
+            if label:
+                image = await asyncio.to_thread(_qr_image, url, label)
+            else:
+                image = await asyncio.to_thread(_qr_image, url)
         except (ImportError, OSError, ValueError):
             self.logger.exception("Failed to render Mesh Beacon QR image")
             await self.send_matrix_message(

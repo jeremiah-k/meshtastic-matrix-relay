@@ -13,6 +13,7 @@ plugins:
     #announce: true
     #announce_repeats: false
     #relay_channel: 0
+    #qr_label: true
 ```
 
 When the plugin starts, and again after a radio reconnect completes setup, it verifies that both the installed Meshtastic client and the connected firmware expose Mesh Beacon configuration. It then sets only `FLAG_LISTEN_ENABLED` when necessary. Every other Mesh Beacon flag and setting is preserved byte-for-byte by policy; MMRelay does not enable broadcasting or rewrite an existing broadcast configuration.
@@ -38,7 +39,7 @@ The last 20 actionable invitations are retained in MMRelay's local plugin data s
 - `!beacons` — list standing invitations with stable IDs, sender, receive count, and last-seen age.
 - `!beacons show ID` — show decoded metadata, including the advertised PSK.
 - `!beacons url ID` — render a Meshtastic share URL and the equivalent `meshtastic --seturl '<url>'` command.
-- `!beacons qr ID` — post the same URL as a QR image for review/import in a Meshtastic client.
+- `!beacons qr ID` — post the same URL as a QR image for review/import in a Meshtastic client. The compact image carries a caption with the advertised channel, preset, and slot when the firmware provides one; `qr_label: false` posts the bare code.
 - `!beacons dismiss ID` — hide one saved invitation from the current room; requires Matrix room moderation permission.
 - `!beacons clear` — hide all currently visible invitations from the current room; requires Matrix room moderation permission.
 

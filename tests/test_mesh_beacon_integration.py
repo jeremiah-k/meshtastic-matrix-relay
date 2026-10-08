@@ -192,20 +192,24 @@ async def main():
     )
     plugin = Plugin()
     plugin.send_matrix_message = AsyncMock(return_value=object())
+    url = plugin._beacon_join_url(record)
+    from mmrelay.plugins.mesh_beacon_plugin import _qr_image
+    plain = _qr_image(url)
     client = AsyncClient("https://matrix.example", config=AsyncClientConfig(encryption_enabled=False))
     client.restore_login("@relay:example", "TEST", "test-token")
     client.rooms["!room:example"] = SimpleNamespace(encrypted=True)
-    uploaded = bytearray()
 
-    async def transport(*args, **kwargs):
-        assert kwargs["content_type"] == "application/octet-stream"
-        async for chunk in await kwargs["data_provider"](0, 0):
-            uploaded.extend(chunk)
-        return UploadResponse("mxc://example/qr")
+    async def run_upload() -> bytes:
+        uploaded = bytearray()
 
-    client._send = transport
-    client.room_send = AsyncMock(return_value=object())
-    try:
+        async def transport(*args, **kwargs):
+            assert kwargs["content_type"] == "application/octet-stream"
+            async for chunk in await kwargs["data_provider"](0, 0):
+                uploaded.extend(chunk)
+            return UploadResponse("mxc://example/qr")
+
+        client._send = transport
+        client.room_send = AsyncMock(return_value=object())
         with patch("mmrelay.matrix_utils.connect_matrix", AsyncMock(return_value=client)):
             await plugin._send_beacon_qr("!room:example", record)
         content = client.room_send.await_args.kwargs["content"]
@@ -214,10 +218,19 @@ async def main():
         assert info["url"] == "mxc://example/qr"
         ciphertext = bytes(uploaded)
         assert ciphertext and not ciphertext.startswith(b"\x89PNG")
-        png = decrypt_attachment(ciphertext, info["key"]["k"], info["hashes"]["sha256"], info["iv"])
+        return decrypt_attachment(ciphertext, info["key"]["k"], info["hashes"]["sha256"], info["iv"])
+
+    try:
+        png = await run_upload()
         assert png.startswith(b"\x89PNG")
         with Image.open(io.BytesIO(png)) as image:
             assert image.width > 0 and image.height > 0
+            # The default caption band labels the offer below the code.
+            assert image.height > plain.height and image.width >= plain.width
+        plugin.config = {"qr_label": False}
+        png_plain = await run_upload()
+        with Image.open(io.BytesIO(png_plain)) as image_plain:
+            assert (image_plain.width, image_plain.height) == (plain.width, plain.height)
     finally:
         await client.close()
 

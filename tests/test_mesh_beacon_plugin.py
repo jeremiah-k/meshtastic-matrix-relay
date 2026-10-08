@@ -92,6 +92,8 @@ class _FakeBeacon:
     def HasField(self, name: str) -> bool:
         if name == "offer_channel":
             return self._has_offer
+        if name == "offer_region":
+            return True
         if name == "offer_preset":
             return self._preset_present
         if name == "offer_frequency_slot":
@@ -890,7 +892,8 @@ async def test_qr_command_posts_caption_and_image(
         plugin, "_beacon_join_url", lambda _record: "https://meshtastic.org/e/#abc"
     )
     monkeypatch.setattr(
-        "mmrelay.plugins.mesh_beacon_plugin._qr_image", lambda _url: object()
+        "mmrelay.plugins.mesh_beacon_plugin._qr_image",
+        lambda _url, label=None: object(),
     )
     matrix_client = _matrix_client()
     connect = AsyncMock(return_value=matrix_client)
@@ -918,7 +921,8 @@ async def test_qr_unexpected_upload_failure_falls_back_to_url_command(
         plugin, "_beacon_join_url", lambda _record: "https://meshtastic.org/e/#abc"
     )
     monkeypatch.setattr(
-        "mmrelay.plugins.mesh_beacon_plugin._qr_image", lambda _url: object()
+        "mmrelay.plugins.mesh_beacon_plugin._qr_image",
+        lambda _url, label=None: object(),
     )
     monkeypatch.setattr(
         "mmrelay.matrix_utils.connect_matrix", AsyncMock(return_value=_matrix_client())
@@ -1049,6 +1053,98 @@ def test_qr_image_render_pipeline_produces_an_image(monkeypatch) -> None:
     assert image is not None
     assert image.load is not None
     assert captured == [{"kind": "png", "scale": 4, "border": 4}]
+
+
+def test_qr_label_composes_advertised_offer_fields(monkeypatch) -> None:
+    _apponly_pb2, _config_pb2, mesh_beacon_pb2 = _real_join_protobuf(monkeypatch)
+    from mmrelay.plugins.mesh_beacon_plugin import _qr_label
+
+    record = _real_beacon_record(
+        mesh_beacon_pb2, name="MEDRE-LAB", region=1, preset=16, slot=20
+    )
+
+    assert _qr_label(record) == "MEDRE-LAB · US / MEDIUM_TURBO · slot 20"
+
+
+def test_qr_label_omits_unadvertised_fields(monkeypatch) -> None:
+    _apponly_pb2, _config_pb2, mesh_beacon_pb2 = _real_join_protobuf(monkeypatch)
+    from mmrelay.plugins.mesh_beacon_plugin import _qr_label
+
+    named_only = _real_beacon_record(
+        mesh_beacon_pb2,
+        name="Solo",
+        region=None,
+        preset=None,
+        fallback_region=None,
+        fallback_preset=None,
+    )
+    unparseable = _record()
+    unparseable.payload_b64 = "not-base64!!"
+
+    assert _qr_label(named_only) == "Solo"
+    assert _qr_label(unparseable) is None
+
+
+@pytest.mark.asyncio
+async def test_qr_label_config_gates_caption(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin = _plugin()
+    record = _record()
+    plugin._received_beacons = [record]
+    monkeypatch.setattr(
+        plugin, "_beacon_join_url", lambda _record: "https://meshtastic.org/e/#abc"
+    )
+    plugin.send_matrix_message = AsyncMock(return_value=object())
+    captured: dict[str, object] = {}
+
+    def fake_qr_image(url: str, label: str | None = None) -> object:
+        captured["label"] = label
+        return object()
+
+    monkeypatch.setattr("mmrelay.plugins.mesh_beacon_plugin._qr_image", fake_qr_image)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.connect_matrix",
+        AsyncMock(return_value=_matrix_client()),
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.send_image", AsyncMock())
+
+    await plugin._send_beacon_qr("!room:example", record)
+    assert captured["label"] is not None
+
+    plugin.config = {"qr_label": False}
+    await plugin._send_beacon_qr("!room:example", record)
+    assert captured["label"] is None
+
+
+@pytest.mark.asyncio
+async def test_qr_label_config_rejects_non_bool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin = _plugin(qr_label="yes")
+    record = _record()
+    plugin._received_beacons = [record]
+    monkeypatch.setattr(
+        plugin, "_beacon_join_url", lambda _record: "https://meshtastic.org/e/#abc"
+    )
+    plugin.send_matrix_message = AsyncMock(return_value=object())
+    captured: dict[str, object] = {}
+
+    def fake_qr_image(url: str, label: str | None = None) -> object:
+        captured["label"] = label
+        return object()
+
+    monkeypatch.setattr("mmrelay.plugins.mesh_beacon_plugin._qr_image", fake_qr_image)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.connect_matrix",
+        AsyncMock(return_value=_matrix_client()),
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.send_image", AsyncMock())
+
+    await plugin._send_beacon_qr("!room:example", record)
+
+    assert captured["label"] is None
+    plugin.logger.error.assert_any_call("mesh_beacon.qr_label must be true or false")
 
 
 def test_plugin_metadata_surfaces_beacon_commands() -> None:
@@ -1687,7 +1783,7 @@ async def test_qr_render_failure_falls_back_to_url_command(
         plugin, "_beacon_join_url", lambda _record: "https://meshtastic.org/e/#abc"
     )
 
-    def _boom(_url: str) -> Any:
+    def _boom(_url: str, label: str | None = None) -> Any:
         raise ImportError("segno missing")
 
     monkeypatch.setattr("mmrelay.plugins.mesh_beacon_plugin._qr_image", _boom)
@@ -1710,7 +1806,8 @@ async def test_qr_upload_failure_falls_back_to_url_command(
         plugin, "_beacon_join_url", lambda _record: "https://meshtastic.org/e/#abc"
     )
     monkeypatch.setattr(
-        "mmrelay.plugins.mesh_beacon_plugin._qr_image", lambda _url: object()
+        "mmrelay.plugins.mesh_beacon_plugin._qr_image",
+        lambda _url, label=None: object(),
     )
     monkeypatch.setattr(
         "mmrelay.matrix_utils.connect_matrix", AsyncMock(return_value=_matrix_client())
@@ -1738,7 +1835,8 @@ async def test_qr_missing_matrix_client_falls_back_to_url_command(
         plugin, "_beacon_join_url", lambda _record: "https://meshtastic.org/e/#abc"
     )
     monkeypatch.setattr(
-        "mmrelay.plugins.mesh_beacon_plugin._qr_image", lambda _url: object()
+        "mmrelay.plugins.mesh_beacon_plugin._qr_image",
+        lambda _url, label=None: object(),
     )
     monkeypatch.setattr(
         "mmrelay.matrix_utils.connect_matrix", AsyncMock(return_value=None)
@@ -1802,7 +1900,7 @@ async def test_encrypted_qr_preserves_attachment_metadata_and_never_sends_plain_
     )
     monkeypatch.setattr(
         "mmrelay.plugins.mesh_beacon_plugin._qr_image",
-        lambda _: Image.new("RGB", (8, 8)),
+        lambda _url, label=None: Image.new("RGB", (8, 8)),
     )
     client = _matrix_client(encrypted=True)
     encryption = {
@@ -1846,7 +1944,8 @@ async def test_qr_unknown_room_encryption_refuses_upload(
         plugin, "_beacon_join_url", lambda _: "https://meshtastic.org/e/#abc"
     )
     monkeypatch.setattr(
-        "mmrelay.plugins.mesh_beacon_plugin._qr_image", lambda _: object()
+        "mmrelay.plugins.mesh_beacon_plugin._qr_image",
+        lambda _url, label=None: object(),
     )
     monkeypatch.setattr(
         "mmrelay.matrix_utils.connect_matrix", AsyncMock(return_value=client)
@@ -1986,7 +2085,8 @@ async def test_qr_room_send_error_falls_back_to_url_command(
         plugin, "_beacon_join_url", lambda _record: "https://meshtastic.org/e/#abc"
     )
     monkeypatch.setattr(
-        "mmrelay.plugins.mesh_beacon_plugin._qr_image", lambda _url: MagicMock()
+        "mmrelay.plugins.mesh_beacon_plugin._qr_image",
+        lambda _url, label=None: MagicMock(),
     )
     matrix_client = _matrix_client(encrypted=True)
     matrix_client.upload = AsyncMock(
