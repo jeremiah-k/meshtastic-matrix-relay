@@ -152,3 +152,36 @@ async def test_repeated_cancellation_closes_acquired_lock(tmp_path: Path) -> Non
                 await task
     async with OAuthStore(store.path).locked():
         assert await store.load() is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.no_global_mocks
+async def test_cancelled_acquisition_preserves_cancellation_after_lock_error(
+    tmp_path: Path,
+) -> None:
+    """A late acquisition failure must not mask the caller's cancellation."""
+    store = OAuthStore(tmp_path / "credentials.json")
+    entered = threading.Event()
+    release = threading.Event()
+
+    def rejected_acquire():
+        entered.set()
+        if not release.wait(5):
+            raise TimeoutError("Test acquisition was not released")
+        raise OAuthError("Lock acquisition failed after cancellation")
+
+    async def acquire() -> None:
+        async with store.locked():
+            pytest.fail("Failed lock acquisition must not enter its body")
+
+    with patch.object(store, "_acquire", side_effect=rejected_acquire):
+        task = asyncio.create_task(acquire())
+        try:
+            assert await asyncio.to_thread(entered.wait, 3)
+            task.cancel()
+            await asyncio.sleep(0)
+        finally:
+            release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task

@@ -64,7 +64,13 @@ class OAuthStore:
         try:
             stream = await finish_task(task)
         except asyncio.CancelledError:
-            stream = task.result()
+            try:
+                stream = task.result()
+            except BaseException:
+                # The acquisition may have failed after the caller cancelled.
+                # finish_task has drained and observed its failure; do not
+                # replace the caller's cancellation with a late lock error.
+                raise asyncio.CancelledError from None
             await _finish_io(stream.close)
             raise
         try:
