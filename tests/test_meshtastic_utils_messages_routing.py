@@ -590,6 +590,75 @@ def test_on_meshtastic_message_falls_back_to_sender_id():
     mock_logger.debug.assert_any_call("Node info for sender 123 not available yet.")
 
 
+def test_on_meshtastic_message_node_without_user_keeps_sender_fallback():
+    config = _base_config()
+    _set_globals(config)
+    packet = _base_packet()
+    nodes = {123: {"snr": 6.5, "lastHeard": 1234567890}}
+
+    with (
+        _patch_message_deps(
+            longname=None,
+            shortname=None,
+            patch_logger=False,
+        ),
+        patch("mmrelay.matrix_utils.get_matrix_prefix") as mock_prefix,
+        patch("mmrelay.meshtastic_utils.save_longname") as mock_save_long,
+        patch("mmrelay.meshtastic_utils.save_shortname") as mock_save_short,
+    ):
+        on_meshtastic_message(packet, _make_interface(nodes=nodes))
+
+    mock_prefix.assert_called_once_with(config, "123", "123", "TestNet")
+    mock_save_long.assert_not_called()
+    mock_save_short.assert_not_called()
+
+
+def test_on_meshtastic_message_interface_supplies_only_missing_shortname():
+    config = _base_config()
+    _set_globals(config)
+    packet = _base_packet()
+    nodes = {123: {"user": {"shortName": "ML"}}}
+
+    with (
+        _patch_message_deps(
+            longname="Mesh Long",
+            shortname=None,
+            patch_logger=False,
+        ),
+        patch("mmrelay.matrix_utils.get_matrix_prefix") as mock_prefix,
+        patch("mmrelay.meshtastic_utils.save_longname") as mock_save_long,
+        patch("mmrelay.meshtastic_utils.save_shortname") as mock_save_short,
+    ):
+        on_meshtastic_message(packet, _make_interface(nodes=nodes))
+
+    mock_prefix.assert_called_once_with(config, "Mesh Long", "ML", "TestNet")
+    mock_save_long.assert_not_called()
+    mock_save_short.assert_called_once_with(123, "ML")
+
+
+def test_on_meshtastic_message_interface_supplies_only_missing_longname():
+    config = _base_config()
+    _set_globals(config)
+    packet = _base_packet()
+    nodes = {123: {"user": {"longName": "Mesh Long"}}}
+
+    with (
+        _patch_message_deps(
+            longname=None,
+            shortname="ML",
+            patch_logger=False,
+        ),
+        patch("mmrelay.matrix_utils.get_matrix_prefix") as mock_prefix,
+        patch("mmrelay.meshtastic_utils.save_longname") as mock_save_long,
+        patch("mmrelay.meshtastic_utils.save_shortname") as mock_save_short,
+    ):
+        on_meshtastic_message(packet, _make_interface(nodes=nodes))
+
+    mock_prefix.assert_called_once_with(config, "Mesh Long", "ML", "TestNet")
+    mock_save_long.assert_called_once_with(123, "Mesh Long")
+    mock_save_short.assert_not_called()
+
+
 def test_on_meshtastic_message_direct_message_skips_relay():
     config = _base_config()
     _set_globals(config)
@@ -680,18 +749,16 @@ def test_on_meshtastic_message_non_text_plugin_returns_none():
     plugin.plugin_name = "noawait"
     plugin.handle_meshtastic_message.return_value = None
 
-    with (
-        patch(
-            "mmrelay.matrix_utils.get_interaction_settings",
-            return_value={"reactions": False, "replies": False},
-        ),
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]),
-        patch("mmrelay.meshtastic_utils.logger"),
+    with _patch_message_deps(
+        longname="Mesh Long",
+        shortname="ML",
+        plugins=[plugin],
+        patch_logger=False,
     ):
         on_meshtastic_message(packet, _make_interface())
 
     plugin.handle_meshtastic_message.assert_called_once_with(
-        packet, formatted_message=None, longname=None, meshnet_name=None
+        packet, formatted_message=None, longname="Mesh Long", meshnet_name="TestNet"
     )
 
 

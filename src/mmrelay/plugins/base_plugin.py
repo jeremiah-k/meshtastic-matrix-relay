@@ -851,7 +851,9 @@ class BasePlugin(ABC):
         data = data[-self.max_data_rows_per_node :]
         store_plugin_data(plugin_name, meshtastic_id, data)
 
-    def set_node_data(self, meshtastic_id: str, node_data: Any) -> None:
+    def set_node_data(
+        self, meshtastic_id: str, node_data: Any, *, raise_on_error: bool = False
+    ) -> None:
         """
         Replace all stored data for a Meshtastic node with the provided data.
 
@@ -860,6 +862,8 @@ class BasePlugin(ABC):
             node_data (Any): New data to store; if a sequence, only the most recent
                 entries up to `self.max_data_rows_per_node` are kept. Scalars and
                 non-sequence iterables are normalized to a list.
+            raise_on_error (bool): Propagate storage failures to callers requiring
+                an acknowledged durable write.
         """
         plugin_name = self._require_plugin_name()
         # Normalize to a list so scalars, dicts, and generators are stored safely.
@@ -875,7 +879,10 @@ class BasePlugin(ABC):
             normalized = [node_data]
 
         trimmed = normalized[-self.max_data_rows_per_node :]
-        store_plugin_data(plugin_name, meshtastic_id, trimmed)
+        if raise_on_error:
+            store_plugin_data(plugin_name, meshtastic_id, trimmed, raise_on_error=True)
+        else:
+            store_plugin_data(plugin_name, meshtastic_id, trimmed)
 
     def delete_node_data(self, meshtastic_id: str) -> None:
         """

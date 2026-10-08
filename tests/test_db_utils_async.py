@@ -830,6 +830,37 @@ class TestPluginDataErrors(unittest.TestCase):
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
+    def test_store_plugin_data_serialization_error_raises_when_requested(
+        self, mock_logger, mock_get_manager
+    ):
+        """raise_on_error=True propagates JSON serialization failures to the caller."""
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+
+        with self.assertRaises(TypeError):
+            store_plugin_data("test_plugin", "node123", object(), raise_on_error=True)
+
+        mock_logger.exception.assert_called_once()
+        self.assertIn("not JSON-serializable", mock_logger.exception.call_args[0][0])
+        mock_manager.run_sync.assert_not_called()
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_store_plugin_data_serialization_error_is_swallowed_by_default(
+        self, mock_logger, mock_get_manager
+    ):
+        """Without raise_on_error, unserializable data is logged and skipped."""
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+
+        store_plugin_data("test_plugin", "node123", object())
+
+        mock_logger.exception.assert_called_once()
+        self.assertIn("not JSON-serializable", mock_logger.exception.call_args[0][0])
+        mock_manager.run_sync.assert_not_called()
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
     def test_delete_plugin_data_database_error(self, mock_logger, mock_get_manager):
         """Test delete_plugin_data handles database errors gracefully."""
 

@@ -1002,7 +1002,13 @@ def initialize_database() -> None:
         raise
 
 
-def store_plugin_data(plugin_name: str, meshtastic_id: int | str, data: Any) -> None:
+def store_plugin_data(
+    plugin_name: str,
+    meshtastic_id: int | str,
+    data: Any,
+    *,
+    raise_on_error: bool = False,
+) -> None:
     """
     Store or update JSON-serializable plugin data for a given plugin and Meshtastic node.
 
@@ -1012,6 +1018,8 @@ def store_plugin_data(plugin_name: str, meshtastic_id: int | str, data: Any) -> 
         plugin_name (str): The name of the plugin.
         meshtastic_id (int | str): The Meshtastic node identifier; it is converted to a string for storage.
         data (Any): The plugin data to be serialized and stored.
+        raise_on_error (bool): Propagate serialization and database failures when
+            the caller requires an acknowledged durable write.
     """
     manager = _get_db_manager()
     id_key = str(meshtastic_id)
@@ -1023,6 +1031,8 @@ def store_plugin_data(plugin_name: str, meshtastic_id: int | str, data: Any) -> 
         logger.exception(
             "Plugin data for %s/%s is not JSON-serializable", plugin_name, meshtastic_id
         )
+        if raise_on_error:
+            raise
         return
 
     def _store(cursor: sqlite3.Cursor) -> None:
@@ -1044,6 +1054,8 @@ def store_plugin_data(plugin_name: str, meshtastic_id: int | str, data: Any) -> 
             plugin_name,
             meshtastic_id,
         )
+        if raise_on_error:
+            raise
 
 
 def delete_plugin_data(plugin_name: str, meshtastic_id: int | str) -> None:

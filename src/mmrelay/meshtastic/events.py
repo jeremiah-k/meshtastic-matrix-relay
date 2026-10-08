@@ -861,6 +861,44 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 replyId,
             )
 
+    # Resolve sender names (needed for plugin delivery and Matrix relay)
+    longname = facade._get_name_or_none(facade.get_longname, sender)  # type: ignore[assignment]
+    if longname is None:
+        facade.logger.debug(
+            "Failed to get longname from database for %s, will try interface fallback",
+            sender,
+        )
+
+    shortname = facade._get_name_or_none(facade.get_shortname, sender)  # type: ignore[assignment]
+    if shortname is None:
+        facade.logger.debug(
+            "Failed to get shortname from database for %s, will try interface fallback",
+            sender,
+        )
+
+    if not longname or not shortname:
+        node = interface.nodes.get(sender)
+        if node:
+            user = node.get("user")
+            if user:
+                if not longname:
+                    longname_val = user.get("longName")
+                    if longname_val and sender is not None:
+                        facade.save_longname(sender, longname_val)
+                        longname = longname_val
+                if not shortname:
+                    shortname_val = user.get("shortName")
+                    if shortname_val and sender is not None:
+                        facade.save_shortname(sender, shortname_val)
+                        shortname = shortname_val
+        else:
+            facade.logger.debug(f"Node info for sender {sender} not available yet.")
+
+    if not longname:
+        longname = str(sender)
+    if not shortname:
+        shortname = str(sender)
+
     # Normal text messages or detection sensor messages
     if text:
         # Channel deduction and mapping are only relevant for RELAY packets.
@@ -931,44 +969,6 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                                 f"Channel {channel} mapped to Matrix room {room.get('id', 'unknown')}"
                             )
                             break
-
-        # Resolve sender names (needed for both plugin delivery and Matrix relay)
-        longname = facade._get_name_or_none(facade.get_longname, sender)  # type: ignore[assignment]
-        if longname is None:
-            facade.logger.debug(
-                "Failed to get longname from database for %s, will try interface fallback",
-                sender,
-            )
-
-        shortname = facade._get_name_or_none(facade.get_shortname, sender)  # type: ignore[assignment]
-        if shortname is None:
-            facade.logger.debug(
-                "Failed to get shortname from database for %s, will try interface fallback",
-                sender,
-            )
-
-        if not longname or not shortname:
-            node = interface.nodes.get(sender)
-            if node:
-                user = node.get("user")
-                if user:
-                    if not longname:
-                        longname_val = user.get("longName")
-                        if longname_val and sender is not None:
-                            facade.save_longname(sender, longname_val)
-                            longname = longname_val
-                    if not shortname:
-                        shortname_val = user.get("shortName")
-                        if shortname_val and sender is not None:
-                            facade.save_shortname(sender, shortname_val)
-                            shortname = shortname_val
-            else:
-                facade.logger.debug(f"Node info for sender {sender} not available yet.")
-
-        if not longname:
-            longname = str(sender)
-        if not shortname:
-            shortname = str(sender)
 
         from mmrelay.matrix_utils import get_matrix_prefix
 
@@ -1060,8 +1060,8 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         facade._run_meshtastic_plugins(
             packet=packet,
             formatted_message=None,
-            longname=None,
-            meshnet_name=None,
+            longname=longname,
+            meshnet_name=meshnet_name,
             loop=loop,
             cfg=facade.config,
             use_keyword_args=True,
