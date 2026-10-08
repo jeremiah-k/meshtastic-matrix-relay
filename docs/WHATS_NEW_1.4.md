@@ -78,8 +78,8 @@ Python 3.11-3.14 testing, mindroom-nio 0.40, recent mtjk releases, and current
 pinned GitHub Actions/container dependencies.
 
 Release workflows validate that the release tag matches `project.version`
-before publishing package, container, or Windows installer artifacts, preventing
-an automated post-release version bump from racing release builds.
+before publishing package, container, or Windows installer artifacts, keeping
+mismatched tags from publishing inconsistent artifacts.
 
 ## Maintainer notes
 

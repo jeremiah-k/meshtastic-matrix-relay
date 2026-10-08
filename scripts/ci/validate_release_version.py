@@ -22,17 +22,6 @@ def normalize_release_tag(tag: str) -> str:
     return normalized
 
 
-def next_patch_version(version: str) -> str:
-    """Return the next patch version for a stable ``major.minor.patch`` version."""
-    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
-    if match is None:
-        raise ValueError(
-            f"Post-release bump requires a stable major.minor.patch version, got {version!r}"
-        )
-    major, minor, patch = (int(part) for part in match.groups())
-    return f"{major}.{minor}.{patch + 1}"
-
-
 def read_project_version(pyproject_path: Path) -> str:
     """Read the PEP 621 project version from ``pyproject.toml``."""
     with pyproject_path.open("rb") as pyproject_file:
