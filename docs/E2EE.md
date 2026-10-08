@@ -231,7 +231,8 @@ matrix:
 mmrelay auth login
 ```
 
-This interactive command prompts for homeserver, username, and password, then
+This interactive command accepts a bare homeserver name or URL and a username
+localpart or full Matrix ID, prompts for a password, then
 creates persistent credentials and initializes the E2EE key store.
 
 ### 4. Start MMRelay
@@ -273,6 +274,15 @@ cross-signing may withhold encrypted room keys until the issue is resolved.
 The password is used only during login and, when required by the homeserver,
 for the one-time cross-signing upload. It is not written to `credentials.json`.
 
+For a native OAuth session, `mmrelay auth login --oauth` initializes the configured
+E2EE store and attempts the same own-device signing without a password. A saved
+OAuth session can be reused to retry signing; it is not replaced by another login.
+If the signing sidecar is missing but the server already has an identity, restore
+a backup or explicitly request `mmrelay auth login --oauth --reset-cross-signing`.
+The reset can require browser approval and retains the current OAuth device and
+encryption store. It replaces the account signing identity, so other clients may
+need to trust the account again. See [native OAuth setup](MATRIX_OAUTH.md).
+
 ### Example session
 
 ```bash
@@ -293,14 +303,23 @@ You can now start MMRelay with: mmrelay
 
 ### Logging out
 
-To clear Matrix session data and keys:
+To revoke the saved Matrix session while retaining encryption keys:
 
 ```bash
 mmrelay auth logout
 ```
 
-This verifies your Matrix password, logs out from the homeserver (invalidating
-access tokens), removes credentials, and clears local E2EE key storage.
+Stop the relay first. Logout uses the saved session without requesting a password,
+revokes that session, and removes credentials after server confirmation. OAuth
+revokes its refresh credentials; password sessions use the saved access token.
+Encryption stores and the account signing sidecar are retained for both methods,
+so switching authentication methods does not require replacing the account's
+cross-signing identity. Server failures retain credentials for retry. Other account
+sessions are unaffected.
+
+For password sessions, `mmrelay auth logout --password` explicitly requests optional
+password verification. The flag prompts securely. Ordinary logout needs only the
+existing session and confirmation (or `--yes` for automation).
 
 ## File locations
 
@@ -356,8 +375,9 @@ The implementation is deliberately limited to the Matrix client identity used by
 - no server-side key backup or secret-storage recovery is added.
 
 If a homeserver requires password-based user-interactive authentication for the
-first cross-signing upload, run `mmrelay auth login` once. Normal service startup has
-only the saved access token and cannot complete that password challenge.
+first cross-signing upload, run `mmrelay auth login` once. OAuth sessions use the
+server's supported browser approval instead, through an explicit interactive
+reset. Normal service startup cannot complete an interactive challenge.
 
 If you see **"Not encrypted"** for MMRelay messages in an encrypted room, treat
 that as a real issue (usually configuration/version related) and troubleshoot.
@@ -412,7 +432,7 @@ key sharing has not completed.
 
 - Check subsequent logs for key-request activity; MMRelay requests missing keys automatically
 - Let sync complete, then verify whether decryption succeeds on the next event pass
-- If failures persist, reset session data:
+- If the session is invalid, authenticate again; this retains local encryption keys:
 
 ```bash
 mmrelay auth logout

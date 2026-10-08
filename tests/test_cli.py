@@ -1269,10 +1269,10 @@ class TestAuthLogout(unittest.TestCase):
     @patch("getpass.getpass")
     @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(return_value=True))
     @patch("builtins.print")
-    def test_handle_auth_logout_password_prompt_none(
+    def test_handle_auth_logout_without_password_prompt(
         self, mock_print, mock_getpass, mock_asyncio_run
     ):
-        """Test logout with password=None (prompt for password)."""
+        """Ordinary logout does not prompt for a password."""
         # ASYNC MOCK FIX: Mock asyncio.run instead of the async function directly
         mock_getpass.return_value = "prompted_password"
         mock_asyncio_run.return_value = True
@@ -1284,7 +1284,7 @@ class TestAuthLogout(unittest.TestCase):
 
         # Verify results
         self.assertEqual(result, EXIT_CODE_SUCCESS)
-        mock_getpass.assert_called_once_with("Enter Matrix password for verification: ")
+        mock_getpass.assert_not_called()
         mock_asyncio_run.assert_called_once()
 
     @patch("asyncio.run")
@@ -1404,10 +1404,10 @@ class TestAuthLogout(unittest.TestCase):
             mock_print.assert_any_call("Matrix Bot Logout")
             mock_print.assert_any_call("=================")
             mock_print.assert_any_call(
-                "This will log out from Matrix and clear all local session data:"
+                "This will revoke the saved Matrix session:"
             )
             mock_print.assert_any_call(f"• Remove {CREDENTIALS_FILENAME}")
-            mock_print.assert_any_call("• Clear E2EE encryption store")
+            mock_print.assert_any_call("• Retain encryption and cross-signing keys")
             mock_print.assert_any_call("• Invalidate Matrix access token")
 
 

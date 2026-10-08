@@ -98,8 +98,8 @@ def test_save_credentials(
     )
 
 
-def test_cleanup_local_session_data_success():
-    """Test successful cleanup of local session data."""
+def test_cleanup_local_session_data_retains_encryption_keys():
+    """Remove credentials without deleting the encryption or signing store."""
     with (
         patch(
             "mmrelay.paths.resolve_all_paths",
@@ -108,18 +108,14 @@ def test_cleanup_local_session_data_success():
                 "store_dir": "/test/config/matrix/store",
             },
         ),
-        patch("mmrelay.config.load_config", return_value={}),
-        patch("os.path.exists") as mock_exists,
-        patch("os.remove") as mock_remove,
+        patch("mmrelay.cli_utils.os.remove") as mock_remove,
         patch("shutil.rmtree") as mock_rmtree,
     ):
-        mock_exists.return_value = True
-
         result = _cleanup_local_session_data()
 
         assert result is True
         mock_remove.assert_called_once_with("/test/config/matrix/credentials.json")
-        mock_rmtree.assert_called_once_with("/test/config/matrix/store")
+        mock_rmtree.assert_not_called()
 
 
 def test_cleanup_local_session_data_files_not_exist():
@@ -132,12 +128,14 @@ def test_cleanup_local_session_data_files_not_exist():
                 "store_dir": "/test/config/matrix/store",
             },
         ),
-        patch("mmrelay.config.load_config", return_value={}),
-        patch("os.path.exists", return_value=False),
+        patch(
+            "mmrelay.cli_utils.os.remove", side_effect=FileNotFoundError
+        ) as mock_remove,
     ):
         result = _cleanup_local_session_data()
 
         assert result is True
+        mock_remove.assert_called_once_with("/test/config/matrix/credentials.json")
 
 
 def test_cleanup_local_session_data_permission_error():
@@ -150,14 +148,16 @@ def test_cleanup_local_session_data_permission_error():
                 "store_dir": "/test/config/matrix/store",
             },
         ),
-        patch("mmrelay.config.load_config", return_value={}),
-        patch("os.path.exists", return_value=True),
-        patch("os.remove", side_effect=PermissionError("Access denied")),
-        patch("shutil.rmtree", side_effect=PermissionError("Access denied")),
+        patch(
+            "mmrelay.cli_utils.os.remove", side_effect=PermissionError("Access denied")
+        ) as mock_remove,
+        patch("shutil.rmtree") as mock_rmtree,
     ):
         result = _cleanup_local_session_data()
 
         assert result is False
+        mock_remove.assert_called_once_with("/test/config/matrix/credentials.json")
+        mock_rmtree.assert_not_called()
 
 
 def test_can_auto_create_credentials_success():

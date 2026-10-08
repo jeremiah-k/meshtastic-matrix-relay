@@ -415,9 +415,19 @@ async def _resolve_cross_signing_reset_policy(
     local_identity: object | None,
     password: str | None,
     reset_cross_signing: bool,
+    oauth_authenticated: bool = False,
 ) -> bool:
     """Decide whether bootstrap may proceed without rotating identity implicitly."""
-    if local_identity is not None:
+    try:
+        identity_uploaded = getattr(local_identity, "uploaded", True)
+    except Exception:  # noqa: BLE001 - provider property boundary
+        logger.warning(
+            "Could not inspect the local signing upload state for device %s. "
+            "Refusing to replace identity material automatically.",
+            _client_label(client, "device_id"),
+        )
+        return False
+    if local_identity is not None and identity_uploaded is not False:
         return True
 
     try:
@@ -437,18 +447,24 @@ async def _resolve_cross_signing_reset_policy(
     if not server_has_identity:
         return True
     if not reset_cross_signing:
+        recovery_command = (
+            "mmrelay auth login --oauth --reset-cross-signing"
+            if oauth_authenticated
+            else "mmrelay auth login --reset-cross-signing"
+        )
         logger.warning(
             "Matrix already has a cross-signing identity for %s, but MMRelay's "
-            "local cross-signing sidecar is missing. The existing identity was "
-            "preserved; restore the E2EE store/sidecar or run 'mmrelay auth login "
-            "--reset-cross-signing' to replace it explicitly.",
+            "local cross-signing sidecar is missing or not uploaded. The existing "
+            "identity was preserved; restore the E2EE store/sidecar or run '%s' "
+            "to replace it explicitly.",
             _client_label(client, "user_id"),
+            recovery_command,
         )
         return False
-    if not password:
+    if not password and not oauth_authenticated:
         logger.warning(
             "Refusing to reset the existing Matrix cross-signing identity for %s "
-            "without password authentication.",
+            "without password authentication or an OAuth session.",
             _client_label(client, "user_id"),
         )
         return False
@@ -522,6 +538,7 @@ async def _ensure_own_device_cross_signed(
     *,
     password: str | None = None,
     reset_cross_signing: bool = False,
+    oauth_authenticated: bool = False,
 ) -> str | None:
     """Attempt to cross-sign the bot's own Matrix device when supported.
 
@@ -533,8 +550,9 @@ async def _ensure_own_device_cross_signed(
     and how to retry with password UIA via ``mmrelay auth login``.
 
     ``reset_cross_signing`` is an explicit recovery path for a lost sidecar. It
-    allows a password-authenticated login to replace server identity material;
-    ordinary startup remains fail-closed. ``asyncio.CancelledError`` is always
+    allows an authenticated login to replace server identity material; OAuth
+    uploads can require separate browser approval. Ordinary startup remains
+    fail-closed. ``asyncio.CancelledError`` is always
     allowed to propagate.
     """
     provider = _inspect_cross_signing_provider(client)
@@ -550,6 +568,7 @@ async def _ensure_own_device_cross_signed(
                 local_identity=local_identity,
                 password=password,
                 reset_cross_signing=reset_cross_signing,
+                oauth_authenticated=oauth_authenticated,
             ):
                 return None
 
@@ -559,13 +578,18 @@ async def _ensure_own_device_cross_signed(
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 - provider bootstrap boundary
+                recovery_command = (
+                    "mmrelay auth login --oauth"
+                    if oauth_authenticated
+                    else "mmrelay auth login"
+                )
                 logger.warning(
                     "Could not self-verify Matrix device %s: %s. MMRelay startup will "
                     "continue, but clients enforcing cross-signing may withhold room "
-                    "keys; run 'mmrelay auth login' to retry with password "
-                    "authentication.",
+                    "keys; run '%s' to retry authentication and own-device signing.",
                     _client_label(client, "device_id"),
                     exc,
+                    recovery_command,
                 )
                 logger.debug("Matrix cross-signing bootstrap failure", exc_info=True)
                 return None
@@ -583,11 +607,17 @@ async def _ensure_own_device_cross_signed(
                 _client_label(client, "device_id"),
             )
         else:
+            recovery_command = (
+                "mmrelay auth login --oauth"
+                if oauth_authenticated
+                else "mmrelay auth login"
+            )
             logger.warning(
                 "Timed out after %.0f seconds while self-verifying Matrix device %s. "
-                "MMRelay startup will continue; run 'mmrelay auth login' to retry.",
+                "MMRelay startup will continue; run '%s' to retry.",
                 _CROSS_SIGNING_OPERATION_TIMEOUT_SECONDS,
                 _client_label(client, "device_id"),
+                recovery_command,
             )
         return None
 

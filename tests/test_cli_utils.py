@@ -337,55 +337,42 @@ class TestCreateSslContext:
 
 
 class TestCleanupLocalSessionData:
-    """Test the _cleanup_local_session_data function."""
+    """Removing authentication must preserve encryption identity material."""
 
-    @patch("os.path.exists")
-    @patch("os.remove")
-    @patch("shutil.rmtree")
-    @patch(
-        "mmrelay.paths.resolve_all_paths",
-        return_value={
-            "credentials_path": f"/test/config/matrix/{CREDENTIALS_FILENAME}",
-            "store_dir": "/test/config/matrix/store",
-        },
-    )
-    def test_cleanup_success(
-        self, _mock_resolve, mock_rmtree, mock_remove, mock_exists
-    ):
+    def test_cleanup_retains_keys(self, tmp_path):
         from mmrelay.cli_utils import _cleanup_local_session_data
 
-        mock_exists.return_value = True
-        result = _cleanup_local_session_data()
-        assert result is True
-        mock_remove.assert_called_once_with(
-            f"/test/config/matrix/{CREDENTIALS_FILENAME}"
-        )
-        mock_rmtree.assert_called_once_with("/test/config/matrix/store")
+        credentials = tmp_path / "credentials.json"
+        credentials.write_text("test-session")
+        store = tmp_path / "store"
+        store.mkdir()
+        sidecar = store / "cross_signing.json"
+        sidecar.write_text("test-signing-keys")
+        with patch("mmrelay.paths.resolve_all_paths", return_value={
+            "credentials_path": str(credentials), "store_dir": str(store),
+        }):
+            assert _cleanup_local_session_data() is True
+        assert not credentials.exists()
+        assert sidecar.read_text() == "test-signing-keys"
 
-    @patch("os.path.exists", return_value=False)
-    def test_cleanup_no_files(self, mock_exists):
+    def test_cleanup_no_credentials(self, tmp_path):
         from mmrelay.cli_utils import _cleanup_local_session_data
 
-        result = _cleanup_local_session_data()
-        assert result is True
+        with patch("mmrelay.paths.resolve_all_paths", return_value={
+            "credentials_path": str(tmp_path / "absent.json"),
+        }):
+            assert _cleanup_local_session_data() is True
 
-    @patch("os.path.exists", return_value=True)
-    @patch("os.remove", side_effect=PermissionError)
-    @patch("shutil.rmtree", side_effect=PermissionError)
-    @patch(
-        "mmrelay.paths.resolve_all_paths",
-        return_value={
-            "credentials_path": f"/test/config/matrix/{CREDENTIALS_FILENAME}",
-            "store_dir": "/test/config/matrix/store",
-        },
-    )
-    def test_cleanup_permission_error(
-        self, _mock_resolve, _mock_rmtree, _mock_remove, _mock_exists
-    ):
+    def test_cleanup_permission_error(self, tmp_path):
         from mmrelay.cli_utils import _cleanup_local_session_data
 
-        result = _cleanup_local_session_data()
-        assert result is False
+        with (
+            patch("mmrelay.paths.resolve_all_paths", return_value={
+                "credentials_path": str(tmp_path / "credentials.json"),
+            }),
+            patch("mmrelay.cli_utils.os.remove", side_effect=PermissionError),
+        ):
+            assert _cleanup_local_session_data() is False
 
 
 class TestHandleMatrixError:
@@ -598,139 +585,17 @@ class TestHandleMatrixError:
 
 
 class TestCleanupLocalSessionDataEdgeCases:
-    """Additional tests for _cleanup_local_session_data edge cases."""
+    """Report unresolved credential paths instead of claiming successful cleanup."""
 
-    @patch("mmrelay.cli_utils._get_logger")
-    @patch("mmrelay.paths.resolve_all_paths", side_effect=OSError("path error"))
-    @patch("os.path.exists", return_value=False)
-    def test_cleanup_resolve_paths_oserror(
-        self, mock_exists, mock_resolve, mock_get_logger
-    ):
+    @pytest.mark.parametrize("resolved", [None, {}])
+    def test_cleanup_unresolved_paths(self, resolved):
         from mmrelay.cli_utils import _cleanup_local_session_data
 
-        mock_logger = MagicMock()
-        mock_get_logger.return_value = mock_logger
-        result = _cleanup_local_session_data()
-        assert result is True
-        mock_logger.debug.assert_any_call(
-            "Could not resolve paths for logout cleanup: %s", "OSError"
-        )
-
-    @patch("mmrelay.cli_utils._get_logger")
-    @patch(
-        "mmrelay.paths.resolve_all_paths",
-        return_value={
-            "credentials_path": f"/test/config/matrix/{CREDENTIALS_FILENAME}",
-            "store_dir": "N/A (Windows)",
-        },
-    )
-    @patch("os.path.exists", return_value=False)
-    def test_cleanup_windows_store_dir_skipped(
-        self, mock_exists, mock_resolve, mock_get_logger
-    ):
-        from mmrelay.cli_utils import _cleanup_local_session_data
-
-        mock_logger = MagicMock()
-        mock_get_logger.return_value = mock_logger
-        result = _cleanup_local_session_data()
-        assert result is True
-
-    @patch("mmrelay.cli_utils._get_logger")
-    @patch(
-        "mmrelay.paths.resolve_all_paths",
-        return_value={
-            "credentials_path": f"/test/config/matrix/{CREDENTIALS_FILENAME}",
-            "store_dir": "/test/store",
-        },
-    )
-    @patch("os.path.exists", return_value=False)
-    @patch("mmrelay.config.load_config", return_value={"matrix": "not_a_dict"})
-    def test_cleanup_matrix_config_not_dict(
-        self, mock_load, mock_exists, mock_resolve, mock_get_logger
-    ):
-        from mmrelay.cli_utils import _cleanup_local_session_data
-
-        mock_logger = MagicMock()
-        mock_get_logger.return_value = mock_logger
-        result = _cleanup_local_session_data()
-        assert result is True
-        mock_logger.warning.assert_any_call(
-            "Matrix configuration ('matrix') is not a dictionary; "
-            "cannot resolve E2EE store path from config."
-        )
-
-    @patch("mmrelay.cli_utils._get_logger")
-    @patch(
-        "mmrelay.paths.resolve_all_paths",
-        return_value={
-            "credentials_path": f"/test/config/matrix/{CREDENTIALS_FILENAME}",
-            "store_dir": "/test/store",
-        },
-    )
-    @patch("os.path.exists", return_value=False)
-    @patch(
-        "mmrelay.config.load_config",
-        return_value={
-            "matrix": {"e2ee": "not_a_dict", "encryption": "also_not_a_dict"}
-        },
-    )
-    def test_cleanup_section_config_not_dict(
-        self, mock_load, mock_exists, mock_resolve, mock_get_logger
-    ):
-        from mmrelay.cli_utils import _cleanup_local_session_data
-
-        mock_logger = MagicMock()
-        mock_get_logger.return_value = mock_logger
-        result = _cleanup_local_session_data()
-        assert result is True
-        warning_calls = [c.args[0] for c in mock_logger.warning.call_args_list]
-        assert any("is not a dictionary" in w for w in warning_calls)
-
-    @patch("mmrelay.cli_utils._get_logger")
-    @patch(
-        "mmrelay.paths.resolve_all_paths",
-        return_value={
-            "credentials_path": f"/test/config/matrix/{CREDENTIALS_FILENAME}",
-            "store_dir": "/test/store",
-        },
-    )
-    @patch("os.path.exists", return_value=False)
-    @patch("mmrelay.config.load_config", side_effect=ImportError("no module"))
-    def test_cleanup_config_import_error(
-        self, mock_load, mock_exists, mock_resolve, mock_get_logger
-    ):
-        from mmrelay.cli_utils import _cleanup_local_session_data
-
-        mock_logger = MagicMock()
-        mock_get_logger.return_value = mock_logger
-        result = _cleanup_local_session_data()
-        assert result is True
-        mock_logger.debug.assert_any_call(
-            "Could not resolve configured E2EE store path: %s", "ImportError"
-        )
-
-    @patch("mmrelay.cli_utils._get_logger")
-    @patch(
-        "mmrelay.paths.resolve_all_paths",
-        return_value={
-            "credentials_path": f"/test/config/matrix/{CREDENTIALS_FILENAME}",
-            "store_dir": "/test/store",
-        },
-    )
-    @patch("os.path.exists", return_value=False)
-    @patch(
-        "mmrelay.config.load_config",
-        return_value={"matrix": {"e2ee": {"store_path": "/custom/store"}}},
-    )
-    def test_cleanup_config_override_store_path(
-        self, mock_load, mock_exists, mock_resolve, mock_get_logger
-    ):
-        from mmrelay.cli_utils import _cleanup_local_session_data
-
-        mock_logger = MagicMock()
-        mock_get_logger.return_value = mock_logger
-        result = _cleanup_local_session_data()
-        assert result is True
+        with patch(
+            "mmrelay.paths.resolve_all_paths", return_value=resolved or {},
+            side_effect=OSError("path error") if resolved is None else None,
+        ):
+            assert _cleanup_local_session_data() is False
 
 
 class TestGetLoggerRuntimeError:
@@ -1075,19 +940,15 @@ class TestLogoutMatrixBot:
             result = await logout_matrix_bot(password="test_password")
 
             mock_logger.warning.assert_any_call(
-                "Timeout during Matrix server logout, proceeding with local cleanup."
+                "Timeout during Matrix server logout; credentials and encryption keys retained."
             )
-            assert result is True
+            assert result is False
 
     @pytest.mark.asyncio
     async def test_logout_matrix_bot_server_logout_unclear_response(
         self, mock_credentials
     ):
-        """
-        Verify that logout_matrix_bot proceeds with local cleanup and returns True when the server's logout response is not clearly structured.
-
-        Asserts that a warning "Logout response unclear, proceeding with local cleanup." is logged and the function completes successfully.
-        """
+        """Retain credentials when server revocation cannot be confirmed."""
         from mmrelay.cli_utils import logout_matrix_bot
 
         mock_creds = mock_credentials(user_id="@test:matrix.org")
@@ -1120,9 +981,9 @@ class TestLogoutMatrixBot:
             result = await logout_matrix_bot(password="test_password")
 
             mock_logger.warning.assert_any_call(
-                "Logout response unclear, proceeding with local cleanup."
+                "Logout response unclear; credentials retained."
             )
-            assert result is True
+            assert result is False
 
     @pytest.mark.asyncio
     async def test_logout_matrix_bot_close_main_client_timeout(self, mock_credentials):
@@ -1568,7 +1429,7 @@ class TestLogoutMatrixBot:
             mock_async_client.side_effect = [mock_temp_client, mock_main_client]
 
             result = await logout_matrix_bot(password="test_password")
-            assert result is True
+            assert result is False
 
     @pytest.mark.asyncio
     async def test_logout_matrix_bot_main_client_close_oserror(self, mock_credentials):
