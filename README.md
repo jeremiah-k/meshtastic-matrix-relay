@@ -1,6 +1,6 @@
 # MMRelay
 
-**Meshtastic ↔ Matrix Relay**
+## Meshtastic ↔ Matrix Relay
 
 MMRelay is a self-hosted bridge between a Meshtastic meshnet and Matrix. It runs
 as a long-lived service, connects to one Meshtastic node, logs in to Matrix with
