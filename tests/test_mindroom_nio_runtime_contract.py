@@ -9,13 +9,13 @@ import tomllib
 from pathlib import Path
 
 from packaging.requirements import Requirement
-from packaging.utils import canonicalize_name
 
 from tests.constants import (
     MINDROOM_BACKFILL_LIMITED_TIMELINES_DEFAULT,
     MINDROOM_BACKFILL_PERSIST_RECOVERY_DEFAULT,
     MINDROOM_STORE_VERSION,
 )
+from tests.helpers import select_mindroom_requirements
 
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
@@ -25,7 +25,7 @@ def _single_mindroom_requirement(
     dependencies: list[str], *, expected_extras: frozenset[str]
 ) -> Requirement:
     """
-    Find the single `mindroom-nio` requirement matching the requested extras.
+    Find the active `mindroom-nio` requirement matching the requested extras.
 
     Parameters:
         dependencies (list[str]): Dependency requirement strings to inspect.
@@ -34,23 +34,19 @@ def _single_mindroom_requirement(
     Returns:
         Requirement: The matching `mindroom-nio` requirement.
     """
-    matches: list[Requirement] = []
-    for dependency in dependencies:
-        requirement = Requirement(dependency)
-        if (
-            canonicalize_name(requirement.name) == "mindroom-nio"
-            and frozenset(requirement.extras) == expected_extras
-        ):
-            matches.append(requirement)
+    matches = [
+        requirement
+        for requirement in select_mindroom_requirements(dependencies)
+        if frozenset(requirement.extras) == expected_extras
+    ]
 
     assert len(matches) == 1, matches
     return matches[0]
 
 
 def _exact_pin(requirement: Requirement) -> str:
-    """Return an exact version pin and reject ranges or environment markers."""
+    """Return an exact version pin and reject version ranges."""
     specifiers = list(requirement.specifier)
-    assert requirement.marker is None
     assert len(specifiers) == 1, specifiers
     specifier = specifiers[0]
     assert specifier.operator == "=="
@@ -111,16 +107,6 @@ def test_installed_mindroom_nio_exposes_mmrelay_e2ee_contract() -> None:
 
         default_config = AsyncClientConfig()
         assert default_config.replace_rotated_device_keys is False
-        assert (
-            default_config.backfill_limited_timelines
-            is {MINDROOM_BACKFILL_LIMITED_TIMELINES_DEFAULT!r}
-        )
-        assert (
-            default_config.backfill_persist_recovery
-            is {MINDROOM_BACKFILL_PERSIST_RECOVERY_DEFAULT!r}
-        )
-        assert default_config.backfill_sliding_seed_rooms == 1000
-
         config = AsyncClientConfig(
             encryption_enabled=True,
             store_sync_tokens=True,
@@ -129,14 +115,15 @@ def test_installed_mindroom_nio_exposes_mmrelay_e2ee_contract() -> None:
         assert config.encryption_enabled is True
         assert config.store_sync_tokens is True
         assert config.replace_rotated_device_keys is True
-        assert (
-            config.backfill_limited_timelines
-            is {MINDROOM_BACKFILL_LIMITED_TIMELINES_DEFAULT!r}
-        )
-        assert (
-            config.backfill_persist_recovery
-            is {MINDROOM_BACKFILL_PERSIST_RECOVERY_DEFAULT!r}
-        )
+        for provider_config in (default_config, config):
+            if {expected_version!r} == "0.40.0":
+                assert provider_config.backfill_limited_timelines is {MINDROOM_BACKFILL_LIMITED_TIMELINES_DEFAULT!r}
+                assert provider_config.backfill_persist_recovery is {MINDROOM_BACKFILL_PERSIST_RECOVERY_DEFAULT!r}
+                assert provider_config.backfill_sliding_seed_rooms == 1000
+            else:
+                assert not hasattr(provider_config, "backfill_limited_timelines")
+                assert not hasattr(provider_config, "backfill_persist_recovery")
+                assert not hasattr(provider_config, "backfill_sliding_seed_rooms")
 
         ensure_parameters = signature(AsyncClient.ensure_cross_signing).parameters
         password = ensure_parameters["password"]
