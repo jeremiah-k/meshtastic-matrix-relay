@@ -39,6 +39,13 @@
       "matchPackageNames": ["mtjk"],
       "automerge": true,
       "minimumReleaseAge": "12 hours"
+    },
+    {
+      "description": "Keep the Python 3.11 mindroom-nio pin at 0.40.0; the 1.1.x line requires Python 3.12+",
+      "matchDepNames": ["mindroom-nio"],
+      "matchCurrentValue": "/^==0\\./",
+      "enabled": false
     }
-  ]
+  ],
+  "rebaseWhen": "behind-base-branch"
 }
