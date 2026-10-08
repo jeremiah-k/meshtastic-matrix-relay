@@ -69,13 +69,13 @@ ENV MMRELAY_HOME=/data
 ENV MMRELAY_READY_FILE=/tmp/mmrelay-ready
 
 # Switch to non-root user
-USER mmrelay
+USER 1000:1000
 
 # Health check - verifies ready-file freshness.
 # The ready file is created when the app is running and healthy.
 # Users who don't want ready-file health checks should omit HEALTHCHECK entirely.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD find "$MMRELAY_READY_FILE" -mmin -2 | grep -q .
+    CMD ["/bin/sh", "-c", "find \"$MMRELAY_READY_FILE\" -mmin -2 | grep -q ."]
 
 # Default command
 # MMRELAY_HOME is set via ENV, so runtime paths resolve under /data by default.
