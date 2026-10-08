@@ -18,7 +18,9 @@ runtimes:
 # This is the section where you manage your linters. (https://docs.trunk.io/check/configuration)
 lint:
   enabled:
-    - pinact@5.0.0
+    # pinact stays on 4.x: the plugins v1.11.0 wrapper still passes the
+    # single-dash -format flag that pinact v5 rejected.
+    - pinact@4.0.0
     - renovate@44.148.1
     - shellcheck@0.11.0
     - shfmt@3.14.1
