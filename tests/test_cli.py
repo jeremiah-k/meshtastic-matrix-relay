@@ -1403,9 +1403,7 @@ class TestAuthLogout(unittest.TestCase):
             # Verify header was printed
             mock_print.assert_any_call("Matrix Bot Logout")
             mock_print.assert_any_call("=================")
-            mock_print.assert_any_call(
-                "This will revoke the saved Matrix session:"
-            )
+            mock_print.assert_any_call("This will revoke the saved Matrix session:")
             mock_print.assert_any_call(f"• Remove {CREDENTIALS_FILENAME}")
             mock_print.assert_any_call("• Retain encryption and cross-signing keys")
             mock_print.assert_any_call("• Invalidate Matrix access token")

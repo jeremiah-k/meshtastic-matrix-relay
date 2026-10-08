@@ -15,10 +15,7 @@ from mmrelay.matrix.oauth_cli import (
 )
 from mmrelay.matrix.oauth_cli import handle_login as handle_oauth_login
 from mmrelay.matrix.oauth_cli import handle_logout as handle_oauth_logout
-from mmrelay.matrix.oauth_cli import (
-    login,
-    logout,
-)
+from mmrelay.matrix.oauth_cli import login, logout
 from mmrelay.matrix.oauth_store import OAuthStore
 from tests.oauth_helpers import FakeServer, session
 

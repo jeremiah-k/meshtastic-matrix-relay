@@ -348,9 +348,13 @@ class TestCleanupLocalSessionData:
         store.mkdir()
         sidecar = store / "cross_signing.json"
         sidecar.write_text("test-signing-keys")
-        with patch("mmrelay.paths.resolve_all_paths", return_value={
-            "credentials_path": str(credentials), "store_dir": str(store),
-        }):
+        with patch(
+            "mmrelay.paths.resolve_all_paths",
+            return_value={
+                "credentials_path": str(credentials),
+                "store_dir": str(store),
+            },
+        ):
             assert _cleanup_local_session_data() is True
         assert not credentials.exists()
         assert sidecar.read_text() == "test-signing-keys"
@@ -358,18 +362,24 @@ class TestCleanupLocalSessionData:
     def test_cleanup_no_credentials(self, tmp_path):
         from mmrelay.cli_utils import _cleanup_local_session_data
 
-        with patch("mmrelay.paths.resolve_all_paths", return_value={
-            "credentials_path": str(tmp_path / "absent.json"),
-        }):
+        with patch(
+            "mmrelay.paths.resolve_all_paths",
+            return_value={
+                "credentials_path": str(tmp_path / "absent.json"),
+            },
+        ):
             assert _cleanup_local_session_data() is True
 
     def test_cleanup_permission_error(self, tmp_path):
         from mmrelay.cli_utils import _cleanup_local_session_data
 
         with (
-            patch("mmrelay.paths.resolve_all_paths", return_value={
-                "credentials_path": str(tmp_path / "credentials.json"),
-            }),
+            patch(
+                "mmrelay.paths.resolve_all_paths",
+                return_value={
+                    "credentials_path": str(tmp_path / "credentials.json"),
+                },
+            ),
             patch("mmrelay.cli_utils.os.remove", side_effect=PermissionError),
         ):
             assert _cleanup_local_session_data() is False
@@ -592,7 +602,8 @@ class TestCleanupLocalSessionDataEdgeCases:
         from mmrelay.cli_utils import _cleanup_local_session_data
 
         with patch(
-            "mmrelay.paths.resolve_all_paths", return_value=resolved or {},
+            "mmrelay.paths.resolve_all_paths",
+            return_value=resolved or {},
             side_effect=OSError("path error") if resolved is None else None,
         ):
             assert _cleanup_local_session_data() is False

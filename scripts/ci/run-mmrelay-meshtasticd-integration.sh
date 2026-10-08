@@ -763,7 +763,7 @@ wait_for_node_in_nodedb() {
 wait_for_synapse_ready() {
 	local base_url=$1
 	local deadline=$((SECONDS + 10#${SYNAPSE_READY_TIMEOUT_SECONDS}))
-	until "${PYTHON_BIN}" - "${base_url}" <<'PY'; do
+	until "${PYTHON_BIN}" - "${base_url}" <<'PY'
 import sys
 import requests
 
@@ -779,6 +779,7 @@ if response.status_code >= 500:
 if response.status_code != 200:
     raise SystemExit(1)
 PY
+	do
 		if ! docker ps --format '{{.Names}}' | grep -Fxq "${SYNAPSE_CONTAINER}"; then
 			echo "${SYNAPSE_CONTAINER} exited before becoming ready." >&2
 			return 1
@@ -2102,7 +2103,7 @@ if ((10#${NAME_PRUNE_WAIT_TIMEOUT_SECONDS} <= 0)); then
 	echo "NAME_PRUNE_WAIT_TIMEOUT_SECONDS must be greater than zero." >&2
 	exit 1
 fi
-if ! "${PYTHON_BIN}" - "${NODEDB_REFRESH_INTERVAL_SECONDS}" <<'PY'; then
+if ! "${PYTHON_BIN}" - "${NODEDB_REFRESH_INTERVAL_SECONDS}" <<'PY'
 import math
 import sys
 
@@ -2110,10 +2111,11 @@ value = float(sys.argv[1])
 if not math.isfinite(value) or value <= 0:
     raise SystemExit(1)
 PY
+then
 	echo "NODEDB_REFRESH_INTERVAL_SECONDS must be a finite value greater than zero." >&2
 	exit 1
 fi
-if ! "${PYTHON_BIN}" - "${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" "${NODEDB_REFRESH_INTERVAL_SECONDS}" <<'PY'; then
+if ! "${PYTHON_BIN}" - "${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" "${NODEDB_REFRESH_INTERVAL_SECONDS}" <<'PY'
 import math
 import sys
 
@@ -2127,6 +2129,7 @@ if (
 ):
     raise SystemExit(1)
 PY
+then
 	echo "NAME_PRUNE_WAIT_TIMEOUT_SECONDS must be at least 2 seconds greater than NODEDB_REFRESH_INTERVAL_SECONDS." >&2
 	exit 1
 fi

@@ -53,9 +53,7 @@ from mmrelay.plugin_loader import (
     clear_plugin_jobs,
 )
 from mmrelay.plugin_loader import logger as plugins_logger
-from mmrelay.plugin_loader import (
-    schedule_job,
-)
+from mmrelay.plugin_loader import schedule_job
 
 
 class _PluginDataDirGetter(Protocol):
