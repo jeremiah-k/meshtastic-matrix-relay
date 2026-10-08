@@ -1173,20 +1173,30 @@ async def test_password_login_normalizes_inputs_before_delegated_login(
     )
     client = AsyncMock()
     client.login.return_value = SimpleNamespace(
-        access_token="test-password-token", device_id="DEVICE", user_id="@bot:example.com"
+        access_token="test-password-token",
+        device_id="DEVICE",
+        user_id="@bot:example.com",
     )
     client.whoami.return_value = SimpleNamespace(user_id="@bot:example.com")
     config = {"matrix": {"credentials_path": str(tmp_path / "credentials.json")}}
     with (
-        patch("mmrelay.matrix_utils.AsyncClient", side_effect=[discovery, client]) as factory,
+        patch(
+            "mmrelay.matrix_utils.AsyncClient", side_effect=[discovery, client]
+        ) as factory,
         patch("mmrelay.matrix_utils.DiscoveryInfoResponse", SimpleNamespace),
         patch("mmrelay.matrix_utils.save_credentials") as save,
         patch("mmrelay.matrix_utils._create_ssl_context", return_value=None),
     ):
-        assert await login_matrix_bot(
-            homeserver=homeserver, username=username, password="test-password",
-            logout_others=False, config_for_paths=config,
-        ) is True
+        assert (
+            await login_matrix_bot(
+                homeserver=homeserver,
+                username=username,
+                password="test-password",
+                logout_others=False,
+                config_for_paths=config,
+            )
+            is True
+        )
     assert factory.call_args_list[0].args[0] == "https://example.com"
     assert factory.call_args_list[1].args[:2] == ("https://matrix.example.com", "bot")
     assert save.call_args.args[0]["user_id"] == "@bot:example.com"

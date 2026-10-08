@@ -367,7 +367,9 @@ class TestHandleMigrateCommand(unittest.TestCase):
         result = handle_migrate_command(self.args)
 
         self.assertEqual(result, EXIT_CODE_SUCCESS)
-        output = "\n".join(" ".join(map(str, call.args)) for call in mock_print.call_args_list)
+        output = "\n".join(
+            " ".join(map(str, call.args)) for call in mock_print.call_args_list
+        )
         self.assertIn(
             f"MMRelay {LEGACY_LAYOUT_FINAL_MIGRATION_SERIES} is the final release series",
             output,

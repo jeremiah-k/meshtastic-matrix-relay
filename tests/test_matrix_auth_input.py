@@ -20,7 +20,9 @@ async def test_oauth_bare_inputs_follow_delegation_and_bind_the_approved_account
         200, {"m.homeserver": {"base_url": "https://matrix.example.com"}}
     )
     client = OAuthClient(
-        server, clock=lambda: server.clock, monotonic=lambda: server.clock,
+        server,
+        clock=lambda: server.clock,
+        monotonic=lambda: server.clock,
         sleep=server.sleep,
     )
     result = await client.authorize_device(
@@ -46,11 +48,21 @@ async def test_oauth_rejects_and_revokes_a_different_approved_account(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("homeserver", [
-    "http://example.com", "ftp://example.com", "https://user:secret@example.com",
-    "example.com?redirect=other", "example.com#fragment", "example.com\n",
-    "https://example.com:0", "https://example.com:invalid", "", " ",
-])
+@pytest.mark.parametrize(
+    "homeserver",
+    [
+        "http://example.com",
+        "ftp://example.com",
+        "https://user:secret@example.com",
+        "example.com?redirect=other",
+        "example.com#fragment",
+        "example.com\n",
+        "https://example.com:0",
+        "https://example.com:invalid",
+        "",
+        " ",
+    ],
+)
 async def test_oauth_invalid_server_inputs_make_no_network_request(
     homeserver: str,
 ) -> None:
@@ -60,12 +72,15 @@ async def test_oauth_invalid_server_inputs_make_no_network_request(
     assert not server.requests
 
 
-@pytest.mark.parametrize("source, expected", [
-    (" SERVER.COM:443/ ", "https://server.com"),
-    ("https://SERVER.COM/path/", "https://server.com/path"),
-    ("http://localhost:8008/", "http://localhost:8008"),
-    ("[::1]:8448", "https://[::1]:8448"),
-])
+@pytest.mark.parametrize(
+    "source, expected",
+    [
+        (" SERVER.COM:443/ ", "https://server.com"),
+        ("https://SERVER.COM/path/", "https://server.com/path"),
+        ("http://localhost:8008/", "http://localhost:8008"),
+        ("[::1]:8448", "https://[::1]:8448"),
+    ],
+)
 def test_password_server_input_keeps_explicit_scheme_port_and_path(
     source: str, expected: str
 ) -> None:

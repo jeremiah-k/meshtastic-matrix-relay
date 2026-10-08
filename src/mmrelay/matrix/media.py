@@ -22,13 +22,16 @@ class ImageUploadError(RuntimeError):
 
     def __init__(
         self,
-        upload_response: UploadError | UploadResponse | SimpleNamespace | None,
+        upload_response: (
+            UploadError | UploadResponse | RoomSendError | SimpleNamespace | str | None
+        ),
     ):
         """
         Create an ImageUploadError and attach the underlying upload response or error.
 
         Parameters:
-            upload_response: The underlying upload error or response object (or None). If present, its `message`
+            upload_response: The underlying upload error or response object, a plain
+                failure message, or None. If present, its `message`
                 attribute will be included in the exception text and the object will be stored on the instance as
                 `upload_response`.
 

@@ -1174,9 +1174,7 @@ class TestLegacyPathOverrideWarnings(unittest.TestCase):
         with patch("mmrelay.config.logger") as mock_logger:
             _warn_on_legacy_path_overrides(config)
             warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
-            assert any(
-                LEGACY_LAYOUT_REMOVAL_VERSION in msg for msg in warning_calls
-            ), (
+            assert any(LEGACY_LAYOUT_REMOVAL_VERSION in msg for msg in warning_calls), (
                 "No warning mentioning "
                 f"{LEGACY_LAYOUT_REMOVAL_VERSION} in {warning_calls}"
             )

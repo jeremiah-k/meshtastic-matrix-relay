@@ -273,10 +273,16 @@ async def test_password_logout_removes_an_invalid_session_without_password(
     from mmrelay.cli_utils import LogoutError
 
     credentials = tmp_path / "credentials.json"
-    credentials.write_text(json.dumps({
-        "homeserver": "https://matrix.example.com", "user_id": "@bot:example.com",
-        "device_id": "DEVICE", "access_token": "test-invalid-token",
-    }))
+    credentials.write_text(
+        json.dumps(
+            {
+                "homeserver": "https://matrix.example.com",
+                "user_id": "@bot:example.com",
+                "device_id": "DEVICE",
+                "access_token": "test-invalid-token",
+            }
+        )
+    )
     response = MagicMock(spec=LogoutError)
     response.errcode = None
     response.status_code = None

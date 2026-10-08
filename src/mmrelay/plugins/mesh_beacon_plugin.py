@@ -149,10 +149,12 @@ class _BeaconRecord:
 def _optional_float(value: object) -> float | None:
     if value is None or isinstance(value, bool):
         return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    if isinstance(value, (int, float, str, bytes, bytearray)):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+    return None
 
 
 def _channel_number(value: object) -> int | None:
@@ -177,10 +179,9 @@ def _is_mesh_beacon_portnum(value: object) -> bool:
         return value.upper() == "MESH_BEACON_APP" or value == str(expected)
     if isinstance(value, bool):
         return False
-    try:
+    if isinstance(value, (int, float)):
         return int(value) == expected
-    except (TypeError, ValueError):
-        return False
+    return False
 
 
 def _has_offer(beacon: Any) -> bool:
@@ -286,7 +287,9 @@ def _qr_image(url: str, label: str | None = None) -> Any:
         except TypeError:
             font = ImageFont.load_default()
         draw = ImageDraw.Draw(image)
-        left, top, right, bottom = draw.textbbox((0, 0), label, font=font)
+        left, top, right, bottom = (
+            int(v) for v in draw.textbbox((0, 0), label, font=font)
+        )
         text_width = right - left
         text_height = bottom - top
         padding = 8
@@ -327,7 +330,8 @@ def _qr_label(record: _BeaconRecord) -> str | None:
     except (AttributeError, TypeError, ValueError):
         region = 0
     if region == 0:
-        region = record.fallback_region or 0
+        fallback_region = record.fallback_region
+        region = fallback_region if fallback_region is not None else 0
     if _has_optional_field(beacon, "offer_preset"):
         preset: int | None = int(beacon.offer_preset)
     else:
@@ -1034,7 +1038,9 @@ class Plugin(BasePlugin):
 
             region = int(beacon.offer_region)
             if region == int(config_pb2.Config.LoRaConfig.RegionCode.UNSET):
-                region = record.fallback_region or 0
+                fallback_region = record.fallback_region
+                region = fallback_region if fallback_region is not None else 0
+            preset: int | None
             if _has_optional_field(beacon, "offer_preset"):
                 preset = int(beacon.offer_preset)
             else:
@@ -1043,8 +1049,12 @@ class Plugin(BasePlugin):
             if region > 0 and preset is not None:
                 lora = channel_set.lora_config
                 lora.use_preset = True
-                lora.modem_preset = preset
-                lora.region = region
+                lora.modem_preset = cast(
+                    "config_pb2.Config.LoRaConfig.ModemPreset.ValueType", preset
+                )
+                lora.region = cast(
+                    "config_pb2.Config.LoRaConfig.RegionCode.ValueType", region
+                )
                 lora.hop_limit = 3
                 lora.tx_enabled = True
                 if _has_optional_field(beacon, "offer_frequency_slot"):
@@ -1113,12 +1123,17 @@ class Plugin(BasePlugin):
                     filesize=len(buffer.getbuffer()),
                     encrypt=True,
                 )
-                if not getattr(response, "content_uri", None) or not encryption:
+                content_uri = getattr(response, "content_uri", None)
+                if (
+                    not isinstance(content_uri, str)
+                    or not content_uri
+                    or not encryption
+                ):
                     raise ImageUploadError(response)
                 content = {
                     "msgtype": "m.image",
                     "body": filename,
-                    "file": {**encryption, "url": response.content_uri},
+                    "file": {**encryption, "url": content_uri},
                     "info": {"mimetype": "image/png"},
                 }
                 result = await matrix_client.room_send(

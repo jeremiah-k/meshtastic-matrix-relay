@@ -1,6 +1,6 @@
 """Exercise the installed SDK outside pytest's global nio doubles."""
 
-import subprocess
+import subprocess  # nosec B404 - SDK probes run only the project interpreter
 import sys
 import textwrap
 from pathlib import Path
@@ -56,7 +56,7 @@ def test_installed_sdk_restores_renews_and_sends_without_stale_headers(
             await client.close()
         asyncio.run(main())
     """)
-    result = subprocess.run(
+    result = subprocess.run(  # nosec B603 - interpreter and generated probe only
         [sys.executable, "-W", "error", "-c", script, str(tmp_path)],
         capture_output=True,
         text=True,
@@ -164,7 +164,7 @@ def test_installed_sdk_oauth_self_signs_and_recovers_missing_sidecar(
             assert store.path.read_bytes() == credentials_before
         asyncio.run(main())
     """)
-    result = subprocess.run(
+    result = subprocess.run(  # nosec B603 - interpreter and generated probe only
         [sys.executable, "-W", "error", "-c", script, str(tmp_path)],
         capture_output=True,
         text=True,

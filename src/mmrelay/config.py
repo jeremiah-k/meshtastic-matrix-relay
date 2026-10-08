@@ -35,10 +35,10 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_CUSTOM_PLUGINS,
     CONFIG_SECTION_MATRIX,
     CONFIG_SECTION_MESHTASTIC,
-    LEGACY_LAYOUT_REMOVAL_VERSION,
     ENV_BOOL_FALSE_VALUES,
     ENV_BOOL_TRUE_VALUES,
     JSON_INDENT_STANDARD,
+    LEGACY_LAYOUT_REMOVAL_VERSION,
     NORMALIZABLE_CONFIG_SECTIONS,
     REQUIRED_CREDENTIALS_KEYS,
 )
@@ -50,22 +50,15 @@ from mmrelay.constants.plugins import (
 
 # Import new path resolution system
 from mmrelay.paths import get_config_paths as get_unified_config_paths
-from mmrelay.paths import (
-    get_credentials_path,
-)
+from mmrelay.paths import get_credentials_path
 from mmrelay.paths import get_e2ee_store_dir as get_unified_store_dir
-from mmrelay.paths import (
-    get_home_dir,
-    get_legacy_dirs,
-)
+from mmrelay.paths import get_home_dir, get_legacy_dirs
 from mmrelay.paths import get_logs_dir as get_unified_logs_dir
 from mmrelay.paths import get_plugin_data_dir as get_unified_plugin_data_dir
-from mmrelay.paths import (
-    get_plugins_dir,
-    is_deprecation_window_active,
-)
+from mmrelay.paths import get_plugins_dir, is_deprecation_window_active
 
 if TYPE_CHECKING:
+    import argparse
     import logging
 
 
@@ -73,6 +66,15 @@ class _ConfigPathArgs(Protocol):
     """Parsed CLI argument surface used for configuration path selection."""
 
     config: str | None
+
+
+class _ConfigPathArgsView:
+    """Config-path view of parsed arguments for the config helpers' protocol."""
+
+    config: str | None
+
+    def __init__(self, args: "argparse.Namespace") -> None:
+        self.config: str | None = getattr(args, "config", None)
 
 
 class CredentialsPathError(OSError):
