@@ -301,7 +301,8 @@ def test_auth_login_handles_config_load_error(monkeypatch) -> None:
     result = handle_auth_login(mock_args)
 
     assert result == EXIT_CODE_SUCCESS
-    mock_load_config_silently.assert_called_once_with(mock_args)
+    (path_args,) = mock_load_config_silently.call_args.args
+    assert path_args.config is None
     mock_login.assert_called_once_with(
         homeserver=None,
         username=None,

@@ -664,7 +664,9 @@ def connect_meshtastic(
             facade._connect_attempt_condition.notify_all()
 
 
-def _connect_meshtastic_impl(
+# The serial/BLE/TCP branches in one body exceed pyright's analysis budget;
+# splitting them per transport is the real remedy, not an analyzer setting.
+def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
     passed_config: dict[str, Any] | None = None,
     force_connect: bool = False,
 ) -> Any:

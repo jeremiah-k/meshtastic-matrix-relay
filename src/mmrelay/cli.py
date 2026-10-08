@@ -29,6 +29,7 @@ from mmrelay.cli_utils import (
     msg_suggest_generate_config,
 )
 from mmrelay.config import (
+    _ConfigPathArgsView,
     apply_env_config_overrides,
     get_config_paths,
     set_secure_file_permissions,
@@ -1206,7 +1207,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
     if args is None:
         args = parse_arguments()
 
-    config_paths = get_config_paths(args)
+    config_paths = get_config_paths(_ConfigPathArgsView(args))
     config_path = None
     allow_missing_matrix_auth = (
         getattr(args, "allow_missing_matrix_auth", False) is True
@@ -2270,7 +2271,7 @@ def handle_auth_login(args: argparse.Namespace) -> int:
         try:
             from mmrelay.config import check_e2ee_enabled_silently
 
-            e2ee_enabled = check_e2ee_enabled_silently(args)
+            e2ee_enabled = check_e2ee_enabled_silently(_ConfigPathArgsView(args))
 
             if e2ee_enabled:
                 print("Matrix Bot Authentication for E2EE")
@@ -2288,7 +2289,7 @@ def handle_auth_login(args: argparse.Namespace) -> int:
     try:
         from mmrelay.config import load_config_silently
 
-        config_for_paths = load_config_silently(args)
+        config_for_paths = load_config_silently(_ConfigPathArgsView(args))
     except (OSError, PermissionError, ImportError, ValueError) as e:
         _get_logger().debug(
             "Could not load config for Matrix authentication paths: %s", e
@@ -2390,8 +2391,9 @@ def handle_auth_status(args: argparse.Namespace) -> int:
     print("Matrix Authentication Status")
     print("============================")
 
-    config_paths = get_config_paths(args)
-    config_data = load_config(args=args, config_paths=config_paths)
+    path_args = _ConfigPathArgsView(args)
+    config_paths = get_config_paths(path_args)
+    config_data = load_config(args=path_args, config_paths=config_paths)
 
     try:
         explicit_path = get_explicit_credentials_path(config_data)
@@ -2689,7 +2691,7 @@ def _diagnose_config_paths(args: argparse.Namespace) -> None:
     print("1. Testing configuration paths...")
     from mmrelay.config import get_config_paths
 
-    paths = get_config_paths(args)
+    paths = get_config_paths(_ConfigPathArgsView(args))
     print(f"   Config search paths: {len(paths)} locations")
     for i, path in enumerate(paths, 1):
         dir_path = os.path.dirname(path)

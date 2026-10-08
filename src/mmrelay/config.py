@@ -58,6 +58,7 @@ from mmrelay.paths import get_plugin_data_dir as get_unified_plugin_data_dir
 from mmrelay.paths import get_plugins_dir, is_deprecation_window_active
 
 if TYPE_CHECKING:
+    import argparse
     import logging
 
 
@@ -65,6 +66,15 @@ class _ConfigPathArgs(Protocol):
     """Parsed CLI argument surface used for configuration path selection."""
 
     config: str | None
+
+
+class _ConfigPathArgsView:
+    """Config-path view of parsed arguments for the config helpers' protocol."""
+
+    config: str | None
+
+    def __init__(self, args: "argparse.Namespace") -> None:
+        self.config: str | None = getattr(args, "config", None)
 
 
 class CredentialsPathError(OSError):

@@ -20,20 +20,12 @@ from mmrelay.matrix.oauth_e2ee import self_sign_device
 from mmrelay.matrix.oauth_store import OAuthStore
 
 
-class _ConfigPathArgsView:
-    """Config-path view of parsed arguments for the config helpers' protocol."""
-
-    config: str | None
-
-    def __init__(self, args: argparse.Namespace) -> None:
-        self.config: str | None = getattr(args, "config", None)
-
-
 def credential_store(
     args: argparse.Namespace, config: dict[str, Any] | None = None
 ) -> OAuthStore:
     """Use the same ordered credentials locations as relay startup."""
     from mmrelay.config import (
+        _ConfigPathArgsView,
         get_config_paths,
         get_credentials_search_paths,
         get_explicit_credentials_path,
@@ -175,7 +167,11 @@ def handle_login(args: argparse.Namespace) -> int:
         return 1
     username = getattr(args, "username", None)
     try:
-        from mmrelay.config import is_e2ee_enabled, load_config_silently
+        from mmrelay.config import (
+            _ConfigPathArgsView,
+            is_e2ee_enabled,
+            load_config_silently,
+        )
 
         if username is not None:
             username = normalize_username(username)

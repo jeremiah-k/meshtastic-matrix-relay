@@ -6,7 +6,7 @@ import asyncio
 import json
 import time
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Any
+from typing import Any, TypeVar, cast
 from urllib.parse import urlsplit, urlunsplit
 
 from mmrelay.matrix.oauth import (
@@ -80,14 +80,17 @@ async def _read_challenge(response: Any) -> object:
         ) from None
 
 
+_SendT = TypeVar("_SendT", bound=Callable[..., Any])
+
+
 def approval_sender(
-    send: Callable[..., Awaitable[Any]],
+    send: _SendT,
     issuer: str,
     *,
     reset_cross_signing: bool,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
-) -> Callable[..., Awaitable[Any]]:
+) -> _SendT:
     """Handle UIA only for signing-key uploads, through the guarded SDK transport."""
 
     async def request(
@@ -134,7 +137,9 @@ def approval_sender(
                 raise OAuthError("Cross-signing browser authorization changed; retry.")
         raise OAuthError("Cross-signing browser approval expired; retry the command.")
 
-    return request
+    # The guard shares the wrapped transport's exact signature, so callers keep
+    # the SDK's own ``send`` type.
+    return cast("_SendT", request)
 
 
 async def self_sign_device(

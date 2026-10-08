@@ -249,7 +249,7 @@ config = None
 
 # These will be set in connect_matrix()
 matrix_homeserver = None
-matrix_rooms = None
+matrix_rooms: list[dict[str, Any]] | None = None
 matrix_access_token: str | None = None
 bot_user_id = None
 bot_user_name = None  # Detected upon logon
