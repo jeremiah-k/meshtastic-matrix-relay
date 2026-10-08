@@ -401,10 +401,13 @@ def parse_arguments() -> argparse.Namespace:
     auth_subparsers = auth_parser.add_subparsers(
         dest="auth_command", help="Auth commands"
     )
+    # Abbreviations stay off so the global --home cannot prefix-match
+    # --homeserver and quietly replace the server with a data-directory path.
     login_parser = auth_subparsers.add_parser(
         "login",
         help="Authenticate with Matrix",
         description="Set up Matrix authentication for E2EE support",
+        allow_abbrev=False,
     )
     login_parser.add_argument(
         "--oauth",

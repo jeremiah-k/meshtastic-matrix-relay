@@ -33,6 +33,25 @@ def test_parser_accepts_native_oauth_without_password() -> None:
     assert args.password is None
 
 
+def test_parser_does_not_abbreviate_home_into_homeserver(capsys) -> None:
+    """A trailing global --home is ignored, never parsed as --homeserver."""
+    with patch(
+        "sys.argv",
+        [
+            "mmrelay",
+            "auth",
+            "login",
+            "--homeserver",
+            "https://example.com",
+            "--home",
+            "/tmp/mmrelay-data",
+        ],
+    ):
+        args = parse_arguments()
+    assert args.homeserver == "https://example.com"
+    assert "Unknown arguments ignored" in capsys.readouterr().err
+
+
 def test_cli_rejects_password_for_oauth() -> None:
     args = argparse.Namespace(oauth=True, password=None, reset_cross_signing=False)
     args.password = "test-password"
