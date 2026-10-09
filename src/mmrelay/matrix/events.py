@@ -148,6 +148,84 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
             await asyncio.sleep(backoff_delay)
 
 
+def _plugins_owning_room(candidates: list[str]) -> list[Any]:
+    """
+    Return active plugins that opted in to unmapped rooms and own one of the given room IDs.
+
+    Parameters:
+        candidates (list[str]): Room IDs (or aliases) to check against each
+            plugin's declared get_unmapped_room_ids().
+
+    Returns:
+        list: Plugins whose declared room IDs include one of the candidates.
+    """
+    from mmrelay.plugin_loader import load_plugins
+
+    owners: list[Any] = []
+    for plugin in load_plugins():
+        if not getattr(plugin, "handles_unmapped_rooms", False):
+            continue
+        try:
+            room_ids = plugin.get_unmapped_room_ids()
+            owns_room = any(candidate in room_ids for candidate in candidates)
+        except Exception:  # noqa: BLE001 - broad catch for plugin isolation
+            facade.logger.exception(
+                "Error checking unmapped rooms for %s",
+                getattr(plugin, "plugin_name", plugin),
+            )
+            continue
+        if owns_room:
+            owners.append(plugin)
+    return owners
+
+
+async def _dispatch_unmapped_room_message(
+    room: MatrixRoom,
+    event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+) -> None:
+    """
+    Offer a message from a room outside matrix_rooms to the plugin that owns it.
+
+    Events in unmapped rooms are never relayed to Meshtastic; this dispatch
+    exists so plugin-owned rooms (such as a dedicated admin room) can drive
+    plugins without participating in the mesh relay. Reaction events and
+    suppressed events are ignored.
+
+    Parameters:
+        room (MatrixRoom): The Matrix room the event was received in.
+        event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): The received room event.
+    """
+    if isinstance(event, ReactionEvent):
+        return
+    if event.source["content"].get(MATRIX_SUPPRESS_KEY):
+        return
+    text = getattr(event, "body", "") or event.source["content"].get("body", "")
+    if not isinstance(text, str) or not text.strip():
+        return
+    text = text.strip()
+
+    for plugin in _plugins_owning_room([room.room_id]):
+        try:
+            handler_result = plugin.handle_room_message(room, event, text)
+            if inspect.isawaitable(handler_result):
+                claimed = await handler_result
+            else:
+                claimed = bool(handler_result)
+            if claimed:
+                facade.logger.info(
+                    f"Processed command with plugin: {plugin.plugin_name} from {event.sender}"
+                )
+        except Exception as exc:  # noqa: BLE001 - broad catch for plugin isolation
+            facade.logger.error(
+                "Error processing message with plugin %s: %s",
+                plugin.plugin_name,
+                type(exc).__name__,
+            )
+            facade.logger.exception(
+                "Error processing message with plugin %s", plugin.plugin_name
+            )
+
+
 async def on_room_message(
     room: MatrixRoom,
     event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
@@ -255,6 +333,7 @@ async def on_room_message(
                 break
 
     if not room_config:
+        await _dispatch_unmapped_room_message(room, event)
         return
 
     relates_to = event.source["content"].get("m.relates_to")
@@ -737,9 +816,9 @@ async def on_room_member(room: MatrixRoom, event: RoomMemberEvent) -> None:
 
 async def on_invite(room: MatrixRoom, event: InviteMemberEvent) -> None:
     """
-    Handle an invite targeted at the bot and join the room when it is configured in matrix_rooms.
+    Handle an invite targeted at the bot and join the room when it is configured in matrix_rooms or owned by a plugin.
 
-    Attempts to join the invited room via the global matrix_client when all of the following are true: the event's state_key matches the bot's user id, the membership is "invite", and the room is present in the matrix_rooms configuration. Logs outcomes and failures; performs no return value.
+    Attempts to join the invited room via the global matrix_client when all of the following are true: the event's state_key matches the bot's user id, the membership is "invite", and the room is present in the matrix_rooms configuration or declared by an active plugin via handles_unmapped_rooms/get_unmapped_room_ids(). Logs outcomes and failures; performs no return value.
 
     Parameters:
         room (MatrixRoom): The Matrix room associated with the invite.
@@ -769,14 +848,20 @@ async def on_invite(room: MatrixRoom, event: InviteMemberEvent) -> None:
     if isinstance(aliases, (list, tuple)):
         candidates.extend(a for a in aliases if isinstance(a, str))
 
-    if not any(facade._is_room_mapped(facade.matrix_rooms, c) for c in candidates):
+    is_mapped = any(facade._is_room_mapped(facade.matrix_rooms, c) for c in candidates)
+    if not is_mapped and not _plugins_owning_room(candidates):
         facade.logger.info(
             f"Room '{room_id}' is not in matrix_rooms configuration, ignoring invite"
         )
         return
-    facade.logger.info(
-        f"Room '{room_id}' is in matrix_rooms configuration, accepting invite"
-    )
+    if is_mapped:
+        facade.logger.info(
+            f"Room '{room_id}' is in matrix_rooms configuration, accepting invite"
+        )
+    else:
+        facade.logger.info(
+            f"Room '{room_id}' is a configured plugin room, accepting invite"
+        )
 
     if not facade.matrix_client:
         facade.logger.error("matrix_client is None, cannot join room")
