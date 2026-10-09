@@ -8,6 +8,7 @@ and reply formatting for executor results and refusals.
 """
 
 import asyncio
+import contextlib
 import threading
 from types import SimpleNamespace
 from typing import Any
@@ -16,7 +17,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from mmrelay.matrix_utils import _dispatch_unmapped_room_message
-from mmrelay.plugins.remote_admin_plugin import Plugin
+from mmrelay.plugins.base_plugin import BasePlugin
+from mmrelay.plugins.remote_admin_plugin import Plugin, _join_execution
 from mmrelay.remote_admin_executor import AdminCommandError, AdminCommandResult
 
 ADMIN_ROOM = "!admin:matrix.org"
@@ -449,3 +451,88 @@ async def test_admin_room_dispatch_claims_command() -> None:
             room, _event(f"!admin --dest {REMOTE_NODE_ID} --reboot")
         )
     plugin._execute.assert_called_once()  # type: ignore[attr-defined]
+
+
+# --- coverage of remaining branches -------------------------------------------
+
+
+async def test_join_execution_reraises_worker_error_without_cancellation() -> None:
+    async def fail() -> AdminCommandResult:
+        raise RuntimeError("radio exploded")
+
+    worker = asyncio.create_task(fail())
+    with contextlib.suppress(RuntimeError):
+        await worker
+    assert worker.done()
+    with pytest.raises(RuntimeError, match="radio exploded"):
+        await _join_execution(worker)
+
+
+async def test_join_execution_raises_cancelled_after_draining_raised_worker() -> None:
+    release = asyncio.Event()
+
+    async def fail_soon() -> AdminCommandResult:
+        await release.wait()
+        raise RuntimeError("radio exploded")
+
+    worker = asyncio.create_task(fail_soon())
+    join = asyncio.create_task(_join_execution(worker))
+    await asyncio.sleep(0)
+    join.cancel()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await join
+    with contextlib.suppress(RuntimeError):
+        await worker
+
+
+def test_description_mentions_command_and_room_scope() -> None:
+    plugin = _plugin()
+    assert "!admin" in plugin.description
+
+
+def test_start_without_admin_room_logs_warning() -> None:
+    plugin = _plugin()
+    with (
+        patch.object(plugin, "logger") as mock_logger,
+        patch.object(BasePlugin, "start", lambda self: None),
+    ):
+        plugin.start()
+    assert mock_logger.warning.called
+    message = mock_logger.warning.call_args.args[0]
+    assert "admin_room" in message
+
+
+def test_sender_power_level_returns_none_when_power_levels_raise() -> None:
+    plugin = _plugin()
+
+    class RaisingLevels:
+        @property
+        def users(self) -> dict[str, int]:
+            raise TypeError("unusable power levels")
+
+        @property
+        def defaults(self) -> SimpleNamespace:
+            return SimpleNamespace(users_default=0)
+
+    room = SimpleNamespace(power_levels=RaisingLevels())
+    assert plugin._sender_power_level(room, ADMIN_SENDER) is None
+
+
+def test_sender_power_level_returns_none_for_non_numeric_level() -> None:
+    plugin = _plugin()
+    room = SimpleNamespace(
+        power_levels=SimpleNamespace(
+            users={ADMIN_SENDER: "high"},
+            defaults=SimpleNamespace(users_default=0),
+        )
+    )
+    assert plugin._sender_power_level(room, ADMIN_SENDER) is None
+
+
+async def test_handle_meshtastic_message_ignores_packets() -> None:
+    plugin = _plugin()
+    assert (
+        await plugin.handle_meshtastic_message({}, "formatted", "longname", "meshnet")
+        is False
+    )

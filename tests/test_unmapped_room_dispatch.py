@@ -22,6 +22,7 @@ from mmrelay.matrix_utils import (
     _plugins_owning_room,
     on_room_message,
 )
+from mmrelay.plugins.base_plugin import BasePlugin
 from tests.constants import TEST_USER_ID
 
 UNMAPPED_ROOM_ID = "!admin-room:matrix.org"
@@ -213,3 +214,61 @@ def test_plugins_owning_room_isolates_malformed_room_lists(room_ids: Any) -> Non
     owner = FakePlugin("owner", rooms=[UNMAPPED_ROOM_ID], handles=True)
     with patch("mmrelay.plugin_loader.load_plugins", return_value=[broken, owner]):
         assert _plugins_owning_room([UNMAPPED_ROOM_ID]) == [owner]
+
+
+# --- sync handlers and the default room contract -------------------------------
+
+
+class SyncPlugin(FakePlugin):
+    """A plugin whose handler is a plain function returning bool."""
+
+    async def _unused(self) -> None:  # pragma: no cover - typing shim only
+        return None
+
+    def handle_room_message(
+        self, room: Any, event: Any, text: str
+    ) -> bool:  # noqa: D102
+        self.calls.append((room.room_id, text))
+        return self.claimed
+
+
+@pytest.mark.usefixtures("reset_matrix_utils_globals")
+@patch("mmrelay.matrix_utils.logger")
+async def test_dispatch_unmapped_room_message_accepts_sync_handlers(
+    mock_logger: MagicMock,
+) -> None:
+    """A plugin with a non-async handler is claimed through the same path."""
+    owner = SyncPlugin("sync-owner", rooms=[UNMAPPED_ROOM_ID], handles=True)
+
+    with patch("mmrelay.plugin_loader.load_plugins", return_value=[owner]):
+        await _dispatch_unmapped_room_message(_make_room(), _make_text_event())
+
+    assert owner.calls == [(UNMAPPED_ROOM_ID, "!admin help")]
+    mock_logger.info.assert_any_call(
+        f"Processed command with plugin: sync-owner from {TEST_USER_ID}"
+    )
+
+
+class OptedOutDefaultRoomsPlugin(BasePlugin):
+    """Opts into unmapped rooms but declares no rooms (base default)."""
+
+    plugin_name = "opted_default_rooms"
+    handles_unmapped_rooms = True
+
+    async def handle_meshtastic_message(
+        self, packet: Any, formatted_message: str, longname: str, meshnet_name: str
+    ) -> bool:
+        return False
+
+    async def handle_room_message(self, room: Any, event: Any, text: str) -> bool:
+        return False
+
+
+@pytest.mark.usefixtures("reset_matrix_utils_globals")
+def test_opted_in_plugin_without_rooms_owns_nothing() -> None:
+    """The base get_unmapped_room_ids default keeps an opted-in plugin inert."""
+    plugin = OptedOutDefaultRoomsPlugin()
+    assert plugin.get_unmapped_room_ids() == []
+
+    with patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]):
+        assert _plugins_owning_room([UNMAPPED_ROOM_ID]) == []

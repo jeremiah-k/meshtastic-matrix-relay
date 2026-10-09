@@ -897,3 +897,84 @@ def test_real_get_dispatch_captures_a_fresh_remote_response(capsys) -> None:
     assert "lora.region: 1" in result.output
     assert capsys.readouterr() == ("", "")
     close.assert_not_called()
+
+
+# --- version fallback, flag naming, timeout guards, version gates --------------
+
+
+def test_mtjk_version_falls_back_when_distribution_missing() -> None:
+    from importlib.metadata import PackageNotFoundError
+
+    with patch(
+        "mmrelay.remote_admin_executor.version",
+        side_effect=PackageNotFoundError,
+    ):
+        from mmrelay.remote_admin_executor import _mtjk_version
+
+        assert _mtjk_version() == "unknown"
+
+
+def test_primary_flag_names_positional_actions_by_dest() -> None:
+    from mmrelay.remote_admin_executor import _primary_flag
+
+    action = SimpleNamespace(option_strings=[], dest="some_verb")
+    assert _primary_flag(action) == "--some_verb"
+
+
+def test_clamp_timeout_falls_back_to_default_on_unparseable_cap() -> None:
+    args = SimpleNamespace(timeout=10)
+    _clamp_timeout(args, "not-a-number")
+    assert args.timeout == 10
+
+
+def test_clamp_timeout_falls_back_to_cap_on_unparseable_request() -> None:
+    args = SimpleNamespace(timeout=None)
+    _clamp_timeout(args, 45)
+    assert args.timeout == 45
+
+
+def test_empty_command_is_refused() -> None:
+    with pytest.raises(AdminCommandError, match="no command given"):
+        run_admin_command(_fake_interface(), "   ")
+
+
+@pytest.mark.usefixtures("real_mtjk")
+def test_get_requires_sink_capable_mtjk_release() -> None:
+    from mmrelay.remote_admin_executor import AdminCommandError as err
+    from mmrelay.remote_admin_executor import run_admin_command as run
+
+    interface = real_interface()
+
+    class _NoSink:
+        parameters: dict[str, Any] = {"response_deadline": object()}
+
+    with patch(
+        "mmrelay.remote_admin_executor.inspect.signature", return_value=_NoSink()
+    ):
+        with pytest.raises(err, match="sink-capable"):
+            run(
+                interface,
+                f"--dest {REMOTE_NODE_ID} --get lora.region",
+                local_node_num=LOCAL_NODE_NUM,
+            )
+
+
+@pytest.mark.usefixtures("real_mtjk")
+def test_admin_queries_require_deadline_capable_mtjk_release() -> None:
+    from mmrelay.remote_admin_executor import AdminCommandError as err
+    from mmrelay.remote_admin_executor import run_admin_command as run
+
+    interface = real_interface()
+
+    class _NoDeadline:
+        parameters: dict[str, Any] = {"cli_print": object()}
+
+    with patch(
+        "mmrelay.remote_admin_executor.inspect.signature", return_value=_NoDeadline()
+    ):
+        with pytest.raises(err, match="deadline-capable"):
+            run(
+                interface,
+                f"--dest {REMOTE_NODE_ID} --get-ui-config",
+                local_node_num=LOCAL_NODE_NUM,
+            )
