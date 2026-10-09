@@ -71,6 +71,7 @@ FIELD_LABELS = {
     "altitude": "alt",
 }
 AVAILABLE_FIELDS = tuple(["name", "power", *FIELD_PATHS.keys(), "<dotted node path>"])
+DEFAULT_MAX_RESULTS = 20
 # Secret-bearing path segments (compared against lowercased alphanumeric
 # forms) that are never rendered, even when explicitly configured, so future
 # mtjk schema additions cannot leak credentials through raw node paths.
@@ -141,7 +142,7 @@ def get_relative_time(timestamp: float) -> str:
     if total_seconds > RELATIVE_TIME_DAYS_THRESHOLD * SECONDS_PER_DAY:
         return dt.strftime(
             DATE_FORMAT_LONG
-        )  # Return formatted date if older than RELATIVE_TIME_DAYS_THRESHOLD days
+        )  # Return formatted date if older than RELATIVE_TIME_DAYS_THRESHOLD
 
     days = total_seconds // SECONDS_PER_DAY
     if days >= 1:
@@ -300,6 +301,21 @@ class Plugin(BasePlugin):
             return DEFAULT_FIELDS.copy()
         return configured
 
+    def _configured_max_results(self) -> int:
+        max_results = self.config.get("max_results", DEFAULT_MAX_RESULTS)
+        if (
+            isinstance(max_results, bool)
+            or not isinstance(max_results, int)
+            or max_results < 0
+        ):
+            self.logger.warning(
+                "Plugin 'nodes': max_results must be a non-negative integer; "
+                "using default %d.",
+                DEFAULT_MAX_RESULTS,
+            )
+            return DEFAULT_MAX_RESULTS
+        return max_results
+
     def _render_field(
         self, field: str, node_key: Any, info: dict[str, Any]
     ) -> str | None:
@@ -336,9 +352,13 @@ class Plugin(BasePlugin):
         """
         Build a textual summary of known Meshtastic nodes using configured fields.
 
-        The response begins with "Nodes: <count>" and lists nodes newest-first.
-        Fields come from ``plugins.nodes.fields`` and may be aliases or raw dotted
-        node-data paths. Potentially secret-bearing paths are withheld and
+        The response begins with a "Nodes: ..." header and lists nodes
+        newest-first, capped at ``plugins.nodes.max_results`` entries (default
+        20; 0 lists every node). When nodes are left unlisted the header
+        reports the totals ("Nodes: 20 of 42") and a trailing
+        "... and N more not shown" line marks the cut. Fields come from
+        ``plugins.nodes.fields`` and may be aliases or raw dotted node-data
+        paths. Potentially secret-bearing paths are withheld and
         container-valued paths render nothing rather than dumping raw data.
         If the Meshtastic device cannot be contacted, returns the
         error message "Unable to connect to Meshtastic device."
@@ -363,8 +383,12 @@ class Plugin(BasePlugin):
             reverse=True,
         )
 
+        total = len(node_entries)
+        limit = self._configured_max_results()
+        shown_entries = node_entries if limit <= 0 else node_entries[:limit]
+
         node_lines: list[str] = []
-        for node_key, info in node_entries:
+        for node_key, info in shown_entries:
             rendered_fields = [
                 rendered
                 for field in fields
@@ -377,8 +401,16 @@ class Plugin(BasePlugin):
             )
             node_lines.append(node_text + "\n")
 
-        response = f"Nodes: {len(node_entries)}\n"
-        return response + "".join(node_lines)
+        if len(shown_entries) < total:
+            header = f"Nodes: {len(shown_entries)} of {total}"
+        else:
+            header = f"Nodes: {total}"
+
+        response = header + "\n" + "".join(node_lines)
+        hidden = total - len(shown_entries)
+        if hidden > 0:
+            response += f"… and {hidden} more not shown\n"
+        return response
 
     async def handle_meshtastic_message(
         self, packet: Any, formatted_message: str, longname: str, meshnet_name: str

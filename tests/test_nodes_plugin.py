@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.constants.formats import DATE_FORMAT_LONG
 from mmrelay.plugins.nodes_plugin import (
+    DEFAULT_MAX_RESULTS,
     FIELD_PATHS,
     Plugin,
     _format_last_seen,
@@ -1121,6 +1122,55 @@ def test_empty_status_is_omitted(feature_plugin: Plugin) -> None:
     with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
         response = feature_plugin.generate_response()
     assert response == "Nodes: 1\nNo fields available\n"
+
+
+def _many_nodes_client(count: int) -> MagicMock:
+    """Provide a node DB larger than the default listing cap."""
+    now = datetime.now()
+    client = MagicMock()
+    client.nodes = {
+        f"node{i}": {
+            "user": {
+                "shortName": f"N{i:02d}",
+                "longName": f"Node {i:02d}",
+                "hwModel": "RAK4631",
+                "role": "CLIENT",
+            },
+            "snr": float(i % 10),
+            "lastHeard": (now - timedelta(minutes=count - i)).timestamp(),
+        }
+        for i in range(count)
+    }
+    return client
+
+
+def _generate(feature_plugin: Plugin, client: MagicMock) -> str:
+    with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
+        return feature_plugin.generate_response()
+
+
+def test_default_limit_is_twenty(feature_plugin: Plugin) -> None:
+    response = _generate(feature_plugin, _many_nodes_client(25))
+    assert response.splitlines()[0] == "Nodes: 20 of 25"
+    assert response.splitlines()[-1] == "… and 5 more not shown"
+    assert "Node 24" in response
+    assert "Node 04" not in response
+
+
+def test_configured_max_results_applies(feature_plugin: Plugin) -> None:
+    feature_plugin.config["max_results"] = 2
+    response = _generate(feature_plugin, _many_nodes_client(25))
+    assert response.splitlines()[0] == "Nodes: 2 of 25"
+
+
+def test_invalid_configured_max_results_falls_back_to_default(
+    feature_plugin: Plugin,
+) -> None:
+    for invalid in ("many", -1, True):
+        feature_plugin.config["max_results"] = invalid
+        response = _generate(feature_plugin, _many_nodes_client(25))
+        assert response.splitlines()[0] == (f"Nodes: {DEFAULT_MAX_RESULTS} of 25")
+    assert feature_plugin.logger.warning.called
 
 
 if __name__ == "__main__":
