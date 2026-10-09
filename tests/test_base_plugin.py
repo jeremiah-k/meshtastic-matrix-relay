@@ -713,6 +713,7 @@ class TestBasePlugin(unittest.TestCase):
             self.assertEqual(
                 call_args.kwargs["message_type"], MATRIX_EVENT_TYPE_ROOM_MESSAGE
             )
+            self.assertIs(call_args.kwargs["ignore_unverified_devices"], True)
 
         asyncio.run(run_test())
 

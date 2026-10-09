@@ -385,7 +385,7 @@ from mmrelay.matrix.room_ids import is_room_id as is_room_id
 from mmrelay.matrix.sync_bootstrap import (
     _perform_initial_sync,
     _post_sync_setup,
-    connect_matrix,
+    connect_matrix as connect_matrix,
     join_matrix_room,
     login_matrix_bot,
 )
@@ -410,6 +410,8 @@ from mmrelay.matrix.media import (
     upload_image,
 )
 from mmrelay.matrix.events import (
+    _dispatch_unmapped_room_message,
+    _plugins_owning_room,
     on_decryption_failure,
     on_invite,
     on_room_member,

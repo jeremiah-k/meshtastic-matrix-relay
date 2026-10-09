@@ -81,7 +81,11 @@ from mmrelay.message_queue import (
     stop_message_queue,
 )
 from mmrelay.paths import get_home_dir, get_legacy_dirs, get_legacy_env_vars
-from mmrelay.plugin_loader import load_plugins, shutdown_plugins
+from mmrelay.plugin_loader import (
+    get_declared_unmapped_room_ids,
+    load_plugins,
+    shutdown_plugins,
+)
 
 # Import as module to set event_loop.
 from mmrelay import meshtastic_utils  # isort: skip
@@ -756,6 +760,11 @@ async def main(config: dict[str, Any]) -> None:
         # Join the rooms specified in the config.yaml
         for room in matrix_rooms:
             await join_matrix_room(matrix_client, room["id"])
+
+        # Plugin-owned rooms join proactively too: a pending invite arrives
+        # in the initial sync before invite callbacks are registered.
+        for room_id in get_declared_unmapped_room_ids():
+            await join_matrix_room(matrix_client, room_id)
 
         # Register the message callback for Matrix
         matrix_logger.info("Listening for inbound Matrix messages")
