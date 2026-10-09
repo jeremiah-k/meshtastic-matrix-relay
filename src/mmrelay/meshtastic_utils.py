@@ -395,7 +395,7 @@ from mmrelay.meshtastic.connection import (
     _log_ble_shutdown_state,
     _rollback_connect_attempt_state,
     _schedule_connect_time_calibration_probe,
-    connect_meshtastic,
+    connect_meshtastic as connect_meshtastic,
     serial_port_exists,
 )
 from mmrelay.meshtastic.events import (

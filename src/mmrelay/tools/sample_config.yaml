@@ -171,6 +171,16 @@ plugins:
     # hide invitations only from that room.
     # Commands: !beacons, !beacons show ID, !beacons url ID, !beacons qr ID,
     # !beacons dismiss ID, !beacons clear
+  remote_admin:
+    active: false
+    # Run mtjk admin commands against remote mesh nodes from a designated
+    # Matrix room (see docs/REMOTE_ADMIN.md). The room needs no matrix_rooms
+    # entry; the bot joins on invite and nothing in it relays to the mesh.
+    #admin_room: "!room_id:matrix.org" # Required when active: the room commands are issued in
+    #power_level: 50 # Minimum sender power level in admin_room (default: 50)
+    #allow_destructive: false # Enable destructive verbs (factory reset, node DB wipe, GPIO writes, ...)
+    #timeout: 120 # Command wait budget in seconds; also caps mtjk --timeout (default: 120)
+    #max_output_chars: 2000 # Reply output cap before truncation (default: 2000)
 
 #community-plugins:
 #  sample_plugin:

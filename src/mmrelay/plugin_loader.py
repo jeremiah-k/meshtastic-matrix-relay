@@ -3270,6 +3270,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
     from mmrelay.plugins.mesh_relay_plugin import Plugin as MeshRelayPlugin
     from mmrelay.plugins.nodes_plugin import Plugin as NodesPlugin
     from mmrelay.plugins.ping_plugin import Plugin as PingPlugin
+    from mmrelay.plugins.remote_admin_plugin import Plugin as RemoteAdminPlugin
     from mmrelay.plugins.telemetry_plugin import Plugin as TelemetryPlugin
     from mmrelay.plugins.weather_plugin import Plugin as WeatherPlugin
 
@@ -3280,6 +3281,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         MeshBeaconPlugin(),
         MeshRelayPlugin(),
         PingPlugin(),
+        RemoteAdminPlugin(),
         TelemetryPlugin(),
         WeatherPlugin(),
         HelpPlugin(),
