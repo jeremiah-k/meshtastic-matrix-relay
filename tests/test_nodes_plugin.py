@@ -1394,6 +1394,24 @@ def test_power_filter_matches_battery_or_voltage(
     assert "Zed Zed Alpha" in response
 
 
+def test_battery_sentinels_render_as_powered(feature_plugin: Plugin) -> None:
+    client = _query_client()
+    client.nodes["node1"]["deviceMetrics"] = {"batteryLevel": 101, "voltage": 4.2}
+    client.nodes["node2"]["deviceMetrics"] = {"batteryLevel": 0, "voltage": 3.9}
+    response = _respond(feature_plugin, "", client)
+    assert "Powered 4.2V" in response
+    assert "Powered 3.9V" in response
+    assert "101%" not in response
+    assert "0%" not in response
+
+
+def test_battery_field_renders_powered_sentinels(feature_plugin: Plugin) -> None:
+    client = _query_client()
+    client.nodes["node1"]["deviceMetrics"] = {"batteryLevel": 101}
+    response = _respond(feature_plugin, "fields battery", client)
+    assert "battery: Powered" in response
+
+
 def test_no_match_reports_totals(feature_plugin: Plugin) -> None:
     response = _respond(feature_plugin, "role satellite", _query_client())
     assert response == "No nodes matched role ~ satellite (of 3 known)."

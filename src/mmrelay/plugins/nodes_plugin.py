@@ -542,6 +542,9 @@ def _format_field_value(field: str, value: Any) -> str | None:
     if field == "snr":
         return f"{value}{SNR_UNIT_SUFFIX}" if value is not None else None
     if field == "battery":
+        # Firmware reports 0 or 101 for externally powered nodes.
+        if value in (0, 101):
+            return "Powered"
         return f"{value}%" if value is not None else None
     if field == "voltage":
         return f"{value}V" if value is not None else None
@@ -643,7 +646,10 @@ class Plugin(BasePlugin):
         if field == "power":
             battery = _get_field_value(info, "deviceMetrics.batteryLevel")
             voltage = _get_field_value(info, "deviceMetrics.voltage")
-            battery_text = f"{battery}%" if battery is not None else "?%"
+            if battery in (0, 101):
+                battery_text = "Powered"
+            else:
+                battery_text = f"{battery}%" if battery is not None else "?%"
             voltage_text = f"{voltage}V" if voltage is not None else "?V"
             return f"{battery_text} {voltage_text}"
 
