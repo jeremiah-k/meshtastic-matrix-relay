@@ -46,7 +46,7 @@ meshtastic:
   meshnet_name: Your Meshnet Name # This is displayed in full on Matrix, but is truncated when sent to a Meshnet
   message_interactions: # Configure reactions and replies (both require message storage in database)
     reactions: false # Enable reaction relaying between platforms
-    replies: false   # Enable reply relaying between platforms
+    replies: false # Enable reply relaying between platforms
 
   # Optional connection health monitoring overrides
   #health_check:
@@ -143,12 +143,19 @@ plugins:
     # mtjk has received one.
     #max_results: 20 # Nodes listed per !nodes reply; 0 lists every node
     #fields: ["name", "hardware", "power", "snr", "hops", "last_seen", "status"]
-    # Other aliases: short_name, long_name, node_id, node_num, role, public_key,
-    # battery, voltage, channel_utilization, air_util_tx, uptime, channel, favorite,
-    # latitude, longitude, altitude. Any raw dotted node path is also accepted, for
-    # example environmentMetrics.temperature or hostMetrics.freeMemory.
+    # Other aliases: short_name, long_name, node_id, node_num, role,
+    # public_key, battery, voltage, channel_utilization, air_util_tx, uptime,
+    # channel, favorite, latitude, longitude, altitude. Any raw dotted node path is
+    # also accepted, for example environmentMetrics.temperature or
+    # hostMetrics.freeMemory.
     # Potentially secret-bearing paths (private keys, PSKs, passwords, wifi or
     # bluetooth pairing settings, ...) are always withheld, even when configured.
+    # The !nodes command also takes arguments (see !nodes help):
+    #   !nodes limit 50           or a bare number: !nodes 50; 'limit all' uncaps
+    #   !nodes role client_mute   case-insensitive substring filter; commas = any-of
+    #   !nodes hardware rak4631   multiple filters combine with AND
+    #   !nodes sort snr desc      numeric fields default high-to-low, text A-to-Z
+    #   !nodes fields battery,uptime  output fields for this listing only
   mesh_beacon:
     active: false
     # Listening-first Mesh Beacon support. When active, MMRelay verifies the
