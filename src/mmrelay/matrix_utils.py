@@ -403,6 +403,8 @@ from mmrelay.matrix.media import (
     upload_image,
 )
 from mmrelay.matrix.events import (
+    _dispatch_unmapped_room_message,
+    _plugins_owning_room,
     on_decryption_failure,
     on_invite,
     on_room_member,

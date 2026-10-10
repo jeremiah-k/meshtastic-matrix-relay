@@ -140,6 +140,10 @@ class BasePlugin(ABC):
     is_core_plugin: bool | None = None
     max_data_rows_per_node = DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE
     priority = DEFAULT_PLUGIN_PRIORITY
+    # Opt in to receiving events from rooms outside the matrix_rooms mapping.
+    # Only takes effect together with get_unmapped_room_ids(); such events are
+    # offered to the owning plugin only and are never relayed to Meshtastic.
+    handles_unmapped_rooms = False
 
     @property
     def description(self) -> str:
@@ -686,6 +690,20 @@ class BasePlugin(ABC):
         if self.plugin_name is None:
             return []
         return [self.plugin_name]
+
+    def get_unmapped_room_ids(self) -> list[str]:
+        """
+        Return Matrix room IDs outside the matrix_rooms mapping that this
+        plugin should receive message events for.
+
+        Requires ``handles_unmapped_rooms = True`` to take effect. Events from
+        these rooms are offered only to the plugin that declares them and are
+        never relayed to Meshtastic.
+
+        Returns:
+            list[str]: Room IDs this plugin owns (default: none).
+        """
+        return []
 
     def get_matching_matrix_command(
         self,

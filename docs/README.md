@@ -22,6 +22,7 @@ operator guidance**. Broader conceptual and community documentation lives in the
 - **[Native Matrix OAuth (experimental)](MATRIX_OAUTH.md)** — dedicated device sessions, browser approval, token renewal, and draft limitations
 - **[Advanced Configuration](ADVANCED_CONFIGURATION.md)** — message formatting, packet routing, health checks, debug logging, and environment overrides
 - **[Mesh Beacons](MESH_BEACON.md)** — capture invitations, recall join URLs, and render QR codes
+- **[Remote Admin](REMOTE_ADMIN.md)** — run mtjk admin commands against remote nodes from a designated admin room
 
 ## Upgrade and release notes
 
