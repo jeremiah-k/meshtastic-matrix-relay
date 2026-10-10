@@ -349,7 +349,6 @@ def test_commands_outside_remote_capture_boundary_are_refused(command: str) -> N
 
 
 @pytest.mark.parametrize("verb", ["--reboot", "--ch-add test", "--pos-fields ALTITUDE"])
-
 def test_dry_run_cannot_accompany_a_mutating_nonpreview_verb(verb: str) -> None:
     parser, args = _parsed(f"--dest {REMOTE_NODE_ID} --dry-run {verb}")
     with pytest.raises(AdminCommandError, match="only with --set"):
@@ -444,13 +443,13 @@ def test_empty_command_is_refused() -> None:
 
 # --- current mtjk embedded API ---------------------------------------------
 
+
 def test_embedded_dispatch_uses_public_api_without_closing_radio() -> None:
     from meshtastic.commands import CommandCapabilities, CommandResult
+
     from mmrelay.remote_admin_executor import _run_embedded
 
-    parser, args = _parsed(
-        f"--dest {REMOTE_NODE_ID} --timeout=4 --get lora.region"
-    )
+    parser, args = _parsed(f"--dest {REMOTE_NODE_ID} --timeout=4 --get lora.region")
     radio = _fake_interface()
     _validate_destination(args, radio, LOCAL_NODE_NUM)
     _clamp_timeout(args, 30)
@@ -465,19 +464,24 @@ def test_embedded_dispatch_uses_public_api_without_closing_radio() -> None:
         ) as execute,
     ):
         result = _run_embedded(
-            radio, parser, args,
+            radio,
+            parser,
+            args,
             ["--dest", REMOTE_NODE_ID, "--timeout=4", "--get", "lora.region"],
         )
     assert result.exit_code == 0
     assert result.output == "lora.region: 4"
     execute.assert_called_once_with(
-        radio, ["--dest", REMOTE_NODE_ID, "--get", "lora.region"],
-        timeout=4, maxOutputBytes=64 * 1024,
+        radio,
+        ["--dest", REMOTE_NODE_ID, "--get", "lora.region"],
+        timeout=4,
+        maxOutputBytes=64 * 1024,
     )
 
 
 def test_embedded_refuses_options_not_in_versioned_capabilities() -> None:
     from meshtastic.commands import CommandCapabilities
+
     from mmrelay.remote_admin_executor import _run_embedded
 
     parser, args = _parsed(f"--dest {REMOTE_NODE_ID} --dry-run --set lora.region 4")
@@ -490,7 +494,9 @@ def test_embedded_refuses_options_not_in_versioned_capabilities() -> None:
         pytest.raises(AdminCommandError, match="--dry-run"),
     ):
         _run_embedded(
-            _fake_interface(), parser, args,
+            _fake_interface(),
+            parser,
+            args,
             ["--dest", REMOTE_NODE_ID, "--dry-run", "--set", "lora.region", "4"],
         )
     execute.assert_not_called()
@@ -498,6 +504,7 @@ def test_embedded_refuses_options_not_in_versioned_capabilities() -> None:
 
 def test_embedded_failure_retains_exit_and_truncation() -> None:
     from meshtastic.commands import CommandCapabilities, CommandResult
+
     from mmrelay.remote_admin_executor import _run_embedded
 
     parser, args = _parsed(f"--dest {REMOTE_NODE_ID} --reboot")
@@ -537,18 +544,52 @@ def test_run_admin_command_validates_and_forwards_to_embedded_api() -> None:
     assert args.dest == REMOTE_NODE_ID
     assert args.timeout == 8
     assert embedded.call_args.args[3] == [
-        "--dest", REMOTE_NODE_ID, "--timeout", "8", "--reboot"
+        "--dest",
+        REMOTE_NODE_ID,
+        "--timeout",
+        "8",
+        "--reboot",
     ]
 
 
 def test_embedded_argv_removes_duplicate_destination_aliases() -> None:
     from mmrelay.remote_admin_executor import _embedded_argv
 
-    parser, _ = _parsed(
-        f"--dest !01020304 --reboot --dest={REMOTE_NODE_ID}"
-    )
+    parser, _ = _parsed(f"--dest !01020304 --reboot --dest={REMOTE_NODE_ID}")
     assert _embedded_argv(
         parser,
         ["--dest", "!01020304", "--reboot", f"--dest={REMOTE_NODE_ID}"],
         REMOTE_NODE_ID,
     ) == ["--dest", REMOTE_NODE_ID, "--reboot"]
+
+
+def test_unsupported_embedded_api_version_refuses_execution() -> None:
+    """A future mtjk embedded API contract is refused before any dispatch."""
+    with (
+        patch(
+            "meshtastic.commands.getCommandCapabilities",
+            return_value=SimpleNamespace(apiVersion=2, supportedOptions=()),
+        ),
+        patch("meshtastic.commands.executeCommand") as dispatch,
+    ):
+        with pytest.raises(
+            AdminCommandError, match="unsupported mtjk embedded command API version"
+        ):
+            run_admin_command(
+                _fake_interface(), f"--dest {REMOTE_NODE_ID} --get lora.hopLimit"
+            )
+
+    dispatch.assert_not_called()
+
+
+def test_dispatch_error_without_output_reports_the_exception_type() -> None:
+    """A failed dispatch with empty output still names the failure class."""
+    outcome = SimpleNamespace(
+        exitCode=1, output="", error=RuntimeError("boom"), truncated=False
+    )
+    with patch("meshtastic.commands.executeCommand", return_value=outcome):
+        result = run_admin_command(
+            _fake_interface(), f"--dest {REMOTE_NODE_ID} --get lora.hopLimit"
+        )
+
+    assert (result.exit_code, result.output) == (1, "ERROR: RuntimeError")
