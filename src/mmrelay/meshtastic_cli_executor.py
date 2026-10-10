@@ -586,6 +586,8 @@ def _run_embedded(
 ) -> CliCommandResult:
     """Execute one policy-approved command using the public mtjk API."""
     from meshtastic.commands import executeCommand, getCommandCapabilities
+    from meshtastic.errors import RequestRejectedError
+    from meshtastic.protobuf import mesh_pb2
 
     capabilities = getCommandCapabilities()
     if capabilities.apiVersion != 1:
@@ -611,7 +613,21 @@ def _run_embedded(
         interface, argv, timeout=args.timeout, maxOutputBytes=64 * 1024
     )
     message = outcome.output.strip()
-    if outcome.error is not None and not message:
+    if isinstance(outcome.error, RequestRejectedError):
+        # Routing enum names are safe to report; arbitrary exception text may
+        # contain credentials supplied with the command.
+        reason: str | int | None = outcome.error.reason
+        if isinstance(reason, int):
+            enum_value = mesh_pb2.Routing.Error.DESCRIPTOR.values_by_number.get(reason)
+            reason = enum_value.name if enum_value is not None else None
+        failure = "ERROR: RequestRejectedError"
+        if (
+            isinstance(reason, str)
+            and reason in mesh_pb2.Routing.Error.DESCRIPTOR.values_by_name
+        ):
+            failure += f": {reason}"
+        message = f"{message}\n{failure}" if message else failure
+    elif outcome.error is not None and not message:
         message = f"ERROR: {type(outcome.error).__name__}"
     if outcome.truncated:
         message += "\n… (mtjk output truncated)"
