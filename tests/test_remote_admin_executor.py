@@ -563,6 +563,63 @@ def test_embedded_argv_removes_duplicate_destination_aliases() -> None:
     ) == ["--dest", REMOTE_NODE_ID, "--reboot"]
 
 
+@pytest.mark.parametrize("output", ["", "Partial output"])
+@pytest.mark.parametrize("reason", ["PKI_FAILED", 34])
+def test_embedded_routing_rejection_includes_reason(
+    output: str, reason: str | int
+) -> None:
+    from meshtastic.errors import RequestRejectedError
+
+    outcome = SimpleNamespace(
+        exitCode=1,
+        output=output,
+        error=RequestRejectedError(
+            reason,
+            nodeNum=REMOTE_NODE_NUM,
+            requestId=42,
+            operation="get_config_request",
+        ),
+        truncated=False,
+    )
+    with (
+        real_interface() as interface,
+        patch("meshtastic.commands.executeCommand", return_value=outcome),
+    ):
+        result = run_admin_command(
+            interface,
+            f"--dest {REMOTE_NODE_ID} --get lora.region",
+            local_node_num=LOCAL_NODE_NUM,
+        )
+    assert result.exit_code == 1
+    assert result.output == (
+        (output + "\n" if output else "") + "ERROR: RequestRejectedError: PKI_FAILED"
+    )
+
+
+@pytest.mark.parametrize("reason", ["secret-channel-key", 9999])
+def test_embedded_unknown_routing_reason_does_not_disclose_exception_text(
+    reason: str | int,
+) -> None:
+    from meshtastic.errors import RequestRejectedError
+
+    outcome = SimpleNamespace(
+        exitCode=1,
+        output="Partial output",
+        error=RequestRejectedError(reason, nodeNum=REMOTE_NODE_NUM),
+        truncated=False,
+    )
+    with (
+        real_interface() as interface,
+        patch("meshtastic.commands.executeCommand", return_value=outcome),
+    ):
+        result = run_admin_command(
+            interface,
+            f"--dest {REMOTE_NODE_ID} --get lora.region",
+            local_node_num=LOCAL_NODE_NUM,
+        )
+    assert result.output == "Partial output\nERROR: RequestRejectedError"
+
+
 def test_unsupported_embedded_api_version_refuses_execution() -> None:
     """A future mtjk embedded API contract is refused before any dispatch."""
     with (
