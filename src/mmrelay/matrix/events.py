@@ -167,7 +167,11 @@ def _plugins_owning_room(candidates: list[str]) -> list[Any]:
             continue
         try:
             room_ids = plugin.get_unmapped_room_ids()
-            owns_room = any(candidate in room_ids for candidate in candidates)
+            if not isinstance(room_ids, (list, tuple)):
+                continue
+            # Only exact room IDs from the declared sequence grant ownership.
+            declared = {room_id for room_id in room_ids if isinstance(room_id, str)}
+            owns_room = any(candidate in declared for candidate in candidates)
         except Exception:  # noqa: BLE001 - broad catch for plugin isolation
             facade.logger.exception(
                 "Error checking unmapped rooms for %s",

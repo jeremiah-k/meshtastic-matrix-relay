@@ -216,6 +216,36 @@ def test_plugins_owning_room_isolates_malformed_room_lists(room_ids: Any) -> Non
         assert _plugins_owning_room([UNMAPPED_ROOM_ID]) == [owner]
 
 
+@pytest.mark.usefixtures("reset_matrix_utils_globals")
+@pytest.mark.parametrize(
+    "room_ids",
+    [
+        UNMAPPED_ROOM_ID + "-other",  # A string is not a declaration list.
+        {UNMAPPED_ROOM_ID: True},
+        {UNMAPPED_ROOM_ID},
+        [42, None, UNMAPPED_ROOM_ID + "-other"],
+    ],
+)
+def test_plugins_owning_room_rejects_nonsequence_or_substring_declarations(
+    room_ids: Any,
+) -> None:
+    """Malformed declarations must never claim a room by substring/membership."""
+    broken = FakePlugin("broken", handles=True)
+    broken._rooms = room_ids
+    owner = FakePlugin("owner", rooms=[UNMAPPED_ROOM_ID], handles=True)
+    with patch("mmrelay.plugin_loader.load_plugins", return_value=[broken, owner]):
+        assert _plugins_owning_room([UNMAPPED_ROOM_ID]) == [owner]
+
+
+@pytest.mark.usefixtures("reset_matrix_utils_globals")
+def test_plugins_owning_room_accepts_tuples_with_exact_string_ids() -> None:
+    """A tuple is a supported room declaration when its entries are valid IDs."""
+    owner = FakePlugin("owner", handles=True)
+    owner._rooms = (None, UNMAPPED_ROOM_ID)
+    with patch("mmrelay.plugin_loader.load_plugins", return_value=[owner]):
+        assert _plugins_owning_room([UNMAPPED_ROOM_ID]) == [owner]
+
+
 # --- sync handlers and the default room contract -------------------------------
 
 
