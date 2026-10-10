@@ -19,17 +19,14 @@ from tests.remote_admin_test_support import real_mtjk as real_mtjk
 async def test_unmapped_admin_room_captures_get_through_plugin_and_real_dispatch() -> (
     None
 ):
-    import inspect
     from unittest.mock import AsyncMock
 
-    from meshtastic import __main__ as cli_main
+    pytest.importorskip("meshtastic.commands")
     from meshtastic.protobuf import admin_pb2, mesh_pb2
 
     from mmrelay.matrix_utils import _dispatch_unmapped_room_message
     from mmrelay.plugins.remote_admin_plugin import Plugin
 
-    if "cli_print" not in inspect.signature(cli_main.getPref).parameters:
-        pytest.skip("the released mtjk pin predates the preference sink")
     interface = real_interface()
     plugin = Plugin()
     plugin.config = {"active": True, "admin_room": "!admin:matrix.org", "timeout": 3}
