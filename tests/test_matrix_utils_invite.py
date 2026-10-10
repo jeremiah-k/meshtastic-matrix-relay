@@ -509,6 +509,33 @@ async def test_on_invite_joins_plugin_owned_room(mock_logger: MagicMock) -> None
 
 @pytest.mark.usefixtures("reset_matrix_utils_globals")
 @patch("mmrelay.matrix_utils.logger")
+async def test_on_invite_plugin_alias_cannot_claim_other_room(
+    mock_logger: MagicMock,
+) -> None:
+    """Mutable invite aliases never authorize plugin ownership of a room ID."""
+    owner = MagicMock(plugin_name="owner", handles_unmapped_rooms=True)
+    owner.get_unmapped_room_ids.return_value = ["#ops:matrix.org"]
+    room = MagicMock()
+    room.room_id = "!untrusted:matrix.org"
+    room.canonical_alias = "#ops:matrix.org"
+    room.aliases = ["#ops:matrix.org"]
+    event = MagicMock(state_key="@bot:matrix.org", membership="invite")
+    client = AsyncMock()
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[owner]),
+        patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
+        patch("mmrelay.matrix_utils.matrix_rooms", [{"id": "!mapped:matrix.org"}]),
+        patch("mmrelay.matrix_utils.matrix_client", client),
+    ):
+        await on_invite(room, event)
+    client.join.assert_not_called()
+    mock_logger.info.assert_any_call(
+        "Room '!untrusted:matrix.org' is not in matrix_rooms configuration, ignoring invite"
+    )
+
+
+@pytest.mark.usefixtures("reset_matrix_utils_globals")
+@patch("mmrelay.matrix_utils.logger")
 async def test_on_invite_still_ignores_unowned_rooms(mock_logger: MagicMock) -> None:
     """Rooms neither mapped nor plugin-owned still have invites ignored."""
     owner = MagicMock(plugin_name="owner", handles_unmapped_rooms=True)

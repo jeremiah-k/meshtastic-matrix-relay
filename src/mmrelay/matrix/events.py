@@ -853,7 +853,9 @@ async def on_invite(room: MatrixRoom, event: InviteMemberEvent) -> None:
         candidates.extend(a for a in aliases if isinstance(a, str))
 
     is_mapped = any(facade._is_room_mapped(facade.matrix_rooms, c) for c in candidates)
-    if not is_mapped and not _plugins_owning_room(candidates):
+    # Plugin-owned unmapped rooms must match the immutable room ID. Invite
+    # aliases are mutable room state and cannot grant plugin-room ownership.
+    if not is_mapped and not _plugins_owning_room([room_id]):
         facade.logger.info(
             f"Room '{room_id}' is not in matrix_rooms configuration, ignoring invite"
         )
