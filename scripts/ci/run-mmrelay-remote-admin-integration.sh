@@ -624,8 +624,35 @@ print(event_id)
 PY
 }
 
+# Look up a command event's homeserver timestamp to exclude harness polling
+# and Python process startup time from the fast-rejection latency check.
+matrix_event_timestamp() {
+    local access_token=$1
+    local room_id=$2
+    local event_id=$3
+    "${PYTHON_BIN}" - "${MATRIX_BASE_URL}" "${access_token}" "${room_id}" "${event_id}" <<'PY_EVENT_TS'
+import sys
+import urllib.parse
+
+import requests
+
+base_url, token, room_id, event_id = sys.argv[1:5]
+room = urllib.parse.quote(room_id, safe="")
+event = urllib.parse.quote(event_id, safe="")
+response = requests.get(
+    f"{base_url}/_matrix/client/v3/rooms/{room}/event/{event}",
+    headers={"Authorization": f"Bearer {token}"}, timeout=20,
+)
+response.raise_for_status()
+timestamp = response.json().get("origin_server_ts")
+if isinstance(timestamp, bool) or not isinstance(timestamp, int) or timestamp < 0:
+    raise SystemExit("Command event missing valid origin_server_ts")
+print(timestamp)
+PY_EVENT_TS
+}
+
 # matrix_wait_for_reply requires a bot reply to the exact command event whose
-# body contains NEEDLE, then prints the reply event ID and a bounded body.
+# body contains NEEDLE, then prints the reply event ID, bounded body, and server timestamp.
 matrix_wait_for_reply() {
 	local access_token=$1
 	local room_id=$2
@@ -674,8 +701,12 @@ while time.monotonic() < deadline:
         body = content.get("body")
         if event.get("type") == "m.room.message" and isinstance(body, str):
             if needle in body:
+                timestamp = event.get("origin_server_ts")
+                if isinstance(timestamp, bool) or not isinstance(timestamp, int) or timestamp < 0:
+                    raise SystemExit("Reply missing valid origin_server_ts")
                 print(event_id)
                 print(body.replace("\n", " ")[:400])
+                print(timestamp)
                 raise SystemExit(0)
     time.sleep(2)
 
@@ -1301,14 +1332,22 @@ else
 	if [[ ${RA_ADMIN_REQUIRE_SUCCESS} == true ]]; then
 		roundtrip_preference=lora.hop_limit
 	fi
-	roundtrip_started_ms=$(date +%s%3N)
 	roundtrip_event_id=$(matrix_send_message "${ADMIN_TOKEN}" "${ROOM_ID_ADMIN}" \
 		"!admin --dest ${PEER_NODE_ID} --get ${roundtrip_preference}" "ra-roundtrip")
 	# Require the bot's reply relation to this command, preserving the distinction
 	# between a peer value and fast failure at the origin router.
 	roundtrip_wait_seconds=$((RA_PLUGIN_TIMEOUT_SECONDS + 30))
 	if roundtrip_out="$(matrix_wait_for_reply "${ADMIN_TOKEN}" "${ROOM_ID_ADMIN}" "exit code" "${roundtrip_wait_seconds}" "${roundtrip_event_id}")"; then
-		roundtrip_elapsed_ms=$(($(date +%s%3N) - roundtrip_started_ms))
+		# Both times are assigned by the same Matrix homeserver, excluding
+		# test harness startup and polling delays.
+		if ! roundtrip_command_ts="$(matrix_event_timestamp "${ADMIN_TOKEN}" "${ROOM_ID_ADMIN}" "${roundtrip_event_id}")"; then
+			fail_test "Could not read the command event's server timestamp"
+		fi
+		roundtrip_reply_ts="${roundtrip_out##*$'\n'}"
+		if [[ ! ${roundtrip_reply_ts} =~ ^[0-9]+$ ]]; then
+			fail_test "Bot reply did not provide a valid server timestamp"
+		fi
+		roundtrip_elapsed_ms=$((roundtrip_reply_ts - roundtrip_command_ts))
 		if [[ ${RA_ADMIN_REQUIRE_SUCCESS} == true ]]; then
 			if printf '%s\n' "${roundtrip_out}" | grep -qE 'lora\.hop_limit:[[:space:]]*5([^0-9]|$)' &&
 				printf '%s' "${roundtrip_out}" | grep -q 'exit code 0'; then
@@ -1316,7 +1355,7 @@ else
 			else
 				fail_test "Expected the peer's hop limit 5 and exit code 0; got ${roundtrip_out}"
 			fi
-		elif printf '%s' "${roundtrip_out}" | grep -q 'PKI_FAILED' && ((roundtrip_elapsed_ms < 5000)); then
+		elif printf '%s' "${roundtrip_out}" | grep -q 'PKI_FAILED' && ((roundtrip_elapsed_ms >= 0 && roundtrip_elapsed_ms < 5000)); then
 			pass_test "Origin PKI_FAILED reached the Matrix reply in ${roundtrip_elapsed_ms} ms (fast-fail tier)"
 		else
 			fail_test "Expected PKI_FAILED within 5000 ms; got ${roundtrip_out} after ${roundtrip_elapsed_ms} ms"

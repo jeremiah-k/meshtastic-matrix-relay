@@ -45,7 +45,7 @@ The remaining scenarios cover plugin-owned room invitation without a matrix_room
 RA_ADMIN_REQUIRE_MESH=true timeout --foreground 15m bash scripts/ci/run-mmrelay-remote-admin-integration.sh
 ```
 
-This profile launches nodes with `-s`. Firmware 2.8.2 daily and 2.7.26 beta reject client-flagged PKI admin requests locally with PKI_FAILED before transmission. Scenario 8 requires a PKI_FAILED Matrix reply to the exact command event within five seconds, with the plugin's command budget set to 30 seconds. A generic exception name or timeout fails. A fast-failure pass establishes rejection handling, not a successful remote round trip.
+This profile launches nodes with `-s`. Firmware 2.8.2 daily and 2.7.26 beta reject client-flagged PKI admin requests locally with PKI_FAILED before transmission. Scenario 8 requires a PKI_FAILED Matrix reply to the exact command event within five seconds measured between the command and reply homeserver timestamps, with the plugin's command budget set to 30 seconds. Interpreter startup and polling delay do not count against the fast-fail threshold. A generic exception name or timeout fails. A fast-failure pass establishes rejection handling, not a successful remote round trip.
 
 The 2.7.26 beta image tested for this profile is:
 
