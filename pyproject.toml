@@ -81,3 +81,9 @@ where = ["src"]
 
 [tool.setuptools.exclude-package-data]
 "*" = ["__pycache__/*", "*.py[cod]"]
+
+# uv is used for development environments only; pip and pipx installs of the
+# published package are unaffected. Keep the floor in sync with the lockfile
+# revision uv.lock requires.
+[tool.uv]
+required-version = ">=0.12.22"
