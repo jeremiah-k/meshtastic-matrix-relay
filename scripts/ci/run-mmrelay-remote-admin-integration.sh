@@ -805,11 +805,23 @@ fi
 echo "Restarting nodes so the new config is read at boot..."
 docker restart "${MESHTASTICD_CONTAINER_RELAY}" "${MESHTASTICD_CONTAINER_PEER}" >/dev/null
 sleep 10
-wait_for_meshtasticd_ready "${MESH_RELAY_ENDPOINT}" "${MESHTASTICD_CONTAINER_RELAY}"
-wait_for_meshtasticd_ready "${MESH_PEER_ENDPOINT}" "${MESHTASTICD_CONTAINER_PEER}"
-
-RELAY_NODE_ID="$(get_local_node_id "${MESH_RELAY_ENDPOINT}")"
-PEER_NODE_ID="$(get_local_node_id "${MESH_PEER_ENDPOINT}")"
+# Report initialization failures through the scenario summary instead of
+# silently exiting under set -e before the main assertions start.
+CURRENT_TEST_NAME="setup_post_restart_mesh_ready"
+CURRENT_TEST_START_MS=$(date +%s%3N)
+run_or_fail "meshtasticd relay was not ready after restart" \
+    wait_for_meshtasticd_ready "${MESH_RELAY_ENDPOINT}" "${MESHTASTICD_CONTAINER_RELAY}"
+run_or_fail "meshtasticd peer was not ready after restart" \
+    wait_for_meshtasticd_ready "${MESH_PEER_ENDPOINT}" "${MESHTASTICD_CONTAINER_PEER}"
+if ! RELAY_NODE_ID="$(get_local_node_id "${MESH_RELAY_ENDPOINT}")"; then
+    fail_test "Could not determine relay node ID after restart"
+fi
+if ! PEER_NODE_ID="$(get_local_node_id "${MESH_PEER_ENDPOINT}")"; then
+    fail_test "Could not determine peer node ID after restart"
+fi
+if [[ -z ${RELAY_NODE_ID} || -z ${PEER_NODE_ID} ]]; then
+    fail_test "Missing relay or peer node ID after restart"
+fi
 echo "relay node=${RELAY_NODE_ID}  peer node=${PEER_NODE_ID}"
 
 if [[ ${RA_ADMIN_REQUIRE_SUCCESS} == true ]]; then
