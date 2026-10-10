@@ -391,6 +391,33 @@ def test_channel_download_requires_a_positive_attempt_limit(attempts: int) -> No
     dispatch.assert_not_called()
 
 
+def test_missing_channel_fetch_attempts_uses_default_limit() -> None:
+    """Parser versions without the optional modifier remain usable."""
+    from mmrelay.remote_admin_executor import AdminCommandResult
+
+    radio = _fake_interface()
+    original_parser = _parse_user_args
+
+    def without_optional_argument(tokens: list[str]) -> tuple[Any, Any]:
+        parser, args = original_parser(tokens)
+        delattr(args, "channel_fetch_attempts")
+        return parser, args
+
+    with (
+        patch(
+            "mmrelay.remote_admin_executor._parse_user_args",
+            side_effect=without_optional_argument,
+        ),
+        patch(
+            "mmrelay.remote_admin_executor._run_embedded",
+            return_value=AdminCommandResult(0, "ok"),
+        ) as dispatch,
+    ):
+        command = f"--dest {REMOTE_NODE_ID} --reboot"
+        assert run_admin_command(radio, command).exit_code == 0
+    dispatch.assert_called_once()
+
+
 def test_primary_flag_names_positional_actions_by_dest() -> None:
     from mmrelay.remote_admin_executor import _primary_flag
 

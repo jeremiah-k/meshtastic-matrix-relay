@@ -506,7 +506,7 @@ def run_admin_command(
     parser, args = _parse_user_args(user_argv)
     _check_verb_policy(parser, args, allow_destructive=allow_destructive)
     _validate_destination(args, interface, local_node_num)
-    if args.channel_fetch_attempts < 1:
+    if getattr(args, "channel_fetch_attempts", 1) < 1:
         raise AdminCommandError("--channel-fetch-attempts must be at least 1")
     _clamp_timeout(args, max_timeout_seconds)
     return _run_embedded(interface, parser, args, user_argv)
