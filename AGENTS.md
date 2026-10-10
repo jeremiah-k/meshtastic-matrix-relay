@@ -2,6 +2,8 @@
 
 ## Build/Lint/Test Commands
 
+- **Set up the environment (uv, recommended)**: `uv sync --locked --extra dev --extra test --extra e2e` creates `.venv/` from `uv.lock`; prefix the commands below with `uv run --no-sync` (e.g. `uv run --no-sync python -m pytest -v --cov --tb=short`). Keep `pyproject.toml` and `uv.lock` changes in the same commit.
+- **Set up a venv (alternative)**: Create a virtual environment in `venv/` and run `pip install -e '.[dev,test,e2e]'`
 - **Run with coverage**: `python -m pytest -v --cov --tb=short`
 - **Run specific test**: `python -m pytest tests/test_filename.py -v --cov --tb=short`
 - **Run all tests with coverage**: `python -m pytest -v --cov --junitxml=junit.xml -o junit_family=legacy`
@@ -22,7 +24,6 @@
 ## Testing Guidelines (from TESTING_GUIDE.md)
 
 - **Read the testing guide in full**: Follow existing patterns (Located in docs/dev/TESTING_GUIDE.md)
-- **Set up a venv**: Create a virtual environment in `venv/` and run `pip install -e '.[dev,test,e2e]'`
 - **Async Mocking**: Use regular `Mock` with `return_value` for functions called via `asyncio.run()`, not `AsyncMock`
 - **Warning Handling**: Treat all warnings as errors - fix underlying issues, don't suppress
 - **Test Organization**: Use Arrange-Act-Assert pattern, descriptive test names, independent tests

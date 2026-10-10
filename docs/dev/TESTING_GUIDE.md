@@ -2,11 +2,19 @@
 
 This guide covers testing patterns and best practices for the meshtastic-matrix-relay project.
 
-First check for an existing virtual environment in `venv/`; if it does not exist, create one and run `. venv/bin/activate && pip install -e '.[dev,test,e2e]'` then continue.
+Set up the test environment with uv (recommended):
+
+```bash
+uv sync --locked --extra dev --extra test --extra e2e
+```
+
+This creates `.venv/` from the committed `uv.lock` with the editable package and all dev, test, and e2e dependencies. Prefix tool invocations with `uv run --no-sync` (e.g. `uv run --no-sync python -m pytest -v --cov --tb=short`) so the environment is used as synced. Keep `pyproject.toml` and `uv.lock` changes in the same commit.
+
+A plain virtual environment works too: check for an existing one in `venv/`; if it does not exist, create one and run `. venv/bin/activate && pip install -e '.[dev,test,e2e]'` then continue.
 
 ## Type Checking
 
-Run strict mypy type checking (after activating the venv):
+Run strict mypy type checking (after activating the venv, or via `uv run --no-sync python -m mypy`):
 
 ```bash
 python -m mypy src/ --strict
