@@ -1,9 +1,8 @@
 """In-process mtjk admin-command runner for remote mesh nodes.
 
-Runs one mtjk CLI command against the relay's existing Meshtastic interface
-by driving mtjk's own argument parser and connected-action dispatcher — the
-command surface therefore comes from the pinned mtjk package itself, and new
-mtjk verbs appear as *denied* until they are classified here.
+Runs an allowlisted mtjk embedded command against the relay-owned Meshtastic
+interface. MMRelay validates its own room, verb, and remote-destination policy
+before calling the public ``meshtastic.commands.executeCommand`` API.
 
 Safety contract:
 - Every invocation must target an explicit, known remote node via ``--dest``;
@@ -11,14 +10,10 @@ Safety contract:
 - Flags are classified against allow tables (read-only, routine, destructive);
   anything unclassified is denied. Destructive verbs additionally require the
   plugin's ``allow_destructive`` setting.
-- The shared relay interface is never closed: dispatch's one-shot interface
-  close is disarmed via ``ActionOutcome.interface_close_attempted``.
-- CLI output and exit status are captured through mtjk's injectable
-  ``cli_print``/``cli_exit`` hook seams, never stdout.
-
-This module relies on mtjk's pinned CLI internals
-(``meshtastic.cli.context``/``invocation``/``dispatch`` and the hook builder
-in ``meshtastic.__main__``); mtjk is an exact-pin dependency of the relay.
+- The caller retains the radio connection: ``executeCommand`` never opens or
+  closes it, uses request-scoped waits, and returns bounded captured output.
+- The command surface is checked against the versioned embedded capabilities,
+  and new mtjk actions remain denied until MMRelay explicitly permits them.
 """
 
 from __future__ import annotations
@@ -26,21 +21,13 @@ from __future__ import annotations
 import argparse
 import contextlib
 import dataclasses
-import inspect
 import math
 import shlex
 from importlib.metadata import PackageNotFoundError, version
-from typing import TYPE_CHECKING, Any, NoReturn, cast
-
-from mmrelay.log_utils import get_logger
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from meshtastic.cli.dispatch import DispatchHooks as _DispatchHooks
     from meshtastic.mesh_interface import MeshInterface
-
-logger = get_logger(__name__)
 
 BROADCAST_NODE_NUM = 0xFFFFFFFF
 BROADCAST_ADDR = "^all"
@@ -54,6 +41,8 @@ READ_ONLY_VERBS = frozenset(
         "get",
         "get_ui_config",
         "request_connection_status",
+        "get_canned_message",
+        "get_ringtone",
     }
 )
 
@@ -142,9 +131,9 @@ DENY_REASONS: dict[str, str] = {
     "key_verify_wait": "key verification is local-node only",
     "device_metadata": "not exposed: results bypass the captured CLI print hook",
     "gpio_rd": "not exposed: results bypass the captured CLI print hook",
-    "request_position": "not exposed: results bypass the captured CLI print hook",
-    "request_telemetry": "not exposed: results bypass the captured CLI print hook",
-    "traceroute": "not exposed: uses a separate destination and uncaptured results",
+    "request_position": "not enabled for remote administration",
+    "request_telemetry": "not enabled for remote administration",
+    "traceroute": "not enabled for remote administration; use dedicated routing tools",
     "add_contact": "contact import is not exposed",
     "ble": "a connection flag; the relay's own connection is used",
     "ble_auto_reconnect": "a connection flag; the relay's own connection is used",
@@ -159,8 +148,6 @@ DENY_REASONS: dict[str, str] = {
     "export_format": "local-node only",
     "host": "a connection flag; the relay's own connection is used",
     "info": "local-node only; use --get",
-    "get_canned_message": "not exposed: results bypass the captured CLI print hook",
-    "get_ringtone": "not exposed: results bypass the captured CLI print hook",
     "json": "only valid with field-listing commands",
     "listen": "interactive or long-running",
     "lockdown_boots": "lockdown is local USB only",
@@ -214,14 +201,6 @@ class AdminCommandResult:
 
     exit_code: int
     output: str
-
-
-class _CliExitSignal(Exception):
-    """Raised by the injected cli_exit seam in place of sys.exit."""
-
-    def __init__(self, message: str, return_value: int) -> None:
-        super().__init__(message)
-        self.return_value = return_value
 
 
 def _mtjk_version() -> str:
@@ -439,130 +418,68 @@ def _clamp_timeout(args: argparse.Namespace, max_timeout_seconds: float) -> None
     args.timeout = max(1.0, min(requested, cap))
 
 
-def _capturing_hooks(
-    cli_print: Callable[[str], None],
-    cli_exit: Callable[..., NoReturn],
-) -> "_DispatchHooks":
-    """Build mtjk dispatch hooks whose output and exits stay in-process."""
-    import meshtastic.__main__ as cli_main
+def _embedded_argv(
+    parser: argparse.ArgumentParser, user_argv: list[str], normalized_dest: str
+) -> list[str]:
+    """Remove timeout and all destination aliases after full policy validation.
 
-    hooks = cli_main._build_connected_dispatch_hooks()  # noqa: SLF001 - pinned CLI seam
-    # mtjk's sink-aware --get path has a distinct required-output sink so
-    # standalone --quiet can suppress banners without losing preference values.
-    # The current exact pin predates it; prepare for that field conditionally.
-    service_output: dict[str, Any] = {
-        "cli_print": cli_print,
-        "cli_exit": cli_exit,
-    }
-    if hasattr(hooks.services, "preference_print"):
-        service_output["preference_print"] = cli_print
-    return dataclasses.replace(
-        hooks,
-        cli_print=cli_print,
-        device=dataclasses.replace(
-            hooks.device, cli_print=cli_print, cli_exit=cli_exit
-        ),
-        channel_contact=dataclasses.replace(
-            hooks.channel_contact, cli_print=cli_print, cli_exit=cli_exit
-        ),
-        configure=dataclasses.replace(
-            hooks.configure, cli_print=cli_print, cli_exit=cli_exit
-        ),
-        services=dataclasses.replace(hooks.services, **service_output),
-    )
+    The embedded API takes timeout as an invocation argument, not a CLI flag.
+    Removing all recognized destination aliases prevents a second submitted
+    flag from superseding the one whose target was verified against the node DB.
+    """
+    result = ["--dest", normalized_dest]
+    index = 0
+    option_actions = parser._option_string_actions  # noqa: SLF001 - argparse registry
+    while index < len(user_argv):
+        token = user_argv[index]
+        name, separator, _value = token.partition("=")
+        action = option_actions.get(name)
+        if action is not None and action.dest in {"dest", "timeout"}:
+            index += 1 if separator else 2
+        else:
+            result.append(token)
+            index += 1
+    return result
 
 
-def _run_dispatch(
+def _run_embedded(
     interface: MeshInterface,
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
+    user_argv: list[str],
 ) -> AdminCommandResult:
-    """Dispatch the parsed command on the shared interface and capture output."""
-    from meshtastic.cli import dispatch as cli_dispatch
-    from meshtastic.cli.context import ActionOutcome, CliContext
-    from meshtastic.cli.invocation import CliInvocation, activate_invocation
-    from meshtastic.mesh_interface import MeshInterface as _MeshInterface
+    """Execute one policy-approved command using the public mtjk API."""
+    from meshtastic.commands import executeCommand, getCommandCapabilities
 
-    lines: list[str] = []
-
-    def cli_print(message: str, *, force: bool = False) -> None:
-        del force
-        lines.append(str(message))
-
-    def cli_exit(message: str, return_value: int = 1) -> NoReturn:
-        lines.append(str(message))
-        raise _CliExitSignal(str(message), int(return_value))
-
-    hooks = _capturing_hooks(cli_print, cli_exit)
-
-    if args.get:
-        parameters = inspect.signature(hooks.services.get_pref).parameters
-        if "cli_print" not in parameters:
-            raise AdminCommandError(
-                "--get requires a sink-capable mtjk release; the installed dependency cannot capture preference values"
-            )
-    if args.get_ui_config or args.request_connection_status:
-        from meshtastic.node import Node
-
-        if (
-            "response_deadline"
-            not in inspect.signature(
-                Node._request_admin_response  # noqa: SLF001 - pinned command deadline seam
-            ).parameters
-        ):
-            raise AdminCommandError(
-                "this query requires a deadline-capable mtjk release; the installed dependency cannot bound response waits"
-            )
-    from mmrelay.remote_admin_connection import _AdminConnection
-
-    connection = _AdminConnection(interface, int(args.dest[1:], 16), args.timeout)
-    outcome = ActionOutcome()
-    # The relay owns the shared interface's lifetime; disarm dispatch's
-    # one-shot close so admin commands can never drop the mesh connection.
-    outcome.interface_close_attempted = True
-
-    try:
-        with activate_invocation(
-            CliInvocation(args=args, parser=parser, channel_index=args.ch_index)
-        ):
-            context = CliContext(
-                interface=cast("MeshInterface", connection),
-                args=args,
-                get_node_kwargs={
-                    "requestChannelAttempts": args.channel_fetch_attempts,
-                    "timeout": args.timeout,
-                },
-                outcome=outcome,
-            )
-            cli_dispatch._dispatch_connected(
-                context, hooks
-            )  # noqa: SLF001 - pinned CLI seam
-            connection.waitForAckNak()
-    except _CliExitSignal as signal:
-        return AdminCommandResult(
-            exit_code=signal.return_value, output="\n".join(lines).strip()
+    capabilities = getCommandCapabilities()
+    if capabilities.apiVersion != 1:
+        raise AdminCommandError("unsupported mtjk embedded command API version")
+    argv = _embedded_argv(parser, user_argv, args.dest)
+    available = set(capabilities.supportedOptions)
+    parser_options = parser._option_string_actions  # noqa: SLF001 - parser registry
+    unsupported = [
+        token.partition("=")[0]
+        for token in argv
+        if token.partition("=")[0] in parser_options
+        and token.partition("=")[0] not in available
+    ]
+    if unsupported:
+        # Deliberately do not echo flag values (which can contain credentials).
+        raise AdminCommandError(
+            "mtjk embedded commands do not support: "
+            + ", ".join(sorted(set(unsupported)))
         )
-    except SystemExit as exc:
-        code = exc.code if isinstance(exc.code, int) else 1
-        return AdminCommandResult(exit_code=code, output="\n".join(lines).strip())
-    except _MeshInterface.MeshInterfaceError as exc:
-        return AdminCommandResult(
-            exit_code=1, output="\n".join([*lines, f"ERROR: {exc}"]).strip()
-        )
-    except TimeoutError as exc:
-        return AdminCommandResult(
-            exit_code=1,
-            output="\n".join([*lines, f"ERROR: timed out: {exc}"]).strip(),
-        )
-    except Exception as exc:  # noqa: BLE001 - report any dispatch failure to the room
-        logger.exception("Remote admin dispatch failed")
-        return AdminCommandResult(
-            exit_code=1,
-            output="\n".join([*lines, f"ERROR: {type(exc).__name__}: {exc}"]).strip(),
-        )
-    finally:
-        connection._cleanup()  # noqa: SLF001 - command owns the wait lifecycle
-    return AdminCommandResult(exit_code=0, output="\n".join(lines).strip())
+    # Do not transform a command failure into success. The library returns the
+    # original error and a bounded, UTF-8-safe captured output string.
+    outcome = executeCommand(
+        interface, argv, timeout=args.timeout, maxOutputBytes=64 * 1024
+    )
+    message = outcome.output.strip()
+    if outcome.error is not None and not message:
+        message = f"ERROR: {type(outcome.error).__name__}"
+    if outcome.truncated:
+        message += "\n… (mtjk output truncated)"
+    return AdminCommandResult(exit_code=outcome.exitCode, output=message)
 
 
 def run_admin_command(
@@ -592,4 +509,4 @@ def run_admin_command(
     if args.channel_fetch_attempts < 1:
         raise AdminCommandError("--channel-fetch-attempts must be at least 1")
     _clamp_timeout(args, max_timeout_seconds)
-    return _run_dispatch(interface, parser, args)
+    return _run_embedded(interface, parser, args, user_argv)
