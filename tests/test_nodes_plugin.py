@@ -10,10 +10,12 @@ Tests the node listing functionality including:
 - Device metrics parsing
 """
 
+import asyncio
 import os
 import sys
 import unittest
 from datetime import datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,12 +25,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.constants.formats import DATE_FORMAT_LONG
 from mmrelay.plugins.nodes_plugin import (
+    DEFAULT_MAX_RESULTS,
     FIELD_PATHS,
+    USAGE_TEXT,
+    NodesQuery,
+    NodesUsageError,
     Plugin,
     _format_last_seen,
     _is_sensitive_field_path,
     _last_heard_sort_value,
     get_relative_time,
+    parse_nodes_args,
 )
 
 
@@ -440,7 +447,7 @@ class TestNodesPlugin(unittest.TestCase):
         """
         Test that handle_room_message returns False and does not send a message when the event does not match.
         """
-        self.plugin.matches = MagicMock(return_value=False)
+        self.plugin.get_matching_matrix_command_with_args = MagicMock(return_value=None)
 
         room = MagicMock()
         event = MagicMock()
@@ -449,11 +456,10 @@ class TestNodesPlugin(unittest.TestCase):
             """
             Asynchronously tests that handle_room_message returns False and does not send a Matrix message when the event does not match.
 
-            Verifies that the matches method is called once with the event and send_matrix_message is not called.
+            Verifies that the command parser returns None and send_matrix_message is not called.
             """
             result = await self.plugin.handle_room_message(room, event, "full_message")
             self.assertFalse(result)
-            self.plugin.matches.assert_called_once_with(event)
             self.plugin.send_matrix_message.assert_not_called()
             self.plugin.send_matrix_reaction.assert_not_called()
 
@@ -467,7 +473,9 @@ class TestNodesPlugin(unittest.TestCase):
         Tests that handle_room_message sends a Matrix message and returns True when the event matches, verifying correct message content and parameters.
         """
         mock_connect.return_value = self.mock_meshtastic_client
-        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.get_matching_matrix_command_with_args = MagicMock(
+            return_value=("nodes", "")
+        )
 
         room = MagicMock()
         room.room_id = "!test:matrix.org"
@@ -483,7 +491,6 @@ class TestNodesPlugin(unittest.TestCase):
             result = await self.plugin.handle_room_message(room, event, "full_message")
 
             self.assertTrue(result)
-            self.plugin.matches.assert_called_once_with(event)
             self.plugin.send_matrix_message.assert_called_once()
 
             # Check the call arguments
@@ -692,8 +699,10 @@ class TestNodesPlugin(unittest.TestCase):
         self.assertEqual(response.count("? hops away"), 2)
 
     def test_handle_room_message_exception_handler(self):
-        """Test exception handler in handle_room_message (lines 224-227)."""
-        self.plugin.matches = MagicMock(return_value=True)
+        """Test exception handler in handle_room_message."""
+        self.plugin.get_matching_matrix_command_with_args = MagicMock(
+            return_value=("nodes", "")
+        )
         self.plugin.generate_response = MagicMock(side_effect=RuntimeError("boom"))
 
         room = MagicMock()
@@ -1121,6 +1130,647 @@ def test_empty_status_is_omitted(feature_plugin: Plugin) -> None:
     with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
         response = feature_plugin.generate_response()
     assert response == "Nodes: 1\nNo fields available\n"
+
+
+class TestParseNodesArgs(unittest.TestCase):
+    """Test cases for the !nodes argument parser."""
+
+    def test_empty_args_yield_default_query(self):
+        """No arguments means no limit, no sort, no filters, no field override."""
+        self.assertEqual(parse_nodes_args(""), NodesQuery())
+        self.assertEqual(parse_nodes_args("   "), NodesQuery())
+
+    def test_bare_number_is_limit_shorthand(self):
+        """A lone digit token is accepted as a limit override."""
+        self.assertEqual(parse_nodes_args("50").limit, 50)
+        self.assertEqual(parse_nodes_args("0").limit, 0)
+
+    def test_limit_keyword(self):
+        """'limit N' parses; 'limit all' and 'limit 0' both mean unlimited."""
+        self.assertEqual(parse_nodes_args("limit 5").limit, 5)
+        self.assertEqual(parse_nodes_args("limit all").limit, 0)
+        self.assertEqual(parse_nodes_args("LIMIT ALL").limit, 0)
+
+    def test_limit_rejects_non_numbers(self):
+        """'limit' accepts only a non-negative integer or 'all'."""
+        for bad in ("limit -1", "limit xyz", "limit 3.5", "limit"):
+            with self.assertRaises(NodesUsageError):
+                parse_nodes_args(bad)
+
+    def test_sort_field_direction_and_by(self):
+        """'sort <field>' parses with optional 'by' and asc/desc suffixes."""
+        self.assertEqual(
+            parse_nodes_args("sort snr"),
+            NodesQuery(sort_field="snr", sort_direction=None),
+        )
+        self.assertEqual(
+            parse_nodes_args("sort by name"),
+            NodesQuery(sort_field="name", sort_direction=None),
+        )
+        self.assertEqual(
+            parse_nodes_args("SORT By SNR DESC"),
+            NodesQuery(sort_field="snr", sort_direction="desc"),
+        )
+
+    def test_repeated_sort_wins_last(self):
+        """A later sort overrides the field, direction, and any earlier direction."""
+        self.assertEqual(
+            parse_nodes_args("sort name desc sort snr"),
+            NodesQuery(sort_field="snr", sort_direction=None),
+        )
+
+    def test_sort_requires_known_field(self):
+        """Unknown sort fields and a missing field raise usage errors."""
+        for bad in ("sort", "sort by", "sort bogus"):
+            with self.assertRaises(NodesUsageError):
+                parse_nodes_args(bad)
+
+    def test_fields_override_comma_separated(self):
+        """'fields a,b' selects display fields; empty parts are dropped."""
+        self.assertEqual(
+            parse_nodes_args("fields battery,uptime").display_fields,
+            ("battery", "uptime"),
+        )
+        self.assertEqual(
+            parse_nodes_args("FIELDS Battery,UPTime").display_fields,
+            ("battery", "uptime"),
+        )
+        with self.assertRaises(NodesUsageError):
+            parse_nodes_args("fields")
+        with self.assertRaises(NodesUsageError):
+            parse_nodes_args("fields ,,")
+
+    def test_filter_field_normalized_and_values_kept(self):
+        """Field aliases are lowercased; filter values keep their spelling."""
+        self.assertEqual(
+            parse_nodes_args("ROLE Client_Mute").filters,
+            (("role", ("Client_Mute",)),),
+        )
+
+    def test_filter_comma_values_are_any_of(self):
+        """Comma-separated filter values parse as an any-of tuple."""
+        self.assertEqual(
+            parse_nodes_args("role router,client").filters,
+            (("role", ("router", "client")),),
+        )
+
+    def test_filter_dotted_path_keeps_case(self):
+        """Dotted paths come from protobuf keys and must not be lowercased."""
+        self.assertEqual(
+            parse_nodes_args("user.hwModel RAK").filters,
+            (("user.hwModel", ("RAK",)),),
+        )
+
+    def test_multiple_filters_combine_in_order(self):
+        """Distinct field filters accumulate in the order given."""
+        query = parse_nodes_args("role router hardware rak limit 3 sort name")
+        self.assertEqual(
+            query.filters,
+            (("role", ("router",)), ("hardware", ("rak",))),
+        )
+        self.assertEqual(query.limit, 3)
+        self.assertEqual(query.sort_field, "name")
+
+    def test_filter_requires_value(self):
+        """A trailing filter without a value is a usage error."""
+        with self.assertRaises(NodesUsageError):
+            parse_nodes_args("role")
+
+    def test_comma_only_filter_value_is_usage_error(self):
+        """A filter value of bare commas parses to no values and is rejected."""
+        with self.assertRaises(NodesUsageError):
+            parse_nodes_args("role ,,")
+
+    def test_unknown_option_is_usage_error(self):
+        """Tokens that are neither keywords nor fields raise usage errors."""
+        with self.assertRaises(NodesUsageError):
+            parse_nodes_args("bogus x")
+
+    def test_sensitive_fields_rejected_everywhere(self):
+        """Secret-bearing paths cannot be filtered, sorted, or displayed."""
+        for bad in (
+            "config.security.psk x",
+            "sort config.security.psk",
+            "fields config.security.psk",
+        ):
+            with self.assertRaises(NodesUsageError):
+                parse_nodes_args(bad)
+
+
+def _query_client() -> MagicMock:
+    """Provide scrambled node data for query-argument tests."""
+    now = datetime.now()
+    client = MagicMock()
+    client.nodes = {
+        "node1": {
+            "user": {
+                "shortName": "Zed",
+                "longName": "Zed Alpha",
+                "hwModel": "TBEAM",
+                "role": "ROUTER",
+            },
+            "snr": -8.0,
+            "lastHeard": (now - timedelta(hours=2)).timestamp(),
+        },
+        "node2": {
+            "user": {
+                "shortName": "Amy",
+                "longName": "Amy Brown",
+                "hwModel": "RAK4631",
+                "role": "CLIENT_MUTE",
+            },
+            "snr": 12.5,
+            "lastHeard": (now - timedelta(minutes=5)).timestamp(),
+        },
+        "node3": {
+            "user": {
+                "shortName": "mid",
+                "longName": "Mid Carter",
+                "hwModel": "RAK4631",
+            },
+            "snr": 5.0,
+            "lastHeard": (now - timedelta(minutes=1)).timestamp(),
+            "isFavorite": True,
+        },
+    }
+    return client
+
+
+def _respond(feature_plugin: Plugin, args: str, client: MagicMock) -> str:
+    with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
+        return feature_plugin.generate_response(parse_nodes_args(args))
+
+
+def _generate(feature_plugin: Plugin, client: MagicMock) -> str:
+    with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=client):
+        return feature_plugin.generate_response()
+
+
+def test_role_filter_matches_exact_value_case_insensitively(
+    feature_plugin: Plugin,
+) -> None:
+    response = _respond(feature_plugin, "role client_mute", _query_client())
+    assert response.splitlines()[0] == (
+        "Nodes: 1 matching (of 3 known) · role ~ client_mute"
+    )
+    assert "Amy Amy Brown" in response
+    assert "Zed" not in response
+
+
+def test_hardware_filter_matches_substring_case_insensitively(
+    feature_plugin: Plugin,
+) -> None:
+    response = _respond(feature_plugin, "hardware rak", _query_client())
+    assert "Nodes: 2 matching (of 3 known) · hardware ~ rak" in response
+    assert "Unknown" not in response
+
+
+def test_name_filter_matches_short_or_long_name(feature_plugin: Plugin) -> None:
+    response = _respond(feature_plugin, "name brown", _query_client())
+    assert "Nodes: 1 matching (of 3 known) · name ~ brown" in response
+    assert "Amy Amy Brown" in response
+
+
+def test_comma_filter_values_are_any_of(feature_plugin: Plugin) -> None:
+    response = _respond(feature_plugin, "role router,client_mute", _query_client())
+    assert "Nodes: 2 matching (of 3 known) · role ~ router,client_mute" in response
+    assert "Zed Zed Alpha" in response
+    assert "Amy Amy Brown" in response
+    assert "Mid Carter" not in response
+
+
+def test_filters_across_fields_combine_with_and(feature_plugin: Plugin) -> None:
+    response = _respond(feature_plugin, "hardware rak role client", _query_client())
+    assert "Nodes: 1 matching (of 3 known)" in response
+    assert "Amy Amy Brown" in response
+
+
+def test_favorite_filter_matches_boolean_spellings(
+    feature_plugin: Plugin,
+) -> None:
+    client = _query_client()
+    response = _respond(feature_plugin, "favorite yes", client)
+    assert "Nodes: 1 matching (of 3 known) · favorite ~ yes" in response
+    assert "Mid Carter" in response
+
+    client = _query_client()
+    response = _respond(feature_plugin, "favorite true", client)
+    assert "Mid Carter" in response
+
+
+def test_public_key_filter_matches_base64_of_bytes(
+    feature_plugin: Plugin,
+) -> None:
+    import base64
+
+    client = _query_client()
+    key = bytes.fromhex("deadbeef01")
+    client.nodes["node2"]["user"]["publicKey"] = key
+    needle = base64.b64encode(key).decode("ascii")[:6]
+    response = _respond(feature_plugin, f"public_key {needle}", client)
+    assert "Nodes: 1 matching (of 3 known)" in response
+    assert "Amy Amy Brown" in response
+
+    client = _query_client()
+    client.nodes["node2"]["user"]["publicKey"] = bytearray.fromhex("deadbeef01")
+    response = _respond(feature_plugin, f"public_key {needle}", client)
+    assert "Amy Amy Brown" in response
+
+
+def test_power_filter_matches_battery_or_voltage(
+    feature_plugin: Plugin,
+) -> None:
+    client = _query_client()
+    client.nodes["node1"]["deviceMetrics"] = {"batteryLevel": 20, "voltage": 4.1}
+    client.nodes["node2"]["deviceMetrics"] = {"batteryLevel": 90, "voltage": 3.9}
+    response = _respond(feature_plugin, "power 90", client)
+    assert "Nodes: 1 matching (of 3 known)" in response
+    assert "Amy Amy Brown" in response
+
+    client = _query_client()
+    client.nodes["node1"]["deviceMetrics"] = {"batteryLevel": 20, "voltage": 4.1}
+    client.nodes["node2"]["deviceMetrics"] = {"batteryLevel": 90, "voltage": 3.9}
+    response = _respond(feature_plugin, "power 4.1", client)
+    assert "Zed Zed Alpha" in response
+
+
+def test_battery_sentinels_render_as_powered(feature_plugin: Plugin) -> None:
+    client = _query_client()
+    client.nodes["node1"]["deviceMetrics"] = {"batteryLevel": 101, "voltage": 4.2}
+    client.nodes["node2"]["deviceMetrics"] = {"batteryLevel": 0, "voltage": 3.9}
+    response = _respond(feature_plugin, "", client)
+    assert "Powered 4.2V" in response
+    assert "Powered 3.9V" in response
+    assert "101%" not in response
+    assert "0%" not in response
+
+
+def test_battery_field_renders_powered_sentinels(feature_plugin: Plugin) -> None:
+    client = _query_client()
+    client.nodes["node1"]["deviceMetrics"] = {"batteryLevel": 101}
+    response = _respond(feature_plugin, "fields battery", client)
+    assert "battery: Powered" in response
+
+
+def test_no_match_reports_totals(feature_plugin: Plugin) -> None:
+    response = _respond(feature_plugin, "role satellite", _query_client())
+    assert response == "No nodes matched role ~ satellite (of 3 known)."
+
+
+def test_default_sort_stays_newest_first(feature_plugin: Plugin) -> None:
+    response = _respond(feature_plugin, "", _query_client())
+    lines = response.splitlines()
+    assert lines[0] == "Nodes: 3"
+    assert lines[1].startswith("mid Mid Carter")
+    assert lines[2].startswith("Amy Amy Brown")
+    assert lines[3].startswith("Zed Zed Alpha")
+
+
+def test_sort_name_is_case_insensitive_ascending(feature_plugin: Plugin) -> None:
+    response = _respond(feature_plugin, "sort name", _query_client())
+    lines = response.splitlines()
+    assert lines[0] == "Nodes: 3 · sorted by name"
+    assert [line.split(" / ")[0] for line in lines[1:]] == [
+        "Amy Amy Brown",
+        "mid Mid Carter",
+        "Zed Zed Alpha",
+    ]
+
+
+def test_sort_numeric_field_defaults_high_to_low(feature_plugin: Plugin) -> None:
+    response = _respond(feature_plugin, "sort snr", _query_client())
+    lines = response.splitlines()
+    assert lines[0] == "Nodes: 3 · sorted by snr"
+    assert [line.split(" / ")[3] for line in lines[1:]] == [
+        "12.5 dB",
+        "5.0 dB",
+        "-8.0 dB",
+    ]
+
+
+def test_sort_explicit_direction_overrides_default(feature_plugin: Plugin) -> None:
+    response = _respond(feature_plugin, "sort snr asc", _query_client())
+    lines = response.splitlines()
+    assert lines[0] == "Nodes: 3 · sorted by snr asc"
+    assert [line.split(" / ")[3] for line in lines[1:]] == [
+        "-8.0 dB",
+        "5.0 dB",
+        "12.5 dB",
+    ]
+
+
+def test_sort_missing_values_sort_last(feature_plugin: Plugin) -> None:
+    response = _respond(feature_plugin, "sort role", _query_client())
+    lines = response.splitlines()
+    assert lines[-1].startswith("mid Mid Carter")
+
+
+def test_sort_blank_string_value_sorts_last(feature_plugin: Plugin) -> None:
+    client = _query_client()
+    client.nodes["node3"]["user"]["hwModel"] = ""
+    response = _respond(feature_plugin, "sort hardware", client)
+    lines = response.splitlines()
+    assert lines[-1].startswith("mid Mid Carter")
+
+
+def test_sort_name_places_nameless_nodes_last(feature_plugin: Plugin) -> None:
+    client = _query_client()
+    client.nodes["node3"]["user"] = {}
+    response = _respond(feature_plugin, "sort name", client)
+    lines = response.splitlines()
+    assert lines[-1].startswith("Unknown Unknown")
+
+
+def test_sort_power_uses_battery_level(feature_plugin: Plugin) -> None:
+    client = _query_client()
+    client.nodes["node1"]["deviceMetrics"] = {"batteryLevel": 20}
+    client.nodes["node2"]["deviceMetrics"] = {"batteryLevel": 90}
+    response = _respond(feature_plugin, "sort power", client)
+    lines = response.splitlines()
+    assert lines[0] == "Nodes: 3 · sorted by power"
+    assert lines[1].startswith("Amy Amy Brown")
+    assert lines[2].startswith("Zed Zed Alpha")
+
+
+def test_sort_survives_non_numeric_value_in_numeric_field(
+    feature_plugin: Plugin,
+) -> None:
+    client = _query_client()
+    client.nodes["node3"]["snr"] = "garbage"
+    response = _respond(feature_plugin, "sort snr", client)
+    assert "Nodes: 3 · sorted by snr" in response
+    assert response.count("\n") >= 3
+
+
+def _many_nodes_client(count: int) -> MagicMock:
+    now = datetime.now()
+    client = MagicMock()
+    client.nodes = {
+        f"node{i}": {
+            "user": {
+                "shortName": f"N{i:02d}",
+                "longName": f"Node {i:02d}",
+                "hwModel": "RAK4631",
+                "role": "CLIENT",
+            },
+            "snr": float(i % 10),
+            "lastHeard": (now - timedelta(minutes=count - i)).timestamp(),
+        }
+        for i in range(count)
+    }
+    return client
+
+
+def test_default_limit_is_twenty(feature_plugin: Plugin) -> None:
+    response = _generate(feature_plugin, _many_nodes_client(25))
+    assert response.splitlines()[0] == "Nodes: 20 of 25"
+    assert response.splitlines()[-1] == "… and 5 more not shown"
+    assert "Node 24" in response
+    assert "Node 04" not in response
+
+
+def test_limit_argument_overrides_default(feature_plugin: Plugin) -> None:
+    response = _respond(feature_plugin, "limit 2", _many_nodes_client(25))
+    assert response.splitlines()[0] == "Nodes: 2 of 25"
+    assert response.splitlines()[-1] == "… and 23 more not shown"
+
+
+def test_limit_all_and_bare_zero_list_everything(feature_plugin: Plugin) -> None:
+    for args in ("limit all", "0"):
+        response = _respond(feature_plugin, args, _many_nodes_client(25))
+        assert response.splitlines()[0] == "Nodes: 25"
+        assert "more not shown" not in response
+
+
+def test_configured_max_results_applies(feature_plugin: Plugin) -> None:
+    feature_plugin.config["max_results"] = 2
+    response = _generate(feature_plugin, _many_nodes_client(25))
+    assert response.splitlines()[0] == "Nodes: 2 of 25"
+
+
+def test_invalid_configured_max_results_falls_back_to_default(
+    feature_plugin: Plugin,
+) -> None:
+    for invalid in ("many", -1, True):
+        feature_plugin.config["max_results"] = invalid
+        response = _generate(feature_plugin, _many_nodes_client(25))
+        assert response.splitlines()[0] == (f"Nodes: {DEFAULT_MAX_RESULTS} of 25")
+    assert feature_plugin.logger.warning.called
+
+
+def test_filter_and_limit_combine(feature_plugin: Plugin) -> None:
+    client = _many_nodes_client(25)
+    client.nodes["node0"]["user"]["role"] = "ROUTER"
+    client.nodes["node1"]["user"]["role"] = "ROUTER"
+    client.nodes["node2"]["user"]["role"] = "ROUTER"
+    response = _respond(feature_plugin, "role router limit 2", client)
+    assert response.splitlines()[0] == (
+        "Nodes: 2 of 3 matching (of 25 known) · role ~ router"
+    )
+    assert response.splitlines()[-1] == "… and 1 more not shown"
+
+
+def test_display_fields_override_lists_only_those_fields(
+    feature_plugin: Plugin,
+) -> None:
+    client = _query_client()
+    client.nodes["node1"]["deviceMetrics"] = {"batteryLevel": 85, "voltage": 4.2}
+    response = _respond(feature_plugin, "fields battery,voltage", client)
+    lines = response.splitlines()
+    assert lines[0] == "Nodes: 3"
+    assert "battery: 85% / voltage: 4.2V" in response
+    assert "TBEAM" not in response
+    assert "RAK4631" not in response
+
+
+def test_dotted_path_display_override(feature_plugin: Plugin) -> None:
+    client = _query_client()
+    client.nodes["node1"]["environmentMetrics"] = {"temperature": 21.5}
+    response = _respond(feature_plugin, "fields environmentMetrics.temperature", client)
+    assert "environmentMetrics.temperature: 21.5" in response
+
+
+def test_handle_room_message_help_replies_usage(feature_plugin: Plugin) -> None:
+    feature_plugin.get_matching_matrix_command_with_args = MagicMock(
+        return_value=("nodes", "HELP")
+    )
+    room = MagicMock()
+    room.room_id = "!test:matrix.org"
+    event = MagicMock()
+
+    async def run_test() -> None:
+        result = await feature_plugin.handle_room_message(room, event, "!nodes help")
+        assert result is True
+        call_args = feature_plugin.send_matrix_message.call_args
+        assert call_args.kwargs["message"] == USAGE_TEXT
+        assert call_args.kwargs["formatted"] is False
+        feature_plugin.send_matrix_reaction.assert_called_once_with(
+            "!test:matrix.org", event.event_id, "✅"
+        )
+
+    asyncio.run(run_test())
+
+
+def test_handle_room_message_usage_error_replies_usage(
+    feature_plugin: Plugin,
+) -> None:
+    feature_plugin.get_matching_matrix_command_with_args = MagicMock(
+        return_value=("nodes", "bogus")
+    )
+    room = MagicMock()
+    room.room_id = "!test:matrix.org"
+    event = MagicMock()
+
+    async def run_test() -> None:
+        result = await feature_plugin.handle_room_message(room, event, "!nodes bogus")
+        assert result is True
+        call_args = feature_plugin.send_matrix_message.call_args
+        assert "Unknown option or field 'bogus'" in call_args.kwargs["message"]
+        assert USAGE_TEXT in call_args.kwargs["message"]
+        feature_plugin.send_matrix_reaction.assert_called_once_with(
+            "!test:matrix.org", event.event_id, "❌"
+        )
+
+    asyncio.run(run_test())
+
+
+@patch("mmrelay.meshtastic_utils.connect_meshtastic")
+def test_handle_room_message_passes_args_to_response(
+    mock_connect: MagicMock, feature_plugin: Plugin
+) -> None:
+    mock_connect.return_value = _query_client()
+    feature_plugin.get_matching_matrix_command_with_args = MagicMock(
+        return_value=("nodes", "role client_mute")
+    )
+    room = MagicMock()
+    room.room_id = "!test:matrix.org"
+    event = MagicMock()
+
+    async def run_test() -> None:
+        result = await feature_plugin.handle_room_message(
+            room, event, "!nodes role client_mute"
+        )
+        assert result is True
+        message = feature_plugin.send_matrix_message.call_args.kwargs["message"]
+        assert "Nodes: 1 matching (of 3 known)" in message
+        assert "Amy Amy Brown" in message
+
+    asyncio.run(run_test())
+
+
+@pytest.mark.parametrize(
+    "args",
+    ["²", "limit ²", "9" * 5000, "limit " + "9" * 5000],
+    ids=[
+        "unicode-digit",
+        "unicode-limit",
+        "overlong-digit",
+        "overlong-limit",
+    ],
+)
+def test_malformed_queries_raise_usage_errors(args: str) -> None:
+    with pytest.raises(NodesUsageError):
+        parse_nodes_args(args)
+
+
+@pytest.mark.parametrize(
+    "direction, expected",
+    [
+        ("", ["Amy", "Zed", "mid"]),
+        ("asc", ["Zed", "Amy", "mid"]),
+        ("desc", ["Amy", "Zed", "mid"]),
+    ],
+)
+def test_numeric_dotted_sort_defaults_to_descending(
+    feature_plugin: Plugin, direction: str, expected: list[str]
+) -> None:
+    client = _query_client()
+    client.nodes["node1"]["environmentMetrics"] = {"temperature": 20.0}
+    client.nodes["node2"]["environmentMetrics"] = {"temperature": 30.0}
+    response = _respond(
+        feature_plugin, f"sort environmentMetrics.temperature {direction}", client
+    )
+    assert [line.split()[0] for line in response.splitlines()[1:]] == expected
+
+
+@pytest.mark.parametrize("invalid", ["garbage", "NaN", float("inf"), True])
+@pytest.mark.parametrize(
+    "direction, expected",
+    [("asc", ["Zed", "Amy", "mid"]), ("desc", ["Amy", "Zed", "mid"])],
+)
+def test_invalid_numeric_sort_values_are_last(
+    feature_plugin: Plugin, invalid: Any, direction: str, expected: list[str]
+) -> None:
+    client = _query_client()
+    client.nodes["node3"]["snr"] = invalid
+    response = _respond(feature_plugin, f"sort snr {direction}", client)
+    assert [line.split()[0] for line in response.splitlines()[1:]] == expected
+
+
+def test_canonical_top_level_fields_keep_their_case(feature_plugin: Plugin) -> None:
+    client = _query_client()
+    client.nodes["node1"]["hopsAway"] = 2
+    response = _respond(feature_plugin, "fields hopsAway,lastHeard", client)
+    assert "hopsAway: 2" in response
+    assert "lastHeard: " + str(client.nodes["node1"]["lastHeard"]) in response
+
+
+def test_canonical_top_level_fields_support_filter_and_sort(
+    feature_plugin: Plugin,
+) -> None:
+    client = _query_client()
+    client.nodes["node1"]["hopsAway"] = 2
+    client.nodes["node2"]["hopsAway"] = 1
+    client.nodes["node3"]["hopsAway"] = 2
+    response = _respond(feature_plugin, "hopsAway 2 sort lastHeard", client)
+    assert "Nodes: 2 matching (of 3 known)" in response
+    assert [line.split()[0] for line in response.splitlines()[1:]] == ["mid", "Zed"]
+
+
+@pytest.mark.parametrize(
+    "args", ["²", "limit " + "9" * 5000], ids=["unicode-digit", "overlong-limit"]
+)
+def test_malformed_numeric_limit_gets_a_usage_reply(
+    feature_plugin: Plugin, args: str
+) -> None:
+    feature_plugin.get_matching_matrix_command_with_args = MagicMock(
+        return_value=("nodes", args)
+    )
+    room = MagicMock(room_id="!test:matrix.org")
+    event = MagicMock(event_id="$query")
+    with patch("mmrelay.meshtastic_utils.connect_meshtastic") as connect:
+        assert (
+            asyncio.run(
+                feature_plugin.handle_room_message(room, event, "!nodes " + args)
+            )
+            is True
+        )
+    connect.assert_not_called()
+    assert USAGE_TEXT in feature_plugin.send_matrix_message.call_args.kwargs["message"]
+    feature_plugin.send_matrix_reaction.assert_called_once_with(
+        room.room_id, event.event_id, "❌"
+    )
+
+
+@pytest.mark.parametrize(
+    "direction, expected",
+    [
+        ("", ["Amy", "Zed", "mid"]),
+        ("asc", ["Zed", "Amy", "mid"]),
+        ("desc", ["Amy", "Zed", "mid"]),
+    ],
+)
+def test_inferred_numeric_sort_keeps_invalid_values_last(
+    feature_plugin: Plugin, direction: str, expected: list[str]
+) -> None:
+    client = _query_client()
+    client.nodes["node1"]["environmentMetrics"] = {"temperature": 9.0}
+    client.nodes["node2"]["environmentMetrics"] = {"temperature": "10"}
+    client.nodes["node3"]["environmentMetrics"] = {"temperature": "garbage"}
+    response = _respond(
+        feature_plugin, f"sort environmentMetrics.temperature {direction}", client
+    )
+    assert [line.split()[0] for line in response.splitlines()[1:]] == expected
 
 
 if __name__ == "__main__":
