@@ -238,7 +238,19 @@ asyncio.run(main())
 """
     environment = {**os.environ, "MMRELAY_HOME": str(tmp_path)}
     result = subprocess.run(  # nosec B603 - interpreter and generated probe only
-        [sys.executable, "-W", "error", "-c", textwrap.dedent(script)],
+        # Python 3.15 warns (FutureWarning, attributed to the caller) about
+        # lenient base64 decoding in unpaddedbase64, inside nio's
+        # decrypt_attachment; the relay cannot fix that path, so scope it out
+        # while keeping every other warning fatal (last matching -W wins).
+        [
+            sys.executable,
+            "-W",
+            "error",
+            "-W",
+            "ignore::FutureWarning:unpaddedbase64",
+            "-c",
+            textwrap.dedent(script),
+        ],
         env=environment,
         capture_output=True,
         text=True,
