@@ -1,0 +1,9 @@
+#!/bin/sh
+# Scan-only trunk gate (see AGENTS.md). Run non-interactively, trunk check
+# auto-applies linter fixes unless told --no-fix; that has silently rewritten
+# applied patches mid-rebase and mangled pinned workflow actions, so these
+# hooks only ever report.
+if [ ! -x .trunk/trunk ]; then
+	exit 0
+fi
+exec .trunk/trunk check --no-fix --ignore-git-state
