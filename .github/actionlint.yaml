@@ -1,0 +1,6 @@
+self-hosted-runner:
+  # ubuntu-26.04 is a GitHub-hosted GA image (actions/runner-images#14748)
+  # that this actionlint build's bundled label list predates. Drop this entry
+  # once actionlint knows the label natively.
+  labels:
+    - ubuntu-26.04
