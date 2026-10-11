@@ -37,7 +37,7 @@ exactly-once relaying or lossless downtime recovery.
 
 ## Automated checks
 
-The main test matrix already covers Python 3.11, 3.12, 3.13, and 3.14. It verifies
+The main test matrix covers Python 3.11, 3.12, 3.13, 3.14, and 3.15. It verifies
 dependency consistency and the selected SDK, then runs the full suite. Real-SDK
 contract tests use clean subprocesses because the existing unit-test fixtures
 replace nio with doubles.
