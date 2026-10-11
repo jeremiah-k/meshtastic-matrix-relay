@@ -76,7 +76,11 @@ lint:
 actions:
   disabled:
     - trunk-announce
-  enabled:
-    - trunk-upgrade-available
+    # Mutating hook actions: fmt-on-commit rewrites staged files, and
+    # check-on-push auto-applies linter fixes non-interactively (it has
+    # rewritten applied patches and mangled pinned workflow actions).
+    # Scan-only replacement hooks live in .githooks/ (see AGENTS.md).
     - trunk-check-pre-push
     - trunk-fmt-pre-commit
+  enabled:
+    - trunk-upgrade-available

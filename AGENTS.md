@@ -9,6 +9,8 @@
 - **Run all tests with coverage**: `python -m pytest -v --cov --junitxml=junit.xml -o junit_family=legacy`
 - **Run tests with a timeout**: `python -m pytest -v --timeout=60` (to prevent tests from hanging indefinitely)
 - **Lint code**: `.trunk/trunk check --fix --all` (do not need to run each time, it wastes time)
+- **Scan without modifying anything**: `.trunk/trunk check --no-fix` — plain `trunk check` run non-interactively auto-applies linter fixes, which has silently rewritten patches mid-application; pass `--no-fix` unless you explicitly want files changed
+- **Git hooks (once per clone)**: `git config core.hooksPath .githooks` — opt-in scan-only pre-commit/pre-push gates (report, never modify). Trunk's own fmt-on-commit and check-on-push hook actions are disabled in `.trunk/trunk.yaml` for the same reason.
 
 ## Code Style Guidelines
 
