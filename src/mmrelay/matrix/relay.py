@@ -9,6 +9,7 @@ import html
 import re
 import secrets
 from typing import Any, cast
+from urllib.parse import quote, urlencode
 
 from nio import RoomSendError
 
@@ -367,11 +368,29 @@ async def matrix_relay(
                     content["body"] = f"{quoted_text}\n\n{plain_body}"
 
                     content["format"] = "org.matrix.custom.html"
-                    reply_link = f"https://matrix.to/#/{room_id}/{reply_to_event_id}"
-                    bot_link = f"https://matrix.to/#/{bot_user_id}"
+                    # Room IDs carry no routing (v12+ rooms have no server
+                    # part at all), so the permalink needs via parameters;
+                    # the relay's own server is in every room it joined.
+                    via_server = (
+                        bot_user_id.partition(":")[2]
+                        if isinstance(bot_user_id, str) and ":" in bot_user_id
+                        else None
+                    )
+                    via_suffix = (
+                        f"?{urlencode({'via': via_server})}" if via_server else ""
+                    )
+                    reply_link = (
+                        "https://matrix.to/#/"
+                        f"{quote(room_id, safe='!:@')}/"
+                        f"{quote(reply_to_event_id, safe='$:@')}{via_suffix}"
+                    )
+                    bot_link = (
+                        "https://matrix.to/#/" f"{quote(str(bot_user_id), safe='@:.')}"
+                    )
                     blockquote_content = (
-                        f'<a href="{reply_link}">In reply to</a> '
-                        f'<a href="{bot_link}">{bot_user_id}</a><br>'
+                        f'<a href="{html.escape(reply_link, quote=True)}">In reply to</a> '
+                        f'<a href="{html.escape(bot_link, quote=True)}">'
+                        f"{html.escape(str(bot_user_id))}</a><br>"
                         f"[{html.escape(meshnet_label)}]: {safe_original}"
                     )
                     content["formatted_body"] = (
