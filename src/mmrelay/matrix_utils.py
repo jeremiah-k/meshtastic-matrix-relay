@@ -375,6 +375,11 @@ from mmrelay.matrix.auth import (
     _perform_matrix_login,
 )
 from mmrelay.matrix.client_config import build_matrix_client_config
+from mmrelay.matrix.room_authorization import (
+    is_authorized_in_room as is_authorized_in_room,
+    room_creators as room_creators,
+    sender_power_level as sender_power_level,
+)
 from mmrelay.matrix.room_ids import is_room_alias as is_room_alias
 from mmrelay.matrix.room_ids import is_room_id as is_room_id
 from mmrelay.matrix.sync_bootstrap import (

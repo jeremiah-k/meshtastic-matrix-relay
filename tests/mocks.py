@@ -285,9 +285,22 @@ class MockRoomMemberEvent:
     pass
 
 
+class MockRoomGetStateResponse:
+    """Mock RoomGetStateResponse for testing.
+
+    Carries the full state event list so room-authorization code can
+    distinguish response types and inspect m.room.create.
+    """
+
+    def __init__(self, events: list, room_id: str) -> None:
+        self.events = events
+        self.room_id = room_id
+
+
 nio_mock.ToDeviceResponse = MockToDeviceResponse
 nio_mock.ToDeviceError = MockToDeviceError
 nio_mock.RoomMemberEvent = MockRoomMemberEvent
+nio_mock.RoomGetStateResponse = MockRoomGetStateResponse
 sys.modules["nio.events.room_events"].RoomMemberEvent = MockRoomMemberEvent
 
 
