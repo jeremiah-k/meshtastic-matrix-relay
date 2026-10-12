@@ -1207,6 +1207,8 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
     if args is None:
         args = parse_arguments()
 
+    from mmrelay.matrix_utils import is_room_alias, is_room_id
+
     config_paths = get_config_paths(_ConfigPathArgsView(args))
     config_path = None
     allow_missing_matrix_auth = (
@@ -1388,6 +1390,32 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             "   Add the 'id' field with your Matrix room ID or alias:"
                         )
                         print('     - id: "!room:matrix.org"')
+                        return False
+
+                    room_reference = room["id"]
+                    if not (
+                        isinstance(room_reference, str)
+                        and (
+                            is_room_id(room_reference) or is_room_alias(room_reference)
+                        )
+                    ):
+                        print(
+                            f"Error: Room {i + 1} in 'matrix_rooms' has an invalid 'id': {room_reference!r}"
+                        )
+                        print("   Use a Matrix room ID or a room alias:")
+                        print('     - id: "!room:matrix.org"  # room ID')
+                        print(
+                            '     - id: "!room"             # room v12+ ID (no server suffix)'
+                        )
+                        print(
+                            '     - id: "#room:matrix.org"  # alias, resolved at join time'
+                        )
+                        print(
+                            "   Copy room IDs exactly as the client shows them — never"
+                        )
+                        print(
+                            "   append or strip a suffix; the value must byte-match the room."
+                        )
                         return False
 
                     if "meshtastic_channel" not in room:

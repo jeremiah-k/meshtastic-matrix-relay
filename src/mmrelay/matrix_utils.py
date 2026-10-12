@@ -375,6 +375,8 @@ from mmrelay.matrix.auth import (
     _perform_matrix_login,
 )
 from mmrelay.matrix.client_config import build_matrix_client_config
+from mmrelay.matrix.room_ids import is_room_alias as is_room_alias
+from mmrelay.matrix.room_ids import is_room_id as is_room_id
 from mmrelay.matrix.sync_bootstrap import (
     _perform_initial_sync,
     _post_sync_setup,
