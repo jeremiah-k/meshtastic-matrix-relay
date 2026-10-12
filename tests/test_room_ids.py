@@ -12,6 +12,8 @@ from mmrelay.matrix.room_ids import is_room_alias, is_room_id
         "!opaque:server.example",
         "!opaque:matrix.org",
         "!another:server.example",
+        "!unicode-Ω:server.example",  # legacy localparts remain opaque
+        "!abc:[2001:db8::1]:8448",
     ],
 )
 def test_room_ids_accept_both_forms(value: str) -> None:
@@ -28,6 +30,17 @@ def test_room_ids_accept_both_forms(value: str) -> None:
         "!opaque:server.example\n",  # no silent normalization
         "!opaque:server.example with space",
         "!:server",  # empty localpart
+        "!opaque:bad/server",
+        "!opaque:bad:port",
+        "!opaque:bad:999999",
+        "!opaque:[not-an-ipv6]",
+        "!opaque:server..example",
+        "!opaque:example.-bad",
+        "!opaque:example.org:0",
+        "!opaque:example.org?query",
+        "!opaque:example.org#fragment",
+        "!bad?local",  # not a v12 URL-safe base64 localpart
+        "!" + "a" * 255,  # 256 bytes including the sigil
         "#room:server",  # alias
         "room:server",
         "https://matrix.to/#/!room:server",
@@ -42,7 +55,7 @@ def test_room_ids_reject_non_ids(value: object) -> None:
 
 @pytest.mark.parametrize(
     "value",
-    ["#room:server.example", "#a:b"],
+    ["#room:server.example", "#a:b", "#room:[::1]:443"],
 )
 def test_room_aliases_accept_valid_forms(value: str) -> None:
     assert is_room_alias(value)
@@ -55,6 +68,11 @@ def test_room_aliases_accept_valid_forms(value: str) -> None:
         "#",
         "#room",
         "#:server",
+        "#alias:bad/path",
+        "#alias:bad:port",
+        "#alias:example.org:123456",
+        "#alias:example..org",
+        "#" + "x" * 255 + ":s",
         "!room:server",
         "room:server",
         "  #room:server.example  ",
