@@ -2011,6 +2011,16 @@ def migrate_store(
             shutil.rmtree(str(staging_dir), ignore_errors=True)
 
 
+def _copy_plugin_entry(source: Path, destination: Path) -> None:
+    """Stage plugin content without following a top-level filesystem link."""
+    if source.is_symlink():
+        destination.symlink_to(os.readlink(source), target_is_directory=source.is_dir())
+    elif source.is_dir():
+        shutil.copytree(str(source), str(destination), symlinks=True)
+    else:
+        shutil.copy2(str(source), str(destination), follow_symlinks=False)
+
+
 def _migrate_plugin_tier(
     old_dir: Path,
     new_dir: Path,
@@ -2021,7 +2031,8 @@ def _migrate_plugin_tier(
     """
     Migrate a single tier of plugins (e.g. custom or community).
 
-    Move plugin folders and standalone files, including adjacent support files.
+    Copy plugin folders and standalone files into staging, leaving the source
+    intact until the complete staged tree has been installed and backed up.
     Updates the provided errors list with any failure messages.
 
     Parameters:
@@ -2046,7 +2057,7 @@ def _migrate_plugin_tier(
     migrated = False
     try:
         for item in old_dir.iterdir():
-            if not item.is_dir() and not item.is_file():
+            if not item.is_dir() and not item.is_file() and not item.is_symlink():
                 continue
             dest = new_dir / item.name
             if dest.exists():
@@ -2065,8 +2076,8 @@ def _migrate_plugin_tier(
                     dest.unlink()
 
             try:
-                shutil.move(str(item), str(dest))
-                logger.debug("Staged %s plugin: %s", tier_name, item)
+                _copy_plugin_entry(item, dest)
+                logger.debug("Staged %s plugin copy: %s", tier_name, item)
                 migrated = True
             except (OSError, IOError) as e:
                 logger.warning("Failed to stage %s plugin %s: %s", tier_name, item, e)
@@ -2074,13 +2085,6 @@ def _migrate_plugin_tier(
     except (OSError, IOError) as e:
         logger.warning("Failed to stage %s plugins: %s", tier_name, e)
         errors.append(f"{tier_name}: {e}")
-
-    # Cleanup old tier dir if empty
-    try:
-        if old_dir.exists() and not any(old_dir.iterdir()):
-            old_dir.rmdir()
-    except (OSError, IOError):
-        pass
 
     return migrated
 
@@ -2096,7 +2100,8 @@ def migrate_plugins(
 
     Searches the provided legacy roots for a `plugins` directory, stages the `custom` and `community`
     tiers (if present), creates backups of existing destinations and the original legacy directory,
-    and atomically moves staged content into place. Honors dry-run and force semantics.
+    and finalizes the staged content. The original is retained until finalization
+    succeeds. Honors dry-run and force semantics.
 
     Parameters:
         legacy_roots (list[Path]): Legacy root directories to scan for a `plugins` directory.
@@ -2206,8 +2211,15 @@ def migrate_plugins(
         """
         raise OSError("; ".join(stage_errors))
 
+    if staging_dir.exists():
+        raise MigrationError.step_failed(
+            "plugins",
+            f"Previous staged plugin data exists at {staging_dir}; inspect and "
+            "recover it before retrying to avoid overwriting partial data",
+        )
+
     try:
-        staging_dir.mkdir(parents=True, exist_ok=True)
+        staging_dir.mkdir(parents=True, exist_ok=False)
 
         # 1. Backup existing destination (ALWAYS)
         if new_plugins_dir.exists():
@@ -2239,12 +2251,12 @@ def migrate_plugins(
         ):
             migrated_types.append("community")
 
-        # These are runtime state, not plugin repositories. Move each complete
-        # tree so flat dependency modules and core-plugin data survive upgrades.
+        # These are runtime state, not plugin repositories. Stage copies of each
+        # complete tree; a cross-volume copy failure must not remove source data.
         for tier in ("core", "deps"):
             source = old_plugins_dir / tier
             if source.exists():
-                shutil.move(str(source), str(staging_dir / tier))
+                _copy_plugin_entry(source, staging_dir / tier)
                 migrated_types.append(tier)
 
         if errors:
@@ -2285,11 +2297,15 @@ def migrate_plugins(
         )
         raise MigrationError.step_failed(
             "plugins",
-            f"Permission denied. Check file permissions for {exc.filename}: {exc}",
+            f"Permission denied. Check file permissions for {exc.filename}: {exc}. "
+            f"Source retained; inspect incomplete staging at {staging_dir}",
         ) from exc
     except Exception as exc:
         logger.exception("Failed to migrate plugins from %s", old_plugins_dir)
-        raise MigrationError.step_failed("plugins", str(exc)) from exc
+        raise MigrationError.step_failed(
+            "plugins",
+            f"{exc}. Source retained; inspect incomplete staging at {staging_dir}",
+        ) from exc
     finally:
         # Only remove staging if migration succeeded to preserve data on failure
         if migration_succeeded and staging_dir.exists():
@@ -3173,7 +3189,7 @@ def rollback_migration(
     """
     Restore completed migration steps by locating and restoring backups from the .migration_backups directory.
 
-    Restores files or directories that were backed up before being overwritten during migration; if no backup exists for a step the function preserves the destination to avoid data loss. Cleans up the staging directory on successful rollback but does not remove backups.
+    Restores files or directories that were backed up before being overwritten during migration; if no backup exists for a step the function preserves the destination to avoid data loss. Retains staging and backups for manual recovery because a failed step may have moved its only copy there.
 
     Parameters:
         completed_steps (list[str]): Names of steps that completed before the failure, processed in reverse order.
@@ -3426,14 +3442,15 @@ def rollback_migration(
             rollback_report["errors"].append({"step": step_name, "error": str(e)})
             rollback_report["success"] = False
 
-    if rollback_report["success"]:
-        staging_dir = new_home / MIGRATION_STAGING_DIRNAME
-        if staging_dir.exists():
-            try:
-                shutil.rmtree(str(staging_dir), ignore_errors=True)
-                logger.debug("Cleaned up staging directory after rollback")
-            except (OSError, IOError):
-                pass
+    # A failed step is not listed among completed_steps. Its staging directory
+    # may therefore contain the only remaining copy of data moved before the
+    # failure; do not recursively delete it after unrelated steps roll back.
+    staging_dir = new_home / MIGRATION_STAGING_DIRNAME
+    if staging_dir.exists():
+        rollback_report["staging_dir"] = str(staging_dir)
+        logger.warning(
+            "Preserving staged migration data for recovery at %s", staging_dir
+        )
 
     if rollback_report["success"] and not rollback_report["errors"]:
         logger.info("Rollback completed successfully")

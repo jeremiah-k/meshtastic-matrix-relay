@@ -339,3 +339,68 @@ def test_windows_config_shortcut_opens_active_home(windows_homes, monkeypatch):
     startfile.reset_mock()
     assert cli.handle_config_command(args) == 1
     startfile.assert_not_called()
+
+
+def test_plugin_stage_copy_failure_keeps_legacy_state(tmp_path, monkeypatch):
+    """Even a partially copied deps tier must not remove the only source copy."""
+    source = tmp_path / "legacy"
+    target = tmp_path / "data"
+    for name in (
+        "custom/hello.py",
+        "community/hello.py",
+        "core/weather/state.json",
+        "deps/cpython-314-win-amd64/module.py",
+    ):
+        file = source / "plugins" / name
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(f"source {name}", encoding="utf-8")
+    original_copytree = migrate.shutil.copytree
+
+    def copy_partial_deps(src, dst, *args, **kwargs):
+        if str(src).endswith("plugins/deps"):
+            dest = Path(dst)
+            dest.mkdir(parents=True)
+            (dest / "partial.txt").write_text("partial", encoding="utf-8")
+            raise OSError("simulated cross-volume copy failure")
+        return original_copytree(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(migrate.shutil, "copytree", copy_partial_deps)
+    with pytest.raises(migrate.MigrationError, match="inspect incomplete staging"):
+        migrate.migrate_plugins([source], target)
+    for name in (
+        "custom/hello.py",
+        "community/hello.py",
+        "core/weather/state.json",
+        "deps/cpython-314-win-amd64/module.py",
+    ):
+        assert (source / "plugins" / name).read_text(
+            encoding="utf-8"
+        ) == f"source {name}"
+    assert (
+        target / ".migration_staging" / "plugins" / "deps" / "partial.txt"
+    ).is_file()
+    assert not (target / "plugins").is_dir()
+    with pytest.raises(migrate.MigrationError, match="Previous staged plugin data"):
+        migrate.migrate_plugins([source], target)
+
+
+def test_plugin_staging_collision_does_not_discard_previous_data(tmp_path):
+    source = tmp_path / "legacy"
+    (source / "plugins" / "custom").mkdir(parents=True)
+    target = tmp_path / "data"
+    staged = target / ".migration_staging" / "plugins" / "core" / "state.json"
+    staged.parent.mkdir(parents=True)
+    staged.write_text("recovery data", encoding="utf-8")
+    with pytest.raises(migrate.MigrationError, match="Previous staged plugin data"):
+        migrate.migrate_plugins([source], target)
+    assert staged.read_text(encoding="utf-8") == "recovery data"
+
+
+def test_rollback_keeps_failed_step_staging_for_recovery(tmp_path):
+    staged = tmp_path / ".migration_staging" / "plugins" / "core" / "state.json"
+    staged.parent.mkdir(parents=True)
+    staged.write_text("only copy", encoding="utf-8")
+    report = migrate.rollback_migration([], [], tmp_path)
+    assert report["success"]
+    assert report["staging_dir"] == str(tmp_path / ".migration_staging")
+    assert staged.read_text(encoding="utf-8") == "only copy"
