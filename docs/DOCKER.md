@@ -6,7 +6,6 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
-- [Upgrading from Older Layouts](#upgrading-from-older-layouts)
 - [Deployment Methods](#deployment-methods)
   - [Prebuilt Images with Make](#prebuilt-images-with-make)
   - [Portainer/GUI Tools](#portainergui-tools)
@@ -30,9 +29,7 @@ You need Docker with the Compose plugin installed on your system. Follow the [of
 
 ## Quick Start
 
-**Most users should start here** - prebuilt images without cloning the repository:
-
-> **Migrating?** If upgrading from an older version with the old directory layout, see the [Migration Guide for v1.3](MIGRATION_1.3.md).
+**Most users should start here** — prebuilt images without cloning the repository:
 
 ```bash
 # Create directory and download config
@@ -58,6 +55,10 @@ docker compose run --rm --no-deps mmrelay mmrelay auth login
 nano docker-compose.yaml  # Uncomment the watchtower section
 
 # Start containers and view logs
+# Authenticate in a one-off container before the first start
+docker compose run --rm --no-deps mmrelay mmrelay auth login
+
+# Start the relay and inspect logs
 docker compose up -d
 docker compose logs -f
 ```
@@ -65,10 +66,6 @@ docker compose logs -f
 **That's it!** Your MMRelay is now running with the official prebuilt image. See [Matrix Authentication](#matrix-authentication) below if you need more detail on the auth step.
 
 > **Production deployment**: The `:latest` tag is mutable and may change. For production deployments, pin a specific version tag or digest to ensure reproducible deployments. See the [Kubernetes Guide](KUBERNETES.md#pinning-digests-for-production) for digest pinning examples.
-
-## Upgrading from Older Layouts
-
-If you're upgrading an existing deployment from older MMRelay directory layouts, follow the [Migration Guide for v1.3](MIGRATION_1.3.md).
 
 ## Deployment Methods
 
@@ -410,8 +407,6 @@ The Docker image includes a built-in health check that uses the ready file mecha
 
 On first boot after upgrade, containers may briefly report unhealthy if authentication/bootstrap data is not yet present.
 
-For upgrade/migration procedures and deprecation timeline details, see the [Migration Guide for v1.3](MIGRATION_1.3.md).
-
 ## Troubleshooting
 
 ### Common Portainer Issues
@@ -573,6 +568,10 @@ make use-source
 - Cleans up old images to save space
 - Only updates MMRelay container (safe for other services)
 - Uses maintained fork (nickfedor/watchtower) that fixes Docker API compatibility issues
+
+For deployments that still use the pre-v1.3 data layout, the [historical
+migration guide](MIGRATION_1.3.md) covers the one-time upgrade. New installations
+do not need these steps.
 
 **Built from source:**
 
