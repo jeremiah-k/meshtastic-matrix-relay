@@ -76,7 +76,9 @@ jobs:
         # --collect-submodules meshtastic: mtjk lazy-loads BLE runtime modules
         # (receive_compat_service, lifecycle_service) through importlib, which
         # PyInstaller's static analysis cannot see.
-        run: pyinstaller --name=mmrelay.exe --onefile --console --collect-all rich --collect-submodules meshtastic src/mmrelay/main.py
+        # --copy-metadata mmrelay: the frozen app reads its version through
+        # importlib.metadata, which needs the dist-info inside the bundle.
+        run: pyinstaller --name=mmrelay.exe --onefile --console --collect-all rich --collect-submodules meshtastic --copy-metadata mmrelay src/mmrelay/main.py
 
       - name: Smoke test — verify executable runs
         run: .\dist\mmrelay.exe --version
