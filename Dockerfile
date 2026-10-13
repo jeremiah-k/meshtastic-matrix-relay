@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Install Python build tools with pinned versions
-RUN pip install --no-cache-dir --upgrade pip==25.1.1 setuptools==80.9.0 wheel==0.45.1
+RUN pip install --no-cache-dir --upgrade pip==26.2.1 setuptools==80.9.0 wheel==0.45.1
 
 # Copy source files
 COPY pyproject.toml MANIFEST.in setup.py README.md LICENSE ./
