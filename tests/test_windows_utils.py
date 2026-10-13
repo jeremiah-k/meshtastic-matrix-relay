@@ -191,6 +191,15 @@ class TestGetWindowsErrorMessage(unittest.TestCase):
 class TestCheckWindowsRequirements(unittest.TestCase):
     """Test cases for check_windows_requirements function."""
 
+    def test_frozen_app_does_not_recommend_a_virtualenv(self):
+        with (
+            patch("mmrelay.windows_utils.is_windows", return_value=True),
+            patch.object(sys, "frozen", True, create=True),
+            patch.object(sys, "base_prefix", sys.prefix),
+            patch("os.getcwd", return_value="C:\\relay"),
+        ):
+            self.assertIsNone(check_windows_requirements())
+
     @patch("sys.platform", "linux")
     def test_check_windows_requirements_non_windows(self):
         """Test check_windows_requirements returns None on non-Windows."""

@@ -166,8 +166,10 @@ def check_windows_requirements() -> Optional[str]:
         )
 
     # Check if running in a virtual environment
-    if not hasattr(sys, "real_prefix") and not (
-        hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
+    if (
+        not getattr(sys, "frozen", False)
+        and not hasattr(sys, "real_prefix")
+        and not (hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix)
     ):
         warnings.append(
             "Consider using a virtual environment (venv) or pipx for better isolation"
