@@ -153,7 +153,7 @@ def _plugins_owning_room(candidates: list[str]) -> list[Any]:
     Return active plugins that opted in to unmapped rooms and own one of the given room IDs.
 
     Parameters:
-        candidates (list[str]): Room IDs (or aliases) to check against each
+        candidates (list[str]): Canonical room IDs to check against each
             plugin's declared get_unmapped_room_ids().
 
     Returns:
@@ -219,6 +219,7 @@ async def _dispatch_unmapped_room_message(
                 facade.logger.info(
                     f"Processed command with plugin: {plugin.plugin_name} from {event.sender}"
                 )
+                break
         except Exception as exc:  # noqa: BLE001 - broad catch for plugin isolation
             facade.logger.error(
                 "Error processing message with plugin %s: %s",

@@ -758,13 +758,26 @@ async def main(config: dict[str, Any]) -> None:
             )
 
         # Join the rooms specified in the config.yaml
+        mapped_room_ids: set[str] = set()
         for room in matrix_rooms:
-            await join_matrix_room(matrix_client, room["id"])
+            room_id = room["id"]
+            await join_matrix_room(matrix_client, room_id)
+            mapped_room_ids.add(room_id)
 
         # Plugin-owned rooms join proactively too: a pending invite arrives
-        # in the initial sync before invite callbacks are registered.
-        for room_id in get_declared_unmapped_room_ids():
-            await join_matrix_room(matrix_client, room_id)
+        # in the initial sync before invite callbacks are registered. Mapped
+        # rooms were already joined and dispatch to mapped handlers first.
+        plugin_room_ids = await loop.run_in_executor(
+            None, get_declared_unmapped_room_ids
+        )
+        for room_id in plugin_room_ids:
+            if room_id not in mapped_room_ids:
+                try:
+                    await join_matrix_room(matrix_client, room_id)
+                except Exception:  # noqa: BLE001 - isolate optional plugin rooms
+                    matrix_logger.exception(
+                        "Failed to join plugin-owned room %s", room_id
+                    )
 
         # Register the message callback for Matrix
         matrix_logger.info("Listening for inbound Matrix messages")

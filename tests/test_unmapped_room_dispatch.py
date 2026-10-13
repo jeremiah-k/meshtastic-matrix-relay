@@ -143,6 +143,16 @@ async def test_dispatch_unmapped_room_message_isolates_handler_errors(
 
 
 @pytest.mark.usefixtures("reset_matrix_utils_globals")
+async def test_dispatch_stops_after_first_plugin_claims_command() -> None:
+    first = FakePlugin("first", rooms=[UNMAPPED_ROOM_ID], handles=True)
+    second = FakePlugin("second", rooms=[UNMAPPED_ROOM_ID], handles=True)
+    with patch("mmrelay.plugin_loader.load_plugins", return_value=[first, second]):
+        await _dispatch_unmapped_room_message(_make_room(), _make_text_event())
+    assert len(first.calls) == 1
+    assert second.calls == []
+
+
+@pytest.mark.usefixtures("reset_matrix_utils_globals")
 async def test_dispatch_unmapped_room_message_skips_reactions() -> None:
     """Reaction events never reach unmapped-room plugins."""
     owner = FakePlugin("owner", rooms=[UNMAPPED_ROOM_ID], handles=True)
