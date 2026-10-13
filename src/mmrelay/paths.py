@@ -175,23 +175,6 @@ def has_file_content(directory: Path) -> bool:
     return False
 
 
-def _has_windows_installer_markers(root: Path) -> bool:
-    """
-    Detect whether a directory looks like an MMRelay Windows installer location.
-
-    This checks for installer-created launcher scripts so first-run installs can
-    still resolve to the installer home before runtime artifacts exist.
-
-    Parameters:
-        root (Path): Directory to inspect.
-
-    Returns:
-        bool: True when one or more installer marker files are present.
-    """
-    installer_markers = ("mmrelay.bat", "setup-auth.bat", "logout.bat")
-    return any((root / marker).exists() for marker in installer_markers)
-
-
 def _windows_installer_directories() -> list[Path]:
     """Discover both custom frozen-executable locations and the installer default."""
     candidates: list[Path] = []
@@ -407,7 +390,6 @@ def get_home_dir() -> Path:
             if installer_path.exists():
                 installer_score = _score_mmrelay_home_state(installer_path)
                 installer_has_artifacts = installer_score > 0
-                installer_has_markers = _has_windows_installer_markers(installer_path)
 
                 if installer_has_artifacts and platform_has_artifacts:
                     score_delta = installer_score - platform_score
@@ -446,15 +428,6 @@ def get_home_dir() -> Path:
                         installer_path,
                         installer_score,
                     )
-                    return platform_home
-                if installer_has_markers:
-                    if platform_has_artifacts:
-                        _log_windows_home_selection(
-                            "Using existing MMRelay data home at %s instead of marker-only installer directory %s",
-                            platform_home,
-                            installer_path,
-                        )
-                        return platform_home
                     return platform_home
 
         return platform_home
