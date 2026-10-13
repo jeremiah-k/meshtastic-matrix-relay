@@ -45,6 +45,13 @@
       "matchDepNames": ["mindroom-nio"],
       "matchCurrentValue": "/^==0\\./",
       "enabled": false
+    },
+    {
+      "description": "Hold the Windows packaging runner's python-version pin until winrt cp315 wheels ship; bump it manually with the comment in package-windows.yml",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["python"],
+      "matchFileNames": [".github/workflows/package-windows.yml"],
+      "enabled": false
     }
   ],
   "rebaseWhen": "behind-base-branch"
