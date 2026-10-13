@@ -2,6 +2,7 @@
 
 import os
 import re
+import shutil
 import subprocess  # nosec B404 - invoke only the pinned compiler and probe
 import tempfile
 from pathlib import Path
@@ -9,19 +10,41 @@ from pathlib import Path
 import yaml
 
 
+def find_inno_compiler() -> Path:
+    """Find the pinned action compiler, or a standard local Inno Setup install."""
+    explicit = os.environ.get("ISCC_PATH")
+    if explicit:
+        compiler = Path(explicit)
+        if not compiler.is_file():
+            raise RuntimeError(f"ISCC_PATH does not identify a file: {compiler}")
+        return compiler
+
+    workspace = os.environ.get("GITHUB_WORKSPACE")
+    if workspace:
+        action_root = (
+            Path(workspace).resolve().parents[1] / "_actions" / "sharktide" / "iscc-cli"
+        )
+        compilers = list(action_root.glob("*/src/ISCC.exe"))
+        if len(compilers) == 1:
+            return compilers[0]
+
+    on_path = shutil.which("ISCC.exe")
+    if on_path:
+        return Path(on_path)
+    for root in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles")):
+        if root:
+            for version in ("Inno Setup 6", "Inno Setup 7"):
+                compiler = Path(root) / version / "ISCC.exe"
+                if compiler.is_file():
+                    return compiler
+    raise RuntimeError(
+        "Cannot locate Inno Setup ISCC.exe; set ISCC_PATH or install Inno Setup"
+    )
+
+
 def verify_installer_yaml() -> None:
     """Compile and execute the production Pascal quoting/writing functions."""
-    action_root = (
-        Path(os.environ["GITHUB_WORKSPACE"]).resolve().parents[1]
-        / "_actions"
-        / "sharktide"
-        / "iscc-cli"
-    )
-    compilers = list(action_root.glob("*/src/ISCC.exe"))
-    if len(compilers) != 1:
-        raise RuntimeError(
-            f"Cannot identify the pinned Inno compiler under {action_root}"
-        )
+    compiler = find_inno_compiler()
     source = Path("scripts/mmrelay.iss").read_text(encoding="utf-8")
     functions = []
     for name in ("YamlString", "YamlSecret", "SaveUtf8Text"):
@@ -52,7 +75,7 @@ def verify_installer_yaml() -> None:
             encoding="utf-8-sig",
         )
         subprocess.run(  # nosec B603 - pinned compiler and generated test script
-            [str(compilers[0]), str(script)], check=True, timeout=120
+            [str(compiler), str(script)], check=True, timeout=120
         )
         subprocess.run(  # nosec B603 - generated test artifact, no shell
             [
