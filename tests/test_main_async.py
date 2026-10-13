@@ -665,3 +665,141 @@ class TestReadyHeartbeatEnvVarParsing:
                 main_module._ready_heartbeat_seconds
                 == app_constants.DEFAULT_READY_HEARTBEAT_SECONDS
             )
+
+
+def test_main_joins_declared_plugin_rooms_at_startup():
+    """
+    Verify main() joins plugin-owned unmapped rooms beside configured rooms.
+
+    A pending invite for a plugin-owned room arrives in the initial sync
+    before invite callbacks are registered, so the startup join must cover
+    get_declared_unmapped_room_ids() alongside the mapped rooms.
+    """
+    plugin_room = "!Ah4tQ7vZn9WkP2mXrB6yJc8sLd3FgUeH5iK1oN0pRwz"
+    config = {
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+        "matrix": {"homeserver": "https://matrix.org"},
+        "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
+    }
+
+    mock_matrix_client = AsyncMock()
+    mock_matrix_client.add_event_callback = MagicMock()
+    mock_matrix_client.close = AsyncMock()
+    mock_matrix_client.sync_forever = AsyncMock(side_effect=KeyboardInterrupt)
+
+    with (
+        patch("mmrelay.main.initialize_database"),
+        patch("mmrelay.main.load_plugins"),
+        patch("mmrelay.main.start_message_queue"),
+        patch(
+            "mmrelay.main.asyncio.get_running_loop",
+            side_effect=make_patched_get_running_loop(),
+        ),
+        patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
+        patch(
+            "mmrelay.main.connect_matrix",
+            new_callable=AsyncMock,
+            return_value=mock_matrix_client,
+        ),
+        patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock) as mock_join,
+        patch(
+            "mmrelay.main.get_declared_unmapped_room_ids",
+            return_value=[plugin_room],
+        ),
+        patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt),
+        patch("mmrelay.meshtastic_utils.asyncio.sleep", side_effect=KeyboardInterrupt),
+        patch("mmrelay.matrix_utils.asyncio.sleep", side_effect=KeyboardInterrupt),
+        contextlib.suppress(KeyboardInterrupt),
+    ):
+        asyncio.run(main(config))
+
+    assert mock_join.await_count == 2
+    mock_join.assert_any_await(mock_matrix_client, plugin_room)
+
+
+def test_main_does_not_join_mapped_room_twice_as_plugin_room() -> None:
+    """Mapped rooms are already joined; a plugin's duplicate declaration is inert."""
+    room_id = "!room:matrix.org"
+    config = {
+        "matrix_rooms": [{"id": room_id, "meshtastic_channel": 0}],
+        "matrix": {"homeserver": "https://matrix.org"},
+        "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
+    }
+    mock_matrix_client = AsyncMock()
+    mock_matrix_client.add_event_callback = MagicMock()
+    mock_matrix_client.close = AsyncMock()
+    mock_matrix_client.sync_forever = AsyncMock(side_effect=KeyboardInterrupt)
+    with (
+        patch("mmrelay.main.initialize_database"),
+        patch("mmrelay.main.load_plugins"),
+        patch("mmrelay.main.start_message_queue"),
+        patch(
+            "mmrelay.main.asyncio.get_running_loop",
+            side_effect=make_patched_get_running_loop(),
+        ),
+        patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
+        patch(
+            "mmrelay.main.connect_matrix",
+            new_callable=AsyncMock,
+            return_value=mock_matrix_client,
+        ),
+        patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock) as mock_join,
+        patch("mmrelay.main.get_declared_unmapped_room_ids", return_value=[room_id]),
+        patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt),
+        patch("mmrelay.meshtastic_utils.asyncio.sleep", side_effect=KeyboardInterrupt),
+        patch("mmrelay.matrix_utils.asyncio.sleep", side_effect=KeyboardInterrupt),
+        contextlib.suppress(KeyboardInterrupt),
+    ):
+        asyncio.run(main(config))
+    mock_join.assert_awaited_once_with(mock_matrix_client, room_id)
+
+
+@pytest.mark.parametrize(
+    "join_error", [RuntimeError("invalid room"), OSError("offline")]
+)
+def test_main_continues_after_optional_plugin_room_join_failure(
+    join_error: Exception,
+) -> None:
+    config = {
+        "matrix_rooms": [{"id": "!relay:matrix.org", "meshtastic_channel": 0}],
+        "matrix": {"homeserver": "https://matrix.org"},
+        "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
+    }
+    client = AsyncMock()
+    client.add_event_callback = MagicMock()
+
+    async def join_room(_client: Any, room_id: str) -> None:
+        if room_id == "!unavailable:matrix.org":
+            raise join_error
+
+    with (
+        patch("mmrelay.main.initialize_database"),
+        patch("mmrelay.main.load_plugins"),
+        patch("mmrelay.main.start_message_queue"),
+        patch(
+            "mmrelay.main.asyncio.get_running_loop",
+            side_effect=make_patched_get_running_loop(),
+        ),
+        patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
+        patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+        patch("mmrelay.main.connect_matrix", return_value=client),
+        patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.main.join_matrix_room", side_effect=join_room) as join,
+        patch(
+            "mmrelay.main.get_declared_unmapped_room_ids",
+            return_value=["!unavailable:matrix.org", "!plugin:matrix.org"],
+        ),
+        patch(
+            "mmrelay.main.meshtastic_utils.check_connection", side_effect=_async_noop
+        ),
+        patch("mmrelay.main.shutdown_plugins"),
+        patch("mmrelay.main.stop_message_queue"),
+    ):
+        asyncio.run(main(config))
+
+    assert join.await_count == 3
+    join.assert_any_await(client, "!relay:matrix.org")
+    join.assert_any_await(client, "!plugin:matrix.org")
+    assert client.add_event_callback.called

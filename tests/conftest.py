@@ -1045,3 +1045,19 @@ def pytest_runtest_makereport(item, call):
             )
     if report.when == "teardown":
         _conn_provenance.clear_by_nodeid(item.nodeid)
+
+
+@pytest.fixture(autouse=True)
+def clear_room_creator_cache():
+    """
+    Function-scoped pytest fixture clearing the shared room-creator cache.
+
+    Room creators are immutable in production, so the room-authorization
+    module caches them for the process lifetime; tests must not observe
+    another test's cached fetches.
+    """
+    from mmrelay.matrix.room_authorization import clear_creator_cache
+
+    clear_creator_cache()
+    yield
+    clear_creator_cache()

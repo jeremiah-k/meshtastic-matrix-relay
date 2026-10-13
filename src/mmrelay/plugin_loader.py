@@ -3268,6 +3268,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
     from mmrelay.plugins.map_plugin import Plugin as MapPlugin
     from mmrelay.plugins.mesh_beacon_plugin import Plugin as MeshBeaconPlugin
     from mmrelay.plugins.mesh_relay_plugin import Plugin as MeshRelayPlugin
+    from mmrelay.plugins.meshtastic_cli_plugin import Plugin as MeshtasticCliPlugin
     from mmrelay.plugins.nodes_plugin import Plugin as NodesPlugin
     from mmrelay.plugins.ping_plugin import Plugin as PingPlugin
     from mmrelay.plugins.telemetry_plugin import Plugin as TelemetryPlugin
@@ -3280,6 +3281,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         MeshBeaconPlugin(),
         MeshRelayPlugin(),
         PingPlugin(),
+        MeshtasticCliPlugin(),
         TelemetryPlugin(),
         WeatherPlugin(),
         HelpPlugin(),
@@ -3879,6 +3881,38 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
 
     plugins_loaded = True  # Set the flag to indicate that plugins have been loaded
     return sorted_active_plugins
+
+
+def get_declared_unmapped_room_ids() -> list[str]:
+    """
+    Collect room IDs declared by active plugins that own unmapped rooms.
+
+    Plugin-owned rooms are joined proactively at startup, like mapped rooms:
+    a pending invite is delivered by the initial Matrix sync before invite
+    callbacks are registered, so the live-invite path alone can miss it.
+    Room IDs are opaque (domain-less room version 12+ or classic
+    ``!opaque:server``) and pass through exactly as declared.
+
+    Returns:
+        list[str]: Declared room IDs, deduplicated in declaration order.
+    """
+    room_ids: list[str] = []
+    for plugin in load_plugins():
+        if not getattr(plugin, "handles_unmapped_rooms", False):
+            continue
+        try:
+            declared = plugin.get_unmapped_room_ids()
+        except Exception:  # noqa: BLE001 - broad catch for plugin isolation
+            logger.exception(
+                "Error collecting unmapped rooms from %s",
+                getattr(plugin, "plugin_name", plugin),
+            )
+            continue
+        if isinstance(declared, (list, tuple)):
+            for room_id in declared:
+                if isinstance(room_id, str) and room_id and room_id not in room_ids:
+                    room_ids.append(room_id)
+    return room_ids
 
 
 def shutdown_plugins() -> None:
