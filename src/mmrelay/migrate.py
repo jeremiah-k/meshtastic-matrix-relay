@@ -3017,18 +3017,40 @@ def perform_migration(
     return report
 
 
-def migrate_windows_home(dry_run: bool = False) -> dict[str, Any]:
-    """Relocate one automatically discovered Windows home without merging installs.
+def _windows_home_destination_error(target: Path) -> str | None:
+    conflicts = [
+        path
+        for path in (
+            target / CONFIG_FILENAME,
+            target / CREDENTIALS_FILENAME,
+            target / MATRIX_DIRNAME / CREDENTIALS_FILENAME,
+            target / "database" / DATABASE_FILENAME,
+            target / DATABASE_FILENAME,
+        )
+        if path.exists()
+    ]
+    if paths_module.has_file_content(target / "plugins"):
+        conflicts.append(target / "plugins")
+    for directory in ("matrix", "database", "data", "logs"):
+        if paths_module.has_file_content(target / directory):
+            conflicts.append(target / directory)
+    if conflicts:
+        return (
+            "Destination contains existing data; no files were moved. Review both homes "
+            "with mmrelay paths before choosing a manual migration: "
+            + ", ".join(str(path) for path in conflicts)
+        )
+    return None
 
-    Explicit user homes are never redirected. Destination conflicts are refused
-    before moving any artifact, and the normal staged migration/rollback engine
-    handles the selected source alone. The caller must stop the relay first.
-    """
+
+def plan_windows_home_migration() -> dict[str, Any]:
+    """Inspect guided migration eligibility without writing or overriding paths."""
     paths_info = resolve_all_paths()
     source = Path(paths_info["home"])
     target = paths_module.get_default_home_dir()
     report: dict[str, Any] = {
         "success": False,
+        "needed": False,
         "source_home": str(source),
         "target_home": str(target),
         "migrations": [],
@@ -3052,6 +3074,22 @@ def migrate_windows_home(dry_run: bool = False) -> dict[str, Any]:
     if target.resolve().is_relative_to(source.resolve()):
         report["error"] = "The destination must not be inside the source data home"
         return report
+    error = _windows_home_destination_error(target)
+    if error:
+        report["error"] = error
+        return report
+    report.update(success=True, needed=True)
+    return report
+
+
+def migrate_windows_home(dry_run: bool = False) -> dict[str, Any]:
+    """Relocate the selected Windows home, snapshotting and refusing conflicts."""
+    report = plan_windows_home_migration()
+    if not report["needed"]:
+        return report
+    report["success"] = False
+    source = Path(report["source_home"])
+    target = Path(report["target_home"])
     lock_file = target / MIGRATION_LOCK_FILENAME
     lock_held = False
     paths_module.set_home_override(str(target), source="windows-migration")
@@ -3066,28 +3104,10 @@ def migrate_windows_home(dry_run: bool = False) -> dict[str, Any]:
                     f"Could not acquire the migration lock; no files were moved: {exc}"
                 )
                 return report
-        conflicts = [
-            path
-            for path in (
-                target / CONFIG_FILENAME,
-                target / CREDENTIALS_FILENAME,
-                target / MATRIX_DIRNAME / CREDENTIALS_FILENAME,
-                target / "database" / DATABASE_FILENAME,
-                target / DATABASE_FILENAME,
-            )
-            if path.exists()
-        ]
-        if paths_module.has_file_content(target / "plugins"):
-            conflicts.append(target / "plugins")
-        for directory in ("matrix", "database", "data", "logs"):
-            if paths_module.has_file_content(target / directory):
-                conflicts.append(target / directory)
-        if conflicts:
-            report["error"] = (
-                "Destination contains existing data; no files were moved. Review both homes "
-                "with mmrelay paths before choosing a manual migration: "
-                + ", ".join(str(path) for path in conflicts)
-            )
+        # Recheck after acquiring the lock; the installer probe is advisory.
+        error = _windows_home_destination_error(target)
+        if error:
+            report["error"] = error
             return report
         snapshot: Path | None = None
         units = [

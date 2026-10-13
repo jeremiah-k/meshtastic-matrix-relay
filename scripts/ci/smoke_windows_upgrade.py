@@ -13,7 +13,7 @@ from pathlib import Path
 import platformdirs
 
 
-def run(command: list[str], env: dict[str, str]) -> str:
+def run(command: list[str], env: dict[str, str], *, expected_exit: int = 0) -> str:
     result = subprocess.run(  # nosec B603 - explicit test artifact paths, no shell
         command,
         env=env,
@@ -26,7 +26,10 @@ def run(command: list[str], env: dict[str, str]) -> str:
     print(result.stdout)
     if result.stderr:
         print(result.stderr, file=sys.stderr)
-    result.check_returncode()
+    if result.returncode != expected_exit:
+        raise RuntimeError(
+            f"Expected exit {expected_exit}, got {result.returncode}: {command}"
+        )
     return result.stdout
 
 
@@ -54,6 +57,8 @@ def verify(installer: Path) -> None:
         executable = source / "mmrelay.exe"
         if not executable.is_file():
             raise RuntimeError("Installer did not create mmrelay.exe")
+        probe = [str(executable), "migrate", "--to-default-home", "--check-needed"]
+        run(probe, env, expected_exit=1)  # Fresh installs must not offer migration.
         for launcher in ("mmrelay.bat", "setup-auth.bat", "logout.bat"):
             if "--home" in (source / launcher).read_text(encoding="utf-8"):
                 raise RuntimeError(
@@ -88,6 +93,9 @@ def verify(installer: Path) -> None:
         custom = source / "plugins" / "custom"
         custom.mkdir()
         (custom / "standalone.py").write_text("VALUE = 42\n", encoding="utf-8")
+        run(probe, env)  # The installed executable discovers this upgrade home.
+        overridden = dict(env, MMRELAY_HOME=str(source))
+        run(probe, overridden, expected_exit=1)
         preview = run(
             [str(executable), "migrate", "--to-default-home", "--dry-run"], env
         )
@@ -98,6 +106,7 @@ def verify(installer: Path) -> None:
         if (target / "matrix" / "credentials.json").exists():
             raise RuntimeError("Preview modified the destination")
         run([str(executable), "migrate", "--to-default-home"], env)
+        run(probe, env, expected_exit=1)  # The offer disappears after relocation.
         if not (target / "config.yaml").is_file() or (source / "config.yaml").exists():
             raise RuntimeError("Configuration was not relocated")
         if not (target / "matrix" / "credentials.json").is_file():

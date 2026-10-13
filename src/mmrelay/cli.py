@@ -358,6 +358,11 @@ def parse_arguments() -> argparse.Namespace:
         help="Move the selected Windows installation's data to the default AppData home without merging installations",
     )
     migrate_parser.add_argument(
+        "--check-needed",
+        action="store_true",
+        help="With --to-default-home, exit 0 only when relocation is applicable; do not move data",
+    )
+    migrate_parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Preview migration without making changes",
@@ -1754,6 +1759,18 @@ def main() -> int:
         Exit code (int): `0` on success, non-zero on failure.
     """
     try:
+        args = parse_arguments()
+        if (
+            getattr(args, "command", None) == "migrate"
+            and getattr(args, "check_needed", False) is True
+        ):
+            # Eligibility checks must not initialize log files or directories.
+            if any(
+                getattr(args, name, None) for name in ("home", "base_dir", "data_dir")
+            ):
+                return 1
+            return handle_migrate_command(args)
+
         # Set up Windows console for better compatibility
         try:
             from mmrelay.windows_utils import setup_windows_console
@@ -1764,15 +1781,10 @@ def main() -> int:
             # This is intentional - we want to continue if Windows utils fail
             pass
 
-        args = parse_arguments()
-
         # Handle the --base-dir/--data-dir options
         _apply_dir_overrides(args)
 
         # Ensure application directories exist after overrides are applied.
-        # This runs unconditionally (including for read-only commands) to guarantee
-        # a consistent environment and avoid errors if subsequent operations need
-        # to write logs or temporary files.
         ensure_directories(create_missing=True)
 
         args_dict = vars(args)
@@ -2624,6 +2636,14 @@ def handle_migrate_command(args: argparse.Namespace) -> int:
 
         dry_run = getattr(args, "dry_run", False)
         force = getattr(args, "force", False)
+        if getattr(args, "check_needed", False) is True:
+            if getattr(args, "to_default_home", False) is not True or force:
+                print("--check-needed requires --to-default-home without --force.")
+                return 1
+            from mmrelay.migrate import plan_windows_home_migration
+
+            plan = plan_windows_home_migration()
+            return 0 if plan["needed"] else 1
         paths_info = resolve_all_paths()
         legacy_sources = paths_info.get("legacy_sources", [])
 

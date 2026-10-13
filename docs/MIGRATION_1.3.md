@@ -172,7 +172,7 @@ If you installed via pip/pipx instead of the Windows installer, the default HOME
 ### Upgrading on Windows
 
 1. Stop all running MMRelay instances and upgrade the installer. Existing data remains in place and continues to be selected.
-2. Open **MM Relay Migrate Data** from the Start menu, or run `migrate-data.bat` in the installation directory. The launcher previews the source and destination, then asks for confirmation before moving anything.
+2. If the installer offers **Review and migrate existing MMRelay data** on its Finish page, select that unchecked option to open the preview-and-confirm flow. The offer appears only for applicable existing homes, never for fresh or migrated installations, explicit overrides, occupied destinations, or silent installs. Alternatively, open **MM Relay Migrate Data** from the Start menu, or run `migrate-data.bat` in the installation directory. The launcher previews the source and destination, then asks for confirmation before moving anything.
 3. Alternatively, run these commands from PowerShell in the installation directory:
 
    ```powershell

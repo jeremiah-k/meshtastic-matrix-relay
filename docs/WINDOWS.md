@@ -58,6 +58,8 @@ historical nested AppData home. Upgrades **do not move that data automatically**
 MMRelay continues to discover the existing home. If everything is working, no
 migration is required merely because a newer installer is installed.
 
+When a discovered older home can be relocated into an empty default data home, the installer's Finish page offers **Review and migrate existing MMRelay data**. This option is unchecked and opens the preview-and-confirm flow before any selected relay launch. It is absent on fresh installs, after migration, with explicit home overrides, or when the destination contains data. Silent installs do not offer or run migration. An applicable home also gets one startup reminder; nothing moves automatically.
+
 If you _choose_ to relocate an older home:
 
 1. Stop MMRelay and make an independent backup of the complete existing home.

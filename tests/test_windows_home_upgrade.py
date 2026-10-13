@@ -53,6 +53,88 @@ def test_windows_home_selection_is_logged_once(windows_homes, monkeypatch):
     assert logger.info.call_count == 1
 
 
+def test_windows_migration_offer_detects_existing_home_without_writing(windows_homes):
+    installer, target = windows_homes
+    before = sorted(str(path) for path in target.parent.rglob("*"))
+    plan = migrate.plan_windows_home_migration()
+    assert plan["success"] and plan["needed"]
+    assert Path(plan["source_home"]) == installer
+    assert Path(plan["target_home"]) == target
+    assert sorted(str(path) for path in target.parent.rglob("*")) == before
+    assert paths.get_home_dir() == installer
+
+
+@pytest.mark.parametrize("layout", ["fresh", "migrated", "override", "conflict"])
+def test_windows_migration_offer_is_hidden_when_inapplicable(
+    windows_homes, monkeypatch, layout
+):
+    installer, target = windows_homes
+    if layout == "fresh":
+        (installer / "config.yaml").unlink()
+        (installer / "matrix" / "credentials.json").unlink()
+        (installer / "mmrelay.exe").touch()
+        (target / "plugins" / "core" / "weather" / "data").mkdir(parents=True)
+    elif layout == "migrated":
+        (installer / "config.yaml").rename(target / "config.yaml")
+        (target / "matrix").mkdir()
+        (installer / "matrix" / "credentials.json").rename(
+            target / "matrix" / "credentials.json"
+        )
+    elif layout == "override":
+        monkeypatch.setenv("MMRELAY_HOME", str(installer))
+    else:
+        (target / "config.yaml").write_text("other: true\n", encoding="utf-8")
+    assert not migrate.plan_windows_home_migration()["needed"]
+
+
+@pytest.mark.integration
+def test_windows_migration_offer_cli_uses_the_same_read_only_plan(
+    windows_homes, monkeypatch
+):
+    from mmrelay import cli, log_utils
+
+    # Match a long-lived process where earlier startup enabled file logging.
+    monkeypatch.setattr(log_utils, "config", {"logging": {"log_to_file": True}})
+
+    installer, target = windows_homes
+    monkeypatch.setattr(
+        paths.sys,
+        "argv",
+        ["mmrelay", "migrate", "--to-default-home", "--check-needed"],
+    )
+    args = cli.parse_arguments()
+    assert args.check_needed
+    before = sorted(str(path) for path in target.parent.rglob("*"))
+    assert cli.main() == 0
+    assert sorted(str(path) for path in target.parent.rglob("*")) == before
+    assert (installer / "config.yaml").exists()
+    assert not (target / "config.yaml").exists()
+    explicit = target / "unused-explicit-home"
+    monkeypatch.setattr(
+        paths.sys,
+        "argv",
+        [
+            "mmrelay",
+            "--home",
+            str(explicit),
+            "migrate",
+            "--to-default-home",
+            "--check-needed",
+        ],
+    )
+    assert cli.main() == 1
+    assert not explicit.exists()
+    args.to_default_home = False
+    assert cli.handle_migrate_command(args) == 1
+    args.to_default_home = True
+    args.force = True
+    assert cli.handle_migrate_command(args) == 1
+    args.force = False
+    (installer / "config.yaml").unlink()
+    (installer / "matrix" / "credentials.json").unlink()
+    assert cli.handle_migrate_command(args) == 1
+
+
 def test_relocate_credentials_from_installer_matrix_directory(windows_homes, tmp_path):
     installer, _ = windows_homes
     target = tmp_path / "new-home"

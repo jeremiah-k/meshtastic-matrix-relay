@@ -1,4 +1,4 @@
-"""Check native installer YAML quoting and UTF-8 writing on Windows."""
+"""Check native installer YAML output and configuration-page selection on Windows."""
 
 import os
 import re
@@ -43,11 +43,11 @@ def find_inno_compiler() -> Path:
 
 
 def verify_installer_yaml() -> None:
-    """Compile and execute the production Pascal quoting/writing functions."""
+    """Execute production YAML helpers and page selection in a native installer."""
     compiler = find_inno_compiler()
     source = Path("scripts/mmrelay.iss").read_text(encoding="utf-8")
     functions = []
-    for name in ("YamlString", "YamlSecret", "SaveUtf8Text"):
+    for name in ("YamlString", "YamlSecret", "SaveUtf8Text", "ShouldSkipPage"):
         match = re.search(rf"(?ms)^function {name}\(.*?^end;", source)
         if match is None:
             raise RuntimeError(f"Installer function {name} is missing")
@@ -66,8 +66,29 @@ def verify_installer_yaml() -> None:
             "DefaultDirName={tmp}\\MMRelay YAML probe\nCreateAppDir=no\n"
             "Uninstallable=no\nPrivilegesRequired=lowest\n"
             f"OutputDir={directory}\nOutputBaseFilename=probe\n[Code]\n"
+            "var\n  OverwriteConfig, OptionsPage: TInputOptionWizardPage;\n"
+            "  MeshtasticPage, MatrixPage, MatrixMeshtasticPage: TInputQueryWizardPage;\n"
             + "\n".join(functions)
-            + "\nprocedure InitializeWizard;\nbegin\n"
+            + "\nprocedure InitializeWizard;\nvar\n  Mode, PageID: Integer;\nbegin\n"
+            + "  OverwriteConfig := CreateInputOptionPage(wpWelcome, 'Probe', 'Probe', '', False, False);\n"
+            + "  OverwriteConfig.Add('Generate configuration');\n"
+            + "  MeshtasticPage := CreateInputQueryPage(OverwriteConfig.ID, 'Probe', 'Probe', '');\n"
+            + "  MatrixPage := CreateInputQueryPage(MeshtasticPage.ID, 'Probe', 'Probe', '');\n"
+            + "  MatrixMeshtasticPage := CreateInputQueryPage(MatrixPage.ID, 'Probe', 'Probe', '');\n"
+            + "  OptionsPage := CreateInputOptionPage(MatrixMeshtasticPage.ID, 'Probe', 'Probe', '', False, False);\n"
+            + "  for Mode := 0 to 1 do\n  begin\n"
+            + "    OverwriteConfig.Values[0] := Mode = 1;\n"
+            + "    for PageID := wpWelcome to wpFinished do\n"
+            + "      if ShouldSkipPage(PageID) then\n"
+            + "        RaiseException('Standard installer page must not be skipped');\n"
+            + "    if ShouldSkipPage(OverwriteConfig.ID) then\n"
+            + "      RaiseException('Configuration choice must remain available');\n"
+            + "    if (ShouldSkipPage(MeshtasticPage.ID) <> (Mode = 0)) or\n"
+            + "       (ShouldSkipPage(MatrixPage.ID) <> (Mode = 0)) or\n"
+            + "       (ShouldSkipPage(MatrixMeshtasticPage.ID) <> (Mode = 0)) or\n"
+            + "       (ShouldSkipPage(OptionsPage.ID) <> (Mode = 0)) then\n"
+            + "      RaiseException('Configuration page selection is incorrect');\n"
+            + "  end;\n"
             + f"  if not SaveUtf8Text({literal(str(document))}, "
             + f"'path: ' + YamlString({literal(values['path'])}) + #13#10 + "
             + f"'password: ' + YamlSecret({literal(values['password'])})) then\n"
@@ -91,7 +112,7 @@ def verify_installer_yaml() -> None:
             raise RuntimeError(
                 "Installer YAML changed quoted, backslash, or Unicode values"
             )
-    print("Native installer YAML checks passed")
+    print("Native installer YAML and page-selection checks passed")
 
 
 if __name__ == "__main__":

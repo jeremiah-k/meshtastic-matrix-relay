@@ -23,6 +23,7 @@ Name: "{group}\MM Relay Migrate Data"; Filename: "{app}\migrate-data.bat"; Worki
 Name: "{group}\MM Relay Setup Authentication"; Filename: "{app}\setup-auth.bat"; WorkingDir: "{app}"
 
 [Run]
+Filename: "{app}\migrate-data.bat"; Description: "Review and migrate existing MMRelay data (confirmation required)"; Flags: postinstall skipifsilent unchecked; WorkingDir: "{app}"; Check: ShouldOfferDataMigration
 Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait postinstall skipifsilent; WorkingDir: "{app}"
 
 [Code]
@@ -34,6 +35,38 @@ var
   MeshtasticPage: TInputQueryWizardPage;
   OptionsPage: TInputOptionWizardPage;
   Connection: string;
+  MigrationOfferChecked: Boolean;
+  MigrationOfferAvailable: Boolean;
+  MigrationOfferReady: Boolean;
+
+function ShouldOfferDataMigration: Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := False;
+  if WizardSilent or not MigrationOfferReady then
+    Exit;
+  // Check functions can run repeatedly. Probe only the installed executable,
+  // using the same user as post-install launchers, and cache its read-only result.
+  if not FileExists(ExpandConstant('{app}\mmrelay.exe')) then
+    Exit;
+  if not MigrationOfferChecked then
+  begin
+    MigrationOfferChecked := True;
+    if ExecAsOriginalUser(ExpandConstant('{app}\mmrelay.exe'),
+      'migrate --to-default-home --check-needed', ExpandConstant('{app}'),
+      SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      MigrationOfferAvailable := ResultCode = 0;
+  end;
+  Result := MigrationOfferAvailable;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  // Never run a probe against the executable being replaced during an upgrade.
+  if CurStep = ssPostInstall then
+    MigrationOfferReady := True;
+end;
 
 procedure InitializeWizard;
 begin
@@ -169,13 +202,14 @@ end;
 
 
 
-{ Skips config setup pages if needed}
+{ Skip only optional configuration pages; keep the standard Finish page. }
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
-  if PageID = OverwriteConfig.ID then
-    Result := False
-  else
-    Result := Not OverwriteConfig.Values[0];
+  Result := (Not OverwriteConfig.Values[0]) and
+    ((PageID = MeshtasticPage.ID) or
+     (PageID = MatrixPage.ID) or
+     (PageID = MatrixMeshtasticPage.ID) or
+     (PageID = OptionsPage.ID));
 end;
 
 procedure AfterInstall(sAppDir: string);
