@@ -353,6 +353,11 @@ def parse_arguments() -> argparse.Namespace:
         description="Migrate data from v1.2.x to v1.3 unified layout with safe defaults",
     )
     migrate_parser.add_argument(
+        "--to-default-home",
+        action="store_true",
+        help="Move the selected Windows installation's data to the default AppData home without merging installations",
+    )
+    migrate_parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Preview migration without making changes",
@@ -381,6 +386,10 @@ def parse_arguments() -> argparse.Namespace:
         "check",
         help="Validate configuration file",
         description="Check configuration file syntax and completeness",
+    )
+    config_subparsers.add_parser(
+        "edit",
+        help="Open the resolved configuration in Notepad (Windows)",
     )
     config_subparsers.add_parser(
         "paths",
@@ -1854,11 +1863,12 @@ def handle_config_command(args: argparse.Namespace) -> int:
     Supported subcommands:
         - "generate": create or update of sample configuration file at preferred location.
         - "check": validate of resolved configuration file (delegates to check_config).
+        - "edit": open the active configuration in Notepad on Windows.
         - "paths": show path configuration (delegates to handle_paths_command).
         - "diagnose": run a sequence of non-destructive diagnostics and print a report (delegates to handle_config_diagnose).
 
     Parameters:
-        args (argparse.Namespace): CLI namespace containing `config_command` (one of "generate", "check", "paths", "diagnose") and any subcommand-specific options.
+        args (argparse.Namespace): CLI namespace containing `config_command` and any subcommand-specific options.
 
     Returns:
         int: Exit code (0 on success, 1 on failure or for unknown subcommands).
@@ -1871,6 +1881,29 @@ def handle_config_command(args: argparse.Namespace) -> int:
         return handle_paths_command(args)
     elif args.config_command == "diagnose":
         return handle_config_diagnose(args)
+    elif args.config_command == "edit":
+        if sys.platform != WINDOWS_PLATFORM:
+            print(
+                "Open your configuration with a text editor; use mmrelay paths to find it."
+            )
+            return 1
+        explicit = getattr(args, "config", None)
+        candidates = get_config_paths(_ConfigPathArgsView(args))
+        if explicit:
+            candidates = candidates[:1]
+        selected = next((path for path in candidates if os.path.isfile(path)), None)
+        if selected is None:
+            print("No configuration file found. Run mmrelay config generate first.")
+            return 1
+        editor = os.path.join(
+            os.environ.get("SystemRoot", r"C:\Windows"), "notepad.exe"
+        )
+        startfile = getattr(os, "startfile", None)
+        if startfile is None:
+            print("Windows shell integration is unavailable.")
+            return 1
+        startfile(editor, "open", f'"{selected}"')
+        return 0
     else:
         print(f"Unknown config command: {args.config_command}")
         return 1
@@ -2618,7 +2651,25 @@ def handle_migrate_command(args: argparse.Namespace) -> int:
                 print("Legacy sources detected: none")
         print()
 
-        result = perform_migration(dry_run=dry_run, force=force)
+        if getattr(args, "to_default_home", False) is True:
+            from mmrelay.migrate import migrate_windows_home
+
+            if force:
+                print(
+                    "Guided Windows migration does not allow --force; destination conflicts must be reviewed."
+                )
+                return 1
+            result = migrate_windows_home(dry_run=dry_run)
+            print(f"Source home: {result.get('source_home')}")
+            print(f"Destination home: {result.get('target_home')}")
+            if result.get("source_backup"):
+                print(f"Source backup: {result['source_backup']}")
+            if result.get("source_restore_errors"):
+                print(
+                    "Source restoration needs attention; restore from the backup before starting the relay."
+                )
+        else:
+            result = perform_migration(dry_run=dry_run, force=force)
 
         if result.get("success"):
             print(
@@ -2663,7 +2714,12 @@ def handle_migrate_command(args: argparse.Namespace) -> int:
                 f"\nSummary: {migrated_steps}/{len(result.get('migrations', []))} steps succeeded"
             )
             if dry_run:
-                print("Next step: run `mmrelay migrate` to apply changes.")
+                command = (
+                    "mmrelay migrate --to-default-home"
+                    if getattr(args, "to_default_home", False) is True
+                    else "mmrelay migrate"
+                )
+                print(f"Next step: run `{command}` to apply changes.")
             print("Verification: run `mmrelay verify-migration`.")
             return 0
         else:

@@ -1327,7 +1327,7 @@ def run_main(args: Any) -> int:
         config_rich_logger.info(f"Log file location: {log_file_path}")
 
     legacy_envs = get_legacy_env_vars()
-    legacy_dirs = get_legacy_dirs()
+    legacy_dirs = get_legacy_dirs(with_data_only=True)
     if legacy_envs or legacy_dirs:
         config_rich_logger.warning(
             "Legacy data layout detected (MMRELAY_HOME=%s, legacy_env_vars=%s, legacy_dirs=%s). "
@@ -1341,7 +1341,7 @@ def run_main(args: Any) -> int:
         )
         config_rich_logger.warning(
             "Run 'mmrelay migrate --dry-run' and 'mmrelay migrate' before upgrading "
-            "past the %s release series. See docs/DOCKER.md: Migrating to the New Layout.",
+            "past the %s release series. See docs/MIGRATION_1.3.md (Windows-Specific Notes for Windows).",
             LEGACY_LAYOUT_FINAL_MIGRATION_SERIES,
         )
 

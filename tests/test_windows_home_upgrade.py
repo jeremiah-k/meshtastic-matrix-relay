@@ -1,0 +1,307 @@
+"""Windows upgrades preserve runtime state and resolve the data home quietly."""
+
+import os
+import sqlite3
+from contextlib import closing
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
+
+from mmrelay import migrate, paths
+
+
+@pytest.fixture
+def windows_homes(tmp_path, monkeypatch):
+    local = tmp_path / "Local"
+    installer = local / "Programs" / "MM Relay"
+    installer.mkdir(parents=True)
+    platform = local / "mmrelay" / "mmrelay"
+    platform.mkdir(parents=True)
+    (installer / "config.yaml").write_text("meshtastic: {}\n", encoding="utf-8")
+    (installer / "matrix").mkdir()
+    (installer / "matrix" / "credentials.json").write_text(
+        '{"homeserver":"https://example.org","access_token":"test-token"}',
+        encoding="utf-8",
+    )
+    user = tmp_path / "user"
+    user.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: user)
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    for name in ("MMRELAY_HOME", "MMRELAY_BASE_DIR", "MMRELAY_DATA_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(paths.sys, "platform", "win32")
+    monkeypatch.setattr(
+        paths.platformdirs,
+        "user_data_dir",
+        lambda *a, **kw: str(
+            local / "mmrelay" if kw.get("appauthor") is False else platform
+        ),
+    )
+    paths.reset_home_override()
+    yield installer, local / "mmrelay"
+    paths.reset_home_override()
+
+
+def test_windows_home_selection_is_logged_once(windows_homes, monkeypatch):
+    installer, _ = windows_homes
+    logger = Mock()
+    monkeypatch.setattr(paths, "logger", logger)
+    for _ in range(10):
+        assert paths.get_home_dir() == installer
+    assert logger.info.call_count == 1
+
+
+def test_relocate_credentials_from_installer_matrix_directory(windows_homes, tmp_path):
+    installer, _ = windows_homes
+    target = tmp_path / "new-home"
+    source = installer / "matrix" / "credentials.json"
+    content = source.read_bytes()
+    result = migrate.migrate_credentials([installer], target)
+    assert result["success"]
+    assert (target / "matrix" / "credentials.json").read_bytes() == content
+    assert not source.exists()
+
+
+def test_relocate_core_plugin_data_and_installed_dependencies(tmp_path):
+    source = tmp_path / "installer"
+    target = tmp_path / "data-home"
+    plugin_data = source / "plugins" / "core" / "weather" / "data"
+    plugin_data.mkdir(parents=True)
+    (plugin_data / "state.json").write_text('{"value":42}', encoding="utf-8")
+    dependencies = source / "plugins" / "deps" / "cpython-314-win-amd64"
+    dependencies.mkdir(parents=True)
+    (dependencies / "installed.py").write_text("VALUE = 42\n", encoding="utf-8")
+    custom = source / "plugins" / "custom"
+    custom.mkdir()
+    (custom / "standalone.py").write_text("VALUE = 42\n", encoding="utf-8")
+    result = migrate.migrate_plugins([source], target)
+    assert result["success"]
+    assert (target / "plugins" / "core" / "weather" / "data" / "state.json").is_file()
+    assert (
+        target / "plugins" / "deps" / "cpython-314-win-amd64" / "installed.py"
+    ).is_file()
+    assert (target / "plugins" / "custom" / "standalone.py").is_file()
+
+
+@pytest.mark.integration
+def test_guided_windows_migration_previews_then_moves_one_home(windows_homes):
+    installer, target = windows_homes
+    database = installer / "database" / "meshtastic.sqlite"
+    database.parent.mkdir()
+    with closing(sqlite3.connect(database)) as connection:
+        connection.execute("CREATE TABLE probe(value INTEGER)")
+        connection.execute("INSERT INTO probe VALUES (42)")
+        connection.commit()
+    preview = migrate.migrate_windows_home(dry_run=True)
+    assert preview["success"]
+    assert Path(preview["target_home"]) == target
+    assert (installer / "matrix" / "credentials.json").exists()
+    assert not (target / "config.yaml").exists()
+
+    result = migrate.migrate_windows_home()
+    assert result["success"], result
+    assert (target / "matrix" / "credentials.json").is_file()
+    assert (target / "config.yaml").is_file()
+    assert not (installer / "config.yaml").exists()
+    with closing(
+        sqlite3.connect(target / "database" / "meshtastic.sqlite")
+    ) as connection:
+        assert connection.execute("SELECT value FROM probe").fetchone() == (42,)
+    assert paths.get_home_dir() == target
+    assert migrate.migrate_windows_home()["success"]
+
+
+def test_guided_windows_migration_refuses_destination_conflicts(windows_homes):
+    installer, target = windows_homes
+    (target / "config.yaml").write_text("other: true\n", encoding="utf-8")
+    result = migrate.migrate_windows_home()
+    assert not result["success"]
+    assert "no files were moved" in result["error"]
+    assert (installer / "matrix" / "credentials.json").exists()
+    assert (target / "config.yaml").read_text(encoding="utf-8") == "other: true\n"
+
+
+def test_guided_windows_migration_respects_explicit_home(windows_homes, monkeypatch):
+    installer, _ = windows_homes
+    monkeypatch.setenv("MMRELAY_HOME", str(installer))
+    result = migrate.migrate_windows_home()
+    assert not result["success"]
+    assert "explicit home" in result["error"]
+    assert paths.get_home_dir() == installer
+
+
+def test_guided_windows_migration_preserves_another_migrations_lock(windows_homes):
+    installer, target = windows_homes
+    lock = target / migrate.MIGRATION_LOCK_FILENAME
+    lock.write_text("owned by another migration", encoding="utf-8")
+    result = migrate.migrate_windows_home()
+    assert not result["success"]
+    assert "migration lock" in result["error"]
+    assert lock.read_text(encoding="utf-8") == "owned by another migration"
+    assert (installer / "config.yaml").exists()
+    assert not (target / migrate.MIGRATION_BACKUP_DIRNAME).exists()
+
+
+def test_guided_windows_migration_holds_lock_through_source_recovery(
+    windows_homes, monkeypatch
+):
+    installer, target = windows_homes
+    lock = target / migrate.MIGRATION_LOCK_FILENAME
+    copytree = migrate.shutil.copytree
+    move = migrate.shutil.move
+
+    def check_lock(source, destination, *args, **kwargs):
+        assert lock.exists()
+        return copytree(source, destination, *args, **kwargs)
+
+    monkeypatch.setattr(migrate.shutil, "copytree", check_lock)
+
+    def fail_config_move(source, destination, *args, **kwargs):
+        if Path(source) == installer / "config.yaml":
+            (installer / "matrix").mkdir(exist_ok=True)
+            (installer / "matrix" / "after-snapshot.txt").write_text(
+                "preserve for recovery", encoding="utf-8"
+            )
+            raise OSError("simulated config move failure")
+        return move(source, destination, *args, **kwargs)
+
+    monkeypatch.setattr(migrate.shutil, "move", fail_config_move)
+    result = migrate.migrate_windows_home()
+    assert not result["success"]
+    assert result["source_restore_errors"] == []
+    assert (installer / "matrix" / "credentials.json").exists()
+    assert not (installer / "matrix" / "after-snapshot.txt").exists()
+    assert (
+        Path(result["source_backup"])
+        / "partial-source"
+        / "matrix"
+        / "after-snapshot.txt"
+    ).read_text(encoding="utf-8") == "preserve for recovery"
+    assert not lock.exists()
+
+
+def test_empty_plugin_scaffolding_is_not_legacy_data(windows_homes):
+    _, target = windows_homes
+    nested = target / "mmrelay"
+    for tier in ("core", "community", "custom", "deps/cpython-314-win-amd64"):
+        (nested / "plugins" / tier).mkdir(parents=True, exist_ok=True)
+    assert nested not in paths.get_legacy_dirs(with_data_only=True)
+    assert not migrate._find_legacy_data(nested)
+
+
+@pytest.mark.parametrize("failure", ["running", "disk-space", "backup"])
+def test_guided_windows_migration_refuses_before_moving_on_preflight_failure(
+    windows_homes, monkeypatch, failure
+):
+    installer, target = windows_homes
+    if failure == "running":
+        monkeypatch.setattr(migrate, "_is_mmrelay_running", lambda: True)
+    elif failure == "disk-space":
+        monkeypatch.setattr(migrate, "_check_disk_space", lambda _: (False, 0))
+    else:
+        monkeypatch.setattr(
+            migrate.shutil, "copy2", Mock(side_effect=OSError("unwritable backup"))
+        )
+    result = migrate.migrate_windows_home()
+    assert not result["success"]
+    assert (installer / "config.yaml").is_file()
+    assert (installer / "matrix" / "credentials.json").is_file()
+    assert not (target / "config.yaml").exists()
+    assert not (target / migrate.MIGRATION_LOCK_FILENAME).exists()
+
+
+@pytest.mark.parametrize(
+    "error", [migrate.psutil.AccessDenied, migrate.psutil.NoSuchProcess]
+)
+def test_windows_process_inspection_failures_refuse_migration(
+    windows_homes, monkeypatch, error
+):
+    monkeypatch.setattr(migrate.psutil, "Process", Mock(side_effect=error(123)))
+    assert migrate._is_mmrelay_running()
+
+
+@pytest.mark.integration
+def test_failed_guided_migration_restores_active_source(windows_homes, monkeypatch):
+    installer, target = windows_homes
+    database = installer / "database" / "meshtastic.sqlite"
+    database.parent.mkdir()
+    with closing(sqlite3.connect(database)) as connection:
+        connection.execute("CREATE TABLE probe(value INTEGER)")
+        connection.commit()
+    connect = sqlite3.connect
+
+    def fail_staged_database(path, *args, **kwargs):
+        if ".migration_staging" in str(path):
+            raise sqlite3.DatabaseError("simulated validation failure")
+        return connect(path, *args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", fail_staged_database)
+    result = migrate.migrate_windows_home()
+    assert not result["success"]
+    assert result["source_restore_errors"] == []
+    assert (installer / "config.yaml").is_file()
+    assert (installer / "matrix" / "credentials.json").is_file()
+    assert database.is_file()
+    assert not (target / "config.yaml").exists()
+    assert not (target / "matrix" / "credentials.json").exists()
+    assert Path(result["source_backup"]).is_dir()
+    assert paths.get_home_dir() == installer
+
+
+@pytest.mark.parametrize(
+    "name,arguments,expected",
+    [
+        ("mmrelay.exe", ["mmrelay.exe"], True),
+        ("python.exe", ["python.exe", "-m", "mmrelay"], True),
+        ("python.exe", ["python.exe", "unrelated.py"], False),
+    ],
+)
+def test_windows_running_instance_detection(
+    windows_homes, monkeypatch, name, arguments, expected
+):
+    current = Mock()
+    current.exe.return_value = "mmrelay.exe"
+    current.cmdline.return_value = ["mmrelay.exe", "migrate", "--to-default-home"]
+    parent = Mock(pid=123)
+    parent.exe.return_value = current.exe.return_value
+    parent.cmdline.return_value = current.cmdline.return_value
+    current.parent.return_value = parent
+    monkeypatch.setattr(migrate.psutil, "Process", lambda _: current)
+    processes = [
+        SimpleNamespace(
+            info={
+                "pid": os.getpid(),
+                "name": "mmrelay.exe",
+                "cmdline": current.cmdline.return_value,
+            }
+        ),
+        SimpleNamespace(
+            info={
+                "pid": 123,
+                "name": "mmrelay.exe",
+                "cmdline": parent.cmdline.return_value,
+            }
+        ),
+        SimpleNamespace(info={"pid": 456, "name": name, "cmdline": arguments}),
+    ]
+    monkeypatch.setattr(migrate.psutil, "process_iter", lambda _: iter(processes))
+    assert migrate._is_mmrelay_running() is expected
+
+
+def test_windows_config_shortcut_opens_active_home(windows_homes, monkeypatch):
+    import argparse
+
+    from mmrelay import cli
+
+    installer, _ = windows_homes
+    startfile = Mock()
+    monkeypatch.setattr(os, "startfile", startfile, raising=False)
+    args = argparse.Namespace(config_command="edit", config=None)
+    assert cli.handle_config_command(args) == 0
+    assert startfile.call_args.args[2] == f'"{installer / "config.yaml"}"'
+    args.config = str(installer / "missing.yaml")
+    startfile.reset_mock()
+    assert cli.handle_config_command(args) == 1
+    startfile.assert_not_called()

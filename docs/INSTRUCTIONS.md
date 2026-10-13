@@ -146,6 +146,8 @@ This interactive command will:
 - **Linux/macOS**: Full E2EE support with automatic encryption
 - **Windows**: Regular Matrix communication (E2EE not available due to library limitations)
 
+Windows installers keep application files separate from data in `%LOCALAPPDATA%\mmrelay`. Existing installations continue to use their discovered data home until you choose **MM Relay Migrate Data** from the Start menu. That shortcut previews and confirms the move; see [Windows migration](MIGRATION_1.3.md#windows-specific-notes). The Config shortcut follows the active home before and after migration. Explicit `--home` and `MMRELAY_HOME` settings remain supported.
+
 ### Plugins in the Windows executable
 
 The Windows installer includes a private Python runtime for plugin dependency installation; a separate Python installation is not required. Community plugins retain the normal security opt-in, explicit repository ref, and `install_requirements: true` requirements. Git must be available on PATH to clone community repositories.

@@ -91,6 +91,24 @@ _deprecation_warning_shown = False
 # existing platform home to the installer home when the installer has a
 # meaningfully stronger state signal (not just logs/low-signal artifacts).
 _WINDOWS_INSTALLER_SWITCH_MARGIN = 3
+_last_windows_home_log: tuple[Any, ...] | None = None
+
+
+def _log_windows_home_selection(message: str, *args: Any) -> None:
+    """Report a changed home-selection decision, not every path lookup."""
+    global _last_windows_home_log
+    decision = (message, *args)
+    if decision != _last_windows_home_log:
+        _last_windows_home_log = decision
+        logger.info(message, *args)
+
+
+def get_default_home_dir() -> Path:
+    """Return the canonical data home, independent of legacy discovery or overrides."""
+    if sys.platform == WINDOWS_PLATFORM:
+        # False omits the author segment; None would produce mmrelay/mmrelay.
+        return Path(platformdirs.user_data_dir(APP_NAME, appauthor=False))
+    return Path.home() / f".{APP_NAME}"
 
 
 def _reset_deprecation_warning_flag() -> None:
@@ -135,8 +153,6 @@ def _has_mmrelay_artifacts(root: Path) -> bool:
         root / STORE_DIRNAME,
         root / MATRIX_DIRNAME / STORE_DIRNAME,
         root / LOGS_DIRNAME,
-        root / PLUGINS_DIRNAME,
-        root / MATRIX_DIRNAME / PLUGINS_DIRNAME,
     ]
     for marker in directory_markers:
         if marker.is_dir():
@@ -146,6 +162,16 @@ def _has_mmrelay_artifacts(root: Path) -> bool:
                         return True
             except OSError:
                 continue
+    return has_file_content(root / PLUGINS_DIRNAME) or has_file_content(
+        root / MATRIX_DIRNAME / PLUGINS_DIRNAME
+    )
+
+
+def has_file_content(directory: Path) -> bool:
+    """Distinguish file content from recursively empty directory scaffolding."""
+    for root, directories, files in os.walk(directory, followlinks=False):
+        if files or any((Path(root) / name).is_symlink() for name in directories):
+            return True
     return False
 
 
@@ -164,6 +190,24 @@ def _has_windows_installer_markers(root: Path) -> bool:
     """
     installer_markers = ("mmrelay.bat", "setup-auth.bat", "logout.bat")
     return any((root / marker).exists() for marker in installer_markers)
+
+
+def _windows_installer_directories() -> list[Path]:
+    """Discover both custom frozen-executable locations and the installer default."""
+    candidates: list[Path] = []
+    if getattr(sys, "frozen", False):
+        candidates.append(Path(sys.executable).absolute().parent)
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        candidates.append(
+            Path(local_app_data) / "Programs" / WINDOWS_INSTALLER_DIR_NAME
+        )
+    return list(dict.fromkeys(candidates))
+
+
+def _preferred_windows_installer_home() -> Path | None:
+    candidates = [path for path in _windows_installer_directories() if path.exists()]
+    return max(candidates, key=_score_mmrelay_home_state, default=None)
 
 
 def _dir_has_entries(path: Path) -> bool:
@@ -225,7 +269,7 @@ def _score_mmrelay_home_state(root: Path) -> int:
     has_store_content = _dir_has_entries(root / STORE_DIRNAME) or _dir_has_entries(
         root / MATRIX_DIRNAME / STORE_DIRNAME
     )
-    has_plugins_content = _dir_has_entries(root / PLUGINS_DIRNAME) or _dir_has_entries(
+    has_plugins_content = has_file_content(root / PLUGINS_DIRNAME) or has_file_content(
         root / MATRIX_DIRNAME / PLUGINS_DIRNAME
     )
     has_log_file = (root / LOGS_DIRNAME / LOG_FILENAME).exists()
@@ -268,9 +312,10 @@ def reset_home_override() -> None:
 
     After calling this, path resolution will no longer use a previously set CLI override.
     """
-    global _home_override, _home_override_source
+    global _home_override, _home_override_source, _last_windows_home_log
     _home_override = None
     _home_override_source = None
+    _last_windows_home_log = None
 
 
 def get_home_dir() -> Path:
@@ -348,15 +393,17 @@ def get_home_dir() -> Path:
     if sys.platform != WINDOWS_PLATFORM:
         return Path.home() / f".{APP_NAME}"
     else:  # Windows
-        platform_home = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+        platform_home = get_default_home_dir()
         platform_score = _score_mmrelay_home_state(platform_home)
+        nested_home = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+        if nested_home != platform_home:
+            nested_score = _score_mmrelay_home_state(nested_home)
+            if nested_score >= 6 and nested_score > platform_score:
+                platform_home, platform_score = nested_home, nested_score
         platform_has_artifacts = platform_score > 0
 
-        local_app_data = os.environ.get("LOCALAPPDATA")
-        if local_app_data:
-            installer_path = (
-                Path(local_app_data) / "Programs" / WINDOWS_INSTALLER_DIR_NAME
-            )
+        installer_path = _preferred_windows_installer_home()
+        if installer_path is not None:
             if installer_path.exists():
                 installer_score = _score_mmrelay_home_state(installer_path)
                 installer_has_artifacts = installer_score > 0
@@ -365,7 +412,7 @@ def get_home_dir() -> Path:
                 if installer_has_artifacts and platform_has_artifacts:
                     score_delta = installer_score - platform_score
                     if score_delta >= _WINDOWS_INSTALLER_SWITCH_MARGIN:
-                        logger.info(
+                        _log_windows_home_selection(
                             "Using installer MMRelay home at %s (score=%d) over platform home %s (score=%d, margin=%d)",
                             installer_path,
                             installer_score,
@@ -374,7 +421,7 @@ def get_home_dir() -> Path:
                             _WINDOWS_INSTALLER_SWITCH_MARGIN,
                         )
                         return installer_path
-                    logger.info(
+                    _log_windows_home_selection(
                         "Using existing platform MMRelay home at %s (score=%d) over installer home %s (score=%d; delta=%d < margin=%d)",
                         platform_home,
                         platform_score,
@@ -387,13 +434,13 @@ def get_home_dir() -> Path:
 
                 if installer_has_artifacts:
                     if installer_score >= 6:
-                        logger.info(
+                        _log_windows_home_selection(
                             "Using installer MMRelay home at %s (score=%d) over empty platform home",
                             installer_path,
                             installer_score,
                         )
                         return installer_path
-                    logger.info(
+                    _log_windows_home_selection(
                         "Platform home at %s is empty; installer home at %s has only weak artifacts (score=%d); preferring platform home",
                         platform_home,
                         installer_path,
@@ -402,13 +449,13 @@ def get_home_dir() -> Path:
                     return platform_home
                 if installer_has_markers:
                     if platform_has_artifacts:
-                        logger.info(
+                        _log_windows_home_selection(
                             "Using existing MMRelay data home at %s instead of marker-only installer directory %s",
                             platform_home,
                             installer_path,
                         )
                         return platform_home
-                    return installer_path
+                    return platform_home
 
         return platform_home
 
@@ -824,7 +871,7 @@ def is_deprecation_window_active() -> bool:
     return False
 
 
-def get_legacy_dirs() -> list[Path]:
+def get_legacy_dirs(*, with_data_only: bool = False) -> list[Path]:
     """
     List existing legacy MMRelay data directories that are distinct from the current application home.
 
@@ -869,11 +916,7 @@ def get_legacy_dirs() -> list[Path]:
     # This is where the Windows installer puts the application and data
     if sys.platform == WINDOWS_PLATFORM:
         try:
-            local_app_data = os.environ.get("LOCALAPPDATA")
-            if local_app_data:
-                installer_path = (
-                    Path(local_app_data) / "Programs" / WINDOWS_INSTALLER_DIR_NAME
-                )
+            for installer_path in _windows_installer_directories():
                 if installer_path.exists():
                     installer_str = str(installer_path.absolute())
                     if installer_str != home_str and installer_str not in seen:
@@ -913,6 +956,8 @@ def get_legacy_dirs() -> list[Path]:
                 legacy_dirs.append(docker_path)
                 seen.add(docker_str)
 
+    if with_data_only:
+        return [root for root in legacy_dirs if _has_mmrelay_artifacts(root)]
     return legacy_dirs
 
 

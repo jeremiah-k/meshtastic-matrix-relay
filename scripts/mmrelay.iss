@@ -10,6 +10,7 @@ DefaultGroupName=MM Relay
 UninstallFilesDir={app}
 OutputDir=.
 OutputBaseFilename=MMRelay_setup_{#AppVersion}
+PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog commandline
 
 [Files]
@@ -17,10 +18,12 @@ Source: "..\dist\mmrelay.exe"; DestDir: "{app}"; Flags: recursesubdirs createall
 
 [Icons]
 Name: "{group}\MM Relay"; Filename: "{app}\mmrelay.bat"
-Name: "{group}\MM Relay Config"; Filename: "{app}\config.yaml"; IconFilename: "{sys}\notepad.exe"; WorkingDir: "{app}"; Parameters: "config.yaml";
+Name: "{group}\MM Relay Config"; Filename: "{app}\mmrelay.exe"; IconFilename: "{sys}\notepad.exe"; WorkingDir: "{app}"; Parameters: "config edit";
+Name: "{group}\MM Relay Migrate Data"; Filename: "{app}\migrate-data.bat"; WorkingDir: "{app}"
+Name: "{group}\MM Relay Setup Authentication"; Filename: "{app}\setup-auth.bat"; WorkingDir: "{app}"
 
 [Run]
-Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait postinstall; WorkingDir: "{app}"
+Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait postinstall skipifsilent; WorkingDir: "{app}"
 
 [Code]
 var
@@ -110,8 +113,6 @@ begin
     result := 'false';
 end;
 
-
-
 { Skips config setup pages if needed}
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
@@ -133,12 +134,15 @@ var
   matrix_homeserver: string;
   matrix_username: string;
   matrix_password: string;
+  data_home: string;
+  config_path: string;
+  backup_path: string;
 begin
   // Always update batch files to ensure they use current CLI flags
   // This fixes upgrades from versions that used deprecated --data-dir
   batch_file := '@echo off' + #13#10 +
-                'cd /d "' + sAppDir + '"' + #13#10 +
-                '"' + sAppDir + '\mmrelay.exe" --home "' + sAppDir + '" ' + #13#10 +
+                'cd /d "%~dp0"' + #13#10 +
+                '"%~dp0mmrelay.exe" %*' + #13#10 +
                 'pause';
 
   if Not SaveStringToFile(sAppDir + '\mmrelay.bat', batch_file, false) then
@@ -148,8 +152,9 @@ begin
 
   // Create setup-auth.bat for easy authentication setup
   batch_file := '@echo off' + #13#10 +
+                'cd /d "%~dp0"' + #13#10 +
                 'echo Setting up Matrix authentication...' + #13#10 +
-                '"' + sAppDir + '\mmrelay.exe" --home "' + sAppDir + '" auth login' + #13#10 +
+                '"%~dp0mmrelay.exe" auth login %*' + #13#10 +
                 'pause';
 
   if Not SaveStringToFile(sAppDir + '\setup-auth.bat', batch_file, false) then
@@ -159,8 +164,9 @@ begin
 
   // Create logout.bat for easy authentication cleanup
   batch_file := '@echo off' + #13#10 +
+                'cd /d "%~dp0"' + #13#10 +
                 'echo Logging out from Matrix authentication...' + #13#10 +
-                '"' + sAppDir + '\mmrelay.exe" --home "' + sAppDir + '" auth logout' + #13#10 +
+                '"%~dp0mmrelay.exe" auth logout %*' + #13#10 +
                 'pause';
 
   if Not SaveStringToFile(sAppDir + '\logout.bat', batch_file, false) then
@@ -168,13 +174,44 @@ begin
     MsgBox('Could not create batch file "logout.bat". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
   end;
 
+  batch_file := '@echo off' + #13#10 +
+                'cd /d "%~dp0"' + #13#10 +
+                'echo Stop MMRelay and back up your data before continuing.' + #13#10 +
+                '"%~dp0mmrelay.exe" migrate --to-default-home --dry-run' + #13#10 +
+                'if errorlevel 1 goto done' + #13#10 +
+                'choice /C YN /N /M "Move the data shown above? [Y/N] "' + #13#10 +
+                'if errorlevel 2 goto done' + #13#10 +
+                'if not errorlevel 1 goto done' + #13#10 +
+                '"%~dp0mmrelay.exe" migrate --to-default-home' + #13#10 +
+                ':done' + #13#10 +
+                'pause';
+  if Not SaveStringToFile(sAppDir + '\migrate-data.bat', batch_file, false) then
+    MsgBox('Could not create migrate-data.bat. Run mmrelay migrate --to-default-home manually.', mbError, MB_OK);
+
   // Only generate config.yaml if user selected "Overwrite config"
   If Not OverwriteConfig.Values[0] then
     Exit;
 
-  if (FileExists(sAppDir + '/config.yaml')) then
+  // New installs keep writable state outside the executable directory. Preserve
+  // a single existing config location until the user explicitly migrates it.
+  data_home := ExpandConstant('{localappdata}\mmrelay');
+  if Not FileExists(data_home + '\config.yaml') then
   begin
-    if not RenameFile(sAppDir + '/config.yaml', sAppDir + '/config-old.yaml') then
+    if FileExists(sAppDir + '\config.yaml') then
+      data_home := sAppDir
+    else if FileExists(ExpandConstant('{localappdata}\mmrelay\mmrelay\config.yaml')) then
+      data_home := ExpandConstant('{localappdata}\mmrelay\mmrelay');
+  end;
+  if Not ForceDirectories(data_home) then
+  begin
+    MsgBox('Could not create the MMRelay data directory: ' + data_home, mbError, MB_OK);
+    Exit;
+  end;
+  config_path := data_home + '\config.yaml';
+  if FileExists(config_path) then
+  begin
+    backup_path := config_path + '.' + GetDateTimeString('yyyymmddhhnnss', '-', ':') + '.bak';
+    if not RenameFile(config_path, backup_path) then
     begin
         MsgBox('Failed to back up existing config.yaml. Please ensure the file is not open in another application and run the installer again.', mbError, MB_OK);
         Abort;
@@ -230,7 +267,7 @@ begin
             '  level: "' + log_level + '"' + #13#10 +
             'plugins:' + #13#10;
 
-  if Not SaveStringToFile(sAppDir + '/config.yaml', config, false) then
+  if Not SaveStringToFile(config_path, config, false) then
   begin
     MsgBox('Could not create config file "config.yaml". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
   end;

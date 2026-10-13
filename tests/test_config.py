@@ -5,7 +5,7 @@ import tempfile
 import unittest
 import warnings
 from typing import Any, Optional, Tuple
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, call, mock_open, patch
 
 from tests.constants import TEST_SERIAL_PORT
 
@@ -495,7 +495,10 @@ class TestConfigEdgeCases(unittest.TestCase):
                 self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
 
             self.assertEqual(result, "C:\\Users\\test\\AppData\\Local\\mmrelay")
-        mock_user_data_dir.assert_called_once_with("mmrelay", None)
+        self.assertEqual(
+            mock_user_data_dir.call_args_list,
+            [call("mmrelay", appauthor=False), call("mmrelay", None)],
+        )
         # New unified layout: no automatic directory creation in get_data_dir
         mock_makedirs.assert_not_called()
 

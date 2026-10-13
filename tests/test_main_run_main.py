@@ -484,7 +484,7 @@ def test_run_main_legacy_layout_warning(
         "/test/legacy/dir" in msg for msg in rendered
     ), f"Expected legacy dir in warning. Rendered: {rendered}"
     assert any(
-        "docs/DOCKER.md" in msg for msg in rendered
+        "docs/MIGRATION_1.3.md" in msg for msg in rendered
     ), f"Expected migration hint not found. Rendered: {rendered}"
 
 
