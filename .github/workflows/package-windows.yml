@@ -69,7 +69,10 @@ jobs:
         run: pip install pyinstaller
 
       - name: Build executable
-        run: pyinstaller --name=mmrelay.exe --onefile --console --collect-all rich src/mmrelay/main.py
+        # --collect-submodules meshtastic: mtjk lazy-loads BLE runtime modules
+        # (receive_compat_service, lifecycle_service) through importlib, which
+        # PyInstaller's static analysis cannot see.
+        run: pyinstaller --name=mmrelay.exe --onefile --console --collect-all rich --collect-submodules meshtastic src/mmrelay/main.py
 
       - name: Smoke test — verify executable runs
         run: .\dist\mmrelay.exe --version
