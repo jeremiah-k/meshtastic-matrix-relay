@@ -1,8 +1,9 @@
 """Tests for shared room authorization semantics."""
 
+import asyncio
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nio import RoomGetStateResponse
@@ -264,3 +265,44 @@ async def test_create_event_with_non_numeric_room_version_grants_no_creators() -
         ROOM_ID,
     )
     assert creators == frozenset()
+
+
+async def test_fresh_power_level_lookup_timeout_refuses_cached_admin() -> None:
+    """A hung homeserver state request must fail closed within its own budget."""
+    client = _client_with_state([])
+    cancelled = asyncio.Event()
+
+    async def unavailable_state(*_args: Any) -> Any:
+        try:
+            await asyncio.Future()
+        finally:
+            cancelled.set()
+
+    client.room_get_state.side_effect = unavailable_state
+    with patch(
+        "mmrelay.matrix.room_authorization.ROOM_STATE_FETCH_TIMEOUT_SECONDS", 0.01
+    ):
+        assert not await is_authorized_in_room(
+            client, _room(users={SENDER: 100}), SENDER, 50
+        )
+    assert cancelled.is_set()
+
+
+async def test_creator_lookup_timeout_is_not_cached() -> None:
+    """Creator lookups also bound the state fetch and retry after failure."""
+    client = _client_with_state([])
+
+    async def unavailable_state(*_args: Any) -> Any:
+        await asyncio.Future()
+
+    client.room_get_state.side_effect = unavailable_state
+    with patch(
+        "mmrelay.matrix.room_authorization.ROOM_STATE_FETCH_TIMEOUT_SECONDS", 0.01
+    ):
+        assert await room_creators(client, ROOM_ID) == frozenset()
+    client.room_get_state.side_effect = None
+    client.room_get_state.return_value = RoomGetStateResponse(
+        events=[_create_event(sender=SENDER)], room_id=ROOM_ID
+    )
+    assert await room_creators(client, ROOM_ID) == {SENDER}
+    assert client.room_get_state.await_count == 2

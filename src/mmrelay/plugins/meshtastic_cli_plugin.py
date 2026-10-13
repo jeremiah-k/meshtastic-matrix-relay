@@ -194,18 +194,13 @@ class Plugin(BasePlugin):
 
     async def _is_authorized(self, room: MatrixRoom, sender: str) -> bool:
         """Whether fresh room state authorizes this sender's command."""
-        from mmrelay.matrix_utils import connect_matrix, is_authorized_in_room
+        from mmrelay import matrix_utils
 
-        try:
-            client = await connect_matrix()
-        except Exception:  # noqa: BLE001 - authorization fails closed
-            self.logger.debug(
-                "Matrix client unavailable for room authorization",
-                exc_info=True,
-            )
-            client = None
-        return await is_authorized_in_room(
-            client, room, sender, self._min_power_level()
+        # The event arrived over the relay-owned Matrix session. A command
+        # must not create a second Matrix session or wait for login/initial
+        # sync when the shared client has gone away. Missing client denies.
+        return await matrix_utils.is_authorized_in_room(
+            matrix_utils.matrix_client, room, sender, self._min_power_level()
         )
 
     # --- help --------------------------------------------------------------

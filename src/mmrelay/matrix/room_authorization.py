@@ -11,9 +11,12 @@ process lifetime; fetch failures fail closed and are retried later.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from nio import AsyncClient, MatrixRoom, RoomGetStateResponse
+
+ROOM_STATE_FETCH_TIMEOUT_SECONDS = 10.0
 
 _creator_cache: dict[str, frozenset[str]] = {}
 
@@ -56,7 +59,9 @@ async def room_creators(client: AsyncClient | None, room_id: str) -> frozenset[s
     creators: frozenset[str] = frozenset()
     if client is not None:
         try:
-            response = await client.room_get_state(room_id)
+            response = await asyncio.wait_for(
+                client.room_get_state(room_id), timeout=ROOM_STATE_FETCH_TIMEOUT_SECONDS
+            )
         except Exception:  # noqa: BLE001 - authorization must fail closed
             response = None
         if isinstance(response, RoomGetStateResponse):
@@ -98,12 +103,16 @@ async def is_authorized_in_room(
 
     nio merges power-level user maps in its room cache, retaining overrides
     removed by a later event. Cached power levels cannot authorize execution.
-    Fetch failures deny the command rather than trusting a stale grant.
+    Fetch failures and timeouts deny the command rather than trusting a stale
+    grant. Room-state reads have their own budget; the mtjk command timeout
+    only begins after authorization and cannot bound Matrix network waits.
     """
     if client is None:
         return False
     try:
-        response = await client.room_get_state(room.room_id)
+        response = await asyncio.wait_for(
+            client.room_get_state(room.room_id), timeout=ROOM_STATE_FETCH_TIMEOUT_SECONDS
+        )
     except Exception:  # noqa: BLE001 - authorization must fail closed
         return False
     if not isinstance(response, RoomGetStateResponse):

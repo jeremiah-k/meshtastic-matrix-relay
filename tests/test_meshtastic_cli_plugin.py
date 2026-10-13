@@ -43,9 +43,7 @@ def matrix_state_client():
             room_id=ADMIN_ROOM,
         )
     )
-    with patch(
-        "mmrelay.matrix_utils.connect_matrix", new=AsyncMock(return_value=client)
-    ):
+    with patch("mmrelay.matrix_utils.matrix_client", client):
         yield client
 
 
@@ -212,7 +210,7 @@ async def test_unauthorized_sender_refused() -> None:
     plugin = _plugin(admin_room=ADMIN_ROOM)
     plugin._execute = MagicMock()  # type: ignore[method-assign]
     room = _room(users={ADMIN_SENDER: 0})
-    with patch("mmrelay.matrix_utils.connect_matrix", new=AsyncMock(return_value=None)):
+    with patch("mmrelay.matrix_utils.matrix_client", None):
         assert await _call(
             plugin, room, f"!meshtastic --dest {REMOTE_NODE_ID} --reboot"
         )
@@ -226,7 +224,7 @@ async def test_refusal_log_names_required_power_level() -> None:
     plugin._execute = MagicMock()  # type: ignore[method-assign]
     room = _room(users={ADMIN_SENDER: 0})
     with (
-        patch("mmrelay.matrix_utils.connect_matrix", new=AsyncMock(return_value=None)),
+        patch("mmrelay.matrix_utils.matrix_client", None),
         patch.object(plugin, "logger") as mock_logger,
     ):
         assert await _call(
@@ -257,9 +255,7 @@ async def test_room_creator_authorized_despite_empty_users_map() -> None:
             room_id=ADMIN_ROOM,
         )
     )
-    with patch(
-        "mmrelay.matrix_utils.connect_matrix", new=AsyncMock(return_value=client)
-    ):
+    with patch("mmrelay.matrix_utils.matrix_client", client):
         assert await _call(
             plugin,
             _room(users_default=0),
@@ -273,7 +269,7 @@ async def test_missing_power_levels_refused() -> None:
     plugin._execute = MagicMock()  # type: ignore[method-assign]
     room = _room()
     room.power_levels = None
-    with patch("mmrelay.matrix_utils.connect_matrix", new=AsyncMock(return_value=None)):
+    with patch("mmrelay.matrix_utils.matrix_client", None):
         assert await _call(
             plugin, room, f"!meshtastic --dest {REMOTE_NODE_ID} --reboot"
         )
@@ -296,10 +292,7 @@ async def test_cached_authorized_sender_refused_when_client_unavailable() -> Non
     plugin._execute = MagicMock(  # type: ignore[method-assign]
         return_value=CliCommandResult(exit_code=0, output="ok")
     )
-    with patch(
-        "mmrelay.matrix_utils.connect_matrix",
-        new=MagicMock(side_effect=AssertionError("client fetched")),
-    ):
+    with patch("mmrelay.matrix_utils.matrix_client", None):
         assert await _call(
             plugin,
             _room(users={ADMIN_SENDER: 100}),
@@ -800,12 +793,15 @@ def test_start_treats_non_container_matrix_rooms_as_unmapped(
     assert not mock_logger.warning.called
 
 
-async def test_creator_client_fetch_failure_fails_closed() -> None:
+async def test_missing_matrix_client_fails_closed_without_reconnect() -> None:
     plugin = _plugin(admin_room=ADMIN_ROOM)
     plugin._execute = MagicMock()  # type: ignore[method-assign]
-    with patch(
-        "mmrelay.matrix_utils.connect_matrix",
-        new=AsyncMock(side_effect=RuntimeError("connection lost")),
+    with (
+        patch("mmrelay.matrix_utils.matrix_client", None),
+        patch(
+            "mmrelay.matrix_utils.connect_matrix",
+            new=AsyncMock(side_effect=AssertionError("unexpected reconnect")),
+        ) as connect_again,
     ):
         assert await _call(
             plugin,
@@ -813,6 +809,7 @@ async def test_creator_client_fetch_failure_fails_closed() -> None:
             f"!meshtastic --dest {REMOTE_NODE_ID} --reboot",
         )
     plugin._execute.assert_not_called()  # type: ignore[attr-defined]
+    connect_again.assert_not_awaited()
     assert "⛔" in _reactions(plugin)
 
 

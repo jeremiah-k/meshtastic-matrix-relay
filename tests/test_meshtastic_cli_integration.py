@@ -83,6 +83,7 @@ async def test_unmapped_admin_room_captures_get_through_plugin_and_real_dispatch
     with (
         patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]),
         patch("mmrelay.matrix_utils.connect_matrix", return_value=matrix_client),
+        patch("mmrelay.matrix_utils.matrix_client", matrix_client),
         patch("mmrelay.meshtastic_utils.meshtastic_client", interface),
         patch("mmrelay.meshtastic_utils.reconnecting", False),
         patch("mmrelay.meshtastic_utils.shutting_down", False),

@@ -33,7 +33,7 @@ The admin room does **not** go in `matrix_rooms`. Plugin-owned rooms never relay
 
 Authorization is the admin room's own `m.room.power_levels`: a sender must hold at least `power_level` (default 50) **in that room**. This is why the plugin uses a designated room rather than DMs — a DM grants its creator power level 100 automatically, so power levels inside a DM carry no authorization meaning. Senders below the threshold get a refusal and a ⛔ reaction; the attempt is logged.
 
-Each command checks fresh room state. Removing a sender's power-level override revokes access even if nio's room cache retains the removed entry. If the state cannot be fetched, execution is refused. Help remains available without authorization.
+Each command checks fresh room state through the relay's existing Matrix client; it never opens another Matrix session to authorize a command. Removing a sender's power-level override revokes access even if nio's room cache retains the removed entry. If the client is unavailable or the room-state fetch fails or exceeds ten seconds, execution is refused. This authorization wait is separate from the mtjk command timeout, which starts only after authorization. Help remains available without authorization.
 
 Rooms at version 12 and newer grant their **creator** intrinsic, undemotable power that no users-map entry can express — v12 even rejects power-level events listing the creator, so an empty `users` map is normal there (Element shows the same rule as its "Creator" badge). The plugin authorizes the room creator accordingly; for everyone else the power-levels event governs.
 
