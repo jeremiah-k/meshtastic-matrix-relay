@@ -146,6 +146,14 @@ This interactive command will:
 - **Linux/macOS**: Full E2EE support with automatic encryption
 - **Windows**: Regular Matrix communication (E2EE not available due to library limitations)
 
+### Plugins in the Windows executable
+
+The Windows installer includes a private Python runtime for plugin dependency installation; a separate Python installation is not required. Community plugins retain the normal security opt-in, explicit repository ref, and `install_requirements: true` requirements. Git must be available on PATH to clone community repositories.
+
+Dependencies are installed into `plugins/deps/<Python-ABI>-<platform>/` under the configured MMRelay home, persist across restarts, and stay separate across Python ABI upgrades. Failed downloads or installs leave the installed dependency directory untouched. File-based custom plugins use the same private runtime when retrying a missing dependency.
+
+Frozen builds install prebuilt wheels only, including compatible Windows native-extension wheels. Dependencies available only as source distributions cannot be installed by the executable; use a pip/pipx installation with the required build tools for those plugins. Python and pip configuration from a separate system installation does not affect the private installer. Plugins and their dependencies execute trusted code inside MMRelay; the private runtime is not a security sandbox.
+
 ### Configuration Tips
 
 - Review the comments in the sample configuration file for detailed explanations

@@ -17,11 +17,13 @@ import threading
 import time
 from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import ModuleType
 from typing import Any, Final, Iterator, NamedTuple, NoReturn, Sequence, cast
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 import mmrelay.paths as paths_module
+from mmrelay import plugin_runtime
 from mmrelay.config import (
     get_app_path,
 )
@@ -81,7 +83,7 @@ except ImportError:
     schedule = None
 
 # Global config variable that will be set from main.py
-config = None
+config: dict[str, Any] | None = None
 
 logger = get_logger(name="Plugins")
 
@@ -286,11 +288,11 @@ def _resolve_plugin_deps_dir_for_root(deps_root: str) -> str:
         )
     except (KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
         logger.debug("Could not resolve canonical deps dir: %s", exc)
-        return os.path.join(deps_root, PLUGIN_DEPS_DIRNAME)
+        return str(plugin_runtime.dependency_directory(Path(deps_root)))
 
     if os.path.abspath(deps_root) == primary_plugins_dir:
         return resolved_deps_dir
-    return os.path.join(deps_root, PLUGIN_DEPS_DIRNAME)
+    return str(plugin_runtime.dependency_directory(Path(deps_root)))
 
 
 try:
@@ -812,20 +814,30 @@ def _refresh_dependency_paths() -> None:
 
     candidate_paths = []
 
-    try:
-        user_site = site.getusersitepackages()
-        if isinstance(user_site, str):
-            candidate_paths.append(user_site)
-        else:
-            candidate_paths.extend(user_site)
-    except AttributeError:
-        logger.debug("site.getusersitepackages() not available in this environment.")
+    if plugin_runtime.is_frozen():
+        # Bundled modules keep precedence; provide the complete matching stdlib
+        # for dynamically imported plugins without adding the helper's pip site.
+        for path in plugin_runtime.standard_library_paths():
+            if path not in sys.path:
+                sys.path.append(path)
 
-    try:
-        site_packages = site.getsitepackages()
-        candidate_paths.extend(site_packages)
-    except AttributeError:
-        logger.debug("site.getsitepackages() not available in this environment.")
+    else:
+        try:
+            user_site = site.getusersitepackages()
+            if isinstance(user_site, str):
+                candidate_paths.append(user_site)
+            else:
+                candidate_paths.extend(user_site)
+        except AttributeError:
+            logger.debug(
+                "site.getusersitepackages() not available in this environment."
+            )
+
+        try:
+            site_packages = site.getsitepackages()
+            candidate_paths.extend(site_packages)
+        except AttributeError:
+            logger.debug("site.getsitepackages() not available in this environment.")
 
     if _PLUGIN_DEPS_DIR:
         candidate_paths.append(os.fspath(_PLUGIN_DEPS_DIR))
@@ -1193,6 +1205,20 @@ def _merge_staged_dependency_target(staged_dir: str, target_dir: str) -> None:
         _replace_dependency_target_item(source_path, destination_path)
 
 
+@contextmanager
+def _staged_dependency_install(target: str) -> Iterator[str]:
+    """Preserve installed dependencies when pip fails or times out."""
+    target_dir = os.path.abspath(target)
+    staging_parent = os.path.dirname(target_dir)
+    os.makedirs(staging_parent, exist_ok=True)
+    staged_dir = tempfile.mkdtemp(prefix=".mmrelay-deps-install-", dir=staging_parent)
+    try:
+        yield staged_dir
+        _merge_staged_dependency_target(staged_dir, target_dir)
+    finally:
+        shutil.rmtree(staged_dir, ignore_errors=True)
+
+
 def _install_requirements_for_repo(
     repo_path: str,
     repo_name: str,
@@ -1228,8 +1254,10 @@ def _install_requirements_for_repo(
     global _community_dep_install_warning_logged
     try:
         install_target = _PLUGIN_DEPS_DIR
-        in_pipx = install_target is None and any(
-            key in os.environ for key in PIPX_ENVIRONMENT_KEYS
+        in_pipx = (
+            not plugin_runtime.is_frozen()
+            and install_target is None
+            and any(key in os.environ for key in PIPX_ENVIRONMENT_KEYS)
         )
 
         effective_requirements = _effective_requirements_for_repo(
@@ -1263,32 +1291,14 @@ def _install_requirements_for_repo(
                         "Community plugin dependencies execute arbitrary code and are unsafe"
                     )
                     _community_dep_install_warning_logged = True
-                cmd = [
-                    sys.executable,
-                    "-m",
-                    "pip",
-                    "install",
-                    "--disable-pip-version-check",
-                    "--no-input",
-                ]
-
                 target_dir = os.path.abspath(os.fspath(install_target))
-                staging_parent = os.path.dirname(target_dir) or None
-                if staging_parent:
-                    os.makedirs(staging_parent, exist_ok=True)
-                staged_dir = tempfile.mkdtemp(
-                    prefix=".mmrelay-deps-install-", dir=staging_parent
-                )
-                try:
-                    cmd.extend(["--target", staged_dir])
+                with _staged_dependency_install(target_dir) as staged_dir:
+                    cmd = plugin_runtime.pip_install_command(staged_dir)
                     with _temporary_requirements_file(safe_requirements) as temp_path:
                         cmd.extend(["-r", temp_path])
                         _run(cmd, timeout=PIP_INSTALL_TIMEOUT_SECONDS)
-                    _merge_staged_dependency_target(staged_dir, target_dir)
-                    installed_packages = True
-                    handled_requirements = True
-                finally:
-                    shutil.rmtree(staged_dir, ignore_errors=True)
+                installed_packages = True
+                handled_requirements = True
         elif in_pipx:
             logger.info("Installing requirements for plugin %s with pipx", repo_name)
             pipx_path = shutil.which("pipx")
@@ -1340,14 +1350,7 @@ def _install_requirements_for_repo(
                         "Community plugin dependencies execute arbitrary code and are unsafe"
                     )
                     _community_dep_install_warning_logged = True
-                cmd = [
-                    sys.executable,
-                    "-m",
-                    "pip",
-                    "install",
-                    "--disable-pip-version-check",
-                    "--no-input",
-                ]
+                cmd = plugin_runtime.pip_install_command()
                 if not in_venv:
                     cmd.append("--user")
 
@@ -2926,6 +2929,11 @@ def load_plugins_from_directory(
         list[Any]: Instances of discovered `Plugin` classes; returns an empty list if none are found.
     """
     plugins = []
+    if plugin_runtime.is_frozen():
+        try:
+            _refresh_dependency_paths()
+        except OSError:
+            logger.exception("Unable to prepare frozen plugin runtime")
     if os.path.isdir(directory):
         # Clean Python cache to ensure fresh code loading
         _clean_python_cache(directory)
@@ -3025,7 +3033,18 @@ def load_plugins_from_directory(
                                 or "PIPX_LOCAL_VENVS" in os.environ
                             )
 
-                            if in_pipx:
+                            if plugin_runtime.is_frozen():
+                                if _PLUGIN_DEPS_DIR is None:
+                                    raise OSError(
+                                        "Frozen plugin installs require a writable plugin directory"
+                                    )
+                                with _staged_dependency_install(
+                                    _PLUGIN_DEPS_DIR
+                                ) as staged_dir:
+                                    cmd = plugin_runtime.pip_install_command(staged_dir)
+                                    cmd.append(missing_pkg)
+                                    _run(cmd, timeout=PIP_INSTALL_MISSING_DEP_TIMEOUT)
+                            elif in_pipx:
                                 logger.info(
                                     f"Attempting to install missing dependency with pipx inject: {missing_pkg}"
                                 )
@@ -3046,15 +3065,8 @@ def load_plugins_from_directory(
                                 logger.info(
                                     f"Attempting to install missing dependency with pip: {missing_pkg}"
                                 )
-                                cmd = [
-                                    sys.executable,
-                                    "-m",
-                                    "pip",
-                                    "install",
-                                    missing_pkg,
-                                    "--disable-pip-version-check",
-                                    "--no-input",
-                                ]
+                                cmd = plugin_runtime.pip_install_command()
+                                cmd.append(missing_pkg)
                                 if not in_venv:
                                     cmd += ["--user"]
                                 _run(cmd, timeout=PIP_INSTALL_MISSING_DEP_TIMEOUT)

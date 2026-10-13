@@ -23,6 +23,7 @@ from typing import Any
 
 import platformdirs
 
+from mmrelay import plugin_runtime
 from mmrelay.constants.app import (
     APP_AUTHOR,
     APP_NAME,
@@ -989,7 +990,7 @@ def resolve_all_paths() -> dict[str, Any]:
         "plugins_dir": str(get_plugins_dir()),
         "custom_plugins_dir": str(get_custom_plugins_dir()),
         "community_plugins_dir": str(get_community_plugins_dir()),
-        "deps_dir": str(get_plugins_dir() / "deps"),
+        "deps_dir": str(plugin_runtime.dependency_directory(get_plugins_dir())),
         "env_vars_detected": env_vars_detected,
         "cli_override": cli_override,
         "home_source": home_source,
