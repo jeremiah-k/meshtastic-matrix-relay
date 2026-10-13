@@ -57,7 +57,7 @@ Remote administration runs through mtjk's public `executeCommand` API on the rel
 - **Local or separate-destination commands:** `--key-verify` operates on the relay radio even with a remote `--dest`, so all key-verification flags are refused. `--traceroute` has a separate destination and an uncaptured response path and is also refused.
 - **Always refused:** anything not listed above — connection flags (`--host`, `--port`, `--ble*`), local-node-only flags (`--info`, `--nodes`, `--export-config`, `--tunnel`), interactive ones (`--listen`, `--reply`), diagnostics (`--debug`, `--seriallog`), `--sendtext`, `--configure`, `--qr*`, `--ota-update`, `--lockdown-*`, and anything a future mtjk adds until it is classified here. Refusal is the default; the allow lists are the complete exception.
 
-Generic setters also enforce the destructive tier: `--set lora.*`, `--set security.*`, and `--ch-set psk`, `name`, or `role` require `allow_destructive: true`. This includes camelCase field names and quoted paths with whitespace around dotted components. Other routine writes remain allowed; `allow_destructive: false` is not a read-only mode.
+Generic setters also enforce the destructive tier: writes to the `lora`, `security`, `bluetooth`, `network`, `mqtt`, and `serial` sections, and `--ch-set psk`, `name`, or `role` require `allow_destructive: true`. This covers pairing credentials, WiFi/MQTT credentials, and serial-console configuration. The gate uses mtjk's own normalization, including leading underscores, camelCase names, and whitespace around dotted components. Other routine writes remain allowed; `allow_destructive: false` is not a read-only mode.
 
 ## Destination rules
 

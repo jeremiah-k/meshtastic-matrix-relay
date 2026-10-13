@@ -123,22 +123,20 @@ DESTRUCTIVE_VERBS = frozenset(
     }
 )
 
-DESTRUCTIVE_SET_SECTIONS = frozenset({"lora", "security"})
+DESTRUCTIVE_SET_SECTIONS = frozenset(
+    {"lora", "security", "bluetooth", "network", "mqtt", "serial"}
+)
 DESTRUCTIVE_CH_SET_FIELDS = frozenset({"psk", "name", "role"})
 
 # Config sections the pinned mtjk defines that routine-tier --set may write;
-# the remaining known sections (lora, security) require allow_destructive.
+# connectivity, credential, and serial-console sections require allow_destructive.
 ROUTINE_SET_SECTIONS = frozenset(
     {
         "device",
         "position",
         "power",
-        "network",
         "display",
-        "bluetooth",
         "version",
-        "mqtt",
-        "serial",
         "external_notification",
         "store_forward",
         "range_test",
