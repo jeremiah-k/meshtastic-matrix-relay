@@ -126,6 +126,49 @@ DESTRUCTIVE_VERBS = frozenset(
 DESTRUCTIVE_SET_SECTIONS = frozenset({"lora", "security"})
 DESTRUCTIVE_CH_SET_FIELDS = frozenset({"psk", "name", "role"})
 
+# Config sections the pinned mtjk defines that routine-tier --set may write;
+# the remaining known sections (lora, security) require allow_destructive.
+ROUTINE_SET_SECTIONS = frozenset(
+    {
+        "device",
+        "position",
+        "power",
+        "network",
+        "display",
+        "bluetooth",
+        "version",
+        "mqtt",
+        "serial",
+        "external_notification",
+        "store_forward",
+        "range_test",
+        "telemetry",
+        "canned_message",
+        "audio",
+        "remote_hardware",
+        "neighbor_info",
+        "ambient_lighting",
+        "detection_sensor",
+        "paxcounter",
+        "statusmessage",
+        "traffic_management",
+        "tak",
+        "mesh_beacon",
+    }
+)
+# Top-level ChannelSettings fields routine-tier --ch-set may write; the
+# remaining known fields (psk, name) require allow_destructive.
+ROUTINE_CH_SET_FIELDS = frozenset(
+    {
+        "channel_num",
+        "id",
+        "uplink_enabled",
+        "downlink_enabled",
+        "module_settings",
+        "use_aead",
+    }
+)
+
 # Friendlier refusals for flags people will plausibly try.
 DENY_REASONS: dict[str, str] = {
     "key_verify": "local-node only; key verification acts on the relay radio",
@@ -340,6 +383,19 @@ def _refuse_swallowed_options(
         )
 
 
+def _mtjk_component_spelling(component: str) -> str:
+    """Normalize one dotted preference component the way the pinned mtjk does.
+
+    mtjk resolves --set/--ch-set names through strip() + camel_to_snake() per
+    dotted component, and camel_to_snake drops leading underscores, so
+    ``_lora`` and ``__Security`` reach the destructive sections. Reusing the
+    same public helper keeps this gate's spelling in lockstep.
+    """
+    from meshtastic.util import camel_to_snake
+
+    return camel_to_snake(component.strip())
+
+
 def _check_verb_policy(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
@@ -374,15 +430,24 @@ def _check_verb_policy(
         reason = DENY_REASONS.get(dest, "not allowed for remote admin")
         problems.append(f"{_primary_flag(action)} is {reason}")
     if not allow_destructive:
-        # mtjk strips whitespace from dotted preference components. Match that
-        # spelling here so quoted paths cannot bypass the field-level policy.
+        # mtjk resolves --set strictly by its first component (a config
+        # section) and --ch-set by its leading component (a ChannelSettings
+        # field; a dotted suffix on a scalar field still writes the scalar).
+        # Normalize each component exactly as mtjk does and fail closed on any
+        # component the pinned mtjk does not define, so no spelling reaches a
+        # destructive section while the field-level policy is in force.
         for field, _value in getattr(args, "set", None) or []:
-            section = field.split(".", 1)[0].strip().casefold()
+            section = _mtjk_component_spelling(field.split(".", 1)[0])
             if section in DESTRUCTIVE_SET_SECTIONS:
                 problems.append(f"--set {field} requires allow_destructive: true")
+            elif section not in ROUTINE_SET_SECTIONS:
+                problems.append(f"--set {field}: unrecognized config section")
         for field, _value in getattr(args, "ch_set", None) or []:
-            if field.strip().casefold() in DESTRUCTIVE_CH_SET_FIELDS:
+            name = _mtjk_component_spelling(field.split(".", 1)[0])
+            if name in DESTRUCTIVE_CH_SET_FIELDS:
                 problems.append(f"--ch-set {field} requires allow_destructive: true")
+            elif name not in ROUTINE_CH_SET_FIELDS:
+                problems.append(f"--ch-set {field}: unrecognized channel setting")
     if problems:
         raise CliCommandError("; ".join(problems))
     if getattr(args, "dry_run", False):

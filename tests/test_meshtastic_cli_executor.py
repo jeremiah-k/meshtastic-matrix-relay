@@ -16,9 +16,13 @@ from unittest.mock import patch
 import pytest
 
 from mmrelay.meshtastic_cli_executor import (
+    DESTRUCTIVE_CH_SET_FIELDS,
+    DESTRUCTIVE_SET_SECTIONS,
     DESTRUCTIVE_VERBS,
     MODIFIER_DESTS,
     READ_ONLY_VERBS,
+    ROUTINE_CH_SET_FIELDS,
+    ROUTINE_SET_SECTIONS,
     ROUTINE_VERBS,
     CliCommandError,
     _check_verb_policy,
@@ -177,9 +181,15 @@ def test_set_verb_allowed() -> None:
         "--set security.admin_key public-key",
         "--set security.adminKey public-key",
         "--set ' security . adminKey ' public-key",
+        "--set _lora.region US",
+        "--set __Security.admin_key public-key",
         "--ch-set psk none --ch-index 0",
         "--ch-set ' psk ' none --ch-index 0",
+        "--ch-set _psk none --ch-index 0",
+        "--ch-set psk.x 0x1a2b3c4d --ch-index 0",
         "--ch-set name changed --ch-index 0",
+        "--ch-set _Name changed --ch-index 0",
+        "--ch-set name.x changed --ch-index 0",
         "--ch-set role DISABLED --ch-index 0",
         "--set device.node_info_broadcast_secs 900 --set lora.region US",
     ],
@@ -212,6 +222,78 @@ def test_routine_channel_field_allowed_without_destructive_opt_in() -> None:
         f"--dest {REMOTE_NODE_ID} --ch-set uplink_enabled true --ch-index 1"
     )
     _check_verb_policy(parser, args, allow_destructive=False)
+
+
+@pytest.mark.parametrize(
+    "setter",
+    [
+        "--set _device.node_info_broadcast_secs 900",
+        "--set Power.lsSecs 300",
+        "--set device.nodeInfoBroadcastSecs 900",
+        "--set mesh_beacon.flags 1",
+        "--ch-set _uplink_enabled true --ch-index 1",
+        "--ch-set uplinkEnabled true --ch-index 1",
+        "--ch-set module_settings.position_precision 8 --ch-index 1",
+    ],
+)
+def test_routine_set_spellings_follow_mtjk_normalization(setter: str) -> None:
+    """Spellings mtjk normalizes onto routine fields stay routine-tier.
+
+    The gate must accept exactly the spellings the pinned mtjk would apply,
+    so parity with mtjk's per-component normalization never over-blocks.
+    """
+    parser, args = _parsed(f"--dest {REMOTE_NODE_ID} {setter}")
+    _check_verb_policy(parser, args, allow_destructive=False)
+
+
+@pytest.mark.parametrize(
+    "setter,message",
+    [
+        ("--set region US", "unrecognized config section"),
+        ("--set local_config.lora.region US", "unrecognized config section"),
+        ("--set module.mesh_beacon.flags 1", "unrecognized config section"),
+        ("--set telepathy.region US", "unrecognized config section"),
+        ("--ch-set settings.psk none --ch-index 1", "unrecognized channel setting"),
+        ("--ch-set voodoo changed --ch-index 1", "unrecognized channel setting"),
+    ],
+)
+def test_unknown_set_components_fail_closed(setter: str, message: str) -> None:
+    """Any component the pinned mtjk does not define is refused, not guessed.
+
+    mtjk itself rejects these resolutions (bare leaf names, qualified
+    prefixes, unknown sections), so refusing them in the gate fails closed
+    against future mtjk resolution changes instead of relying on dispatch
+    errors.
+    """
+    parser, args = _parsed(f"--dest {REMOTE_NODE_ID} {setter}")
+    with pytest.raises(CliCommandError, match=message):
+        _check_verb_policy(parser, args, allow_destructive=False)
+
+
+def test_set_section_tables_cover_the_pinned_mtjk_schema() -> None:
+    """Every section the pinned mtjk defines has exactly one tier assignment.
+
+    A schema update that adds a section must fail here until the section is
+    consciously classified as routine or destructive.
+    """
+    from meshtastic.protobuf import localonly_pb2, module_config_pb2
+
+    sections = {
+        field.name
+        for config in (localonly_pb2.LocalConfig, module_config_pb2.ModuleConfig)
+        for field in config.DESCRIPTOR.fields
+    }
+    assert not (ROUTINE_SET_SECTIONS & DESTRUCTIVE_SET_SECTIONS)
+    assert ROUTINE_SET_SECTIONS | DESTRUCTIVE_SET_SECTIONS == sections
+
+
+def test_ch_set_field_tables_cover_the_pinned_mtjk_schema() -> None:
+    """Every ChannelSettings field the pinned mtjk defines is classified."""
+    from meshtastic.protobuf import channel_pb2
+
+    fields = {field.name for field in channel_pb2.ChannelSettings.DESCRIPTOR.fields}
+    assert ROUTINE_CH_SET_FIELDS <= fields
+    assert fields - ROUTINE_CH_SET_FIELDS <= set(DESTRUCTIVE_CH_SET_FIELDS)
 
 
 def test_dry_run_modifier_needs_a_verb() -> None:
@@ -265,9 +347,11 @@ def test_option_shaped_set_value_refused_before_parser_version_dependent_handlin
 
 def test_flags_after_a_complete_set_pair_are_still_parsed() -> None:
     """Only operand slots absorb flags; after the pair, flags fire normally."""
-    parser, args = _parsed(f"--dest {REMOTE_NODE_ID} --set owner bob --reboot")
+    parser, args = _parsed(
+        f"--dest {REMOTE_NODE_ID} --set device.node_info_broadcast_secs 900 --reboot"
+    )
     _check_verb_policy(parser, args, allow_destructive=False)
-    assert args.set == [["owner", "bob"]]
+    assert args.set == [["device.node_info_broadcast_secs", "900"]]
 
 
 @pytest.mark.parametrize("dest", sorted(MODIFIER_DESTS))
