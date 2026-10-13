@@ -37,7 +37,7 @@ jobs:
           # wheels, and their sdist builds fail on the runner (LNK1104),
           # aborting the entire dependency install. Revisit once cp315
           # wheels ship.
-          python-version: 3.14
+          python-version: 3.15
 
       - name: Validate release tag against package version
         if: ${{ github.event_name == 'release' }}
