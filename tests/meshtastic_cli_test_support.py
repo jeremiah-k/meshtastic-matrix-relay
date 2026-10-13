@@ -1,4 +1,4 @@
-"""Real mtjk fixtures shared by remote-admin executor and integration tests."""
+"""Real mtjk fixtures shared by Meshtastic CLI executor and integration tests."""
 
 import sys
 

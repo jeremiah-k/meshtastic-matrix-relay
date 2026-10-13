@@ -3,7 +3,7 @@
 Exposes the ``!meshtastic`` command in a single designated admin room. Users at or
 above the configured power level can run mtjk admin verbs against remote
 mesh nodes; the actual parsing, vetting, and in-process dispatch live in
-:mmrelay.remote_admin_executor.
+:mmrelay.meshtastic_cli_executor.
 """
 
 import asyncio
@@ -21,19 +21,19 @@ from nio import (
 
 from mmrelay.constants.config import CONFIG_KEY_REQUIRE_BOT_MENTION
 from mmrelay.matrix.room_ids import is_room_id
-from mmrelay.plugins.base_plugin import BasePlugin
-from mmrelay.remote_admin_executor import (
+from mmrelay.meshtastic_cli_executor import (
     DEFAULT_COMMAND_TIMEOUT_SECONDS,
-    AdminCommandError,
-    AdminCommandResult,
-    run_admin_command,
+    CliCommandError,
+    CliCommandResult,
+    run_cli_command,
 )
+from mmrelay.plugins.base_plugin import BasePlugin
 
 DEFAULT_ADMIN_POWER_LEVEL = 50
 DEFAULT_MAX_OUTPUT_CHARS = 2000
 
 
-async def _join_execution(task: asyncio.Task[AdminCommandResult]) -> AdminCommandResult:
+async def _join_execution(task: asyncio.Task[CliCommandResult]) -> CliCommandResult:
     """Drain the worker under repeated cancellation before releasing the radio lock."""
     cancelled = False
     while not task.done():
@@ -71,7 +71,7 @@ class Plugin(BasePlugin):
     @property
     def description(self) -> str:
         """Return the help-listing description."""
-        return "Run mtjk admin commands against remote mesh nodes (!meshtastic, admin room only)"
+        return "Run Meshtastic CLI commands against remote mesh nodes (!meshtastic, admin room only)"
 
     def get_matrix_commands(self) -> list[str]:
         """Expose the ``meshtastic`` Matrix command."""
@@ -218,7 +218,7 @@ class Plugin(BasePlugin):
             else "disabled (set allow_destructive: true)"
         )
         return (
-            "**Remote admin — run mtjk commands against remote nodes**\n\n"
+            "**Meshtastic CLI — run mtjk commands against remote nodes**\n\n"
             "`!meshtastic --dest <node> <mtjk flags>`\n\n"
             "Examples:\n"
             "- `!meshtastic --dest !a4bf9d0c --get lora.region`\n"
@@ -309,7 +309,9 @@ class Plugin(BasePlugin):
         # Arguments may contain channel URLs or other credentials. The digest
         # correlates room commands with outcomes without writing secrets to logs.
         fingerprint = hashlib.sha256(args_text.encode("utf-8")).hexdigest()[:16]
-        self.logger.info("Remote admin command from %s: sha256=%s", sender, fingerprint)
+        self.logger.info(
+            "Meshtastic CLI command from %s: sha256=%s", sender, fingerprint
+        )
         try:
             # Acquire before the first await: concurrent commands never queue.
             async with self._command_lock:
@@ -320,7 +322,7 @@ class Plugin(BasePlugin):
                     asyncio.to_thread(self._execute, args_text)
                 )
                 result = await _join_execution(execution)
-        except AdminCommandError as exc:
+        except CliCommandError as exc:
             await self.send_matrix_reaction(room.room_id, event.event_id, "❌")
             await self.send_matrix_message(
                 room.room_id,
@@ -330,7 +332,7 @@ class Plugin(BasePlugin):
             )
             return True
         except Exception:  # noqa: BLE001 - report unexpected failures to the room
-            self.logger.exception("Remote admin command failed")
+            self.logger.exception("Meshtastic CLI command failed")
             await self.send_matrix_reaction(room.room_id, event.event_id, "❌")
             await self.send_matrix_message(
                 room.room_id,
@@ -343,26 +345,24 @@ class Plugin(BasePlugin):
         await self._reply_result(room, event, result)
         return True
 
-    def _execute(self, args_text: str) -> AdminCommandResult:
+    def _execute(self, args_text: str) -> CliCommandResult:
         """Run on the relay's ready interface, without initiating a connection."""
         from mmrelay import meshtastic_utils
 
         # A command worker must never race the relay's own reconnect loop by
         # creating a second transport (nor wait for another connect attempt).
         if meshtastic_utils.reconnecting or meshtastic_utils.shutting_down:
-            raise AdminCommandError("Meshtastic connection is not ready.")
+            raise CliCommandError("Meshtastic connection is not ready.")
         interface = meshtastic_utils.meshtastic_client
         if interface is None:
-            raise AdminCommandError("Meshtastic connection is not ready.")
+            raise CliCommandError("Meshtastic connection is not ready.")
         connected = getattr(interface, "isConnected", None)
-        if (
-            not callable(getattr(connected, "is_set", None))
-            or connected.is_set() is not True
-        ):
-            raise AdminCommandError("Meshtastic connection is not ready.")
+        connected_is_set: Any = getattr(connected, "is_set", None)
+        if not callable(connected_is_set) or connected_is_set() is not True:
+            raise CliCommandError("Meshtastic connection is not ready.")
         my_info = getattr(interface, "myInfo", None)
         local_node_num = getattr(my_info, "my_node_num", None)
-        result = run_admin_command(
+        result = run_cli_command(
             interface,
             args_text,
             local_node_num=local_node_num,
@@ -370,7 +370,7 @@ class Plugin(BasePlugin):
             allow_destructive=self._allow_destructive(),
         )
         self.logger.info(
-            "Remote admin command finished with exit code %s", result.exit_code
+            "Meshtastic CLI command finished with exit code %s", result.exit_code
         )
         return result
 
@@ -378,7 +378,7 @@ class Plugin(BasePlugin):
         self,
         room: MatrixRoom,
         event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
-        result: AdminCommandResult,
+        result: CliCommandResult,
     ) -> None:
         """React to the command and reply with the captured output."""
         emoji = "✅" if result.exit_code == 0 else "❌"

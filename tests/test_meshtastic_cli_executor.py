@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tests for the in-process mtjk admin-command runner.
+Tests for the in-process Meshtastic CLI runner.
 
 Covers argument parsing through mtjk's own parser, the fail-closed verb
 policy tiers, remote-node destination rules, timeout clamping, and the
@@ -15,21 +15,21 @@ from unittest.mock import patch
 
 import pytest
 
-from mmrelay.remote_admin_executor import (
+from mmrelay.meshtastic_cli_executor import (
     DESTRUCTIVE_VERBS,
     MODIFIER_DESTS,
     READ_ONLY_VERBS,
     ROUTINE_VERBS,
-    AdminCommandError,
+    CliCommandError,
     _check_verb_policy,
     _clamp_timeout,
     _mtjk_version,
     _parse_user_args,
     _refuse_swallowed_options,
     _validate_destination,
-    run_admin_command,
+    run_cli_command,
 )
-from tests.remote_admin_test_support import real_mtjk as real_mtjk
+from tests.meshtastic_cli_test_support import real_mtjk as real_mtjk
 
 REMOTE_NODE_NUM = 0xA4BF9D0C
 REMOTE_NODE_ID = "!a4bf9d0c"
@@ -92,12 +92,12 @@ def test_parse_accepts_remote_admin_command() -> None:
 
 
 def test_parse_rejects_unknown_tokens() -> None:
-    with pytest.raises(AdminCommandError, match="unrecognized arguments"):
+    with pytest.raises(CliCommandError, match="unrecognized arguments"):
         _parsed("--dest !a4bf9d0c --definitely-not-a-flag")
 
 
 def test_parse_rejects_help_flag() -> None:
-    with pytest.raises(AdminCommandError):
+    with pytest.raises(CliCommandError):
         _parsed("--help")
 
 
@@ -116,7 +116,7 @@ def test_parse_refusals_keep_process_output_empty(
     command: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Parser errors and terminating actions cannot leak room commands to logs."""
-    with pytest.raises(AdminCommandError, match="unrecognized arguments") as excinfo:
+    with pytest.raises(CliCommandError, match="unrecognized arguments") as excinfo:
         _parsed(command)
 
     captured = capsys.readouterr()
@@ -150,7 +150,7 @@ def test_remote_content_reads_use_embedded_capture(flag: str) -> None:
 @pytest.mark.parametrize("dest", sorted(DESTRUCTIVE_VERBS))
 def test_destructive_verbs_require_opt_in(dest: str) -> None:
     parser, args = _args_with(dest)
-    with pytest.raises(AdminCommandError, match="allow_destructive"):
+    with pytest.raises(CliCommandError, match="allow_destructive"):
         _check_verb_policy(parser, args, allow_destructive=False)
 
 
@@ -194,7 +194,7 @@ def test_destructive_fields_require_opt_in_before_dispatch(
         "meshtastic.commands.executeCommand", return_value=CommandResult(0, "ok")
     ) as execute:
         if allow_destructive:
-            result = run_admin_command(
+            result = run_cli_command(
                 _fake_interface(),
                 f"--dest {REMOTE_NODE_ID} {setter}",
                 allow_destructive=True,
@@ -202,10 +202,8 @@ def test_destructive_fields_require_opt_in_before_dispatch(
             assert result.exit_code == 0
             execute.assert_called_once()
         else:
-            with pytest.raises(AdminCommandError, match="requires allow_destructive"):
-                run_admin_command(
-                    _fake_interface(), f"--dest {REMOTE_NODE_ID} {setter}"
-                )
+            with pytest.raises(CliCommandError, match="requires allow_destructive"):
+                run_cli_command(_fake_interface(), f"--dest {REMOTE_NODE_ID} {setter}")
             execute.assert_not_called()
 
 
@@ -218,7 +216,7 @@ def test_routine_channel_field_allowed_without_destructive_opt_in() -> None:
 
 def test_dry_run_modifier_needs_a_verb() -> None:
     parser, args = _parsed(f"--dest {REMOTE_NODE_ID} --dry-run")
-    with pytest.raises(AdminCommandError, match="no allowed command"):
+    with pytest.raises(CliCommandError, match="no allowed command"):
         _check_verb_policy(parser, args, allow_destructive=False)
 
 
@@ -236,7 +234,7 @@ def test_option_token_swallowed_by_set_values_is_refused() -> None:
     value; either outcome must refuse execution before sending a radio write.
     """
     with pytest.raises(
-        AdminCommandError, match="--dry-run cannot be used as a --set value"
+        CliCommandError, match="--dry-run cannot be used as a --set value"
     ):
         _parsed(f"--dest {REMOTE_NODE_ID} --set owner --dry-run")
 
@@ -248,7 +246,7 @@ def test_swallowed_routine_verb_is_refused_not_silently_demoted() -> None:
     the routine tier; the pre-parse guard prevents such a device write.
     """
     with pytest.raises(
-        AdminCommandError, match="--reboot cannot be used as a --set value"
+        CliCommandError, match="--reboot cannot be used as a --set value"
     ):
         _parsed(f"--dest {REMOTE_NODE_ID} --set owner --reboot")
 
@@ -259,7 +257,7 @@ def test_option_shaped_set_value_refused_before_parser_version_dependent_handlin
     """Fail closed before argparse can consume or reject the second operand."""
     with patch("meshtastic.cli.parser.parse_cli_args") as parse:
         with pytest.raises(
-            AdminCommandError, match="--dry-run cannot be used as a --set value"
+            CliCommandError, match="--dry-run cannot be used as a --set value"
         ):
             _parsed(f"--dest {REMOTE_NODE_ID} --set owner --dry-run")
         parse.assert_not_called()
@@ -277,7 +275,7 @@ def test_modifiers_alone_are_not_verbs(dest: str) -> None:
     parser, args = _parsed(f"--dest {REMOTE_NODE_ID}")
     setattr(args, dest, True)
     args.reboot = False
-    with pytest.raises(AdminCommandError, match="no allowed command"):
+    with pytest.raises(CliCommandError, match="no allowed command"):
         _check_verb_policy(parser, args, allow_destructive=False)
 
 
@@ -294,7 +292,7 @@ def test_modifiers_alone_are_not_verbs(dest: str) -> None:
 )
 def test_hard_denied_flags_refused(extra: str, reason: str) -> None:
     parser, args = _parsed(f"--dest {REMOTE_NODE_ID} --reboot {extra}")
-    with pytest.raises(AdminCommandError, match=reason):
+    with pytest.raises(CliCommandError, match=reason):
         _check_verb_policy(parser, args, allow_destructive=True)
 
 
@@ -308,13 +306,13 @@ def test_explicit_denied_option_at_default_is_still_denied(equals_form: bool) ->
     extra = f"{option}={value}" if equals_form else f"{option} {value}"
     parser, args = _parsed(f"--dest {REMOTE_NODE_ID} --reboot {extra}")
     assert getattr(args, action.dest) == action.default
-    with pytest.raises(AdminCommandError, match="local-node only"):
+    with pytest.raises(CliCommandError, match="local-node only"):
         _check_verb_policy(parser, args, allow_destructive=True)
 
 
 def test_configure_flag_refused() -> None:
     parser, args = _parsed(f"--dest {REMOTE_NODE_ID} --configure profile.yaml")
-    with pytest.raises(AdminCommandError, match="not exposed"):
+    with pytest.raises(CliCommandError, match="not exposed"):
         _check_verb_policy(parser, args, allow_destructive=True)
 
 
@@ -325,7 +323,7 @@ def test_unclassified_future_verb_is_denied() -> None:
     action = next(a for a in parser._actions if a.dest == "reboot")  # noqa: SLF001
     action.dest = "some_future_verb"  # register the unknown dest on the parser
     try:
-        with pytest.raises(AdminCommandError, match="not allowed for remote admin"):
+        with pytest.raises(CliCommandError, match="not allowed for remote admin"):
             _check_verb_policy(parser, args, allow_destructive=True)
     finally:
         action.dest = "reboot"
@@ -333,7 +331,7 @@ def test_unclassified_future_verb_is_denied() -> None:
 
 def test_multiple_problems_reported_together() -> None:
     parser, args = _parsed(f"--dest {REMOTE_NODE_ID} --nodes --info --shutdown")
-    with pytest.raises(AdminCommandError) as excinfo:
+    with pytest.raises(CliCommandError) as excinfo:
         _check_verb_policy(parser, args, allow_destructive=False)
     message = str(excinfo.value)
     assert "local-node only" in message
@@ -345,7 +343,7 @@ def test_multiple_problems_reported_together() -> None:
 
 def test_destination_required() -> None:
     parser, args = _parsed("--get lora.region")
-    with pytest.raises(AdminCommandError, match="--dest"):
+    with pytest.raises(CliCommandError, match="--dest"):
         _validate_destination(args, _fake_interface(), LOCAL_NODE_NUM)
 
 
@@ -354,31 +352,31 @@ def test_destination_required() -> None:
 )
 def test_special_destinations_refused(bad: str) -> None:
     parser, args = _parsed(f"--dest {bad} --get lora.region")
-    with pytest.raises(AdminCommandError):
+    with pytest.raises(CliCommandError):
         _validate_destination(args, _fake_interface(), LOCAL_NODE_NUM)
 
 
 def test_own_node_refused() -> None:
     parser, args = _parsed(f"--dest {LOCAL_NODE_NUM} --get lora.region")
-    with pytest.raises(AdminCommandError, match="relay's own node"):
+    with pytest.raises(CliCommandError, match="relay's own node"):
         _validate_destination(args, _fake_interface(), LOCAL_NODE_NUM)
 
 
 def test_unknown_node_refused() -> None:
     parser, args = _parsed("--dest !deadbeef --get lora.region")
-    with pytest.raises(AdminCommandError, match="node database"):
+    with pytest.raises(CliCommandError, match="node database"):
         _validate_destination(args, _fake_interface(), LOCAL_NODE_NUM)
 
 
 def test_garbage_destination_refused() -> None:
     parser, args = _parsed("--dest nonsense --get lora.region")
-    with pytest.raises(AdminCommandError, match="unrecognized node id"):
+    with pytest.raises(CliCommandError, match="unrecognized node id"):
         _validate_destination(args, _fake_interface(), LOCAL_NODE_NUM)
 
 
 def test_empty_node_database_refused() -> None:
     parser, args = _parsed(f"--dest {REMOTE_NODE_ID} --get lora.region")
-    with pytest.raises(AdminCommandError, match="empty"):
+    with pytest.raises(CliCommandError, match="empty"):
         _validate_destination(
             args,
             SimpleNamespace(queryNodes=lambda: SimpleNamespace(nodes=())),
@@ -446,8 +444,8 @@ def test_invalid_timeout_cap_defaults_to_finite_limit(cap: float) -> None:
 
 
 def test_run_admin_command_unbalanced_quotes_refused() -> None:
-    with pytest.raises(AdminCommandError, match="could not parse"):
-        run_admin_command(_fake_interface(), '--set owner "unbalanced')
+    with pytest.raises(CliCommandError, match="could not parse"):
+        run_cli_command(_fake_interface(), '--set owner "unbalanced')
 
 
 @pytest.mark.parametrize(
@@ -462,22 +460,22 @@ def test_run_admin_command_unbalanced_quotes_refused() -> None:
     ],
 )
 def test_commands_outside_remote_capture_boundary_are_refused(command: str) -> None:
-    with patch("mmrelay.remote_admin_executor._run_embedded") as dispatch:
-        with pytest.raises(AdminCommandError):
-            run_admin_command(_fake_interface(), f"--dest {REMOTE_NODE_ID} {command}")
+    with patch("mmrelay.meshtastic_cli_executor._run_embedded") as dispatch:
+        with pytest.raises(CliCommandError):
+            run_cli_command(_fake_interface(), f"--dest {REMOTE_NODE_ID} {command}")
     dispatch.assert_not_called()
 
 
 @pytest.mark.parametrize("verb", ["--reboot", "--ch-add test", "--pos-fields ALTITUDE"])
 def test_dry_run_cannot_accompany_a_mutating_nonpreview_verb(verb: str) -> None:
     parser, args = _parsed(f"--dest {REMOTE_NODE_ID} --dry-run {verb}")
-    with pytest.raises(AdminCommandError, match="only with --set"):
+    with pytest.raises(CliCommandError, match="only with --set"):
         _check_verb_policy(parser, args, allow_destructive=True)
 
 
 def test_destination_uses_interface_identity_even_if_caller_supplies_another() -> None:
     parser, args = _parsed(f"--dest {LOCAL_NODE_NUM} --reboot")
-    with pytest.raises(AdminCommandError, match="relay's own node"):
+    with pytest.raises(CliCommandError, match="relay's own node"):
         _validate_destination(args, _fake_interface(), REMOTE_NODE_NUM)
 
 
@@ -485,7 +483,7 @@ def test_missing_local_identity_fails_closed() -> None:
     parser, args = _parsed(f"--dest {REMOTE_NODE_ID} --reboot")
     interface = _fake_interface()
     interface.myInfo = None
-    with pytest.raises(AdminCommandError, match="identity is unavailable"):
+    with pytest.raises(CliCommandError, match="identity is unavailable"):
         _validate_destination(args, interface, None)
 
 
@@ -493,17 +491,17 @@ def test_zero_destination_is_refused_even_if_database_contains_it() -> None:
     parser, args = _parsed("--dest !00000000 --reboot")
     interface = _fake_interface()
     interface.nodes["!00000000"] = {"num": 0}
-    with pytest.raises(AdminCommandError, match="unrecognized node id"):
+    with pytest.raises(CliCommandError, match="unrecognized node id"):
         _validate_destination(args, interface, LOCAL_NODE_NUM)
 
 
 @pytest.mark.parametrize("attempts", [0, -1])
 def test_channel_download_requires_a_positive_attempt_limit(attempts: int) -> None:
     with (
-        patch("mmrelay.remote_admin_executor._run_embedded") as dispatch,
-        pytest.raises(AdminCommandError, match="at least 1"),
+        patch("mmrelay.meshtastic_cli_executor._run_embedded") as dispatch,
+        pytest.raises(CliCommandError, match="at least 1"),
     ):
-        run_admin_command(
+        run_cli_command(
             _fake_interface(),
             f"--dest {REMOTE_NODE_ID} --reboot --channel-fetch-attempts {attempts}",
         )
@@ -512,7 +510,7 @@ def test_channel_download_requires_a_positive_attempt_limit(attempts: int) -> No
 
 def test_missing_channel_fetch_attempts_uses_default_limit() -> None:
     """Parser versions without the optional modifier remain usable."""
-    from mmrelay.remote_admin_executor import AdminCommandResult
+    from mmrelay.meshtastic_cli_executor import CliCommandResult
 
     radio = _fake_interface()
     original_parser = _parse_user_args
@@ -524,21 +522,21 @@ def test_missing_channel_fetch_attempts_uses_default_limit() -> None:
 
     with (
         patch(
-            "mmrelay.remote_admin_executor._parse_user_args",
+            "mmrelay.meshtastic_cli_executor._parse_user_args",
             side_effect=without_optional_argument,
         ),
         patch(
-            "mmrelay.remote_admin_executor._run_embedded",
-            return_value=AdminCommandResult(0, "ok"),
+            "mmrelay.meshtastic_cli_executor._run_embedded",
+            return_value=CliCommandResult(0, "ok"),
         ) as dispatch,
     ):
         command = f"--dest {REMOTE_NODE_ID} --reboot"
-        assert run_admin_command(radio, command).exit_code == 0
+        assert run_cli_command(radio, command).exit_code == 0
     dispatch.assert_called_once()
 
 
 def test_primary_flag_names_positional_actions_by_dest() -> None:
-    from mmrelay.remote_admin_executor import _primary_flag
+    from mmrelay.meshtastic_cli_executor import _primary_flag
 
     action = SimpleNamespace(option_strings=[], dest="some_verb")
     assert _primary_flag(action) == "--some_verb"
@@ -557,8 +555,8 @@ def test_clamp_timeout_falls_back_to_cap_on_unparseable_request() -> None:
 
 
 def test_empty_command_is_refused() -> None:
-    with pytest.raises(AdminCommandError, match="no command given"):
-        run_admin_command(_fake_interface(), "   ")
+    with pytest.raises(CliCommandError, match="no command given"):
+        run_cli_command(_fake_interface(), "   ")
 
 
 # --- current mtjk embedded API ---------------------------------------------
@@ -567,7 +565,7 @@ def test_empty_command_is_refused() -> None:
 def test_embedded_dispatch_uses_public_api_without_closing_radio() -> None:
     from meshtastic.commands import CommandCapabilities, CommandResult
 
-    from mmrelay.remote_admin_executor import _run_embedded
+    from mmrelay.meshtastic_cli_executor import _run_embedded
 
     parser, args = _parsed(f"--dest {REMOTE_NODE_ID} --timeout=4 --get lora.region")
     radio = _fake_interface()
@@ -602,7 +600,7 @@ def test_embedded_dispatch_uses_public_api_without_closing_radio() -> None:
 def test_embedded_refuses_options_not_in_versioned_capabilities() -> None:
     from meshtastic.commands import CommandCapabilities
 
-    from mmrelay.remote_admin_executor import _run_embedded
+    from mmrelay.meshtastic_cli_executor import _run_embedded
 
     parser, args = _parsed(f"--dest {REMOTE_NODE_ID} --dry-run --set lora.region 4")
     with (
@@ -611,7 +609,7 @@ def test_embedded_refuses_options_not_in_versioned_capabilities() -> None:
             return_value=CommandCapabilities(1, ("--dest", "--set")),
         ),
         patch("meshtastic.commands.executeCommand") as execute,
-        pytest.raises(AdminCommandError, match="--dry-run"),
+        pytest.raises(CliCommandError, match="--dry-run"),
     ):
         _run_embedded(
             _fake_interface(),
@@ -625,7 +623,7 @@ def test_embedded_refuses_options_not_in_versioned_capabilities() -> None:
 def test_embedded_failure_retains_exit_and_truncation() -> None:
     from meshtastic.commands import CommandCapabilities, CommandResult
 
-    from mmrelay.remote_admin_executor import _run_embedded
+    from mmrelay.meshtastic_cli_executor import _run_embedded
 
     parser, args = _parsed(f"--dest {REMOTE_NODE_ID} --reboot")
     with (
@@ -647,14 +645,14 @@ def test_embedded_failure_retains_exit_and_truncation() -> None:
 
 
 def test_run_admin_command_validates_and_forwards_to_embedded_api() -> None:
-    from mmrelay.remote_admin_executor import AdminCommandResult
+    from mmrelay.meshtastic_cli_executor import CliCommandResult
 
     radio = _fake_interface()
     with patch(
-        "mmrelay.remote_admin_executor._run_embedded",
-        return_value=AdminCommandResult(0, "sent"),
+        "mmrelay.meshtastic_cli_executor._run_embedded",
+        return_value=CliCommandResult(0, "sent"),
     ) as embedded:
-        result = run_admin_command(
+        result = run_cli_command(
             radio,
             f"--dest {REMOTE_NODE_ID} --timeout 8 --reboot",
             max_timeout_seconds=12,
@@ -673,7 +671,7 @@ def test_run_admin_command_validates_and_forwards_to_embedded_api() -> None:
 
 
 def test_embedded_argv_removes_duplicate_destination_aliases() -> None:
-    from mmrelay.remote_admin_executor import _embedded_argv
+    from mmrelay.meshtastic_cli_executor import _embedded_argv
 
     parser, _ = _parsed(f"--dest !01020304 --reboot --dest={REMOTE_NODE_ID}")
     assert _embedded_argv(
@@ -693,9 +691,9 @@ def test_unsupported_embedded_api_version_refuses_execution() -> None:
         patch("meshtastic.commands.executeCommand") as dispatch,
     ):
         with pytest.raises(
-            AdminCommandError, match="unsupported mtjk embedded command API version"
+            CliCommandError, match="unsupported mtjk embedded command API version"
         ):
-            run_admin_command(
+            run_cli_command(
                 _fake_interface(), f"--dest {REMOTE_NODE_ID} --get lora.hopLimit"
             )
 
@@ -708,7 +706,7 @@ def test_dispatch_error_without_output_reports_the_exception_type() -> None:
         exitCode=1, output="", error=RuntimeError("boom"), truncated=False
     )
     with patch("meshtastic.commands.executeCommand", return_value=outcome):
-        result = run_admin_command(
+        result = run_cli_command(
             _fake_interface(), f"--dest {REMOTE_NODE_ID} --get lora.hopLimit"
         )
 
@@ -719,7 +717,7 @@ def test_mtjk_version_unknown_when_distribution_missing() -> None:
     from importlib.metadata import PackageNotFoundError
 
     with patch(
-        "mmrelay.remote_admin_executor.version",
+        "mmrelay.meshtastic_cli_executor.version",
         side_effect=PackageNotFoundError("mtjk"),
     ):
         assert _mtjk_version() == "unknown"
@@ -741,14 +739,14 @@ def test_supplied_option_swallowed_into_another_actions_value_is_refused() -> No
         _mmrelay_supplied_options={"--dry-run"},
     )
     args = SimpleNamespace(set=["owner", "--dry-run"], dry_run=False)
-    with pytest.raises(AdminCommandError, match="parsed as a value"):
+    with pytest.raises(CliCommandError, match="parsed as a value"):
         _refuse_swallowed_options(parser, args)
 
 
 @pytest.mark.parametrize("command", ["", "--unknown", "--dest !a4bf9d0c"])
 def test_refusal_guidance_uses_registered_trigger(command: str) -> None:
-    with pytest.raises(AdminCommandError, match="!meshtastic help"):
-        run_admin_command(_fake_interface(), command)
+    with pytest.raises(CliCommandError, match="!meshtastic help"):
+        run_cli_command(_fake_interface(), command)
 
 
 def test_destination_reads_detached_public_node_snapshot() -> None:

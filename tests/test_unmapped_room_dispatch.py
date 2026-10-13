@@ -3,7 +3,7 @@
 Tests for dispatching Matrix events from rooms outside matrix_rooms.
 
 Covers the plugin-owned room contract introduced for dedicated rooms (such as
-a remote-admin room) that must reach plugins without mesh relaying:
+a Meshtastic CLI room) that must reach plugins without mesh relaying:
 
 - _plugins_owning_room() ownership matching and error isolation
 - _dispatch_unmapped_room_message() dispatch, filtering, and claiming

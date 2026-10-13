@@ -1,4 +1,4 @@
-"""In-process mtjk admin-command runner for remote mesh nodes.
+"""In-process Meshtastic CLI runner for remote mesh nodes.
 
 Runs an allowlisted mtjk embedded command against the relay-owned Meshtastic
 interface. MMRelay validates its own room, verb, and remote-destination policy
@@ -194,12 +194,12 @@ DENY_REASONS: dict[str, str] = {
 }
 
 
-class AdminCommandError(Exception):
+class CliCommandError(Exception):
     """A refusal with a user-facing message; the command never ran."""
 
 
 @dataclasses.dataclass(frozen=True)
-class AdminCommandResult:
+class CliCommandResult:
     """Outcome of one dispatched mtjk command."""
 
     exit_code: int
@@ -234,7 +234,7 @@ def _refuse_option_shaped_set_values(user_argv: list[str]) -> None:
         if token == "--set" and index + 2 < len(user_argv):
             value = user_argv[index + 2]
             if value.startswith("--"):
-                raise AdminCommandError(
+                raise CliCommandError(
                     f"{value.split('=', 1)[0]} cannot be used as a --set value "
                     "(place flags before --set or after its two operands)"
                 )
@@ -252,7 +252,7 @@ def _parse_user_args(
     try:
         args = parse_cli_args(parser, version=_mtjk_version(), argv=user_argv)
     except SystemExit:
-        raise AdminCommandError(
+        raise CliCommandError(
             "unrecognized arguments; see !meshtastic help for the allowed commands"
         ) from None
     parser._mmrelay_supplied_options = frozenset(  # type: ignore[attr-defined]
@@ -331,7 +331,7 @@ def _refuse_swallowed_options(
         and token in value_strings
     ]
     if swallowed:
-        raise AdminCommandError(
+        raise CliCommandError(
             "; ".join(
                 f"{token} was parsed as a value, not a flag (place flags "
                 "before the operands of arguments such as --set)"
@@ -384,7 +384,7 @@ def _check_verb_policy(
             if field.strip().casefold() in DESTRUCTIVE_CH_SET_FIELDS:
                 problems.append(f"--ch-set {field} requires allow_destructive: true")
     if problems:
-        raise AdminCommandError("; ".join(problems))
+        raise CliCommandError("; ".join(problems))
     if getattr(args, "dry_run", False):
         unsafe = [
             action
@@ -392,9 +392,9 @@ def _check_verb_policy(
             if action.dest not in MODIFIER_DESTS | {"dest", "timeout", "set"}
         ]
         if unsafe:
-            raise AdminCommandError("--dry-run is supported only with --set")
+            raise CliCommandError("--dry-run is supported only with --set")
     if verb_count == 0:
-        raise AdminCommandError(
+        raise CliCommandError(
             "no allowed command specified; see !meshtastic help for the allowed commands"
         )
 
@@ -423,19 +423,19 @@ def _validate_destination(
 
     raw_dest = getattr(args, "dest", None)
     if not isinstance(raw_dest, str) or not raw_dest.strip():
-        raise AdminCommandError(
+        raise CliCommandError(
             "--dest <node> is required and must name a remote node "
             "(for example --dest !a4bf9d0c)"
         )
     dest = raw_dest.strip()
     if dest.lower() in (BROADCAST_ADDR, LOCAL_ADDR, "all", "local"):
-        raise AdminCommandError(
+        raise CliCommandError(
             "commands must target a specific remote node, not the local or broadcast address"
         )
     try:
         node_num = toNodeNum(dest)
     except (TypeError, ValueError):
-        raise AdminCommandError(
+        raise CliCommandError(
             f"unrecognized node id: {dest!r} (expected forms: !a4bf9d0c, 0xa4bf9d0c, or decimal)"
         ) from None
     if (
@@ -443,9 +443,9 @@ def _validate_destination(
         or not isinstance(node_num, int)
         or not 0 < node_num <= BROADCAST_NODE_NUM
     ):
-        raise AdminCommandError(f"unrecognized node id: {dest!r}")
+        raise CliCommandError(f"unrecognized node id: {dest!r}")
     if node_num == BROADCAST_NODE_NUM:
-        raise AdminCommandError("broadcast destinations are not allowed")
+        raise CliCommandError("broadcast destinations are not allowed")
     interface_local = getattr(getattr(interface, "myInfo", None), "my_node_num", None)
     if isinstance(interface_local, int) and not isinstance(interface_local, bool):
         local_node_num = interface_local
@@ -454,20 +454,20 @@ def _validate_destination(
         or not isinstance(local_node_num, int)
         or not 0 < local_node_num < BROADCAST_NODE_NUM
     ):
-        raise AdminCommandError(
+        raise CliCommandError(
             "the relay's own node identity is unavailable; remote administration is refused"
         )
     if node_num == local_node_num:
-        raise AdminCommandError(
+        raise CliCommandError(
             "refusing to run admin commands against the relay's own node"
         )
     known = _known_node_nums(interface)
     if not known:
-        raise AdminCommandError(
+        raise CliCommandError(
             "the relay's node database is empty; no remote node can be verified"
         )
     if node_num not in known:
-        raise AdminCommandError(
+        raise CliCommandError(
             f"node {dest} is not in the relay's node database (see !nodes)"
         )
     args.dest = f"!{node_num:08x}"
@@ -520,13 +520,13 @@ def _run_embedded(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
     user_argv: list[str],
-) -> AdminCommandResult:
+) -> CliCommandResult:
     """Execute one policy-approved command using the public mtjk API."""
     from meshtastic.commands import executeCommand, getCommandCapabilities
 
     capabilities = getCommandCapabilities()
     if capabilities.apiVersion != 1:
-        raise AdminCommandError("unsupported mtjk embedded command API version")
+        raise CliCommandError("unsupported mtjk embedded command API version")
     argv = _embedded_argv(parser, user_argv, args.dest)
     available = set(capabilities.supportedOptions)
     parser_options = parser._option_string_actions  # noqa: SLF001 - parser registry
@@ -538,7 +538,7 @@ def _run_embedded(
     ]
     if unsupported:
         # Deliberately do not echo flag values (which can contain credentials).
-        raise AdminCommandError(
+        raise CliCommandError(
             "mtjk embedded commands do not support: "
             + ", ".join(sorted(set(unsupported)))
         )
@@ -552,34 +552,34 @@ def _run_embedded(
         message = f"ERROR: {type(outcome.error).__name__}"
     if outcome.truncated:
         message += "\n… (mtjk output truncated)"
-    return AdminCommandResult(exit_code=outcome.exitCode, output=message)
+    return CliCommandResult(exit_code=outcome.exitCode, output=message)
 
 
-def run_admin_command(
+def run_cli_command(
     interface: MeshInterface,
     command_text: str,
     *,
     local_node_num: int | None = None,
     max_timeout_seconds: float = DEFAULT_COMMAND_TIMEOUT_SECONDS,
     allow_destructive: bool = False,
-) -> AdminCommandResult:
+) -> CliCommandResult:
     """Parse, vet, and run one mtjk admin command against a remote node.
 
-    Raises AdminCommandError when the command is refused before dispatch;
-    dispatch-time failures come back as an AdminCommandResult with a nonzero
+    Raises CliCommandError when the command is refused before dispatch;
+    dispatch-time failures come back as an CliCommandResult with a nonzero
     exit code and the captured output.
     """
     try:
         user_argv = shlex.split(command_text)
     except ValueError as exc:
-        raise AdminCommandError(f"could not parse the command line: {exc}") from exc
+        raise CliCommandError(f"could not parse the command line: {exc}") from exc
     if not user_argv:
-        raise AdminCommandError("no command given; see !meshtastic help")
+        raise CliCommandError("no command given; see !meshtastic help")
 
     parser, args = _parse_user_args(user_argv)
     _check_verb_policy(parser, args, allow_destructive=allow_destructive)
     _validate_destination(args, interface, local_node_num)
     if getattr(args, "channel_fetch_attempts", 1) < 1:
-        raise AdminCommandError("--channel-fetch-attempts must be at least 1")
+        raise CliCommandError("--channel-fetch-attempts must be at least 1")
     _clamp_timeout(args, max_timeout_seconds)
     return _run_embedded(interface, parser, args, user_argv)

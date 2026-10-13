@@ -18,9 +18,9 @@ import pytest
 from nio import RoomGetStateResponse
 
 from mmrelay.matrix_utils import _dispatch_unmapped_room_message
+from mmrelay.meshtastic_cli_executor import CliCommandError, CliCommandResult
 from mmrelay.plugins.base_plugin import BasePlugin
 from mmrelay.plugins.meshtastic_cli_plugin import Plugin, _join_execution
-from mmrelay.remote_admin_executor import AdminCommandError, AdminCommandResult
 
 ADMIN_ROOM = "!admin:matrix.org"
 ADMIN_SENDER = "@alice:matrix.org"
@@ -194,7 +194,7 @@ async def test_ignores_non_command_messages() -> None:
 async def test_help_without_args() -> None:
     plugin = _plugin(admin_room=ADMIN_ROOM)
     assert await _call(plugin, _room(), "!meshtastic")
-    assert "Remote admin" in _last_message(plugin)
+    assert "Meshtastic CLI" in _last_message(plugin)
 
 
 async def test_help_keyword() -> None:
@@ -241,7 +241,7 @@ async def test_refusal_log_names_required_power_level() -> None:
 async def test_room_creator_authorized_despite_empty_users_map() -> None:
     plugin = _plugin(admin_room=ADMIN_ROOM)
     plugin._execute = MagicMock(  # type: ignore[method-assign]
-        return_value=AdminCommandResult(exit_code=0, output="ok")
+        return_value=CliCommandResult(exit_code=0, output="ok")
     )
     client = MagicMock()
     client.room_get_state = AsyncMock(
@@ -283,7 +283,7 @@ async def test_missing_power_levels_refused() -> None:
 async def test_sender_at_threshold_authorized() -> None:
     plugin = _plugin(admin_room=ADMIN_ROOM)
     plugin._execute = MagicMock(  # type: ignore[method-assign]
-        return_value=AdminCommandResult(exit_code=0, output="ok")
+        return_value=CliCommandResult(exit_code=0, output="ok")
     )
     room = _room(users={ADMIN_SENDER: 50})
     assert await _call(plugin, room, f"!meshtastic --dest {REMOTE_NODE_ID} --reboot")
@@ -294,7 +294,7 @@ async def test_cached_authorized_sender_refused_when_client_unavailable() -> Non
     """A cached grant cannot authorize when fresh state is unavailable."""
     plugin = _plugin(admin_room=ADMIN_ROOM)
     plugin._execute = MagicMock(  # type: ignore[method-assign]
-        return_value=AdminCommandResult(exit_code=0, output="ok")
+        return_value=CliCommandResult(exit_code=0, output="ok")
     )
     with patch(
         "mmrelay.matrix_utils.connect_matrix",
@@ -336,7 +336,7 @@ async def test_removed_admin_override_refused_before_radio_execution(
 async def test_successful_command_replies_with_output() -> None:
     plugin = _plugin(admin_room=ADMIN_ROOM)
     plugin._execute = MagicMock(  # type: ignore[method-assign]
-        return_value=AdminCommandResult(exit_code=0, output="lora.region: 4")
+        return_value=CliCommandResult(exit_code=0, output="lora.region: 4")
     )
     assert await _call(
         plugin,
@@ -353,7 +353,7 @@ async def test_successful_command_replies_with_output() -> None:
 async def test_failed_command_replies_with_output() -> None:
     plugin = _plugin(admin_room=ADMIN_ROOM)
     plugin._execute = MagicMock(  # type: ignore[method-assign]
-        return_value=AdminCommandResult(exit_code=1, output="ERROR: no admin")
+        return_value=CliCommandResult(exit_code=1, output="ERROR: no admin")
     )
     assert await _call(
         plugin,
@@ -370,7 +370,7 @@ async def test_secret_args_are_not_logged_and_remote_output_is_plain_text() -> N
     plugin = _plugin(admin_room=ADMIN_ROOM)
     plugin.logger = MagicMock()
     plugin._execute = MagicMock(  # type: ignore[method-assign]
-        return_value=AdminCommandResult(
+        return_value=CliCommandResult(
             exit_code=0, output="<img src=x onerror=alert(1)>"
         )
     )
@@ -388,7 +388,7 @@ async def test_secret_args_are_not_logged_and_remote_output_is_plain_text() -> N
 async def test_empty_output_reply_is_header_only() -> None:
     plugin = _plugin(admin_room=ADMIN_ROOM)
     plugin._execute = MagicMock(  # type: ignore[method-assign]
-        return_value=AdminCommandResult(exit_code=0, output="")
+        return_value=CliCommandResult(exit_code=0, output="")
     )
     assert await _call(
         plugin,
@@ -401,7 +401,7 @@ async def test_empty_output_reply_is_header_only() -> None:
 async def test_long_output_truncated() -> None:
     plugin = _plugin(admin_room=ADMIN_ROOM, max_output_chars=50)
     plugin._execute = MagicMock(  # type: ignore[method-assign]
-        return_value=AdminCommandResult(exit_code=0, output="x" * 500)
+        return_value=CliCommandResult(exit_code=0, output="x" * 500)
     )
     assert await _call(
         plugin,
@@ -416,7 +416,7 @@ async def test_long_output_truncated() -> None:
 async def test_executor_refusal_reported() -> None:
     plugin = _plugin(admin_room=ADMIN_ROOM)
     plugin._execute = MagicMock(  # type: ignore[method-assign]
-        side_effect=AdminCommandError("--dest is required")
+        side_effect=CliCommandError("--dest is required")
     )
     assert await _call(plugin, _room(users={ADMIN_SENDER: 100}), "!meshtastic --reboot")
     assert "Refused: --dest is required" in _last_message(plugin)
@@ -463,7 +463,7 @@ async def test_command_lock_acquired_before_first_matrix_await() -> None:
 
     plugin.send_matrix_reaction = AsyncMock(side_effect=pending_reaction)  # type: ignore[method-assign]
     plugin._execute = MagicMock(  # type: ignore[method-assign]
-        return_value=AdminCommandResult(exit_code=0, output="done")
+        return_value=CliCommandResult(exit_code=0, output="done")
     )
     command = f"!meshtastic --dest {REMOTE_NODE_ID} --reboot"
     room = _room(users={ADMIN_SENDER: 100})
@@ -487,10 +487,10 @@ async def test_cancelled_handler_keeps_lock_until_radio_worker_finishes() -> Non
     entered = threading.Event()
     release = threading.Event()
 
-    def blocking_execute(_args: str) -> AdminCommandResult:
+    def blocking_execute(_args: str) -> CliCommandResult:
         entered.set()
         assert release.wait(3)
-        return AdminCommandResult(exit_code=0, output="done")
+        return CliCommandResult(exit_code=0, output="done")
 
     plugin._execute = MagicMock(side_effect=blocking_execute)  # type: ignore[method-assign]
     room = _room(users={ADMIN_SENDER: 100})
@@ -526,8 +526,8 @@ def test_execute_passes_interface_and_settings() -> None:
         patch("mmrelay.meshtastic_utils.shutting_down", False),
         patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
         patch(
-            "mmrelay.plugins.meshtastic_cli_plugin.run_admin_command",
-            return_value=AdminCommandResult(exit_code=0, output="done"),
+            "mmrelay.plugins.meshtastic_cli_plugin.run_cli_command",
+            return_value=CliCommandResult(exit_code=0, output="done"),
         ) as mock_run,
     ):
         result = plugin._execute(f"--dest {REMOTE_NODE_ID} --reboot")
@@ -550,7 +550,7 @@ def test_execute_reports_missing_interface() -> None:
         patch("mmrelay.meshtastic_utils.shutting_down", False),
         patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
     ):
-        with pytest.raises(AdminCommandError, match="connection is not ready"):
+        with pytest.raises(CliCommandError, match="connection is not ready"):
             plugin._execute(f"--dest {REMOTE_NODE_ID} --reboot")
     mock_connect.assert_not_called()
 
@@ -566,9 +566,9 @@ def test_execute_does_not_connect_during_recovery(state: str) -> None:
         patch("mmrelay.meshtastic_utils.reconnecting", state == "reconnecting"),
         patch("mmrelay.meshtastic_utils.shutting_down", state == "shutting_down"),
         patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
-        patch("mmrelay.plugins.meshtastic_cli_plugin.run_admin_command") as mock_run,
+        patch("mmrelay.plugins.meshtastic_cli_plugin.run_cli_command") as mock_run,
     ):
-        with pytest.raises(AdminCommandError, match="connection is not ready"):
+        with pytest.raises(CliCommandError, match="connection is not ready"):
             plugin._execute("--get lora.region")
     mock_connect.assert_not_called()
     mock_run.assert_not_called()
@@ -584,9 +584,9 @@ def test_execute_requires_ready_shared_client(connected: bool | None) -> None:
         patch("mmrelay.meshtastic_utils.reconnecting", False),
         patch("mmrelay.meshtastic_utils.shutting_down", False),
         patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
-        patch("mmrelay.plugins.meshtastic_cli_plugin.run_admin_command") as mock_run,
+        patch("mmrelay.plugins.meshtastic_cli_plugin.run_cli_command") as mock_run,
     ):
-        with pytest.raises(AdminCommandError, match="connection is not ready"):
+        with pytest.raises(CliCommandError, match="connection is not ready"):
             plugin._execute("--get lora.region")
     mock_connect.assert_not_called()
     mock_run.assert_not_called()
@@ -600,7 +600,7 @@ async def test_admin_room_dispatch_claims_command() -> None:
     plugin = _plugin(admin_room=ADMIN_ROOM)
     room = _room(users={ADMIN_SENDER: 100})
     plugin._execute = MagicMock(  # type: ignore[method-assign]
-        return_value=AdminCommandResult(exit_code=0, output="rebooted")
+        return_value=CliCommandResult(exit_code=0, output="rebooted")
     )
     with patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]):
         await _dispatch_unmapped_room_message(
@@ -613,7 +613,7 @@ async def test_admin_room_dispatch_claims_command() -> None:
 
 
 async def test_join_execution_reraises_worker_error_without_cancellation() -> None:
-    async def fail() -> AdminCommandResult:
+    async def fail() -> CliCommandResult:
         raise RuntimeError("radio exploded")
 
     worker = asyncio.create_task(fail())
@@ -627,7 +627,7 @@ async def test_join_execution_reraises_worker_error_without_cancellation() -> No
 async def test_join_execution_raises_cancelled_after_draining_raised_worker() -> None:
     release = asyncio.Event()
 
-    async def fail_soon() -> AdminCommandResult:
+    async def fail_soon() -> CliCommandResult:
         await release.wait()
         raise RuntimeError("radio exploded")
 

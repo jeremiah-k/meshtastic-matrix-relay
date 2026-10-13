@@ -1,4 +1,4 @@
-# Meshtastic CLI (remote admin)
+# Meshtastic CLI plugin
 
 The `meshtastic_cli` core plugin lets authorized Matrix users run mtjk admin commands against **remote** mesh nodes from one designated Matrix room. Commands are parsed and dispatched by mtjk's own CLI machinery, in-process, over the relay's existing Meshtastic connection — there is no second connection to the node, and the feature works whether the relay is attached over serial, TCP, or BLE.
 
@@ -86,7 +86,7 @@ A failed startup join for a plugin-owned room is logged without stopping the map
 
 ## Development dependency
 
-MMRelay pins the exact published mtjk release in `pyproject.toml`; remote administration requires the embedded command API (version 1) and request-correlated origin-router rejection handling that the pinned release ships. Recreate the environment with `uv sync --locked --extra dev --extra test --extra e2e` to select the pin; do not install upstream `meshtastic` in the same environment because the distributions share the `meshtastic` package namespace. Record the tested mtjk release whenever the pin changes, and run the combined remote-admin/embedded-command tests.
+MMRelay pins the exact published mtjk release in `pyproject.toml`; the Meshtastic CLI plugin requires the embedded command API (version 1) and request-correlated origin-router rejection handling that the pinned release ships. Recreate the environment with `uv sync --locked --extra dev --extra test --extra e2e` to select the pin; do not install upstream `meshtastic` in the same environment because the distributions share the `meshtastic` package namespace. Record the tested mtjk release whenever the pin changes, and run the combined Meshtastic CLI/embedded-command tests.
 
 `executeCommand` completion means a supported invocation finished; it does not undo radio-side writes if a later timeout or failure occurs. A positive ACK is different from verified final device state.
 

@@ -6,12 +6,12 @@ from unittest.mock import patch
 
 import pytest
 
-from tests.remote_admin_test_support import (
+from tests.meshtastic_cli_test_support import (
     REMOTE_NODE_ID,
     REMOTE_NODE_NUM,
     real_interface,
 )
-from tests.remote_admin_test_support import real_mtjk as real_mtjk
+from tests.meshtastic_cli_test_support import real_mtjk as real_mtjk
 
 
 @pytest.mark.integration
