@@ -33,7 +33,11 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: 3.15
+          # 3.14, not 3.15: bleak's winrt-* dependencies publish no cp315
+          # wheels, and their sdist builds fail on the runner (LNK1104),
+          # aborting the entire dependency install. Revisit once cp315
+          # wheels ship.
+          python-version: 3.14
 
       - name: Validate release tag against package version
         if: ${{ github.event_name == 'release' }}
