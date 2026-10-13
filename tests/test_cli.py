@@ -20,6 +20,7 @@
 # See docs/dev/TESTING_GUIDE.md for comprehensive async mocking patterns.
 # ruff: noqa: E402
 
+import io
 import json
 import os
 import sys
@@ -184,6 +185,99 @@ class TestCLI(unittest.TestCase):
 
         with patch("sys.argv", ["mmrelay", "--config", "valid_config.yaml"]):
             self.assertTrue(check_config())
+
+    @patch("mmrelay.cli._validate_credentials_json")
+    @patch("mmrelay.config.os.makedirs")
+    @patch("mmrelay.cli._validate_e2ee_config")
+    @patch("mmrelay.cli.os.path.isfile")
+    @patch("builtins.open")
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    def test_check_config_accepts_domain_less_room_ids(
+        self,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_validate_e2ee,
+        mock_makedirs,
+        mock_validate_credentials,
+    ):
+        """Room version 12+ IDs carry no server suffix and must validate."""
+        mock_validate_yaml.return_value = (
+            True,
+            None,
+            {
+                "matrix": {
+                    "homeserver": "https://matrix.org",
+                    "access_token": "token",
+                    "bot_user_id": "@bot:matrix.org",
+                },
+                "matrix_rooms": [
+                    {
+                        "id": "!Ah4tQ7vZn9WkP2mXrB6yJc8sLd3FgUeH5iK1oN0pRwz",
+                        "meshtastic_channel": 0,
+                    }
+                ],
+                "meshtastic": {
+                    "connection_type": "serial",
+                    "serial_port": TEST_SERIAL_PORT,
+                },
+            },
+        )
+        mock_isfile.return_value = True
+        mock_validate_e2ee.return_value = True
+        mock_validate_credentials.return_value = False
+
+        with patch("sys.argv", ["mmrelay", "--config", "valid_config.yaml"]):
+            self.assertTrue(check_config())
+
+    @patch("mmrelay.cli._validate_credentials_json")
+    @patch("mmrelay.config.os.makedirs")
+    @patch("mmrelay.cli._validate_e2ee_config")
+    @patch("mmrelay.cli.os.path.isfile")
+    @patch("builtins.open")
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    def test_check_config_rejects_room_ids_that_are_neither_id_nor_alias(
+        self,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_validate_e2ee,
+        mock_makedirs,
+        mock_validate_credentials,
+    ):
+        """A pasted permalink or bare room name never matches a real room."""
+        mock_validate_yaml.return_value = (
+            True,
+            None,
+            {
+                "matrix": {
+                    "homeserver": "https://matrix.org",
+                    "access_token": "token",
+                    "bot_user_id": "@bot:matrix.org",
+                },
+                "matrix_rooms": [
+                    {
+                        "id": "https://matrix.to/#/!room:matrix.org?via=matrix.org",
+                        "meshtastic_channel": 0,
+                    }
+                ],
+                "meshtastic": {
+                    "connection_type": "serial",
+                    "serial_port": TEST_SERIAL_PORT,
+                },
+            },
+        )
+        mock_isfile.return_value = True
+        mock_validate_e2ee.return_value = True
+        mock_validate_credentials.return_value = False
+
+        with (
+            patch("sys.argv", ["mmrelay", "--config", "valid_config.yaml"]),
+            patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
+        ):
+            self.assertFalse(check_config())
+        self.assertIn("invalid 'id'", mock_stdout.getvalue())
+        self.assertIn("never", mock_stdout.getvalue())
 
     @patch("mmrelay.cli._validate_credentials_json")
     @patch("mmrelay.config.os.makedirs")

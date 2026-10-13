@@ -34,7 +34,7 @@ matrix:
 matrix_rooms: # Needs at least 1 room & channel, but supports all Meshtastic channels
   - id: "#someroomalias:example.matrix.org" # Matrix room aliases & IDs supported
     meshtastic_channel: 0
-  - id: "!someroomid:example.matrix.org"
+  - id: "!someroomid:example.matrix.org" # Room IDs are opaque: newer rooms (v12+) have no :server suffix — copy the ID exactly as your client shows it
     meshtastic_channel: 2
 
 meshtastic:

@@ -474,6 +474,59 @@ async def test_matrix_relay_reply_formatting(
     assert content["m.relates_to"]["m.in_reply_to"]["event_id"] == "$orig"
     assert content["formatted_body"].startswith("<mx-reply>")
     assert "In reply to" in content["formatted_body"]
+    assert (
+        "https://matrix.to/#/!room:matrix.org/$orig?via=matrix.org"
+        in content["formatted_body"]
+    )
+
+
+@patch("mmrelay.matrix_utils.connect_matrix")
+@patch("mmrelay.matrix_utils.get_interaction_settings")
+@patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False)
+async def test_matrix_relay_reply_permalink_routes_domain_less_rooms(
+    _mock_storage_enabled, mock_get_interactions, mock_connect_matrix
+):
+    """Reply permalinks must carry via parameters for v12+ domain-less room IDs."""
+    mock_get_interactions.return_value = {"reactions": False, "replies": False}
+
+    mock_room = MagicMock()
+    mock_room.encrypted = False
+    mock_room.display_name = "Room"
+
+    domain_less_room = "!Ah4tQ7vZn9WkP2mXrB6yJc8sLd3FgUeH5iK1oN0pRwz"
+    mock_client = MagicMock()
+    mock_client.user_id = "@bot:matrix.org"
+    mock_client.rooms = {domain_less_room: mock_room}
+    mock_client.room_send = AsyncMock(return_value=MagicMock(event_id="$event123"))
+    mock_connect_matrix.return_value = mock_client
+
+    config = {
+        "meshtastic": {"meshnet_name": "TestMesh"},
+        "matrix_rooms": [{"id": domain_less_room, "meshtastic_channel": 0}],
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.config", config),
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+            return_value=("mesh_id", domain_less_room, "original", "TestMesh"),
+        ),
+    ):
+        await matrix_relay(
+            room_id=domain_less_room,
+            message="Reply text",
+            longname="Alice",
+            shortname="A",
+            meshnet_name="TestMesh",
+            portnum=1,
+            reply_to_event_id="$orig",
+        )
+
+    content = mock_client.room_send.call_args.kwargs["content"]
+    assert (
+        f"https://matrix.to/#/{domain_less_room}/$orig?via=matrix.org"
+        in content["formatted_body"]
+    )
 
 
 @patch("mmrelay.matrix_utils.connect_matrix")
@@ -2858,3 +2911,48 @@ async def test_on_room_message_creates_mapping_info():
     mock_mapping.assert_called_once()
     args, _ = mock_mapping.call_args
     assert args[0] == "$event123"
+
+
+@patch("mmrelay.matrix_utils.connect_matrix")
+@patch("mmrelay.matrix_utils.get_interaction_settings")
+@patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False)
+async def test_matrix_relay_reply_permalink_escapes_event_query_and_via_server(
+    _mock_storage_enabled, mock_get_interactions, mock_connect_matrix
+):
+    """Opaque event IDs must not inject another via parameter or HTML attribute."""
+    mock_get_interactions.return_value = {"reactions": False, "replies": False}
+    mock_room = MagicMock()
+    mock_room.encrypted = False
+    mock_room.display_name = "Room"
+    mock_client = MagicMock()
+    mock_client.user_id = "@bot:matrix.org:8448"
+    mock_client.rooms = {"!room:matrix.org": mock_room}
+    mock_client.room_send = AsyncMock(return_value=MagicMock(event_id="$event123"))
+    mock_connect_matrix.return_value = mock_client
+    config = {
+        "meshtastic": {"meshnet_name": "TestMesh"},
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+    with (
+        patch("mmrelay.matrix_utils.config", config),
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+            return_value=("mesh_id", "!room:matrix.org", "original", "TestMesh"),
+        ),
+    ):
+        await matrix_relay(
+            room_id="!room:matrix.org",
+            message="Reply text",
+            longname="Alice",
+            shortname="A",
+            meshnet_name="TestMesh",
+            portnum=1,
+            reply_to_event_id="$orig?via=untrusted&other=1",
+        )
+    content = mock_client.room_send.call_args.kwargs["content"]
+    assert (
+        "https://matrix.to/#/!room:matrix.org/"
+        "$orig%3Fvia%3Duntrusted%26other%3D1?via=matrix.org%3A8448"
+        in content["formatted_body"]
+    )
+    assert 'via="untrusted"' not in content["formatted_body"]
