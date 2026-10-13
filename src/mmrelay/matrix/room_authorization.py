@@ -111,7 +111,8 @@ async def is_authorized_in_room(
         return False
     try:
         response = await asyncio.wait_for(
-            client.room_get_state(room.room_id), timeout=ROOM_STATE_FETCH_TIMEOUT_SECONDS
+            client.room_get_state(room.room_id),
+            timeout=ROOM_STATE_FETCH_TIMEOUT_SECONDS,
         )
     except Exception:  # noqa: BLE001 - authorization must fail closed
         return False
