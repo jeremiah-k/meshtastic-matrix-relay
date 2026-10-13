@@ -30,6 +30,7 @@ async def test_unmapped_admin_room_captures_get_through_plugin_and_real_dispatch
     from mmrelay.plugins.meshtastic_cli_plugin import Plugin
 
     interface = real_interface()
+    interface.isConnected.set()
     plugin = Plugin()
     plugin.config = {"active": True, "admin_room": "!admin:matrix.org", "timeout": 3}
     plugin.send_matrix_reaction = AsyncMock()
@@ -82,7 +83,10 @@ async def test_unmapped_admin_room_captures_get_through_plugin_and_real_dispatch
     with (
         patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]),
         patch("mmrelay.matrix_utils.connect_matrix", return_value=matrix_client),
-        patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=interface),
+        patch("mmrelay.meshtastic_utils.meshtastic_client", interface),
+        patch("mmrelay.meshtastic_utils.reconnecting", False),
+        patch("mmrelay.meshtastic_utils.shutting_down", False),
+        patch("mmrelay.meshtastic_utils.connect_meshtastic") as connect_again,
         patch.object(interface, "_send_data_with_wait", side_effect=respond),
         patch.object(interface, "_has_active_wait_request", return_value=True),
         patch.object(interface, "_wait_for_request_ack", return_value=True),
@@ -100,3 +104,4 @@ async def test_unmapped_admin_room_captures_get_through_plugin_and_real_dispatch
         "m.in_reply_to": {"event_id": "$command"}
     }
     close.assert_not_called()
+    connect_again.assert_not_called()

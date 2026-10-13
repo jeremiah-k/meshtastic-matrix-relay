@@ -134,9 +134,16 @@ class Plugin(BasePlugin):
         everything in it that is not a claimed ``!meshtastic`` command relays to
         the mesh.
         """
-        from mmrelay.matrix_utils import matrix_rooms
+        # Plugins start before the Matrix client is initialized. Read the
+        # original application config, not the Matrix client's later room cache.
+        from mmrelay.plugins import base_plugin
 
-        rooms: Any = matrix_rooms
+        global_config = base_plugin.config
+        rooms: Any = (
+            global_config.get("matrix_rooms")
+            if isinstance(global_config, dict)
+            else None
+        )
         candidate_ids: set[str] = set()
         if isinstance(rooms, dict):
             candidate_ids.update(key for key in rooms if isinstance(key, str))
@@ -337,12 +344,22 @@ class Plugin(BasePlugin):
         return True
 
     def _execute(self, args_text: str) -> AdminCommandResult:
-        """Connect to the mesh and run one admin command (blocking)."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
+        """Run on the relay's ready interface, without initiating a connection."""
+        from mmrelay import meshtastic_utils
 
-        interface = connect_meshtastic()
+        # A command worker must never race the relay's own reconnect loop by
+        # creating a second transport (nor wait for another connect attempt).
+        if meshtastic_utils.reconnecting or meshtastic_utils.shutting_down:
+            raise AdminCommandError("Meshtastic connection is not ready.")
+        interface = meshtastic_utils.meshtastic_client
         if interface is None:
-            raise AdminCommandError("Unable to connect to the Meshtastic device.")
+            raise AdminCommandError("Meshtastic connection is not ready.")
+        connected = getattr(interface, "isConnected", None)
+        if (
+            not callable(getattr(connected, "is_set", None))
+            or connected.is_set() is not True
+        ):
+            raise AdminCommandError("Meshtastic connection is not ready.")
         my_info = getattr(interface, "myInfo", None)
         local_node_num = getattr(my_info, "my_node_num", None)
         result = run_admin_command(

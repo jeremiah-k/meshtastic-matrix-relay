@@ -518,15 +518,21 @@ def test_execute_passes_interface_and_settings() -> None:
     plugin = _plugin(admin_room=ADMIN_ROOM, allow_destructive=True, timeout="45")
     interface = MagicMock()
     interface.myInfo.my_node_num = 12345
+    interface.isConnected = threading.Event()
+    interface.isConnected.set()
     with (
+        patch("mmrelay.meshtastic_utils.meshtastic_client", interface),
+        patch("mmrelay.meshtastic_utils.reconnecting", False),
+        patch("mmrelay.meshtastic_utils.shutting_down", False),
+        patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
         patch(
             "mmrelay.plugins.meshtastic_cli_plugin.run_admin_command",
             return_value=AdminCommandResult(exit_code=0, output="done"),
         ) as mock_run,
-        patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=interface),
     ):
         result = plugin._execute(f"--dest {REMOTE_NODE_ID} --reboot")
     assert result.exit_code == 0
+    mock_connect.assert_not_called()
     mock_run.assert_called_once_with(
         interface,
         f"--dest {REMOTE_NODE_ID} --reboot",
@@ -538,9 +544,52 @@ def test_execute_passes_interface_and_settings() -> None:
 
 def test_execute_reports_missing_interface() -> None:
     plugin = _plugin(admin_room=ADMIN_ROOM)
-    with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=None):
-        with pytest.raises(AdminCommandError, match="Unable to connect"):
+    with (
+        patch("mmrelay.meshtastic_utils.meshtastic_client", None),
+        patch("mmrelay.meshtastic_utils.reconnecting", False),
+        patch("mmrelay.meshtastic_utils.shutting_down", False),
+        patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
+    ):
+        with pytest.raises(AdminCommandError, match="connection is not ready"):
             plugin._execute(f"--dest {REMOTE_NODE_ID} --reboot")
+    mock_connect.assert_not_called()
+
+
+@pytest.mark.parametrize("state", ["reconnecting", "shutting_down"])
+def test_execute_does_not_connect_during_recovery(state: str) -> None:
+    plugin = _plugin(admin_room=ADMIN_ROOM)
+    interface = MagicMock()
+    interface.isConnected = threading.Event()
+    interface.isConnected.set()
+    with (
+        patch("mmrelay.meshtastic_utils.meshtastic_client", interface),
+        patch("mmrelay.meshtastic_utils.reconnecting", state == "reconnecting"),
+        patch("mmrelay.meshtastic_utils.shutting_down", state == "shutting_down"),
+        patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
+        patch("mmrelay.plugins.meshtastic_cli_plugin.run_admin_command") as mock_run,
+    ):
+        with pytest.raises(AdminCommandError, match="connection is not ready"):
+            plugin._execute("--get lora.region")
+    mock_connect.assert_not_called()
+    mock_run.assert_not_called()
+
+
+@pytest.mark.parametrize("connected", [False, None])
+def test_execute_requires_ready_shared_client(connected: bool | None) -> None:
+    plugin = _plugin(admin_room=ADMIN_ROOM)
+    interface = MagicMock()
+    interface.isConnected = threading.Event() if connected is not None else None
+    with (
+        patch("mmrelay.meshtastic_utils.meshtastic_client", interface),
+        patch("mmrelay.meshtastic_utils.reconnecting", False),
+        patch("mmrelay.meshtastic_utils.shutting_down", False),
+        patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
+        patch("mmrelay.plugins.meshtastic_cli_plugin.run_admin_command") as mock_run,
+    ):
+        with pytest.raises(AdminCommandError, match="connection is not ready"):
+            plugin._execute("--get lora.region")
+    mock_connect.assert_not_called()
+    mock_run.assert_not_called()
 
 
 # --- unmapped-room integration ---------------------------------------------------
@@ -661,7 +710,9 @@ def test_start_warns_when_admin_room_is_mesh_mapped(
     with (
         patch.object(plugin, "logger") as mock_logger,
         patch.object(BasePlugin, "start", lambda self: None),
-        patch("mmrelay.matrix_utils.matrix_rooms", matrix_rooms_value),
+        patch(
+            "mmrelay.plugins.base_plugin.config", {"matrix_rooms": matrix_rooms_value}
+        ),
     ):
         plugin.start()
     assert mock_logger.warning.called
@@ -669,12 +720,29 @@ def test_start_warns_when_admin_room_is_mesh_mapped(
     assert "matrix_rooms" in message
 
 
+def test_start_uses_config_before_matrix_client_is_ready() -> None:
+    plugin = _plugin(admin_room=ADMIN_ROOM)
+    with (
+        patch.object(plugin, "logger") as mock_logger,
+        patch.object(BasePlugin, "start", lambda self: None),
+        patch(
+            "mmrelay.plugins.base_plugin.config", {"matrix_rooms": [{"id": ADMIN_ROOM}]}
+        ),
+        patch("mmrelay.matrix_utils.matrix_rooms", []),
+    ):
+        plugin.start()
+    mock_logger.warning.assert_called_once()
+
+
 def test_start_does_not_warn_when_admin_room_is_not_mesh_mapped() -> None:
     plugin = _plugin(admin_room=ADMIN_ROOM)
     with (
         patch.object(plugin, "logger") as mock_logger,
         patch.object(BasePlugin, "start", lambda self: None),
-        patch("mmrelay.matrix_utils.matrix_rooms", [{"id": "!other:matrix.org"}]),
+        patch(
+            "mmrelay.plugins.base_plugin.config",
+            {"matrix_rooms": [{"id": "!other:matrix.org"}]},
+        ),
     ):
         plugin.start()
     assert not mock_logger.warning.called
@@ -724,7 +792,9 @@ def test_start_treats_non_container_matrix_rooms_as_unmapped(
     with (
         patch.object(plugin, "logger") as mock_logger,
         patch.object(BasePlugin, "start", lambda self: None),
-        patch("mmrelay.matrix_utils.matrix_rooms", matrix_rooms_value),
+        patch(
+            "mmrelay.plugins.base_plugin.config", {"matrix_rooms": matrix_rooms_value}
+        ),
     ):
         plugin.start()
     assert not mock_logger.warning.called
