@@ -38,8 +38,12 @@ def _valid_server_name(value: str) -> bool:
         close = value.find("]")
         if close == -1:
             return False
+        # RFC 3986 IP-literals do not contain scoped/zone identifiers.
+        literal = value[1:close]
+        if "%" in literal:
+            return False
         try:
-            ipaddress.IPv6Address(value[1:close])
+            ipaddress.IPv6Address(literal)
         except ValueError:
             return False
         suffix = value[close + 1 :]
@@ -69,7 +73,11 @@ def _valid_server_name(value: str) -> bool:
 
 def _valid_length(value: str) -> bool:
     """Matrix room IDs and aliases are limited to 255 UTF-8 bytes."""
-    return len(value.encode("utf-8")) <= 255
+    try:
+        return len(value.encode("utf-8")) <= 255
+    except UnicodeEncodeError:
+        # YAML may represent unpaired surrogates; they are not UTF-8 IDs.
+        return False
 
 
 def is_room_id(value: Any) -> bool:

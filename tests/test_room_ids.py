@@ -34,6 +34,8 @@ def test_room_ids_accept_both_forms(value: str) -> None:
         "!opaque:bad:port",
         "!opaque:bad:999999",
         "!opaque:[not-an-ipv6]",
+        "!opaque:[fe80::1%eth0]",  # IPv6 zone IDs are not Matrix server names
+        "!\ud800:server.example",  # cannot encode as UTF-8
         "!opaque:server..example",
         "!opaque:example.-bad",
         "!opaque:example.org:0",
@@ -69,6 +71,8 @@ def test_room_aliases_accept_valid_forms(value: str) -> None:
         "#room",
         "#:server",
         "#alias:bad/path",
+        "#alias:[fe80::1%eth0]",
+        "#\ud800:server.example",
         "#alias:bad:port",
         "#alias:example.org:123456",
         "#alias:example..org",
