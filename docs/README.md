@@ -13,6 +13,7 @@ operator guidance**. Broader conceptual and community documentation lives in the
 
 - **[Installation Guide](INSTRUCTIONS.md)** — Docker or native (pipx) setup and primary configuration workflow
 - **[Docker Guide](DOCKER.md)** — Docker deployment
+- **[Windows Guide](WINDOWS.md)** — native installation and optional installer
 - **[Helm Guide](HELM.md)** — Kubernetes deployment with Helm
 - **[Kubernetes Guide](KUBERNETES.md)** — static-manifest deployment
 
@@ -27,11 +28,12 @@ operator guidance**. Broader conceptual and community documentation lives in the
 ## Upgrade and release notes
 
 - **[What's New in 1.4.0](WHATS_NEW_1.4.md)** — 1.4 release summary and upgrade guidance
-- **[Migration Guide for v1.3 layout](MIGRATION_1.3.md)** — moving older installations to the unified MMRelay home layout
 - **[What's New in 1.3.0](WHATS_NEW_1.3.md)** — historical 1.3 release summary
 - **[What's New in 1.2](WHATS_NEW_1.2.md)** — historical 1.2 release notes
 
 ## Runtime file locations
+
+Linux/macOS defaults for native installations:
 
 | File          | Purpose               | Default location                     |
 | ------------- | --------------------- | ------------------------------------ |
@@ -51,6 +53,7 @@ container mounts are used. The deployment guides document those cases.
 - **[BLE Compatibility Notes](dev/BLE_DUAL_LIBRARY_COMPATIBILITY.md)** — BLE library compatibility design
 - **[Matrix Compatibility Plan](dev/MATRIX_DUAL_LIBRARY_COMPATIBILITY_PLAN.md)** — Matrix-provider compatibility design
 - **[mindroom-nio 1.x compatibility draft](dev/MINDROOM_NIO_UPGRADE.md)** — Python-specific SDK selection, ordinary-client contracts, and live-validation requirements
+- **[Historical v1.3 migration guide](MIGRATION_1.3.md)** — reference for older data layouts, not required for new installs
 - **[Archived implementation notes](dev/archive/)** — historical design and migration material
 
 ## Getting help

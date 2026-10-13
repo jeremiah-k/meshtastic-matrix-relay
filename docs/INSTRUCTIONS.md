@@ -5,20 +5,19 @@ MMRelay runs on Linux, macOS, and Windows. Native installs require Python
 
 ## Choose an installation method
 
-MMRelay runs natively via pipx or as a Docker container. Both use the same
-configuration format and authentication command (`mmrelay auth login`). Native
-Linux/macOS installs use `~/.mmrelay/` by default; Windows native installs use
-AppData. Docker mounts a host data directory at `/data`. To move between
-installations, copy the complete data directory, including `matrix/`, while
-the relay is stopped. See the [Docker Guide](DOCKER.md#data-persistence) for
-mounts and custom locations.
+Choose Docker for an always-on relay, or install the native application with
+[pipx](https://pipx.pypa.io/stable/) or [uv](https://docs.astral.sh/uv/).
+All methods use the same configuration format and `mmrelay auth login` command.
+Linux/macOS native installs default to `~/.mmrelay/`; native Windows installs
+default to `%LOCALAPPDATA%\mmrelay`. Docker uses `/data` inside the container.
+See the [Docker Guide](DOCKER.md#data-persistence) for mounts and persistence.
 
-|                   | Docker                                         | pipx (native)                          |
-| ----------------- | ---------------------------------------------- | -------------------------------------- |
-| Best for          | Always-on servers, NAS boxes, VPS hosts        | Desktops, laptops, Raspberry Pi boards |
-| Host needs        | Docker                                         | Python 3.11+                           |
-| BLE / serial node | BLE on Linux hosts only; extra compose options | Direct device access; simplest setup   |
-| Upgrades          | `docker compose pull && docker compose up -d`  | `pipx upgrade mmrelay`                 |
+|                   | Docker                                         | pipx / uv (native)                                 |
+| ----------------- | ---------------------------------------------- | -------------------------------------------------- |
+| Best for          | Always-on servers, NAS boxes, VPS hosts        | Desktops, laptops, Raspberry Pi boards             |
+| Host needs        | Docker                                         | Python 3.11+ and pipx or uv                        |
+| BLE / serial node | BLE on Linux hosts only; extra compose options | Direct device access; simplest setup               |
+| Upgrades          | `docker compose pull && docker compose up -d`  | `pipx upgrade mmrelay` / `uv tool upgrade mmrelay` |
 
 **Rule of thumb:** headless server with a TCP-connected node → Docker.
 Node attached over USB/serial or Bluetooth → native. For Kubernetes, see the
@@ -49,55 +48,49 @@ Prefer not to clone the repository? The [Docker Guide](DOCKER.md) has a
 curl-only Quick Start, Portainer instructions, compose snippets for each
 connection type, and full troubleshooting. To build the image from source
 instead of pulling it, run `make setup` and choose "Build from source".
-Upgrading from an older MMRelay layout? See the
-[Migration Guide for v1.3](MIGRATION_1.3.md).
 
-### Native install (pipx)
+### Native install (pipx or uv)
+
+Use either isolated tool installer (choose one):
 
 ```bash
-# Install using pipx for isolated installation
 pipx install mmrelay
-
-# Or using pip
-pip install mmrelay
+# Or:
+uv tool install mmrelay
 ```
 
-For pipx installation instructions, see: [pipx installation guide](https://pipx.pypa.io/stable/installation/#on-linux)
+Update with `pipx upgrade mmrelay` or `uv tool upgrade mmrelay`, matching your
+installer. For encrypted Matrix rooms on supported native platforms, install
+`pipx install 'mmrelay[e2e]'` or `uv tool install 'mmrelay[e2e]'` instead.
+The sample configuration enables E2EE by default; consult the
+[E2EE Guide](E2EE.md) for supported systems. Docker already includes E2EE
+requirements. See the [Windows Guide](WINDOWS.md) for the optional Windows
+installer, platform limitations, and default data location.
 
-For encrypted Matrix rooms on supported native platforms, install
-`pipx install 'mmrelay[e2e]'` instead (or `pip install 'mmrelay[e2e]'`). The sample
-configuration enables E2EE by default. See the [E2EE Guide](E2EE.md) for platform
-requirements; the Docker image already includes these dependencies.
+### Development environment (uv)
 
-### Developer Install
-
-If you want to contribute or modify the code:
+For source changes and tests, use the committed lockfile rather than a tool
+installation:
 
 ```bash
-# Clone the repository
 git clone https://github.com/jeremiah-k/meshtastic-matrix-relay.git
 cd meshtastic-matrix-relay
-
-# Create and activate a virtual environment
-python -m venv venv
-. venv/bin/activate
-
-# Install in development mode
-pip install -e .
-
-# For E2EE development (Linux/macOS only)
-pip install -e '.[e2e]'
+uv sync --locked --extra dev --extra test --extra e2e
+uv run --no-sync python -m pytest -q
 ```
+
+See the [Testing Guide](dev/TESTING_GUIDE.md) for supported environments and
+alternative development setups. The `e2e` extra requires a supported platform.
 
 ## Configuration
 
 ### Configuration File Locations
 
-MMRelay looks for configuration files in the following locations (in order):
-
-1. Path specified with `--config` command-line option
-2. `~/.mmrelay/config.yaml` (recommended location)
-3. Current directory `config.yaml` (for backward compatibility)
+MMRelay uses the selected data home for configuration. By default that is
+`~/.mmrelay/config.yaml` on Linux/macOS, `%LOCALAPPDATA%\mmrelay\config.yaml`
+on Windows, and `/data/config.yaml` in Docker. Explicit `--config` and
+`--home` / `MMRELAY_HOME` overrides change the path selection. Run `mmrelay paths`
+to inspect the effective paths rather than guessing based on the working directory.
 
 ### Setting Up Your Configuration
 
@@ -114,11 +107,9 @@ mmrelay config generate
 nano ~/.mmrelay/config.yaml
 ```
 
-This command will:
-
-1. Check if a configuration file already exists (to avoid overwriting it)
-2. Create the necessary directory structure if it doesn't exist
-3. Generate a sample configuration file at `~/.mmrelay/config.yaml`
+The command checks for existing configuration before creating a sample under
+the active data home. On Windows, use `mmrelay config edit` to open the active
+configuration in Notepad.
 
 ### Matrix Authentication Setup
 
@@ -146,17 +137,9 @@ This interactive command will:
 - **Linux/macOS**: Full E2EE support with automatic encryption
 - **Windows**: Regular Matrix communication (E2EE not available due to library limitations)
 
-Windows installers keep application files separate from data in `%LOCALAPPDATA%\mmrelay`. Existing installations continue to use their discovered data home until you choose **MM Relay Migrate Data** from the Start menu. That shortcut previews and confirms the move; see [Windows migration](MIGRATION_1.3.md#windows-specific-notes). The Config shortcut follows the active home before and after migration. Explicit `--home` and `MMRELAY_HOME` settings remain supported.
-
-When generating configuration in the installer, enter the full Matrix user ID (for example, `@relay:example.org`) and a channel number from 0 to 7. Quoted values, Windows backslashes, and Unicode are preserved in the generated UTF-8 configuration. Leave the password empty to set up authentication separately.
-
-### Plugins in the Windows executable
-
-The Windows installer includes a private Python runtime for plugin dependency installation; a separate Python installation is not required. Community plugins retain the normal security opt-in, explicit repository ref, and `install_requirements: true` requirements. Git must be available on PATH to clone community repositories.
-
-Dependencies are installed into `plugins/deps/<Python-ABI>-<platform>/` under the configured MMRelay home, persist across restarts, and stay separate across Python ABI upgrades. Failed downloads or installs leave the installed dependency directory untouched. File-based custom plugins use the same private runtime when retrying a missing dependency.
-
-Frozen builds install prebuilt wheels only, including compatible Windows native-extension wheels. Dependencies available only as source distributions cannot be installed by the executable; use a pip/pipx installation with the required build tools for those plugins. Python and pip configuration from a separate system installation does not affect the private installer. Plugins and their dependencies execute trusted code inside MMRelay; the private runtime is not a security sandbox.
+For native Windows installation, including the optional packaged installer,
+configuration editing, platform limitations, and plugin dependencies, see the
+[Windows Guide](WINDOWS.md).
 
 ### Configuration Tips
 
