@@ -64,6 +64,36 @@ def test_relocate_credentials_from_installer_matrix_directory(windows_homes, tmp
     assert not source.exists()
 
 
+def test_plugin_migration_ignores_nested_empty_destination_scaffolding(tmp_path):
+    source = tmp_path / "old-installer"
+    target = tmp_path / "new-home"
+    plugin_file = source / "plugins" / "core" / "weather" / "data" / "state.json"
+    plugin_file.parent.mkdir(parents=True)
+    plugin_file.write_text('{"value":42}', encoding="utf-8")
+    dependency = source / "plugins" / "deps" / "cpython-314-win-amd64" / "module.py"
+    dependency.parent.mkdir(parents=True)
+    dependency.write_text("VALUE = 42\n", encoding="utf-8")
+
+    # Startup creates *nested* directories, not installed plugin files.
+    for tier in (
+        "core/weather/data",
+        "deps/cpython-314-win-amd64",
+        "custom",
+        "community",
+    ):
+        (target / "plugins" / tier).mkdir(parents=True, exist_ok=True)
+
+    result = migrate.migrate_plugins([source], target)
+    assert result["success"] and result["action"] == "move", result
+    relocated = target / "plugins" / "core" / "weather" / "data" / "state.json"
+    assert relocated.read_text(encoding="utf-8") == '{"value":42}'
+    installed_dependency = (
+        target / "plugins" / "deps" / "cpython-314-win-amd64" / "module.py"
+    )
+    assert installed_dependency.is_file()
+    assert not plugin_file.exists()
+
+
 def test_relocate_core_plugin_data_and_installed_dependencies(tmp_path):
     source = tmp_path / "installer"
     target = tmp_path / "data-home"
@@ -94,6 +124,10 @@ def test_guided_windows_migration_previews_then_moves_one_home(windows_homes):
         connection.execute("CREATE TABLE probe(value INTEGER)")
         connection.execute("INSERT INTO probe VALUES (42)")
         connection.commit()
+    # A frozen startup may already have populated nested empty directories at
+    # the default home before migration begins.
+    for tier in ("core/weather/data", "deps/cpython-314-win-amd64"):
+        (target / "plugins" / tier).mkdir(parents=True, exist_ok=True)
     preview = migrate.migrate_windows_home(dry_run=True)
     assert preview["success"]
     assert Path(preview["target_home"]) == target

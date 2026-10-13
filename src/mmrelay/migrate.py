@@ -2160,17 +2160,10 @@ def migrate_plugins(
             "message": "No plugins directory found in legacy locations",
         }
 
-    # Check if target has actual plugin content (not just empty subdirectories)
-    # ensure_directories() creates empty custom/, community/, core/ subdirs
-    # We should only skip if those subdirs have actual plugin files
-    has_plugin_content = False
-    for plugin_type in ["custom", "community", "core", "deps"]:
-        type_dir = new_plugins_dir / plugin_type
-        if _dir_has_entries(type_dir):
-            has_plugin_content = True
-            break
-
-    if has_plugin_content and not force:
+    # The executable and ensure_directories() can create nested empty
+    # core/deps scaffolding before migration. Only actual files or links
+    # constitute installed plugin state and justify refusing to merge homes.
+    if paths_module.has_file_content(new_plugins_dir) and not force:
         logger.warning(
             "Plugins directory already exists at destination, skipping: %s. Use --force to overwrite.",
             new_plugins_dir,
