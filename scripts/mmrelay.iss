@@ -88,10 +88,10 @@ begin
   MeshtasticPage.Edits[0].Visible := False;
 
   MatrixPage.Add('Matrix homeserver URL (e.g., https://matrix.org):', False);
-  MatrixPage.Add('Matrix username (without @):', False);
+  MatrixPage.Add('Full Matrix user ID (e.g., @relay:example.org):', False);
   MatrixPage.Add('Matrix password:', True);
   MatrixPage.Edits[0].Hint := 'https://matrix.org or https://your.server.com';
-  MatrixPage.Edits[1].Hint := 'yourusername';
+  MatrixPage.Edits[1].Hint := '@relay:example.org';
   MatrixPage.Edits[2].Hint := 'Your Matrix account password';
 
   MatrixMeshtasticPage.Add('Matrix room ID/alias (example: #someroom:example.matrix.org):', False);
@@ -112,6 +112,62 @@ begin
   else
     result := 'false';
 end;
+
+function YamlString(Value: string): string;
+begin
+  Result := Value;
+  StringChangeEx(Result, '\', '\\', True);
+  StringChangeEx(Result, '"', '\"', True);
+  StringChangeEx(Result, #13, '\r', True);
+  StringChangeEx(Result, #10, '\n', True);
+  Result := '"' + Result + '"';
+end;
+
+function YamlSecret(Value: string): string;
+begin
+  Result := Value;
+  StringChangeEx(Result, '''', '''''', True);
+  Result := '''' + Result + '''';
+end;
+
+function SaveUtf8Text(FileName, Value: string): Boolean;
+var
+  Lines: TArrayOfString;
+begin
+  SetArrayLength(Lines, 1);
+  Lines[0] := Value;
+  Result := SaveStringsToUTF8File(FileName, Lines, False);
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  UserID: string;
+  Channel: Integer;
+begin
+  Result := True;
+  if not OverwriteConfig.Values[0] then
+    Exit;
+  if CurPageID = MatrixPage.ID then
+  begin
+    UserID := Trim(MatrixPage.Values[1]);
+    if (Copy(UserID, 1, 1) <> '@') or (Pos(':', UserID) < 3) or (Pos(':', UserID) = Length(UserID)) then
+    begin
+      MsgBox('Enter the full Matrix user ID, for example @relay:example.org.', mbError, MB_OK);
+      Result := False;
+    end;
+  end;
+  if CurPageID = MatrixMeshtasticPage.ID then
+  begin
+    Channel := StrToIntDef(Trim(MatrixMeshtasticPage.Values[1]), -1);
+    if (Channel < 0) or (Channel > 7) then
+    begin
+      MsgBox('The Meshtastic channel must be a whole number from 0 to 7.', mbError, MB_OK);
+      Result := False;
+    end;
+  end;
+end;
+
+
 
 { Skips config setup pages if needed}
 function ShouldSkipPage(PageID: Integer): Boolean;
@@ -232,7 +288,7 @@ begin
   host := MeshtasticPage.Values[2];
   ble_address := MeshtasticPage.Values[3];
   matrix_homeserver := MatrixPage.Values[0];
-  matrix_username := MatrixPage.Values[1];
+  matrix_username := Trim(MatrixPage.Values[1]);
   matrix_password := MatrixPage.Values[2];
 
   if OptionsPage.Values[0] then
@@ -245,29 +301,31 @@ begin
   end;
 
   config := 'matrix:' + #13#10 +
-            '  homeserver: "' + matrix_homeserver + '"' + #13#10 +
-            '  bot_user_id: "@' + matrix_username + '"' + #13#10 +
-            '  password: "' + matrix_password + '"' + #13#10 +
+            '  homeserver: ' + YamlString(matrix_homeserver) + #13#10 +
+            '  bot_user_id: ' + YamlString(matrix_username) + #13#10;
+  if matrix_password <> '' then
+    config := config + '  password: ' + YamlSecret(matrix_password) + #13#10;
+  config := config +
             'matrix_rooms:' + #13#10 +
-            '  - id: "' + MatrixMeshtasticPage.Values[0] + '"' + #13#10 +
-            '    meshtastic_channel: ' + MatrixMeshtasticPage.Values[1] + #13#10 +
+            '  - id: ' + YamlString(Trim(MatrixMeshtasticPage.Values[0])) + #13#10 +
+            '    meshtastic_channel: ' + IntToStr(StrToIntDef(Trim(MatrixMeshtasticPage.Values[1]), 0)) + #13#10 +
             'meshtastic:' + #13#10 +
             '  connection_type: "' + connection_type + '"' + #13#10;
 
   if connection_type = 'serial' then
-    config := config + '  serial_port: "' + serial_port + '"' + #13#10
+    config := config + '  serial_port: ' + YamlString(serial_port) + #13#10
   else if connection_type = 'network' then
-    config := config + '  host: "' + host + '"' + #13#10
+    config := config + '  host: ' + YamlString(host) + #13#10
   else if connection_type = 'ble' then
-    config := config + '  ble_address: "' + ble_address + '"' + #13#10;
+    config := config + '  ble_address: ' + YamlString(ble_address) + #13#10;
 
-  config := config + '  meshnet_name: "' + MeshtasticPage.Values[4] + '"' + #13#10 +
+  config := config + '  meshnet_name: ' + YamlString(MeshtasticPage.Values[4]) + #13#10 +
             '  broadcast_enabled: ' + BoolToStr(OptionsPage.Values[1]) + #13#10 +
             'logging:' + #13#10 +
             '  level: "' + log_level + '"' + #13#10 +
             'plugins:' + #13#10;
 
-  if Not SaveStringToFile(config_path, config, false) then
+  if Not SaveUtf8Text(config_path, config) then
   begin
     MsgBox('Could not create config file "config.yaml". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
   end;

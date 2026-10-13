@@ -12,6 +12,7 @@ on:
       - scripts/build_plugin_python.py
       - scripts/ci/smoke_frozen_plugins.py
       - scripts/ci/smoke_windows_upgrade.py
+      - scripts/ci/smoke_installer_yaml.py
       - src/**
 
 concurrency:
@@ -112,6 +113,9 @@ jobs:
         with:
           filepath: ./scripts/mmrelay.iss
           options: "/DAppVersion=${{ env.FILE_VERSION }}"
+
+      - name: Smoke test — round-trip installer YAML on Windows
+        run: python scripts/ci/smoke_installer_yaml.py
 
       - name: Smoke test — migrate an installed legacy Windows home
         env:

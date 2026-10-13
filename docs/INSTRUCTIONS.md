@@ -148,6 +148,8 @@ This interactive command will:
 
 Windows installers keep application files separate from data in `%LOCALAPPDATA%\mmrelay`. Existing installations continue to use their discovered data home until you choose **MM Relay Migrate Data** from the Start menu. That shortcut previews and confirms the move; see [Windows migration](MIGRATION_1.3.md#windows-specific-notes). The Config shortcut follows the active home before and after migration. Explicit `--home` and `MMRELAY_HOME` settings remain supported.
 
+When generating configuration in the installer, enter the full Matrix user ID (for example, `@relay:example.org`) and a channel number from 0 to 7. Quoted values, Windows backslashes, and Unicode are preserved in the generated UTF-8 configuration. Leave the password empty to set up authentication separately.
+
 ### Plugins in the Windows executable
 
 The Windows installer includes a private Python runtime for plugin dependency installation; a separate Python installation is not required. Community plugins retain the normal security opt-in, explicit repository ref, and `install_requirements: true` requirements. Git must be available on PATH to clone community repositories.
