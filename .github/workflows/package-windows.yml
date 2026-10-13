@@ -33,7 +33,11 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: 3.15
+          # 3.14, not 3.15: bleak's winrt-* dependencies publish no cp315
+          # wheels, and their sdist builds fail on the runner (LNK1104),
+          # aborting the entire dependency install. Revisit once cp315
+          # wheels ship.
+          python-version: 3.14
 
       - name: Validate release tag against package version
         if: ${{ github.event_name == 'release' }}
@@ -60,14 +64,24 @@ jobs:
             echo "FILE_VERSION=$VERSION-dev-$GIT_SHA" >> "$GITHUB_ENV"
           fi
 
-      - name: Install dependencies
+      - name: Install project dependencies
         run: |
           python -m pip install --upgrade pip
           pip install .
-          pip install pyinstaller
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
 
       - name: Build executable
-        run: pyinstaller --name=mmrelay.exe --onefile --console --collect-all rich src/mmrelay/main.py
+        # --collect-submodules meshtastic: mtjk lazy-loads BLE runtime modules
+        # (receive_compat_service, lifecycle_service) through importlib, which
+        # PyInstaller's static analysis cannot see.
+        # --copy-metadata mmrelay: the frozen app reads its version through
+        # importlib.metadata, which needs the dist-info inside the bundle.
+        run: pyinstaller --name=mmrelay.exe --onefile --console --collect-all rich --collect-submodules meshtastic --copy-metadata mmrelay src/mmrelay/main.py
+
+      - name: Smoke test — verify executable runs
+        run: .\dist\mmrelay.exe --version
 
       - name: Build installer
         # Intentionally using a SHA-pinned action that supports `filepath` + `options`.
