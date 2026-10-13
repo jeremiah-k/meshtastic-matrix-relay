@@ -61,6 +61,9 @@ def verify(installer: Path) -> None:
                 )
         if not (source / "migrate-data.bat").is_file():
             raise RuntimeError("Guided migration launcher is missing")
+        logout = (source / "logout.bat").read_text(encoding="utf-8")
+        if logout.count("auth logout %*") != 1:
+            raise RuntimeError("Logout launcher must run the destructive action once")
         (source / "config.yaml").write_text("meshtastic: {}\n", encoding="utf-8")
         matrix = source / "matrix"
         matrix.mkdir()

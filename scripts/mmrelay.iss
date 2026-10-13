@@ -192,6 +192,7 @@ var
   matrix_password: string;
   data_home: string;
   config_path: string;
+  staged_path: string;
   backup_path: string;
 begin
   // Always update batch files to ensure they use current CLI flags
@@ -264,15 +265,6 @@ begin
     Exit;
   end;
   config_path := data_home + '\config.yaml';
-  if FileExists(config_path) then
-  begin
-    backup_path := config_path + '.' + GetDateTimeString('yyyymmddhhnnss', '-', ':') + '.bak';
-    if not RenameFile(config_path, backup_path) then
-    begin
-        MsgBox('Failed to back up existing config.yaml. Please ensure the file is not open in another application and run the installer again.', mbError, MB_OK);
-        Abort;
-    end;
-  end;
 
   // Determine connection type from dropdown selection
   if ConnectionTypeCombo.ItemIndex = 0 then
@@ -325,8 +317,46 @@ begin
             '  level: "' + log_level + '"' + #13#10 +
             'plugins:' + #13#10;
 
-  if Not SaveUtf8Text(config_path, config) then
+  // Stage the complete UTF-8 document before touching an existing config.
+  // Never leave the active configuration missing if writing or replacing fails.
+  staged_path := config_path + '.new';
+  if FileExists(staged_path) then
   begin
-    MsgBox('Could not create config file "config.yaml". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
+    MsgBox('A previous temporary config file exists: ' + staged_path + '. Review it before retrying.', mbError, MB_OK);
+    Abort;
+  end;
+  if Not SaveUtf8Text(staged_path, config) then
+  begin
+    DeleteFile(staged_path);
+    MsgBox('Could not write the new configuration. The existing config.yaml was not changed.', mbError, MB_OK);
+    Abort;
+  end;
+
+  backup_path := '';
+  if FileExists(config_path) then
+  begin
+    backup_path := config_path + '.' + GetDateTimeString('yyyymmddhhnnss', '-', ':') + '.bak';
+    if not RenameFile(config_path, backup_path) then
+    begin
+      DeleteFile(staged_path);
+      MsgBox('Could not back up the existing config.yaml. It was not changed.', mbError, MB_OK);
+      Abort;
+    end;
+  end;
+
+  if Not RenameFile(staged_path, config_path) then
+  begin
+    DeleteFile(staged_path);
+    // Re-establish the original active configuration if replacement failed.
+    if backup_path <> '' then
+    begin
+      if not RenameFile(backup_path, config_path) then
+        MsgBox('Could not restore config.yaml. Its backup is at: ' + backup_path, mbError, MB_OK)
+      else
+        MsgBox('Could not install the new config.yaml. The previous configuration was restored.', mbError, MB_OK);
+    end
+    else
+      MsgBox('Could not install the new config.yaml. No previous configuration existed.', mbError, MB_OK);
+    Abort;
   end;
 end;
