@@ -4,9 +4,10 @@
 additionally grant their creators intrinsically infinite, undemotable power
 that no users-map entry can express — v12 auth rules even reject power-level
 events listing creators, so an empty ``users`` map is normal in those rooms
-(Element's "Creator" badge comes from the same rule). Room creators and the
-room version are immutable, so the state fetch is cached per room for the
-process lifetime; fetch failures fail closed and are retried later.
+(Element's "Creator" badge comes from the same rule). Command authorization
+fetches fresh state for every invocation and fails closed on unavailable
+state. The separate immutable-creator lookup caches only creator identities;
+cached power levels are for diagnostics and must never authorize commands.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ def clear_creator_cache() -> None:
 
 
 def sender_power_level(room: MatrixRoom, sender: str) -> int | None:
-    """Return the sender's power level per the room's power-levels event.
+    """Return cached sender power for diagnostics, never command authorization.
 
     Returns None when the room carries no readable power-levels state.
     Senders absent from the users map fall back to the event's

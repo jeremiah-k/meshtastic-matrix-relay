@@ -167,7 +167,7 @@ class Plugin(BasePlugin):
             level = int(value)
         except (TypeError, ValueError, OverflowError):
             return DEFAULT_ADMIN_POWER_LEVEL
-        return level if level >= 0 else DEFAULT_ADMIN_POWER_LEVEL
+        return level if level >= 1 else DEFAULT_ADMIN_POWER_LEVEL
 
     def _allow_destructive(self) -> bool:
         return self.config.get("allow_destructive", False) is True

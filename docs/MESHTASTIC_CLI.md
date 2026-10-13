@@ -80,6 +80,10 @@ Remote admin traffic rides the admin channel: the first enabled channel literall
 
 ## Safety properties
 
+The minimum configured power level must be positive. Zero, negative, and invalid values fall back to 50, so `power_level: 0` cannot accidentally authorize every ordinary room member.
+
+If backend transport I/O never returns, the plugin remains busy until the relay process is restarted. Releasing the guard while its worker is running would permit overlapping radio commands, so handler cancellation does not bypass it. A cancelled handler drains its worker but can omit the final Matrix reply.
+
 The relay's shared mesh connection is never closed by an admin command, and admin dispatch runs off the event loop in a worker thread, so relaying continues while a command waits for its remote ACK. An active plugin without `admin_room` logs a warning and stays inert.
 
 A failed startup join for a plugin-owned room is logged without stopping the mapped relay or preventing other plugin rooms from joining. Invite handling can retry when the bot is invited later.

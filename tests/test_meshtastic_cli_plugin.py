@@ -152,6 +152,8 @@ def test_destructive_opt_in_requires_literal_true(setting: Any) -> None:
         (float("inf"), "timeout", 120.0),
         (-100, "timeout", 120.0),
         (-1, "power_level", 50),
+        (0, "power_level", 50),
+        ("0", "power_level", 50),
         (True, "power_level", 50),
         (float("inf"), "power_level", 50),
         (-10, "max_output_chars", 2000),
@@ -284,6 +286,29 @@ async def test_sender_at_threshold_authorized() -> None:
     room = _room(users={ADMIN_SENDER: 50})
     assert await _call(plugin, room, f"!meshtastic --dest {REMOTE_NODE_ID} --reboot")
     plugin._execute.assert_called_once()  # type: ignore[attr-defined]
+
+
+async def test_zero_configured_threshold_does_not_authorize_ordinary_members(
+    matrix_state_client,
+) -> None:
+    plugin = _plugin(admin_room=ADMIN_ROOM, power_level=0)
+    plugin._execute = MagicMock()
+    matrix_state_client.room_get_state.return_value = RoomGetStateResponse(
+        events=[
+            {
+                "type": "m.room.power_levels",
+                "state_key": "",
+                "content": {"users": {}, "users_default": 0},
+            }
+        ],
+        room_id=ADMIN_ROOM,
+    )
+
+    assert await _call(
+        plugin, _room(users_default=0), f"!meshtastic --dest {REMOTE_NODE_ID} --reboot"
+    )
+    plugin._execute.assert_not_called()
+    assert "Power level 50" in _last_message(plugin)
 
 
 async def test_cached_authorized_sender_refused_when_client_unavailable() -> None:
