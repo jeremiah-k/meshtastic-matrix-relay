@@ -236,7 +236,9 @@ def _get_plugin_root_dirs() -> list[str]:
 
     for legacy_root in legacy_dirs_list:
         legacy_plugins = os.path.join(str(legacy_root), PLUGINS_DIRNAME)
-        if legacy_plugins not in seen and os.path.exists(legacy_plugins):
+        if legacy_plugins not in seen and paths_module.has_file_content(
+            Path(legacy_plugins)
+        ):
             roots.append(legacy_plugins)
             seen.add(legacy_plugins)
 

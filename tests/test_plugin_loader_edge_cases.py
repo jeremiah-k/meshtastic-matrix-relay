@@ -567,6 +567,7 @@ class Plugin:
 
             os.makedirs(os.path.join(home_dir, "plugins"), exist_ok=True)
             os.makedirs(os.path.join(legacy_dir, "plugins"), exist_ok=True)
+            Path(legacy_dir, "plugins", "example.py").write_text("VALUE = 1\n")
 
             with patch("mmrelay.paths.get_home_dir", return_value=Path(home_dir)):
                 with patch(
@@ -598,6 +599,17 @@ class Plugin:
                     # Only home plugins should be included
                     self.assertEqual(result, [os.path.join(home_dir, "plugins")])
 
+    def test_get_plugin_root_dirs_ignores_recursively_empty_legacy_scaffolding(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home_dir = Path(temp_dir) / "home"
+            legacy_dir = Path(temp_dir) / "legacy"
+            (legacy_dir / "plugins" / "custom" / "empty").mkdir(parents=True)
+            with (
+                patch("mmrelay.paths.get_home_dir", return_value=home_dir),
+                patch("mmrelay.paths.get_legacy_dirs", return_value=[legacy_dir]),
+            ):
+                self.assertEqual(_get_plugin_root_dirs(), [str(home_dir / "plugins")])
+
     def test_get_plugin_root_dirs_data_root_preferred(self):
         """Test _get_plugin_root_dirs always prioritizes home plugins directory."""
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -607,6 +619,7 @@ class Plugin:
 
             # Only create legacy plugins directory
             os.makedirs(legacy_root, exist_ok=True)
+            Path(legacy_root, "example.py").write_text("VALUE = 1\n")
 
             with patch("mmrelay.paths.get_home_dir", return_value=Path(home_dir)):
                 with patch(
