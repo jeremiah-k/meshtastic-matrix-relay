@@ -33,6 +33,47 @@ def run(command: list[str], env: dict[str, str], *, expected_exit: int = 0) -> s
     return result.stdout
 
 
+def verify_auth_shortcuts(source: Path, group: Path, env: dict[str, str]) -> None:
+    """Read actual installed links and require one entry per login method."""
+    if (group / "Setup Authentication.lnk").exists():
+        raise RuntimeError("Historical authentication shortcut was not removed")
+    if not (group / "unrelated.txt").exists():
+        raise RuntimeError("Shortcut cleanup removed an unrelated file")
+    # dict(os.environ) loses Windows' case-insensitive environment lookup.
+    windows_env = {key.upper(): value for key, value in env.items()}
+    powershell = (
+        Path(windows_env["SYSTEMROOT"])
+        / "System32"
+        / "WindowsPowerShell"
+        / "v1.0"
+        / "powershell.exe"
+    )
+    quoted = str(group).replace("'", "''")
+    script = (
+        "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); "
+        "$shell = New-Object -ComObject WScript.Shell; "
+        f"@(Get-ChildItem -LiteralPath '{quoted}' -Filter '*.lnk' | ForEach-Object {{ "
+        "$link = $shell.CreateShortcut($_.FullName); "
+        "@{Name=$_.BaseName; Target=$link.TargetPath; Arguments=$link.Arguments} "
+        "}) | ConvertTo-Json -Compress"
+    )
+    links = json.loads(
+        run([str(powershell), "-NoProfile", "-NonInteractive", "-Command", script], env)
+    )
+    # A single .lnk serializes as one object because the pipeline unrolls
+    # the array before ConvertTo-Json sees it.
+    if isinstance(links, dict):
+        links = [links]
+    # COM expands 8.3 paths (for example RUNNER~1); compare filesystem identities.
+    expected_target = (source / "setup-auth.bat").resolve()
+    auth = [link for link in links if Path(link["Target"]).resolve() == expected_target]
+    expected = {"MM Relay Setup Authentication": "", "MM Relay OAuth Login": "--oauth"}
+    if len(auth) != 2 or {link["Name"]: link["Arguments"] for link in auth} != expected:
+        raise RuntimeError(
+            "Installed authentication shortcuts are missing or duplicated"
+        )
+
+
 def verify(installer: Path) -> None:
     target = Path(platformdirs.user_data_dir("mmrelay", appauthor=False))
     # The --version smoke check can create empty scaffolding. Never overwrite
@@ -42,21 +83,52 @@ def verify(installer: Path) -> None:
     env = dict(os.environ)
     for key in ("MMRELAY_HOME", "MMRELAY_BASE_DIR", "MMRELAY_DATA_DIR"):
         env.pop(key, None)
-    with tempfile.TemporaryDirectory(prefix="MM Relay upgrade ") as temporary:
+    programs = (
+        Path(env["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
+    )
+    with (
+        tempfile.TemporaryDirectory(prefix="MM Relay upgrade ") as temporary,
+        tempfile.TemporaryDirectory(
+            prefix="MMRelay shortcut smoke ", dir=programs
+        ) as menu,
+    ):
         source = Path(temporary) / "Installed Relay"
+        group = Path(menu)
+        (group / "Setup Authentication.lnk").write_bytes(b"legacy shortcut fixture")
+        (group / "unrelated.txt").write_text("preserve", encoding="utf-8")
+        install_command = [
+            str(installer),
+            "/VERYSILENT",
+            "/SUPPRESSMSGBOXES",
+            "/NORESTART",
+            f"/DIR={source}",
+            f"/GROUP={group.name}",
+        ]
         run(
-            [
-                str(installer),
-                "/VERYSILENT",
-                "/SUPPRESSMSGBOXES",
-                "/NORESTART",
-                f"/DIR={source}",
-            ],
+            install_command,
             env,
         )
+        verify_auth_shortcuts(source, group, env)
         executable = source / "mmrelay.exe"
         if not executable.is_file():
             raise RuntimeError("Installer did not create mmrelay.exe")
+        # Exercise the real frozen OAuth import/lock path without a live account.
+        rejected = run(
+            [
+                str(executable),
+                "--home",
+                str(Path(temporary) / "oauth-home"),
+                "auth",
+                "login",
+                "--oauth",
+                "--homeserver",
+                "http://127.0.0.1",
+            ],
+            env,
+            expected_exit=1,
+        )
+        if "OAuth authentication failed:" not in rejected or "HTTPS" not in rejected:
+            raise RuntimeError("Frozen OAuth validation did not reject insecure HTTP")
         probe = [str(executable), "migrate", "--to-default-home", "--check-needed"]
         run(probe, env, expected_exit=1)  # Fresh installs must not offer migration.
         for launcher in ("mmrelay.bat", "setup-auth.bat", "logout.bat"):
@@ -119,6 +191,8 @@ def verify(installer: Path) -> None:
         if (target / "matrix" / "credentials.json").exists():
             raise RuntimeError("Preview modified the destination")
         run([str(executable), "migrate", "--to-default-home"], env)
+        run(install_command, env)
+        verify_auth_shortcuts(source, group, env)
         if any(path.exists() for path in leftovers):
             raise RuntimeError("Obsolete database groups remain in the installer home")
         if not list((target / ".migration_backups").glob("legacy-databases-*")):

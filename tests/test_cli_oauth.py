@@ -20,6 +20,13 @@ from mmrelay.matrix.oauth_store import OAuthStore
 from tests.oauth_helpers import FakeServer, session
 
 
+@pytest.mark.integration
+def test_offline_windows_oauth_smoke_exercises_real_storage():
+    from scripts.ci.smoke_windows_oauth import verify
+
+    verify()
+
+
 def test_parser_accepts_native_oauth_without_password() -> None:
     with patch(
         "sys.argv",

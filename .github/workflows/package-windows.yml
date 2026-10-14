@@ -12,6 +12,8 @@ on:
       - scripts/build_plugin_python.py
       - scripts/ci/smoke_frozen_plugins.py
       - scripts/ci/smoke_windows_upgrade.py
+      - scripts/ci/smoke_windows_oauth.py
+      - tests/oauth_helpers.py
       - scripts/ci/smoke_installer_yaml.py
       - src/**
 
@@ -121,6 +123,9 @@ jobs:
         env:
           PYTHONUTF8: "1"
         run: python scripts/ci/smoke_windows_upgrade.py --installer "scripts/MMRelay_setup_${{ env.FILE_VERSION }}.exe"
+
+      - name: Smoke test — native OAuth login, renewal, and logout on Windows
+        run: python -m scripts.ci.smoke_windows_oauth
 
       - name: Upload installer as artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
