@@ -32,6 +32,8 @@ def windows_homes(tmp_path, monkeypatch):
     for name in ("MMRELAY_HOME", "MMRELAY_BASE_DIR", "MMRELAY_DATA_DIR"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(paths.sys, "platform", "win32")
+    # Filesystem migration tests must not inspect unrelated host processes.
+    monkeypatch.setattr(migrate.psutil, "process_iter", lambda *args: iter(()))
     monkeypatch.setattr(
         paths.platformdirs,
         "user_data_dir",
@@ -206,6 +208,19 @@ def test_guided_windows_migration_previews_then_moves_one_home(windows_homes):
         connection.execute("CREATE TABLE probe(value INTEGER)")
         connection.execute("INSERT INTO probe VALUES (42)")
         connection.commit()
+    legacy = installer / "data" / "meshtastic.sqlite"
+    legacy.parent.mkdir()
+    with closing(sqlite3.connect(legacy)) as connection:
+        connection.execute("CREATE TABLE probe(value INTEGER)")
+        connection.execute("INSERT INTO probe VALUES (7)")
+        connection.commit()
+    leftovers = [legacy]
+    for suffix in ("-wal", "-shm"):
+        sidecar = legacy.with_name(legacy.name + suffix)
+        sidecar.write_bytes(b"legacy sidecar")
+        leftovers.append(sidecar)
+    for path in leftovers:
+        os.utime(path, (1, 1))
     # A frozen startup may already have populated nested empty directories at
     # the default home before migration begins.
     for tier in ("core/weather/data", "deps/cpython-314-win-amd64"):
@@ -215,6 +230,7 @@ def test_guided_windows_migration_previews_then_moves_one_home(windows_homes):
     assert Path(preview["target_home"]) == target
     assert (installer / "matrix" / "credentials.json").exists()
     assert not (target / "config.yaml").exists()
+    assert all(path.exists() for path in leftovers)
 
     result = migrate.migrate_windows_home()
     assert result["success"], result
@@ -226,7 +242,86 @@ def test_guided_windows_migration_previews_then_moves_one_home(windows_homes):
     ) as connection:
         assert connection.execute("SELECT value FROM probe").fetchone() == (42,)
     assert paths.get_home_dir() == target
+    assert not migrate.plan_windows_home_migration()["needed"]
+    assert all(not path.exists() for path in leftovers)
+    cleanup = next(
+        step["result"]
+        for step in result["migrations"]
+        if step["type"] == "legacy_database_cleanup"
+    )
+    assert cleanup["migrated_count"] == 3
+    assert installer not in paths.get_legacy_dirs(with_data_only=True)
+    assert migrate.verify_migration()["ok"]
     assert migrate.migrate_windows_home()["success"]
+
+
+@pytest.mark.parametrize("guided", [False, True])
+def test_migration_cleans_database_leftovers_after_home_relocation(
+    windows_homes, guided
+):
+    installer, target = windows_homes
+    assert migrate.migrate_windows_home()["success"]
+    for directory, value in ((target / "database", 42), (installer / "data", 7)):
+        directory.mkdir(parents=True, exist_ok=True)
+        with closing(sqlite3.connect(directory / "meshtastic.sqlite")) as connection:
+            connection.execute("CREATE TABLE probe(value INTEGER)")
+            connection.execute("INSERT INTO probe VALUES (?)", (value,))
+            connection.commit()
+    legacy = installer / "data" / "meshtastic.sqlite"
+    assert paths.get_home_dir() == target
+    run_migration = (
+        migrate.migrate_windows_home if guided else migrate.perform_migration
+    )
+    preview = run_migration(dry_run=True)
+    assert preview["success"], preview
+    assert legacy.is_file()
+
+    result = run_migration()
+
+    assert result["success"], result
+    assert not legacy.exists()
+    assert installer not in paths.get_legacy_dirs(with_data_only=True)
+    with closing(
+        sqlite3.connect(target / "database" / "meshtastic.sqlite")
+    ) as connection:
+        assert connection.execute("SELECT value FROM probe").fetchone() == (42,)
+    assert migrate.verify_migration()["ok"]
+
+
+@pytest.mark.parametrize("blocked", ["running", "lock", "disk"])
+def test_guided_cleanup_preserves_sources_when_blocked(
+    windows_homes, monkeypatch, blocked
+):
+    installer, target = windows_homes
+    assert migrate.migrate_windows_home()["success"]
+    for root in (target / "database", installer / "data"):
+        root.mkdir(parents=True, exist_ok=True)
+        with closing(sqlite3.connect(root / "meshtastic.sqlite")) as connection:
+            connection.execute("CREATE TABLE probe(value INTEGER)")
+            connection.commit()
+    lock = target / migrate.MIGRATION_LOCK_FILENAME
+    if blocked == "running":
+        monkeypatch.setattr(
+            migrate.psutil,
+            "process_iter",
+            lambda *args: iter(
+                [
+                    SimpleNamespace(
+                        info={"pid": -1, "name": "mmrelay.exe", "cmdline": []}
+                    )
+                ]
+            ),
+        )
+    elif blocked == "lock":
+        lock.touch()
+    else:
+        monkeypatch.setattr(migrate, "_check_disk_space", lambda _: (False, 0))
+
+    result = migrate.migrate_windows_home()
+
+    assert not result["success"], result
+    assert (installer / "data" / "meshtastic.sqlite").is_file()
+    assert lock.exists() is (blocked == "lock")
 
 
 def test_guided_windows_migration_refuses_destination_conflicts(windows_homes):

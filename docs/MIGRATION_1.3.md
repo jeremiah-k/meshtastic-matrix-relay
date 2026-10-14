@@ -187,6 +187,8 @@ If the destination contains real data, guided migration refuses before moving an
 
 After a successful move, normal launchers discover `%LOCALAPPDATA%\mmrelay`. The executable stays in its installation directory. Source snapshots and migration backups are retained; remove them only after verifying the relay and keeping an independent backup.
 
+After all migration steps succeed, redundant legacy SQLite database groups (including `-wal` and `-shm` sidecars) are archived under the destination's `.migration_backups/legacy-databases-*` directory. The active database must pass an integrity check, and every archive copy is byte-verified before any source file is removed. Unrelated files are not removed, and the selected database is not merged with redundant databases.
+
 ### Windows-Specific Limitations
 
 - **E2EE not supported**: Matrix End-to-End Encryption is not available on Windows due to library limitations. The `matrix/store/` directory is not created on Windows.

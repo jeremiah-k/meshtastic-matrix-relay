@@ -87,6 +87,19 @@ def verify(installer: Path) -> None:
             connection.execute("CREATE TABLE probe(value INTEGER)")
             connection.execute("INSERT INTO probe VALUES (42)")
             connection.commit()
+        legacy = source / "data" / "meshtastic.sqlite"
+        legacy.parent.mkdir()
+        with closing(sqlite3.connect(legacy)) as connection:
+            connection.execute("CREATE TABLE probe(value INTEGER)")
+            connection.execute("INSERT INTO probe VALUES (7)")
+            connection.commit()
+        leftovers = [legacy]
+        for suffix in ("-wal", "-shm"):
+            sidecar = legacy.with_name(legacy.name + suffix)
+            sidecar.write_bytes(b"legacy sidecar")
+            leftovers.append(sidecar)
+        for path in leftovers:
+            os.utime(path, (1, 1))
         plugin_data = source / "plugins" / "core" / "weather" / "data"
         plugin_data.mkdir(parents=True)
         (plugin_data / "state.json").write_text("{}", encoding="utf-8")
@@ -106,6 +119,10 @@ def verify(installer: Path) -> None:
         if (target / "matrix" / "credentials.json").exists():
             raise RuntimeError("Preview modified the destination")
         run([str(executable), "migrate", "--to-default-home"], env)
+        if any(path.exists() for path in leftovers):
+            raise RuntimeError("Obsolete database groups remain in the installer home")
+        if not list((target / ".migration_backups").glob("legacy-databases-*")):
+            raise RuntimeError("Legacy database archive is missing")
         run(probe, env, expected_exit=1)  # The offer disappears after relocation.
         if not (target / "config.yaml").is_file() or (source / "config.yaml").exists():
             raise RuntimeError("Configuration was not relocated")
@@ -123,6 +140,15 @@ def verify(installer: Path) -> None:
             if connection.execute("SELECT value FROM probe").fetchone() != (42,):
                 raise RuntimeError("Database contents changed during relocation")
         run([str(executable), "verify-migration"], env)
+        # The guided shortcut must also finish cleanup after a completed move.
+        legacy.write_bytes((target / "database" / "meshtastic.sqlite").read_bytes())
+        run(probe, env, expected_exit=1)  # Do not offer another home relocation.
+        run([str(executable), "migrate", "--to-default-home", "--dry-run"], env)
+        if not legacy.exists():
+            raise RuntimeError("Cleanup preview removed the legacy database")
+        run([str(executable), "migrate", "--to-default-home"], env)
+        if legacy.exists():
+            raise RuntimeError("Repeated guided migration skipped database cleanup")
         run([str(executable), "migrate", "--to-default-home"], env)
     print("Installed Windows upgrade smoke test passed")
 

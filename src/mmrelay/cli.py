@@ -2721,6 +2721,10 @@ def handle_migrate_command(args: argparse.Namespace) -> int:
                 action = mresult.get("action")
                 if action:
                     print(f"   action: {str(action).upper()}")
+                for archived in mresult.get("archived_files", []):
+                    print(
+                        f"     archive: {archived['old_path']} -> {archived['new_path']}"
+                    )
                 migrated_count = mresult.get("migrated_count")
                 if isinstance(migrated_count, int):
                     print(f"    files: {migrated_count}")

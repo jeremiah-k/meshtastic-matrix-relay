@@ -69,6 +69,10 @@ If you _choose_ to relocate an older home:
 
 The guided operation refuses explicit home overrides, running instances, and
 occupied destinations; it retains a snapshot under `.migration_backups`.
+After the migration steps succeed, redundant legacy SQLite databases and their
+sidecars are copied into `.migration_backups/legacy-databases-*`, byte-verified,
+and removed from the live legacy directories. The active database is preserved,
+and unrelated files are left alone. The preview lists these archive operations.
 Configuration with custom absolute paths needs manual review. For unusual old
 layouts, recovery, and CLI migration options, consult the
 [historical migration reference](MIGRATION_1.3.md#windows-specific-notes).

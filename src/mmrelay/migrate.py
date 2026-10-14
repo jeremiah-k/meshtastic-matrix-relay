@@ -47,6 +47,7 @@ Plugin Data Migration (Three-Tier System):
 import atexit
 import contextlib
 import errno
+import filecmp
 import json
 import os
 import shutil
@@ -2941,6 +2942,15 @@ def perform_migration(
             force=force,
         )
 
+        # Only retire redundant source groups after the runtime migration succeeds.
+        _run_step(
+            "legacy_database_cleanup",
+            archive_legacy_databases,
+            legacy_roots,
+            new_home,
+            dry_run=dry_run,
+        )
+
         if not dry_run:
             report["message"] = "Migration completed successfully"
         else:
@@ -3017,6 +3027,101 @@ def perform_migration(
     return report
 
 
+def archive_legacy_databases(
+    legacy_roots: list[Path], new_home: Path, dry_run: bool = False
+) -> dict[str, Any]:
+    """Remove redundant known database groups from live roots after verified archiving.
+
+    The selected database is never replaced or merged. Every remaining database
+    and sidecar is copied and byte-verified before any source file is removed.
+    Archives retain root-relative paths and are excluded from legacy discovery.
+    """
+    active = new_home / "database" / DATABASE_FILENAME
+    candidates: dict[Path, Path] = {}
+    seen: set[Path] = set()
+    for index, root in enumerate(legacy_roots):
+        for directory in (root, root / "data", root / "database"):
+            base = directory / DATABASE_FILENAME
+            if base.resolve() == active.resolve():
+                continue
+            for path in (
+                base,
+                *(Path(str(base) + suffix) for suffix in SQLITE_SIDECAR_SUFFIXES),
+            ):
+                if not path.is_file() or path.resolve() in seen:
+                    continue
+                if path.is_symlink() or not path.resolve().is_relative_to(
+                    root.resolve()
+                ):
+                    raise MigrationError.step_failed(
+                        "legacy_database_cleanup",
+                        f"Refusing linked legacy database: {path}",
+                    )
+                seen.add(path.resolve())
+                candidates[path] = Path(f"source-{index}") / path.relative_to(root)
+
+    if dry_run and not active.exists():
+        selected = _get_most_recent_database(list(candidates))
+        candidates = (
+            {
+                path: relative
+                for path, relative in candidates.items()
+                if _get_db_base_path(path) != selected
+            }
+            if selected
+            else {}
+        )
+    if not candidates or (not dry_run and not active.is_file()):
+        return {
+            "success": True,
+            "action": "not_applicable",
+            "message": "No redundant database files to archive",
+        }
+
+    archive = (
+        new_home
+        / MIGRATION_BACKUP_DIRNAME
+        / ("legacy-databases-" + datetime.now().strftime("%Y%m%d_%H%M%S_%f"))
+    )
+    entries = [
+        {"old_path": str(path), "new_path": str(archive / relative)}
+        for path, relative in candidates.items()
+    ]
+    if not dry_run:
+        try:
+            with contextlib.closing(
+                sqlite3.connect(active.resolve().as_uri() + "?mode=ro", uri=True)
+            ) as connection:
+                if connection.execute("PRAGMA quick_check").fetchone() != ("ok",):
+                    raise sqlite3.DatabaseError(
+                        "Active database integrity check failed"
+                    )
+            archive.mkdir(parents=True)
+            for path, relative in candidates.items():
+                destination = archive / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, destination)
+                if not filecmp.cmp(path, destination, shallow=False):
+                    raise OSError(f"Archive verification failed: {path}")
+            # All groups are backed up before retiring even the first source file.
+            for path in candidates:
+                _retry_on_file_in_use(lambda p=path: p.unlink(), f"retire {path}")
+        except (OSError, sqlite3.DatabaseError) as exc:
+            raise MigrationError.step_failed(
+                "legacy_database_cleanup",
+                f"Could not archive legacy databases; recovery directory: {archive}: {exc}",
+            ) from exc
+    return {
+        "success": True,
+        "action": "archive",
+        "message": "Legacy database files archived outside the live layout",
+        "new_path": str(archive),
+        "migrated_count": len(entries),
+        "archived_files": entries,
+        "dry_run": dry_run,
+    }
+
+
 def _windows_home_destination_error(target: Path) -> str | None:
     conflicts = [
         path
@@ -3082,10 +3187,54 @@ def plan_windows_home_migration() -> dict[str, Any]:
     return report
 
 
+def _cleanup_windows_database_leftovers(
+    report: dict[str, Any], dry_run: bool
+) -> dict[str, Any]:
+    """Let the guided launcher retire database leftovers without merging homes."""
+    target = Path(report["target_home"])
+    legacy_roots = paths_module.get_legacy_dirs(with_data_only=True)
+    lock_file = target / MIGRATION_LOCK_FILENAME
+    lock_held = False
+    report["dry_run"] = dry_run
+    try:
+        result = archive_legacy_databases(legacy_roots, target, dry_run=True)
+        if result["action"] == "not_applicable":
+            return report
+        if not dry_run:
+            lock_file.touch(exist_ok=False)
+            lock_held = True
+            if _is_mmrelay_running():
+                raise MigrationError.step_failed(
+                    "legacy_database_cleanup",
+                    "MMRelay is running; stop it before migrating",
+                )
+            if not _check_disk_space(target)[0]:
+                raise MigrationError.step_failed(
+                    "legacy_database_cleanup", "Insufficient disk space for migration"
+                )
+            result = archive_legacy_databases(legacy_roots, target)
+        report.update(
+            success=True,
+            message="Legacy database cleanup completed successfully",
+            migrations=[{"type": "legacy_database_cleanup", "result": result}],
+        )
+    except (OSError, MigrationError, sqlite3.DatabaseError) as exc:
+        report.update(success=False, error=str(exc))
+    finally:
+        if lock_held:
+            try:
+                lock_file.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Could not remove migration lock: %s", lock_file)
+    return report
+
+
 def migrate_windows_home(dry_run: bool = False) -> dict[str, Any]:
     """Relocate the selected Windows home, snapshotting and refusing conflicts."""
     report = plan_windows_home_migration()
     if not report["needed"]:
+        if report["success"]:
+            return _cleanup_windows_database_leftovers(report, dry_run)
         return report
     report["success"] = False
     source = Path(report["source_home"])
