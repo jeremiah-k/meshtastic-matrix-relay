@@ -37,6 +37,32 @@ a Meshtastic channel number from 0 to 7. Leaving the installer password blank
 allows authentication separately with `mmrelay auth login`. An existing
 configuration is backed up before intentional replacement.
 
+## Matrix authentication
+
+Stop the relay before changing authentication. **MM Relay Setup Authentication**
+keeps the existing password-login flow. **MM Relay OAuth Login** starts the
+experimental native OAuth device flow: enter the homeserver, open the displayed
+HTTPS address in a browser, and approve the displayed code. Keep the command
+window open until credentials are saved. The shortcut does not ask for a password
+or open a browser automatically; approval can be completed on another trusted
+device.
+
+OAuth is available on Windows independently of E2EE, which remains unsupported.
+The homeserver must support native device authorization and public-client
+registration; this does not make every SSO server compatible. Existing credentials
+are not replaced automatically. See the [OAuth guide](MATRIX_OAUTH.md) for server
+requirements, session changes, renewal, and revocation.
+
+From PowerShell in the installation directory, the equivalent command is:
+
+```powershell
+.\mmrelay.exe auth login --oauth
+```
+
+Both authentication shortcuts use the active data home. Upgrades remove the
+historical **Setup Authentication** alias in the selected Start-menu group;
+password login and OAuth each have one distinctly named entry.
+
 ## Custom plugins in the packaged executable
 
 The frozen executable includes a private Python runtime for installing plugin

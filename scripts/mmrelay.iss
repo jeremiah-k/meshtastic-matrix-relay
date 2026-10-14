@@ -16,11 +16,16 @@ PrivilegesRequiredOverridesAllowed=dialog commandline
 [Files]
 Source: "..\dist\mmrelay.exe"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs; AfterInstall: AfterInstall(ExpandConstant('{app}'));
 
+[InstallDelete]
+// Authentication shortcut name shipped before the MM Relay prefix was added.
+Type: files; Name: "{group}\Setup Authentication.lnk"
+
 [Icons]
 Name: "{group}\MM Relay"; Filename: "{app}\mmrelay.bat"
 Name: "{group}\MM Relay Config"; Filename: "{app}\mmrelay.exe"; IconFilename: "{sys}\notepad.exe"; WorkingDir: "{app}"; Parameters: "config edit";
 Name: "{group}\MM Relay Migrate Data"; Filename: "{app}\migrate-data.bat"; WorkingDir: "{app}"
 Name: "{group}\MM Relay Setup Authentication"; Filename: "{app}\setup-auth.bat"; WorkingDir: "{app}"
+Name: "{group}\MM Relay OAuth Login"; Filename: "{app}\setup-auth.bat"; Parameters: "--oauth"; WorkingDir: "{app}"; Comment: "Experimental native Matrix OAuth browser approval (no password)"
 
 [Run]
 Filename: "{app}\migrate-data.bat"; Description: "Review and migrate existing MMRelay data (confirmation required)"; Flags: postinstall skipifsilent unchecked; WorkingDir: "{app}"; Check: ShouldOfferDataMigration

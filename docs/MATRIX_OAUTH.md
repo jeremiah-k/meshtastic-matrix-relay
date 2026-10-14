@@ -24,6 +24,11 @@ at the network layer instead.
 
 ## Create a session
 
+Windows supports native OAuth for unencrypted Matrix rooms; its E2EE limitation
+does not prevent OAuth login. Installer users can open **MM Relay OAuth Login**
+from the Start menu, or run `.\mmrelay.exe auth login --oauth` in PowerShell from
+the installation directory. See the [Windows guide](WINDOWS.md#matrix-authentication).
+
 Stop the relay before changing its authentication. Existing credentials are not
 overwritten; in-place conversion from a password session is not implemented.
 Use the same MMRelay home and configuration as the relay process:
