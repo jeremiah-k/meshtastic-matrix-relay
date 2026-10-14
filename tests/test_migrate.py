@@ -325,6 +325,7 @@ class TestFindLegacyData:
         plugins_dir = legacy_root / "plugins"
         plugins_dir.mkdir()
         (plugins_dir / "custom").mkdir()
+        (plugins_dir / "custom" / "probe.py").touch()
 
         findings = _find_legacy_data(legacy_root)
 

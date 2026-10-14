@@ -47,6 +47,7 @@ Plugin Data Migration (Three-Tier System):
 import atexit
 import contextlib
 import errno
+import filecmp
 import json
 import os
 import shutil
@@ -59,6 +60,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+import psutil
+
+from mmrelay import paths as paths_module
 from mmrelay.constants.app import (
     CONFIG_FILENAME,
     CREDENTIALS_FILENAME,
@@ -350,11 +354,37 @@ def _is_mmrelay_running() -> bool:
         except (OSError, IOError, subprocess.TimeoutExpired, FileNotFoundError):
             pass
     else:
-        # Windows: cannot reliably distinguish mmrelay from other Python processes
-        logger.debug(
-            "Running-instance detection not supported on Windows; skipping check"
-        )
-        return False
+        try:
+            current = psutil.Process(current_pid)
+            ignored = {current_pid}
+            # A one-file executable has a waiting bootloader parent with the
+            # same executable and arguments. It is not another relay instance.
+            parent = current.parent()
+            if (
+                parent
+                and parent.exe() == current.exe()
+                and parent.cmdline() == current.cmdline()
+            ):
+                ignored.add(parent.pid)
+            for process in psutil.process_iter(["pid", "name", "cmdline"]):
+                if process.info["pid"] in ignored:
+                    continue
+                name = (process.info["name"] or "").lower()
+                arguments = process.info["cmdline"] or []
+                if name in ("mmrelay", "mmrelay.exe"):
+                    return True
+                if name.startswith("python"):
+                    if any(
+                        argument.replace("\\", "/").rsplit("/", 1)[-1].lower()
+                        in ("mmrelay", "mmrelay.exe")
+                        for argument in arguments[1:]
+                    ):
+                        return True
+        except (psutil.Error, OSError):
+            logger.warning(
+                "Unable to verify running Windows instances; stop MMRelay before migrating"
+            )
+            return True
 
     return False
 
@@ -495,9 +525,12 @@ def _find_legacy_data(legacy_root: Path) -> list[dict[str, str]]:
         findings.append({"type": item_type, "path": path_str})
         seen_paths.add(path_str)
 
-    credentials = legacy_root / CREDENTIALS_FILENAME
-    if credentials.exists():
-        add_finding("credentials", credentials)
+    for credentials in (
+        legacy_root / MATRIX_DIRNAME / CREDENTIALS_FILENAME,
+        legacy_root / CREDENTIALS_FILENAME,
+    ):
+        if credentials.exists():
+            add_finding("credentials", credentials)
 
     config_path = legacy_root / CONFIG_FILENAME
     if config_path.exists():
@@ -520,12 +553,15 @@ def _find_legacy_data(legacy_root: Path) -> list[dict[str, str]]:
     if _dir_has_entries(logs_dir):
         add_finding("logs", logs_dir)
 
-    store_dir = legacy_root / "store"
-    if _dir_has_entries(store_dir):
-        add_finding("e2ee_store", store_dir)
+    for store_dir in (
+        legacy_root / MATRIX_DIRNAME / STORE_DIRNAME,
+        legacy_root / STORE_DIRNAME,
+    ):
+        if _dir_has_entries(store_dir):
+            add_finding("e2ee_store", store_dir)
 
     plugins_dir = legacy_root / "plugins"
-    if _dir_has_entries(plugins_dir):
+    if paths_module.has_file_content(plugins_dir):
         add_finding("plugins", plugins_dir)
 
     return findings
@@ -1058,6 +1094,8 @@ def migrate_credentials(
     new_home: Path,
     dry_run: bool = False,
     force: bool = False,
+    *,
+    include_home_fallback: bool = True,
 ) -> dict[str, Any]:
     """
     Migrate the first discovered legacy credentials.json into the new HOME matrix directory.
@@ -1088,30 +1126,25 @@ def migrate_credentials(
         roots_to_scan.append(new_home)
 
     for legacy_root in roots_to_scan:
-        candidate = legacy_root / CREDENTIALS_FILENAME
-        if candidate.resolve() == new_creds.resolve():
+        candidates = (
+            legacy_root / MATRIX_DIRNAME / CREDENTIALS_FILENAME,
+            legacy_root / CREDENTIALS_FILENAME,
+        )
+        for candidate in candidates:
+            # Same-home migration must still consider root-level credentials.
+            if candidate.resolve() == new_creds.resolve():
+                continue
             if candidate.exists():
-                logger.info(
-                    "Credentials already at target location, no migration needed: %s",
-                    new_creds,
-                )
-                return {
-                    "success": True,
-                    "old_path": str(candidate),
-                    "new_path": str(new_creds),
-                    "action": "already_at_target",
-                    "message": "Credentials already at target location",
-                }
-            continue
-        if candidate.exists():
-            old_creds = candidate
-            logger.info("Found credentials.json in legacy root: %s", old_creds)
+                old_creds = candidate
+                logger.info("Found credentials.json in legacy root: %s", old_creds)
+                break
+        if old_creds:
             break
 
     # Backwards-compatibility fallback:
     # Some older flows could leave credentials at ~/credentials.json.
     # Only migrate this fallback location if it appears to be valid Matrix credentials.
-    if not old_creds:
+    if not old_creds and include_home_fallback:
         home_root_candidate = Path.home() / CREDENTIALS_FILENAME
         if home_root_candidate.exists():
             if _looks_like_matrix_credentials(home_root_candidate):
@@ -1979,6 +2012,16 @@ def migrate_store(
             shutil.rmtree(str(staging_dir), ignore_errors=True)
 
 
+def _copy_plugin_entry(source: Path, destination: Path) -> None:
+    """Stage plugin content without following a top-level filesystem link."""
+    if source.is_symlink():
+        destination.symlink_to(os.readlink(source), target_is_directory=source.is_dir())
+    elif source.is_dir():
+        shutil.copytree(str(source), str(destination), symlinks=True)
+    else:
+        shutil.copy2(str(source), str(destination), follow_symlinks=False)
+
+
 def _migrate_plugin_tier(
     old_dir: Path,
     new_dir: Path,
@@ -1989,7 +2032,8 @@ def _migrate_plugin_tier(
     """
     Migrate a single tier of plugins (e.g. custom or community).
 
-    Searches the source directory for plugin folders and moves each into the destination.
+    Copy plugin folders and standalone files into staging, leaving the source
+    intact until the complete staged tree has been installed and backed up.
     Updates the provided errors list with any failure messages.
 
     Parameters:
@@ -2014,7 +2058,7 @@ def _migrate_plugin_tier(
     migrated = False
     try:
         for item in old_dir.iterdir():
-            if not item.is_dir():
+            if not item.is_dir() and not item.is_file() and not item.is_symlink():
                 continue
             dest = new_dir / item.name
             if dest.exists():
@@ -2033,8 +2077,8 @@ def _migrate_plugin_tier(
                     dest.unlink()
 
             try:
-                shutil.move(str(item), str(dest))
-                logger.debug("Staged %s plugin: %s", tier_name, item)
+                _copy_plugin_entry(item, dest)
+                logger.debug("Staged %s plugin copy: %s", tier_name, item)
                 migrated = True
             except (OSError, IOError) as e:
                 logger.warning("Failed to stage %s plugin %s: %s", tier_name, item, e)
@@ -2042,13 +2086,6 @@ def _migrate_plugin_tier(
     except (OSError, IOError) as e:
         logger.warning("Failed to stage %s plugins: %s", tier_name, e)
         errors.append(f"{tier_name}: {e}")
-
-    # Cleanup old tier dir if empty
-    try:
-        if old_dir.exists() and not any(old_dir.iterdir()):
-            old_dir.rmdir()
-    except (OSError, IOError):
-        pass
 
     return migrated
 
@@ -2064,7 +2101,8 @@ def migrate_plugins(
 
     Searches the provided legacy roots for a `plugins` directory, stages the `custom` and `community`
     tiers (if present), creates backups of existing destinations and the original legacy directory,
-    and atomically moves staged content into place. Honors dry-run and force semantics.
+    and finalizes the staged content. The original is retained until finalization
+    succeeds. Honors dry-run and force semantics.
 
     Parameters:
         legacy_roots (list[Path]): Legacy root directories to scan for a `plugins` directory.
@@ -2128,17 +2166,10 @@ def migrate_plugins(
             "message": "No plugins directory found in legacy locations",
         }
 
-    # Check if target has actual plugin content (not just empty subdirectories)
-    # ensure_directories() creates empty custom/, community/, core/ subdirs
-    # We should only skip if those subdirs have actual plugin files
-    has_plugin_content = False
-    for plugin_type in ["custom", "community", "core"]:
-        type_dir = new_plugins_dir / plugin_type
-        if _dir_has_entries(type_dir):
-            has_plugin_content = True
-            break
-
-    if has_plugin_content and not force:
+    # The executable and ensure_directories() can create nested empty
+    # core/deps scaffolding before migration. Only actual files or links
+    # constitute installed plugin state and justify refusing to merge homes.
+    if paths_module.has_file_content(new_plugins_dir) and not force:
         logger.warning(
             "Plugins directory already exists at destination, skipping: %s. Use --force to overwrite.",
             new_plugins_dir,
@@ -2181,8 +2212,15 @@ def migrate_plugins(
         """
         raise OSError("; ".join(stage_errors))
 
+    if staging_dir.exists():
+        raise MigrationError.step_failed(
+            "plugins",
+            f"Previous staged plugin data exists at {staging_dir}; inspect and "
+            "recover it before retrying to avoid overwriting partial data",
+        )
+
     try:
-        staging_dir.mkdir(parents=True, exist_ok=True)
+        staging_dir.mkdir(parents=True, exist_ok=False)
 
         # 1. Backup existing destination (ALWAYS)
         if new_plugins_dir.exists():
@@ -2213,6 +2251,14 @@ def migrate_plugins(
             errors,
         ):
             migrated_types.append("community")
+
+        # These are runtime state, not plugin repositories. Stage copies of each
+        # complete tree; a cross-volume copy failure must not remove source data.
+        for tier in ("core", "deps"):
+            source = old_plugins_dir / tier
+            if source.exists():
+                _copy_plugin_entry(source, staging_dir / tier)
+                migrated_types.append(tier)
 
         if errors:
             _raise_plugin_stage_errors(errors)
@@ -2252,11 +2298,15 @@ def migrate_plugins(
         )
         raise MigrationError.step_failed(
             "plugins",
-            f"Permission denied. Check file permissions for {exc.filename}: {exc}",
+            f"Permission denied. Check file permissions for {exc.filename}: {exc}. "
+            f"Source retained; inspect incomplete staging at {staging_dir}",
         ) from exc
     except Exception as exc:
         logger.exception("Failed to migrate plugins from %s", old_plugins_dir)
-        raise MigrationError.step_failed("plugins", str(exc)) from exc
+        raise MigrationError.step_failed(
+            "plugins",
+            f"{exc}. Source retained; inspect incomplete staging at {staging_dir}",
+        ) from exc
     finally:
         # Only remove staging if migration succeeded to preserve data on failure
         if migration_succeeded and staging_dir.exists():
@@ -2626,7 +2676,13 @@ def is_migration_needed() -> bool:
     return bool(report.get("legacy_data_found", False))
 
 
-def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, Any]:
+def perform_migration(
+    dry_run: bool = False,
+    force: bool = False,
+    *,
+    source_roots: list[Path] | None = None,
+    _lock_held: bool = False,
+) -> dict[str, Any]:
     """
     Orchestrates the end-to-end migration of legacy MMRelay data into the v1.3 home layout.
 
@@ -2660,10 +2716,14 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
     # Get authoritative path resolution using unified HOME + legacy model
     paths_info = resolve_all_paths()
     new_home = Path(paths_info["home"])
-    legacy_roots = [Path(legacy_str) for legacy_str in paths_info["legacy_sources"]]
+    legacy_roots = (
+        list(source_roots)
+        if source_roots is not None
+        else [Path(legacy_str) for legacy_str in paths_info["legacy_sources"]]
+    )
 
     # If migration is needed but no external legacy roots found, it means same-home legacy data exists
-    if not legacy_roots and is_migration_needed():
+    if source_roots is None and not legacy_roots and is_migration_needed():
         legacy_roots = [new_home]
 
     if not legacy_roots:
@@ -2727,7 +2787,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
 
     # Acquire migration lock to prevent concurrent migrations
     lock_file = new_home / MIGRATION_LOCK_FILENAME
-    if not dry_run:
+    if not dry_run and not _lock_held:
         try:
             lock_file.touch(exist_ok=False)
             logger.debug("Acquired migration lock: %s", lock_file)
@@ -2802,13 +2862,15 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
 
     try:
         # Migrate credentials
+        credential_options = {"dry_run": dry_run, "force": force}
+        if source_roots is not None:
+            credential_options["include_home_fallback"] = False
         _run_step(
             "credentials",
             migrate_credentials,
             legacy_roots,
             new_home,
-            dry_run=dry_run,
-            force=force,
+            **credential_options,
         )
 
         # Migrate config
@@ -2862,14 +2924,15 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
         )
 
         # Migrate gpxtracker (always runs; no-ops if not configured)
-        _run_step(
-            "gpxtracker",
-            migrate_gpxtracker,
-            legacy_roots,
-            new_home,
-            dry_run=dry_run,
-            force=force,
-        )
+        if source_roots is None:
+            _run_step(
+                "gpxtracker",
+                migrate_gpxtracker,
+                legacy_roots,
+                new_home,
+                dry_run=dry_run,
+                force=force,
+            )
 
         # Update systemd service file to use --home flag (Linux only)
         _run_step(
@@ -2877,6 +2940,15 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
             migrate_service,
             dry_run=dry_run,
             force=force,
+        )
+
+        # Only retire redundant source groups after the runtime migration succeeds.
+        _run_step(
+            "legacy_database_cleanup",
+            archive_legacy_databases,
+            legacy_roots,
+            new_home,
+            dry_run=dry_run,
         )
 
         if not dry_run:
@@ -2930,7 +3002,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
             logger.warning("Please resolve the issue and re-run migration.")
 
         # Release migration lock on failure
-        if not dry_run and lock_file.exists():
+        if not dry_run and not _lock_held and lock_file.exists():
             try:
                 lock_file.unlink()
                 logger.debug("Released migration lock after failure: %s", lock_file)
@@ -2945,7 +3017,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
     )
 
     # Release migration lock
-    if not dry_run and lock_file.exists():
+    if not dry_run and not _lock_held and lock_file.exists():
         try:
             lock_file.unlink()
             logger.debug("Released migration lock: %s", lock_file)
@@ -2953,6 +3025,328 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
             logger.warning("Could not remove migration lock file: %s", e)
 
     return report
+
+
+def archive_legacy_databases(
+    legacy_roots: list[Path], new_home: Path, dry_run: bool = False
+) -> dict[str, Any]:
+    """Remove redundant known database groups from live roots after verified archiving.
+
+    The selected database is never replaced or merged. Every remaining database
+    and sidecar is copied and byte-verified before any source file is removed.
+    Archives retain root-relative paths and are excluded from legacy discovery.
+    """
+    active = new_home / "database" / DATABASE_FILENAME
+    candidates: dict[Path, Path] = {}
+    seen: set[Path] = set()
+    for index, root in enumerate(legacy_roots):
+        for directory in (root, root / "data", root / "database"):
+            base = directory / DATABASE_FILENAME
+            if base.resolve() == active.resolve():
+                continue
+            for path in (
+                base,
+                *(Path(str(base) + suffix) for suffix in SQLITE_SIDECAR_SUFFIXES),
+            ):
+                if not path.is_file() or path.resolve() in seen:
+                    continue
+                if path.is_symlink() or not path.resolve().is_relative_to(
+                    root.resolve()
+                ):
+                    raise MigrationError.step_failed(
+                        "legacy_database_cleanup",
+                        f"Refusing linked legacy database: {path}",
+                    )
+                seen.add(path.resolve())
+                candidates[path] = Path(f"source-{index}") / path.relative_to(root)
+
+    if dry_run and not active.exists():
+        selected = _get_most_recent_database(list(candidates))
+        candidates = (
+            {
+                path: relative
+                for path, relative in candidates.items()
+                if _get_db_base_path(path) != selected
+            }
+            if selected
+            else {}
+        )
+    if not candidates or (not dry_run and not active.is_file()):
+        return {
+            "success": True,
+            "action": "not_applicable",
+            "message": "No redundant database files to archive",
+        }
+
+    archive = (
+        new_home
+        / MIGRATION_BACKUP_DIRNAME
+        / ("legacy-databases-" + datetime.now().strftime("%Y%m%d_%H%M%S_%f"))
+    )
+    entries = [
+        {"old_path": str(path), "new_path": str(archive / relative)}
+        for path, relative in candidates.items()
+    ]
+    if not dry_run:
+        try:
+            with contextlib.closing(
+                sqlite3.connect(active.resolve().as_uri() + "?mode=ro", uri=True)
+            ) as connection:
+                if connection.execute("PRAGMA quick_check").fetchone() != ("ok",):
+                    raise sqlite3.DatabaseError(
+                        "Active database integrity check failed"
+                    )
+            archive.mkdir(parents=True)
+            for path, relative in candidates.items():
+                destination = archive / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, destination)
+                if not filecmp.cmp(path, destination, shallow=False):
+                    raise OSError(f"Archive verification failed: {path}")
+            # All groups are backed up before retiring even the first source file.
+            for path in candidates:
+                _retry_on_file_in_use(lambda p=path: p.unlink(), f"retire {path}")
+        except (OSError, sqlite3.DatabaseError) as exc:
+            raise MigrationError.step_failed(
+                "legacy_database_cleanup",
+                f"Could not archive legacy databases; recovery directory: {archive}: {exc}",
+            ) from exc
+    return {
+        "success": True,
+        "action": "archive",
+        "message": "Legacy database files archived outside the live layout",
+        "new_path": str(archive),
+        "migrated_count": len(entries),
+        "archived_files": entries,
+        "dry_run": dry_run,
+    }
+
+
+def _windows_home_destination_error(target: Path) -> str | None:
+    conflicts = [
+        path
+        for path in (
+            target / CONFIG_FILENAME,
+            target / CREDENTIALS_FILENAME,
+            target / MATRIX_DIRNAME / CREDENTIALS_FILENAME,
+            target / "database" / DATABASE_FILENAME,
+            target / DATABASE_FILENAME,
+        )
+        if path.exists()
+    ]
+    if paths_module.has_file_content(target / "plugins"):
+        conflicts.append(target / "plugins")
+    for directory in ("matrix", "database", "data", "logs"):
+        if paths_module.has_file_content(target / directory):
+            conflicts.append(target / directory)
+    if conflicts:
+        return (
+            "Destination contains existing data; no files were moved. Review both homes "
+            "with mmrelay paths before choosing a manual migration: "
+            + ", ".join(str(path) for path in conflicts)
+        )
+    return None
+
+
+def plan_windows_home_migration() -> dict[str, Any]:
+    """Inspect guided migration eligibility without writing or overriding paths."""
+    paths_info = resolve_all_paths()
+    source = Path(paths_info["home"])
+    target = paths_module.get_default_home_dir()
+    report: dict[str, Any] = {
+        "success": False,
+        "needed": False,
+        "source_home": str(source),
+        "target_home": str(target),
+        "migrations": [],
+    }
+    if sys.platform != "win32":
+        report["error"] = "--to-default-home is only available on Windows"
+        return report
+    if paths_info.get("cli_override") or any(
+        name in paths_info["env_vars_detected"]
+        for name in ("MMRELAY_HOME", "MMRELAY_BASE_DIR", "MMRELAY_DATA_DIR")
+    ):
+        report["error"] = (
+            "An explicit home is configured; use ordinary migrate with that home instead"
+        )
+        return report
+    if source.resolve() == target.resolve():
+        report.update(
+            success=True, message="The default Windows data home is already active"
+        )
+        return report
+    if target.resolve().is_relative_to(source.resolve()):
+        report["error"] = "The destination must not be inside the source data home"
+        return report
+    error = _windows_home_destination_error(target)
+    if error:
+        report["error"] = error
+        return report
+    report.update(success=True, needed=True)
+    return report
+
+
+def _cleanup_windows_database_leftovers(
+    report: dict[str, Any], dry_run: bool
+) -> dict[str, Any]:
+    """Let the guided launcher retire database leftovers without merging homes."""
+    target = Path(report["target_home"])
+    legacy_roots = paths_module.get_legacy_dirs(with_data_only=True)
+    lock_file = target / MIGRATION_LOCK_FILENAME
+    lock_held = False
+    report["dry_run"] = dry_run
+    try:
+        result = archive_legacy_databases(legacy_roots, target, dry_run=True)
+        if result["action"] == "not_applicable":
+            return report
+        if not dry_run:
+            lock_file.touch(exist_ok=False)
+            lock_held = True
+            if _is_mmrelay_running():
+                raise MigrationError.step_failed(
+                    "legacy_database_cleanup",
+                    "MMRelay is running; stop it before migrating",
+                )
+            if not _check_disk_space(target)[0]:
+                raise MigrationError.step_failed(
+                    "legacy_database_cleanup", "Insufficient disk space for migration"
+                )
+            result = archive_legacy_databases(legacy_roots, target)
+        report.update(
+            success=True,
+            message="Legacy database cleanup completed successfully",
+            migrations=[{"type": "legacy_database_cleanup", "result": result}],
+        )
+    except (OSError, MigrationError, sqlite3.DatabaseError) as exc:
+        report.update(success=False, error=str(exc))
+    finally:
+        if lock_held:
+            try:
+                lock_file.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Could not remove migration lock: %s", lock_file)
+    return report
+
+
+def migrate_windows_home(dry_run: bool = False) -> dict[str, Any]:
+    """Relocate the selected Windows home, snapshotting and refusing conflicts."""
+    report = plan_windows_home_migration()
+    if not report["needed"]:
+        if report["success"]:
+            return _cleanup_windows_database_leftovers(report, dry_run)
+        return report
+    report["success"] = False
+    source = Path(report["source_home"])
+    target = Path(report["target_home"])
+    lock_file = target / MIGRATION_LOCK_FILENAME
+    lock_held = False
+    paths_module.set_home_override(str(target), source="windows-migration")
+    try:
+        if not dry_run:
+            try:
+                target.mkdir(parents=True, exist_ok=True)
+                lock_file.touch(exist_ok=False)
+                lock_held = True
+            except OSError as exc:
+                report["error"] = (
+                    f"Could not acquire the migration lock; no files were moved: {exc}"
+                )
+                return report
+        # Recheck after acquiring the lock; the installer probe is advisory.
+        error = _windows_home_destination_error(target)
+        if error:
+            report["error"] = error
+            return report
+        snapshot: Path | None = None
+        units = [
+            CONFIG_FILENAME,
+            CREDENTIALS_FILENAME,
+            MATRIX_DIRNAME,
+            "database",
+            "data",
+            "logs",
+            "plugins",
+            DATABASE_FILENAME,
+        ]
+        units.extend(DATABASE_FILENAME + suffix for suffix in SQLITE_SIDECAR_SUFFIXES)
+        if not dry_run:
+            if _is_mmrelay_running():
+                report["error"] = "MMRelay is running; stop it before migrating"
+                return report
+            if not _check_disk_space(target)[0]:
+                report["error"] = "Insufficient disk space for migration"
+                return report
+            snapshot = (
+                target
+                / MIGRATION_BACKUP_DIRNAME
+                / ("windows-home-" + datetime.now().strftime("%Y%m%d_%H%M%S_%f"))
+            )
+            report["source_backup"] = str(snapshot)
+            try:
+                snapshot.mkdir(parents=True)
+                for unit in units:
+                    original = source / unit
+                    if not original.exists():
+                        continue
+                    if target.resolve().is_relative_to(original.resolve()):
+                        raise OSError(
+                            "Source data links back into the migration destination"
+                        )
+                    if original.is_dir():
+                        shutil.copytree(original, snapshot / unit)
+                    else:
+                        shutil.copy2(original, snapshot / unit)
+            except (OSError, shutil.Error) as exc:
+                report["error"] = (
+                    f"Could not back up the source; no files were moved: {exc}"
+                )
+                return report
+        result = perform_migration(
+            dry_run=dry_run, source_roots=[source], _lock_held=lock_held
+        )
+        report.update(result)
+        if not result["success"] and snapshot is not None:
+            # The generic rollback preserves moved data at the destination when
+            # there was no previous destination backup. Restore the active source
+            # as well, and quarantine partial target state so discovery cannot
+            # select an incomplete installation on the next launch.
+            errors: list[str] = []
+            for unit in units:
+                try:
+                    partial = target / unit
+                    if partial.exists():
+                        quarantined = snapshot / "partial-target" / unit
+                        quarantined.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.move(str(partial), str(quarantined))
+                    saved = snapshot / unit
+                    original = source / unit
+                    if saved.is_dir():
+                        if original.exists():
+                            remainder = snapshot / "partial-source" / unit
+                            remainder.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.move(str(original), str(remainder))
+                        shutil.copytree(saved, original)
+                    elif saved.exists():
+                        original.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(saved, original)
+                except (OSError, shutil.Error) as exc:
+                    errors.append(f"{unit}: {exc}")
+            report["source_restore_errors"] = errors
+            if errors:
+                logger.error(
+                    "Source restoration needs attention; backup at %s: %s",
+                    snapshot,
+                    errors,
+                )
+        return report
+    finally:
+        if lock_held:
+            try:
+                lock_file.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Could not remove migration lock: %s", lock_file)
+        paths_module.reset_home_override()
 
 
 def rollback_migration(
@@ -2964,7 +3358,7 @@ def rollback_migration(
     """
     Restore completed migration steps by locating and restoring backups from the .migration_backups directory.
 
-    Restores files or directories that were backed up before being overwritten during migration; if no backup exists for a step the function preserves the destination to avoid data loss. Cleans up the staging directory on successful rollback but does not remove backups.
+    Restores files or directories that were backed up before being overwritten during migration; if no backup exists for a step the function preserves the destination to avoid data loss. Retains staging and backups for manual recovery because a failed step may have moved its only copy there.
 
     Parameters:
         completed_steps (list[str]): Names of steps that completed before the failure, processed in reverse order.
@@ -3217,14 +3611,15 @@ def rollback_migration(
             rollback_report["errors"].append({"step": step_name, "error": str(e)})
             rollback_report["success"] = False
 
-    if rollback_report["success"]:
-        staging_dir = new_home / MIGRATION_STAGING_DIRNAME
-        if staging_dir.exists():
-            try:
-                shutil.rmtree(str(staging_dir), ignore_errors=True)
-                logger.debug("Cleaned up staging directory after rollback")
-            except (OSError, IOError):
-                pass
+    # A failed step is not listed among completed_steps. Its staging directory
+    # may therefore contain the only remaining copy of data moved before the
+    # failure; do not recursively delete it after unrelated steps roll back.
+    staging_dir = new_home / MIGRATION_STAGING_DIRNAME
+    if staging_dir.exists():
+        rollback_report["staging_dir"] = str(staging_dir)
+        logger.warning(
+            "Preserving staged migration data for recovery at %s", staging_dir
+        )
 
     if rollback_report["success"] and not rollback_report["errors"]:
         logger.info("Rollback completed successfully")

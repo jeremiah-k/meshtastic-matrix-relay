@@ -148,11 +148,11 @@ If verification fails, stop the container, restore your backup, and roll back to
 
 ### Windows Installer Behavior
 
-The Windows installer uses the installation directory (e.g., `C:\Users\<user>\AppData\Local\Programs\MM Relay\`) as the MMRELAY_HOME. All batch files created by the installer use `--home` to ensure consistent data locations:
+New Windows installations keep the executable under the chosen installation directory and writable data under `%LOCALAPPDATA%\mmrelay`. The installer runs per-user without requesting administrator privileges by default.
 
-- `mmrelay.bat` - Runs MMRelay with all data in the install directory
-- `setup-auth.bat` - Sets up Matrix authentication
-- `logout.bat` - Logs out from Matrix
+The launch, authentication, and logout batch files use normal home discovery rather than forcing data into the executable directory. Explicit `--home` and `MMRELAY_HOME` settings retain precedence. The Config shortcut opens the configuration belonging to the active home, including legacy installations that have not been migrated.
+
+Existing installer-directory homes and the historical `%LOCALAPPDATA%\mmrelay\mmrelay` location remain discoverable. Upgrading the installer does not automatically move their data. A directory containing only empty plugin scaffolding is not treated as an installation requiring migration.
 
 ### Default Paths Without Installer
 
@@ -171,26 +171,23 @@ If you installed via pip/pipx instead of the Windows installer, the default HOME
 
 ### Upgrading on Windows
 
-1. **If using the Windows installer:**
-   - Download and run the new installer
-   - Your existing data in the install directory will be preserved
-   - No migration is needed if all data was already in the install directory
+1. Stop all running MMRelay instances and upgrade the installer. Existing data remains in place and continues to be selected.
+2. If the installer offers **Review and migrate existing MMRelay data** on its Finish page, select that unchecked option to open the preview-and-confirm flow. The offer appears only for applicable existing homes, never for fresh or migrated installations, explicit overrides, occupied destinations, or silent installs. Alternatively, open **MM Relay Migrate Data** from the Start menu, or run `migrate-data.bat` in the installation directory. The launcher previews the source and destination, then asks for confirmation before moving anything.
+3. Alternatively, run these commands from PowerShell in the installation directory:
 
-2. **If upgrading from pip/pipx with data in `%LOCALAPPDATA%\mmrelay`:**
-   - Install the new version
-   - Open Command Prompt
-   - Run migration to verify and move any legacy data:
-
-   ```cmd
-   mmrelay migrate --dry-run
-   mmrelay migrate
-   mmrelay verify-migration
+   ```powershell
+   .\mmrelay.exe migrate --to-default-home --dry-run
+   .\mmrelay.exe migrate --to-default-home
+   .\mmrelay.exe verify-migration
    ```
 
-3. **If you have data in both locations:**
-   - The migration tool will detect this as a "split roots" condition
-   - Review the output carefully before proceeding
-   - Use `--dry-run` first to preview changes
+Guided migration moves only the automatically selected installation's state. It preserves credentials already under `matrix`, the SQLite database, core-plugin data, custom/community plugins (including standalone files), and installed plugin dependencies. A source snapshot is saved under the destination's `.migration_backups` directory before applying changes. If a migration step fails, the source is restored from that snapshot; partial source and destination state is retained in the snapshot for recovery instead of being merged into the restored home.
+
+If the destination contains real data, guided migration refuses before moving any files; it never silently merges installations or enables `--force`. Explicit home overrides are also refused by this mode. Review both homes with `mmrelay paths` and use ordinary `mmrelay --home <chosen-target> migrate --dry-run` for a deliberate manual migration instead. Check any explicit absolute paths in your configuration before relocating data; the tool does not rewrite arbitrary plugin settings.
+
+After a successful move, normal launchers discover `%LOCALAPPDATA%\mmrelay`. The executable stays in its installation directory. Source snapshots and migration backups are retained; remove them only after verifying the relay and keeping an independent backup.
+
+After all migration steps succeed, redundant legacy SQLite database groups (including `-wal` and `-shm` sidecars) are archived under the destination's `.migration_backups/legacy-databases-*` directory. The active database must pass an integrity check, and every archive copy is byte-verified before any source file is removed. Unrelated files are not removed, and the selected database is not merged with redundant databases.
 
 ### Windows-Specific Limitations
 

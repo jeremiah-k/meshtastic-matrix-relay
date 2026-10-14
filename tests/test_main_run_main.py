@@ -438,6 +438,7 @@ def test_run_main_with_credentials_json(
 @patch("mmrelay.config.get_log_dir")
 @patch("mmrelay.log_utils.configure_component_debug_logging")
 @patch("mmrelay.config.set_config")
+@pytest.mark.parametrize("windows_migration_needed", [None, False, True])
 def test_run_main_legacy_layout_warning(
     mock_set_config,
     mock_configure_logging,
@@ -448,6 +449,7 @@ def test_run_main_legacy_layout_warning(
     mock_load_credentials,
     mock_load_config,
     mock_print_banner,
+    windows_migration_needed,
 ):
     """Test that warning messages are logged when legacy layout is enabled."""
     mock_config = {
@@ -471,6 +473,18 @@ def test_run_main_legacy_layout_warning(
     with (
         patch("asyncio.run") as mock_asyncio_run,
         patch("mmrelay.main.get_logger", return_value=mock_rich_logger),
+        patch(
+            "mmrelay.main.sys.platform",
+            "linux" if windows_migration_needed is None else "win32",
+        ),
+        patch(
+            "mmrelay.migrate.plan_windows_home_migration",
+            return_value={
+                "needed": windows_migration_needed,
+                "source_home": "installer-home",
+                "target_home": "default-home",
+            },
+        ),
     ):
         mock_asyncio_run.side_effect = _close_coro_if_possible
         result = run_main(mock_args)
@@ -484,8 +498,13 @@ def test_run_main_legacy_layout_warning(
         "/test/legacy/dir" in msg for msg in rendered
     ), f"Expected legacy dir in warning. Rendered: {rendered}"
     assert any(
-        "docs/DOCKER.md" in msg for msg in rendered
+        "docs/MIGRATION_1.3.md" in msg for msg in rendered
     ), f"Expected migration hint not found. Rendered: {rendered}"
+    reminders = [msg for msg in rendered if "No data is moved automatically" in msg]
+    assert len(reminders) == (1 if windows_migration_needed else 0)
+    if reminders:
+        assert "installer-home" in reminders[0] and "default-home" in reminders[0]
+        assert "migrate --to-default-home --dry-run" in reminders[0]
 
 
 @patch("asyncio.run")

@@ -92,10 +92,10 @@ class TestGetHomeDir:
 
             assert result == installer_path
 
-    def test_get_home_dir_windows_installer_path_preferred_on_first_run(
+    def test_get_home_dir_windows_marker_only_installer_uses_default_data_home(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        """Installer path markers should be enough on first run before data exists."""
+        """A fresh installation keeps writable state outside the executable directory."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             local_app_data = Path(tmp_dir)
             installer_path = local_app_data / "Programs" / WINDOWS_INSTALLER_DIR_NAME
@@ -106,10 +106,16 @@ class TestGetHomeDir:
             monkeypatch.delenv("MMRELAY_HOME", raising=False)
             monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
             monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
-            with patch("sys.platform", "win32"):
+            with (
+                patch("sys.platform", "win32"),
+                patch(
+                    "mmrelay.paths.platformdirs.user_data_dir",
+                    return_value=str(local_app_data / "mmrelay"),
+                ),
+            ):
                 result = get_home_dir()
 
-            assert result == installer_path
+            assert result == local_app_data / "mmrelay"
 
     def test_get_home_dir_windows_prefers_existing_platform_data_over_marker_only_installer(
         self, monkeypatch: pytest.MonkeyPatch
