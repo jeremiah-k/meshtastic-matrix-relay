@@ -145,5 +145,6 @@ jobs:
       - name: Run Windows E2EE SDK contract tests
         env:
           PYTHONUTF8: "1"
+          MMRELAY_REQUIRE_E2EE_SDK: "1"
         run: |
           python -m pytest -o addopts= -v tests/test_matrix_cross_signing_sdk_contract.py tests/test_matrix_store_lifecycle_sdk_contract.py tests/test_matrix_decrypted_event_sdk_contract.py tests/test_matrix_capabilities_sdk_contract.py

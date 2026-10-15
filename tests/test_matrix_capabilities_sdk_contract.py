@@ -13,6 +13,7 @@ each arm of the pinned version split instead of assuming it.
 from __future__ import annotations
 
 import json
+import os
 import subprocess  # nosec B404 - runs contract check script with hardcoded args in isolated mode
 import sys
 from pathlib import Path
@@ -93,10 +94,13 @@ def _skip_unless_e2ee_ready() -> None:
     """Skip on capability: the e2e extra with an enabled crypto backend must be installed."""
     probe = _run_sdk_script(_E2EE_PROBE_SCRIPT, Path("."))
     if probe.returncode != 0:
-        pytest.skip(
+        reason = (
             "Matrix E2EE SDK contract environment not available: "
             f"{(probe.stderr or probe.stdout).strip() or f'exit {probe.returncode}'}"
         )
+        if os.environ.get("MMRELAY_REQUIRE_E2EE_SDK") == "1":
+            pytest.fail(reason)
+        pytest.skip(reason)
 
 
 def test_capability_detection_matches_real_store_openability(tmp_path: Path) -> None:

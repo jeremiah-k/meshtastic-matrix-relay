@@ -11,6 +11,7 @@ suite mocks ``nio``.
 
 from __future__ import annotations
 
+import os
 import subprocess  # nosec B404 - runs contract check script with hardcoded args in isolated mode
 import sys
 
@@ -100,10 +101,13 @@ def _skip_unless_e2ee_ready() -> None:
     """Skip on capability: the e2e extra with an enabled crypto backend must be installed."""
     probe = _run_sdk_script(_E2EE_PROBE_SCRIPT)
     if probe.returncode != 0:
-        pytest.skip(
+        reason = (
             "Matrix E2EE SDK contract environment not available: "
             f"{(probe.stderr or probe.stdout).strip() or f'exit {probe.returncode}'}"
         )
+        if os.environ.get("MMRELAY_REQUIRE_E2EE_SDK") == "1":
+            pytest.fail(reason)
+        pytest.skip(reason)
 
 
 def test_mindroom_nio_decrypted_event_contract() -> None:
