@@ -796,3 +796,78 @@ def test_probe_closes_database_handle():
 def test_probe_reports_false_without_store_class():
     """Without a SqliteStore class there is nothing to open; the probe fails closed."""
     assert compat._probe_sqlite_store_openable(SimpleNamespace()) is False
+
+
+def test_store_probe_is_not_run_without_crypto_candidate(monkeypatch):
+    """Capability detection must not touch disk for a crypto-less nio installation."""
+
+    probe_calls = []
+
+    class _UnexpectedStore:
+        def __init__(self, *args: object) -> None:
+            probe_calls.append(args)
+            raise AssertionError("store probe ran without a crypto backend")
+
+    _patch_detection(
+        monkeypatch,
+        {"mindroom-nio": "1.1.4"},
+        {
+            "nio": SimpleNamespace(AsyncClient=object),
+            "nio.crypto": SimpleNamespace(ENCRYPTION_ENABLED=False),
+            "nio.store": SimpleNamespace(SqliteStore=_UnexpectedStore),
+        },
+    )
+
+    caps = compat.detect_matrix_capabilities()
+    assert caps.sqlite_store_available is True
+    assert caps.sqlite_store_openable is False
+    assert caps.store_failure is None
+    assert probe_calls == []
+    assert "fcntl" not in caps.install_hint
+    assert "mmrelay[e2e]" in compat.format_e2ee_install_command(caps)
+
+
+def test_missing_sqlite_store_gives_dependency_guidance(monkeypatch):
+    """An absent SqliteStore is not evidence of a Windows POSIX-lease failure."""
+    _patch_detection(
+        monkeypatch,
+        {"mindroom-nio": "1.1.4"},
+        {
+            "nio": SimpleNamespace(AsyncClient=object),
+            "nio.crypto": SimpleNamespace(ENCRYPTION_ENABLED=True),
+            "nio.store": SimpleNamespace(),
+            "vodozemac": SimpleNamespace(),
+        },
+    )
+
+    caps = compat.detect_matrix_capabilities()
+    assert caps.sqlite_store_available is False
+    assert caps.store_failure is None
+    assert "fcntl" not in caps.install_hint
+    assert "mmrelay[e2e]" in compat.format_e2ee_install_command(caps)
+
+
+def test_generic_store_probe_error_does_not_claim_fcntl(monkeypatch):
+    """A permissions failure must not be presented as a missing POSIX module."""
+
+    class _PermissionDeniedStore:
+        def __init__(self, *args: object) -> None:
+            raise PermissionError("Cannot write to store directory")
+
+    _patch_detection(
+        monkeypatch,
+        {"mindroom-nio": "1.1.4"},
+        {
+            "nio": SimpleNamespace(AsyncClient=object),
+            "nio.crypto": SimpleNamespace(ENCRYPTION_ENABLED=True),
+            "nio.store": SimpleNamespace(SqliteStore=_PermissionDeniedStore),
+            "vodozemac": SimpleNamespace(),
+        },
+    )
+
+    caps = compat.detect_matrix_capabilities()
+    assert caps.sqlite_store_openable is False
+    assert caps.store_failure == "other"
+    assert "fcntl" not in caps.install_hint
+    assert "filesystem permissions" in compat.format_e2ee_install_command(caps)
+    assert "cannot open" in compat.format_e2ee_unavailable_message(caps)
