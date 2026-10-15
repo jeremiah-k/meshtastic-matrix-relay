@@ -1109,10 +1109,8 @@ class TestMigrateLogs:
 class TestMigrateStore:
     """Tests for migrate_store function (lines 698-789)."""
 
-    def test_store_migration_runs_on_windows(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Store migration proceeds on Windows like every other platform."""
+    def test_store_migration_is_platform_independent(self, tmp_path: Path) -> None:
+        """Store migration does not depend on a platform-specific path."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         store_dir = legacy_root / "store"
@@ -1121,13 +1119,12 @@ class TestMigrateStore:
         new_home = tmp_path / "home"
         new_home.mkdir()
 
-        with patch("sys.platform", "win32"):
-            result = migrate_store([legacy_root], new_home)
+        result = migrate_store([legacy_root], new_home)
 
-            assert result["success"] is True
-            moved_db = new_home / "matrix" / "store" / "store.db"
-            assert moved_db.exists()
-            assert moved_db.read_text() == "store"
+        assert result["success"] is True
+        moved_db = new_home / "matrix" / "store" / "store.db"
+        assert moved_db.exists()
+        assert moved_db.read_text() == "store"
 
     def test_no_store_directory(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -748,7 +748,8 @@ class TestConfigAdditionalCoverage(unittest.TestCase):
         assert result is False
 
     @patch("sys.platform", "win32")
-    def test_check_e2ee_enabled_silently_win32(self):
+    @patch("mmrelay.config.get_config_paths", return_value=["/nonexistent/config.yaml"])
+    def test_check_e2ee_enabled_silently_win32(self, _mock_paths):
         from mmrelay.config import check_e2ee_enabled_silently
 
         assert check_e2ee_enabled_silently() is False
