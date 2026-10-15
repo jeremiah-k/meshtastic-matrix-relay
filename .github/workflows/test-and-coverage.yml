@@ -106,3 +106,44 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           report_type: test_results
+
+  windows-e2ee-contract:
+    name: Windows Matrix E2EE SDK (py${{ matrix.python-version }})
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both arms of the pinned version split: 3.13 installs
+        # mindroom-nio 1.1.x, whose crypto store takes a POSIX file lease
+        # (fcntl) — the contract pins the fail-closed capability outcome
+        # there. 3.11 installs mindroom-nio 0.40.0 (py<3.12), whose store
+        # opens natively, pinning the full store-lifecycle contract.
+        python-version: ["3.13", "3.11"]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[test,e2e]'
+
+      - name: Prove installed cryptography is enabled, not merely importable
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          python -c "from nio.crypto import ENCRYPTION_ENABLED; assert ENCRYPTION_ENABLED, 'mindroom-nio E2EE is disabled on Windows'"
+
+      - name: Run Windows E2EE SDK contract tests
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          python -m pytest -o addopts= -v tests/test_matrix_cross_signing_sdk_contract.py tests/test_matrix_store_lifecycle_sdk_contract.py tests/test_matrix_decrypted_event_sdk_contract.py tests/test_matrix_capabilities_sdk_contract.py
