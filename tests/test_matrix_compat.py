@@ -7,6 +7,13 @@ import pytest
 from mmrelay.matrix import compat
 
 
+class _FakeSqliteStore:
+    """Minimal constructible stand-in so the openability probe succeeds."""
+
+    def __init__(self, user_id: str, device_id: str, store_path: str) -> None:
+        self.store_path = store_path
+
+
 @pytest.fixture(autouse=True)
 def reset_capability_cache():
     compat.reset_matrix_capabilities_cache()
@@ -101,14 +108,14 @@ def test_both_providers_installed_disables_e2ee_even_with_crypto(monkeypatch):
                     OlmDevice=object,
                 ),
                 api=SimpleNamespace(Api=type("Api_dummy", (), {})),
-                store=SimpleNamespace(SqliteStore=object),
+                store=SimpleNamespace(SqliteStore=_FakeSqliteStore),
             ),
             "nio.api": SimpleNamespace(Api=type("Api_dummy", (), {})),
             "nio.crypto": SimpleNamespace(
                 ENCRYPTION_ENABLED=True,
                 OlmDevice=object,
             ),
-            "nio.store": SimpleNamespace(SqliteStore=object),
+            "nio.store": SimpleNamespace(SqliteStore=_FakeSqliteStore),
             "olm": SimpleNamespace(),
             "vodozemac": SimpleNamespace(),
         },
@@ -129,7 +136,7 @@ def test_matrix_nio_install_guidance_does_not_recommend_mmrelay_e2e(monkeypatch)
         {
             "nio": SimpleNamespace(AsyncClient=type("AsyncClient", (), {})),
             "nio.crypto": SimpleNamespace(OlmDevice=object),
-            "nio.store": SimpleNamespace(SqliteStore=object),
+            "nio.store": SimpleNamespace(SqliteStore=_FakeSqliteStore),
         },
     )
 
@@ -207,10 +214,10 @@ def test_detect_matrix_capabilities_mindroom_nio_ready(monkeypatch):
             "nio": SimpleNamespace(
                 AsyncClient=type("AsyncClient", (), {}),
                 crypto=SimpleNamespace(ENCRYPTION_ENABLED=True),
-                store=SimpleNamespace(SqliteStore=object),
+                store=SimpleNamespace(SqliteStore=_FakeSqliteStore),
             ),
             "nio.crypto": SimpleNamespace(ENCRYPTION_ENABLED=True),
-            "nio.store": SimpleNamespace(SqliteStore=object),
+            "nio.store": SimpleNamespace(SqliteStore=_FakeSqliteStore),
             "nio.api": SimpleNamespace(
                 Api=type(
                     "Api_dummy",
@@ -240,10 +247,10 @@ def test_detect_matrix_capabilities_mindroom_nio_partial(monkeypatch):
             "nio": SimpleNamespace(
                 AsyncClient=type("AsyncClient", (), {}),
                 crypto=SimpleNamespace(ENCRYPTION_ENABLED=False),
-                store=SimpleNamespace(SqliteStore=object),
+                store=SimpleNamespace(SqliteStore=_FakeSqliteStore),
             ),
             "nio.crypto": SimpleNamespace(ENCRYPTION_ENABLED=False),
-            "nio.store": SimpleNamespace(SqliteStore=object),
+            "nio.store": SimpleNamespace(SqliteStore=_FakeSqliteStore),
             "nio.api": SimpleNamespace(
                 Api=type(
                     "Api_dummy",
@@ -273,10 +280,10 @@ def test_detect_matrix_capabilities_mindroom_nio_no_crypto(monkeypatch):
             "nio": SimpleNamespace(
                 AsyncClient=type("AsyncClient", (), {}),
                 crypto=SimpleNamespace(),
-                store=SimpleNamespace(SqliteStore=object),
+                store=SimpleNamespace(SqliteStore=_FakeSqliteStore),
             ),
             "nio.crypto": SimpleNamespace(),
-            "nio.store": SimpleNamespace(SqliteStore=object),
+            "nio.store": SimpleNamespace(SqliteStore=_FakeSqliteStore),
             "nio.api": SimpleNamespace(
                 Api=type(
                     "Api_dummy",
@@ -331,10 +338,10 @@ def test_detect_matrix_capabilities_matrix_nio_ready(monkeypatch):
             "nio": SimpleNamespace(
                 AsyncClient=type("AsyncClient", (), {}),
                 crypto=SimpleNamespace(OlmDevice=object),
-                store=SimpleNamespace(SqliteStore=object),
+                store=SimpleNamespace(SqliteStore=_FakeSqliteStore),
             ),
             "nio.crypto": SimpleNamespace(OlmDevice=object),
-            "nio.store": SimpleNamespace(SqliteStore=object),
+            "nio.store": SimpleNamespace(SqliteStore=_FakeSqliteStore),
             "nio.api": SimpleNamespace(
                 Api=type(
                     "Api_dummy",
@@ -364,10 +371,10 @@ def test_detect_matrix_capabilities_matrix_nio_unavailable(monkeypatch):
             "nio": SimpleNamespace(
                 AsyncClient=type("AsyncClient", (), {}),
                 crypto=SimpleNamespace(),
-                store=SimpleNamespace(SqliteStore=object),
+                store=SimpleNamespace(SqliteStore=_FakeSqliteStore),
             ),
             "nio.crypto": SimpleNamespace(),
-            "nio.store": SimpleNamespace(SqliteStore=object),
+            "nio.store": SimpleNamespace(SqliteStore=_FakeSqliteStore),
             "nio.api": SimpleNamespace(
                 Api=type(
                     "Api_dummy",
@@ -422,10 +429,10 @@ def test_detect_matrix_capabilities_fallthrough_vodozemac_ready(monkeypatch):
             "nio": SimpleNamespace(
                 AsyncClient=type("AsyncClient", (), {}),
                 crypto=SimpleNamespace(ENCRYPTION_ENABLED=True),
-                store=SimpleNamespace(SqliteStore=object),
+                store=SimpleNamespace(SqliteStore=_FakeSqliteStore),
             ),
             "nio.crypto": SimpleNamespace(ENCRYPTION_ENABLED=True),
-            "nio.store": SimpleNamespace(SqliteStore=object),
+            "nio.store": SimpleNamespace(SqliteStore=_FakeSqliteStore),
             "nio.api": SimpleNamespace(
                 Api=type(
                     "Api_dummy",
@@ -454,10 +461,10 @@ def test_detect_matrix_capabilities_fallthrough_olm_ready(monkeypatch):
             "nio": SimpleNamespace(
                 AsyncClient=type("AsyncClient", (), {}),
                 crypto=SimpleNamespace(OlmDevice=object),
-                store=SimpleNamespace(SqliteStore=object),
+                store=SimpleNamespace(SqliteStore=_FakeSqliteStore),
             ),
             "nio.crypto": SimpleNamespace(OlmDevice=object),
-            "nio.store": SimpleNamespace(SqliteStore=object),
+            "nio.store": SimpleNamespace(SqliteStore=_FakeSqliteStore),
             "nio.api": SimpleNamespace(
                 Api=type(
                     "Api_dummy",
@@ -486,10 +493,10 @@ def test_detect_matrix_capabilities_fallthrough_partial_vodozemac(monkeypatch):
             "nio": SimpleNamespace(
                 AsyncClient=type("AsyncClient", (), {}),
                 crypto=SimpleNamespace(ENCRYPTION_ENABLED=False),
-                store=SimpleNamespace(SqliteStore=object),
+                store=SimpleNamespace(SqliteStore=_FakeSqliteStore),
             ),
             "nio.crypto": SimpleNamespace(ENCRYPTION_ENABLED=False),
-            "nio.store": SimpleNamespace(SqliteStore=object),
+            "nio.store": SimpleNamespace(SqliteStore=_FakeSqliteStore),
             "nio.api": SimpleNamespace(
                 Api=type(
                     "Api_dummy",
@@ -548,10 +555,10 @@ def test_detect_matrix_capabilities_fallthrough_unavailable(monkeypatch):
             "nio": SimpleNamespace(
                 AsyncClient=type("AsyncClient", (), {}),
                 crypto=SimpleNamespace(),
-                store=SimpleNamespace(SqliteStore=object),
+                store=SimpleNamespace(SqliteStore=_FakeSqliteStore),
             ),
             "nio.crypto": SimpleNamespace(),
-            "nio.store": SimpleNamespace(SqliteStore=object),
+            "nio.store": SimpleNamespace(SqliteStore=_FakeSqliteStore),
             "nio.api": SimpleNamespace(
                 Api=type(
                     "Api_dummy",
@@ -615,7 +622,7 @@ def test_supports_authenticated_media_exception(monkeypatch):
         {
             "nio": SimpleNamespace(AsyncClient=type("AsyncClient", (), {})),
             "nio.crypto": SimpleNamespace(OlmDevice=object),
-            "nio.store": SimpleNamespace(SqliteStore=object),
+            "nio.store": SimpleNamespace(SqliteStore=_FakeSqliteStore),
             "nio.api": SimpleNamespace(Api=BadApi),
             "olm": SimpleNamespace(),
         },
@@ -633,7 +640,7 @@ def test_format_e2ee_unavailable_message_conflict(monkeypatch):
         {
             "nio": SimpleNamespace(AsyncClient=type("AsyncClient", (), {})),
             "nio.crypto": SimpleNamespace(OlmDevice=object),
-            "nio.store": SimpleNamespace(SqliteStore=object),
+            "nio.store": SimpleNamespace(SqliteStore=_FakeSqliteStore),
             "nio.api": SimpleNamespace(Api=type("Api_dummy", (), {})),
             "olm": SimpleNamespace(),
             "vodozemac": SimpleNamespace(),
@@ -653,7 +660,7 @@ def test_format_e2ee_install_command_fallback(monkeypatch):
         {
             "nio": SimpleNamespace(AsyncClient=type("AsyncClient", (), {})),
             "nio.crypto": SimpleNamespace(),
-            "nio.store": SimpleNamespace(SqliteStore=object),
+            "nio.store": SimpleNamespace(SqliteStore=_FakeSqliteStore),
             "nio.api": SimpleNamespace(
                 Api=type(
                     "Api_dummy",
@@ -681,10 +688,10 @@ def test_format_e2ee_install_command_mindroom_nio(monkeypatch):
             "nio": SimpleNamespace(
                 AsyncClient=type("AsyncClient", (), {}),
                 crypto=SimpleNamespace(ENCRYPTION_ENABLED=True),
-                store=SimpleNamespace(SqliteStore=object),
+                store=SimpleNamespace(SqliteStore=_FakeSqliteStore),
             ),
             "nio.crypto": SimpleNamespace(ENCRYPTION_ENABLED=True),
-            "nio.store": SimpleNamespace(SqliteStore=object),
+            "nio.store": SimpleNamespace(SqliteStore=_FakeSqliteStore),
             "nio.api": SimpleNamespace(
                 Api=type(
                     "Api_dummy",
@@ -703,3 +710,89 @@ def test_format_e2ee_install_command_mindroom_nio(monkeypatch):
     cmd = compat.format_e2ee_install_command(caps)
     assert "mmrelay[e2e]" in cmd
     assert "pipx" in cmd
+
+
+class _UnopenableSqliteStore:
+    """Stand-in whose construction fails, like nio's fcntl-leased store on Windows."""
+
+    def __init__(self, user_id: str, device_id: str, store_path: str) -> None:
+        raise RuntimeError("store filesystem ownership requires fcntl support")
+
+
+def _make_store_modules(store_class: object) -> dict[str, object]:
+    return {
+        "nio": SimpleNamespace(
+            AsyncClient=type("AsyncClient", (), {}),
+            crypto=SimpleNamespace(ENCRYPTION_ENABLED=True),
+            store=SimpleNamespace(SqliteStore=store_class),
+        ),
+        "nio.crypto": SimpleNamespace(ENCRYPTION_ENABLED=True),
+        "nio.store": SimpleNamespace(SqliteStore=store_class),
+        "nio.api": SimpleNamespace(
+            Api=type(
+                "Api_dummy",
+                (),
+                {
+                    "update_receipt_marker": lambda *a: None,
+                    "download": lambda *a, allow_remote=None: None,
+                },
+            )
+        ),
+        "vodozemac": SimpleNamespace(),
+    }
+
+
+def test_detect_probe_rejects_unopenable_store(monkeypatch):
+    """A store backend that cannot open here disables E2EE despite crypto being installed."""
+    _patch_detection(
+        monkeypatch,
+        {"mindroom-nio": "1.1.4"},
+        _make_store_modules(_UnopenableSqliteStore),
+    )
+
+    caps = compat.detect_matrix_capabilities()
+
+    assert caps.vodozemac_available is True
+    assert caps.sqlite_store_available is True
+    assert caps.sqlite_store_openable is False
+    assert caps.encryption_available is False
+    assert caps.crypto_backend == "vodozemac"
+    assert "fcntl" in caps.install_hint
+    message = compat.format_e2ee_unavailable_message(caps)
+    assert "cannot open on this platform" in message
+    command = compat.format_e2ee_install_command(caps)
+    assert "No package install enables E2EE" in command
+
+
+def test_detect_probe_accepts_constructible_store(monkeypatch):
+    """A store backend that opens here keeps vodozemac E2EE available."""
+    _patch_detection(
+        monkeypatch,
+        {"mindroom-nio": "1.1.4"},
+        _make_store_modules(_FakeSqliteStore),
+    )
+
+    caps = compat.detect_matrix_capabilities()
+
+    assert caps.sqlite_store_openable is True
+    assert caps.encryption_available is True
+
+
+def test_probe_closes_database_handle():
+    """The openability probe closes the store database it opened."""
+    closed = []
+
+    class _RecordingStore(_FakeSqliteStore):
+        def __init__(self, user_id: str, device_id: str, store_path: str) -> None:
+            super().__init__(user_id, device_id, store_path)
+            self.database = SimpleNamespace(close=lambda: closed.append(True))
+
+    assert compat._probe_sqlite_store_openable(
+        SimpleNamespace(SqliteStore=_RecordingStore)
+    )
+    assert closed == [True]
+
+
+def test_probe_reports_false_without_store_class():
+    """Without a SqliteStore class there is nothing to open; the probe fails closed."""
+    assert compat._probe_sqlite_store_openable(SimpleNamespace()) is False

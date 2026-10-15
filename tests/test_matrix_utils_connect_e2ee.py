@@ -32,6 +32,8 @@ def _matrix_capabilities(
         install_hint=install_hint,
         recommended_e2ee_extra=recommended_e2ee_extra,
         both_known_providers_installed=both_known_providers_installed,
+        sqlite_store_available=True,
+        sqlite_store_openable=True,
     )
 
 
