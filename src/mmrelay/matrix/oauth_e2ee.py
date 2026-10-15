@@ -169,7 +169,36 @@ async def self_sign_device(
     )
     try:
         manager = OAuthSessionManager(session, store)
-        client.restore_login(session.user_id, session.device_id, session.access_token)
+        try:
+            facade._restore_login(
+                client,
+                user_id=session.user_id,
+                device_id=session.device_id,
+                access_token=session.access_token,
+            )
+        except facade.E2EEStoreOpenError as store_error:
+            # The crypto store exists but nio cannot open it. Continue the
+            # already-completed OAuth login unencrypted instead of failing.
+            if reset_cross_signing:
+                raise OAuthError(
+                    "Cross-signing reset requires E2EE and its dependencies."
+                ) from store_error
+            facade._log_e2ee_store_open_failure(store_path, store_error)
+            await finish_task(asyncio.create_task(client.close()))
+            client = facade._initialize_matrix_client(
+                homeserver=session.homeserver,
+                user_id=session.user_id,
+                device_id=session.device_id,
+                e2ee_enabled=False,
+                e2ee_store_path=None,
+                ssl_context=facade._create_ssl_context(),
+            )
+            facade._restore_login(
+                client,
+                user_id=session.user_id,
+                device_id=session.device_id,
+                access_token=session.access_token,
+            )
         attach_oauth_session(client, manager)
         client.send = approval_sender(
             client.send, session.issuer, reset_cross_signing=reset_cross_signing

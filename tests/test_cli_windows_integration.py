@@ -337,6 +337,7 @@ class TestCLIE2EEValidation(unittest.TestCase):
             encryption_available=False,
             store_available=True,
             sqlite_store_available=True,
+            sqlite_store_openable=True,
             olm_available=False,
             vodozemac_available=False,
             nio_crypto_available=True,

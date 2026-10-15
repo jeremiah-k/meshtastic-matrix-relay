@@ -614,7 +614,7 @@ def verify_migration() -> dict[str, Any]:
     Returns:
         dict[str, Any]: Verification report with keys:
             - home: str path to MMRELAY_HOME
-            - artifacts: list[dict] status entries with `key`, `label`, `path` (or None), `exists`, `inside_home`, `not_applicable`
+            - artifacts: list[dict] status entries with `key`, `label`, `path`, `exists`, `inside_home`
             - legacy_data: list[dict] legacy source findings, each with `root` and `items` (each item has `type` and `path`)
             - credentials_missing: bool, True if credentials.json is absent from MMRELAY_HOME
             - legacy_data_found: bool, True if any legacy artifacts were discovered outside HOME
@@ -634,12 +634,7 @@ def verify_migration() -> dict[str, Any]:
     logs_dir = Path(paths_info["logs_dir"])
     plugins_dir = Path(paths_info["plugins_dir"])
 
-    store_value = paths_info["store_dir"]
-    store_dir: Path | None
-    if isinstance(store_value, str) and store_value.startswith("N/A"):
-        store_dir = None
-    else:
-        store_dir = Path(store_value)
+    store_dir = Path(paths_info["store_dir"])
 
     artifacts: list[dict[str, Any]] = [
         {
@@ -683,19 +678,6 @@ def verify_migration() -> dict[str, Any]:
     artifact_statuses: list[dict[str, Any]] = []
     for artifact in artifacts:
         artifact_path = artifact["path"]
-        if artifact_path is None:
-            artifact_statuses.append(
-                {
-                    "key": artifact["key"],
-                    "label": artifact["label"],
-                    "path": None,
-                    "exists": False,
-                    "inside_home": True,
-                    "not_applicable": True,
-                }
-            )
-            continue
-
         exists = artifact_path.exists()
         inside_home = _path_is_within_home(artifact_path, home)
         artifact_statuses.append(
@@ -705,7 +687,6 @@ def verify_migration() -> dict[str, Any]:
                 "path": str(artifact_path),
                 "exists": exists,
                 "inside_home": inside_home,
-                "not_applicable": False,
             }
         )
 
@@ -723,12 +704,11 @@ def verify_migration() -> dict[str, Any]:
         same_home_legacy_items.append(
             {"type": "credentials", "path": str(legacy_home_credentials)}
         )
-    if store_dir is not None:
-        legacy_home_store = home / STORE_DIRNAME
-        if legacy_home_store.exists() and legacy_home_store != store_dir:
-            same_home_legacy_items.append(
-                {"type": "e2ee_store", "path": str(legacy_home_store)}
-            )
+    legacy_home_store = home / STORE_DIRNAME
+    if legacy_home_store.exists() and legacy_home_store != store_dir:
+        same_home_legacy_items.append(
+            {"type": "e2ee_store", "path": str(legacy_home_store)}
+        )
     if same_home_legacy_items:
         legacy_findings.append({"root": str(home), "items": same_home_legacy_items})
 
@@ -743,12 +723,7 @@ def verify_migration() -> dict[str, Any]:
     artifact_has_content: dict[str, bool] = {}
     for artifact in artifact_statuses:
         key = artifact["key"]
-        path_str = artifact["path"]
-        if path_str is None:
-            artifact_has_content[key] = False
-            continue
-
-        path = Path(path_str)
+        path = Path(artifact["path"])
         # For directory-type artifacts, check if they have entries
         if key in ("logs", "plugins", "e2ee_store"):
             artifact_has_content[key] = _dir_has_entries(path)
@@ -849,7 +824,6 @@ def print_migration_verification(report: dict[str, Any]) -> None:
                 - path (str | Path): Resolved filesystem path for the artifact.
                 - exists (bool): Whether the artifact exists at `path`.
                 - inside_home (bool): Whether `path` is located inside `home`.
-                - not_applicable (bool): True when the artifact is irrelevant on the platform.
             - legacy_data (list[dict]): Legacy scan results; each dict contains:
                 - root (str | Path): Legacy root path that was scanned.
                 - items (list[dict]): Found legacy items, each with:
@@ -872,10 +846,6 @@ def print_migration_verification(report: dict[str, Any]) -> None:
     print("\n📁 Runtime Artifacts:")
     for artifact in report["artifacts"]:
         label = artifact["label"]
-        if artifact["not_applicable"]:
-            print(f"   {label}: N/A (Windows)")
-            continue
-
         path = artifact["path"]
         exists = "present" if artifact["exists"] else "missing"
         inside = "yes" if artifact["inside_home"] else "no"
@@ -1904,12 +1874,6 @@ def migrate_store(
     Returns:
         dict: Migration result.
     """
-    if sys.platform == "win32":
-        return {
-            "success": True,
-            "message": "E2EE not supported on Windows, skipping store migration",
-        }
-
     new_store_dir = new_home / MATRIX_DIRNAME / STORE_DIRNAME
     old_store_dir: Path | None = None
 
