@@ -12,7 +12,6 @@ Tests edge cases and error handling including:
 """
 
 import json
-import ntpath
 import os
 import sys
 import tempfile
@@ -466,8 +465,8 @@ class TestConfigEdgeCases(unittest.TestCase):
         ):
             result = get_e2ee_store_dir()
 
-            # Should use home/matrix/store on Windows fallback
-            expected = ntpath.join(
+            # The unified store path under home/matrix/store is used on Windows too
+            expected = os.path.join(
                 str(Path("C:\\mmrelay").expanduser().absolute()),
                 "matrix",
                 "store",
@@ -720,7 +719,7 @@ class TestConfigAdditionalCoverage(unittest.TestCase):
     def test_is_e2ee_enabled_win32(self):
         from mmrelay.config import is_e2ee_enabled
 
-        assert is_e2ee_enabled({"matrix": {"encryption": {"enabled": True}}}) is False
+        assert is_e2ee_enabled({"matrix": {"encryption": {"enabled": True}}}) is True
 
     @patch("sys.platform", "linux")
     @patch("os.path.isfile", return_value=True)

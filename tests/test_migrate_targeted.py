@@ -34,14 +34,17 @@ class TestMigrateStore(unittest.TestCase):
 
     @patch("mmrelay.paths.get_home_dir")
     @patch("sys.platform", "win32")
-    def test_returns_success_on_windows(self, mock_get_home):
-        """Test returns success message on Windows (E2EE not supported)."""
+    def test_no_legacy_store_succeeds_on_windows(self, mock_get_home):
+        """Store migration succeeds on Windows when no legacy store exists."""
         mock_get_home.return_value = Path("/home")
 
-        result = migrate_store([], Path("/home"))
+        with tempfile.TemporaryDirectory() as tmp:
+            new_home = Path(tmp) / "home"
+            new_home.mkdir()
+
+            result = migrate_store([], new_home)
 
         self.assertTrue(result.get("success"))
-        self.assertIn("E2EE not supported on Windows", result.get("message", ""))
 
 
 class TestMigratePlugins(unittest.TestCase):

@@ -710,6 +710,8 @@ class TestCLIValidationFunctions(unittest.TestCase):
                 "mmrelay.matrix.compat.get_matrix_capabilities",
                 return_value=SimpleNamespace(
                     encryption_available=False,
+                    sqlite_store_available=True,
+                    sqlite_store_openable=True,
                     both_known_providers_installed=False,
                     provider_distribution="mindroom-nio",
                 ),
@@ -720,13 +722,23 @@ class TestCLIValidationFunctions(unittest.TestCase):
             self.assertFalse(result)
 
     @patch("sys.platform", "win32")
-    def test_validate_e2ee_dependencies_windows(self):
-        """Test _validate_e2ee_dependencies on Windows platform."""
+    @patch(
+        "mmrelay.matrix.compat.get_matrix_capabilities",
+        return_value=SimpleNamespace(
+            encryption_available=True,
+            sqlite_store_available=True,
+            sqlite_store_openable=True,
+            both_known_providers_installed=False,
+            provider_distribution="mindroom-nio",
+        ),
+    )
+    def test_validate_e2ee_dependencies_windows(self, _mock_caps):
+        """Windows is supported: available capabilities validate successfully."""
         from mmrelay.cli import _validate_e2ee_dependencies
 
         with patch("mmrelay.cli.print"):
             result = _validate_e2ee_dependencies()
-            self.assertFalse(result)
+            self.assertTrue(result)
 
     @patch("os.path.exists")
     def test_validate_credentials_json_exists(self, mock_exists):
@@ -1170,17 +1182,23 @@ class TestE2EEAnalysisFunctions(unittest.TestCase):
             self.assertEqual(result["overall_status"], "ready")
 
     @patch("sys.platform", "win32")
-    def test_analyze_e2ee_setup_windows_not_supported(self):
-        """Test _analyze_e2ee_setup on Windows platform."""
+    @patch("os.path.exists")
+    def test_analyze_e2ee_setup_windows_capability_driven(self, mock_exists):
+        """Windows analysis follows capability state instead of rejecting the platform."""
         from mmrelay.cli import _analyze_e2ee_setup
 
         config = {"matrix": {"e2ee": {"enabled": True}}}
+        mock_exists.return_value = True  # credentials.json exists
 
-        result = _analyze_e2ee_setup(config, TEST_CONFIG_PATH)
+        with patch(
+            "mmrelay.matrix.compat.get_matrix_capabilities",
+            return_value=SimpleNamespace(encryption_available=True),
+        ):
+            result = _analyze_e2ee_setup(config, TEST_CONFIG_PATH)
 
-        self.assertFalse(result["platform_supported"])
-        self.assertEqual(result["overall_status"], "not_supported")
-        self.assertIn("E2EE is not supported on Windows", result["recommendations"][0])
+        self.assertTrue(result["platform_supported"])
+        self.assertEqual(result["overall_status"], "ready")
+        self.assertFalse(any("Windows" in rec for rec in result["recommendations"]))
 
     @patch("sys.platform", "linux")
     @patch("os.path.exists")
@@ -1269,6 +1287,30 @@ class TestE2EEPrintFunctions(unittest.TestCase):
                 any("Dependencies: Not installed" in call for call in calls)
             )
             self.assertTrue(any("Authentication: Missing" in call for call in calls))
+
+    def test_print_unified_e2ee_analysis_unsupported_environment(self):
+        """Unified analysis names the environment, not Windows, when unsupported."""
+        from mmrelay.cli import _print_unified_e2ee_analysis
+
+        e2ee_status = {
+            "overall_status": "unavailable",
+            "platform_supported": False,
+            "enabled": True,
+            "dependencies_installed": False,
+            "credentials_available": True,
+            "issues": ["E2EE is not supported in MSYS/Cygwin environments"],
+        }
+
+        with patch("mmrelay.cli.print") as mock_print:
+            _print_unified_e2ee_analysis(e2ee_status)
+            calls = [call.args[0] for call in mock_print.call_args_list]
+            self.assertTrue(
+                any(
+                    "Platform: E2EE not supported in this environment" in call
+                    for call in calls
+                )
+            )
+            self.assertFalse(any("not supported on Windows" in call for call in calls))
 
     @patch("sys.platform", "linux")
     def test_print_environment_summary_linux(self):
@@ -2359,9 +2401,19 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     """Test cases for _validate_e2ee_dependencies function."""
 
     @patch("sys.platform", "win32")
+    @patch(
+        "mmrelay.matrix.compat.get_matrix_capabilities",
+        return_value=SimpleNamespace(
+            encryption_available=False,
+            sqlite_store_available=True,
+            sqlite_store_openable=True,
+            both_known_providers_installed=False,
+            provider_distribution="mindroom-nio",
+        ),
+    )
     @patch("builtins.print")
-    def test_validate_e2ee_dependencies_windows_platform(self, mock_print):
-        """Test E2EE validation on Windows platform (should fail)."""
+    def test_validate_e2ee_dependencies_windows_platform(self, mock_print, _mock_caps):
+        """On Windows, missing E2EE dependencies produce capability guidance."""
         from mmrelay.cli import _validate_e2ee_dependencies
 
         result = _validate_e2ee_dependencies()
@@ -2369,9 +2421,9 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         # Function uses print statements, not logger
-        mock_print.assert_any_call("❌ Error: E2EE is not supported on Windows")
-        mock_print.assert_any_call("   Reason: E2EE crypto requires native C libraries")
-        mock_print.assert_any_call("   Solution: Use Linux or macOS for E2EE support")
+        mock_print.assert_any_call("❌ Error: E2EE dependencies not installed")
+        printed = " ".join(str(call) for call in mock_print.call_args_list)
+        self.assertNotIn("Windows", printed)
 
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
@@ -3205,6 +3257,8 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
             "mmrelay.matrix.compat.get_matrix_capabilities",
             return_value=SimpleNamespace(
                 encryption_available=False,
+                sqlite_store_available=True,
+                sqlite_store_openable=True,
                 both_known_providers_installed=False,
                 provider_distribution="mindroom-nio",
             ),
@@ -3224,9 +3278,19 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
         "sys.version",
         "3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)] on win32",
     )
+    @patch(
+        "mmrelay.matrix.compat.get_matrix_capabilities",
+        return_value=SimpleNamespace(
+            encryption_available=True,
+            sqlite_store_available=True,
+            sqlite_store_openable=True,
+            both_known_providers_installed=False,
+            provider_distribution="mindroom-nio",
+        ),
+    )
     @patch("builtins.print")
-    def test_print_environment_summary_windows(self, mock_print):
-        """Test environment summary on Windows (E2EE not supported)."""
+    def test_print_environment_summary_windows(self, mock_print, _mock_caps):
+        """Test environment summary on Windows (E2EE supported via capabilities)."""
         # Import and call function
         from mmrelay.cli import _print_environment_summary
 
@@ -3236,10 +3300,7 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
         mock_print.assert_any_call("\n🖥️  Environment Summary:")
         mock_print.assert_any_call("   Platform: win32")
         mock_print.assert_any_call("   Python: 3.12.3")
-        mock_print.assert_any_call(
-            "   E2EE Support: ❌ Not available (Windows limitation)"
-        )
-        mock_print.assert_any_call("   Matrix Support: ✅ Available")
+        mock_print.assert_any_call("   E2EE Support: ✅ Available and installed")
 
     @patch("sys.platform", "darwin")
     @patch(
@@ -3274,6 +3335,7 @@ class TestProviderAwareE2EEGuidance(unittest.TestCase):
             encryption_available=True,
             store_available=True,
             sqlite_store_available=True,
+            sqlite_store_openable=True,
             olm_available=False,
             vodozemac_available=True,
             nio_crypto_available=True,
@@ -3587,8 +3649,12 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
         }
 
     @patch("sys.platform", "win32")
-    def test_analyze_e2ee_setup_windows_not_supported(self):
-        """Test E2EE analysis on Windows (not supported)."""
+    @patch(
+        "mmrelay.matrix.compat.get_matrix_capabilities",
+        return_value=SimpleNamespace(encryption_available=True),
+    )
+    def test_analyze_e2ee_setup_windows_supported(self, _mock_caps):
+        """Test E2EE analysis on Windows (supported; capabilities decide readiness)."""
         # Import and call function
         from mmrelay.cli import _analyze_e2ee_setup
 
@@ -3596,9 +3662,8 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
 
         # Verify results
         self.assertIsInstance(result, dict)
-        self.assertFalse(result["platform_supported"])
-        self.assertEqual(result["overall_status"], "not_supported")
-        self.assertIn(
+        self.assertTrue(result["platform_supported"])
+        self.assertNotIn(
             "E2EE is not supported on Windows. Use Linux/macOS for E2EE support.",
             result["recommendations"],
         )
@@ -3655,6 +3720,8 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
             "mmrelay.matrix.compat.get_matrix_capabilities",
             return_value=SimpleNamespace(
                 encryption_available=False,
+                sqlite_store_available=True,
+                sqlite_store_openable=True,
                 both_known_providers_installed=False,
                 provider_distribution="mindroom-nio",
             ),

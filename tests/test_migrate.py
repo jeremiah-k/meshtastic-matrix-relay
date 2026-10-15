@@ -1109,14 +1109,15 @@ class TestMigrateLogs:
 class TestMigrateStore:
     """Tests for migrate_store function (lines 698-789)."""
 
-    def test_windows_skip(
+    def test_store_migration_runs_on_windows(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test skips store migration on Windows."""
+        """Store migration proceeds on Windows like every other platform."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         store_dir = legacy_root / "store"
         store_dir.mkdir()
+        (store_dir / "store.db").write_text("store")
         new_home = tmp_path / "home"
         new_home.mkdir()
 
@@ -1124,14 +1125,14 @@ class TestMigrateStore:
             result = migrate_store([legacy_root], new_home)
 
             assert result["success"] is True
-            assert "E2EE not supported on Windows" in result["message"]
+            moved_db = new_home / "matrix" / "store" / "store.db"
+            assert moved_db.exists()
+            assert moved_db.read_text() == "store"
 
     def test_no_store_directory(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test returns success when no store directory found."""
-        if sys.platform == "win32":
-            pytest.skip("E2EE not supported on Windows")
 
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1147,9 +1148,6 @@ class TestMigrateStore:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test dry run mode doesn't modify files."""
-        if sys.platform == "win32":
-            pytest.skip("E2EE not supported on Windows")
-
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         store_dir = legacy_root / "store"
@@ -1168,9 +1166,6 @@ class TestMigrateStore:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test moves store directory."""
-        if sys.platform == "win32":
-            pytest.skip("E2EE not supported on Windows")
-
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         store_dir = legacy_root / "store"

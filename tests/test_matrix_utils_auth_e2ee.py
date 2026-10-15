@@ -39,6 +39,8 @@ def _matrix_capabilities(
         install_hint=install_hint,
         recommended_e2ee_extra=recommended_e2ee_extra,
         both_known_providers_installed=both_known_providers_installed,
+        sqlite_store_available=True,
+        sqlite_store_openable=True,
     )
 
 
@@ -457,8 +459,8 @@ async def test_on_decryption_failure_timeout_on_to_device():
         ] == expected_sleep_list
 
 
-async def test_connect_matrix_e2ee_windows_disables(monkeypatch):
-    """E2EE should be disabled on Windows platforms."""
+async def test_connect_matrix_e2ee_windows_enables(monkeypatch):
+    """Windows supports E2EE: enabled config plus available capabilities enable encryption."""
     mock_client = MagicMock()
     mock_client.rooms = {}
     mock_client.sync = AsyncMock(return_value=SimpleNamespace())
@@ -470,6 +472,80 @@ async def test_connect_matrix_e2ee_windows_disables(monkeypatch):
     monkeypatch.setattr("mmrelay.matrix_utils.sys.platform", "win32", raising=False)
     monkeypatch.setattr(
         "mmrelay.config.is_e2ee_enabled", lambda _cfg: True, raising=False
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+    config_factory = MagicMock()
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.build_matrix_client_config", config_factory
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._resolve_aliases_in_mapping",
+        AsyncMock(return_value=None),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._display_room_channel_mappings",
+        lambda *_args, **_kwargs: None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.AsyncClient",
+        lambda *_args, **_kwargs: mock_client,
+    )
+
+    config = {
+        "matrix": {
+            "homeserver": "https://example.org",
+            "access_token": "token",
+            "bot_user_id": "@bot:example.org",
+            "encryption": {"enabled": True},
+        },
+        "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch(
+            "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
+        ),
+        patch("mmrelay.e2ee_utils.get_room_encryption_warnings", return_value=[]),
+    ):
+        await connect_matrix(config)
+
+    config_factory.assert_called_once_with(
+        e2ee_enabled=True,
+        max_limit_exceeded=0,
+        max_timeouts=0,
+    )
+
+
+async def test_connect_matrix_e2ee_missing_capabilities_disables(monkeypatch):
+    """Missing crypto capabilities disable E2EE on any platform, with dependency guidance."""
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.sync = AsyncMock(return_value=SimpleNamespace())
+    mock_client.should_upload_keys = False
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+
+    monkeypatch.setattr("mmrelay.matrix_utils.sys.platform", "win32", raising=False)
+    monkeypatch.setattr(
+        "mmrelay.config.is_e2ee_enabled", lambda _cfg: True, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix.auth.get_matrix_capabilities",
+        lambda: _matrix_capabilities(
+            encryption_available=False,
+            provider_distribution="mindroom-nio",
+            crypto_backend="vodozemac",
+            install_hint="install mindroom-nio[e2e] / vodozemac",
+            recommended_e2ee_extra="mindroom-nio[e2e]",
+        ),
+        raising=False,
     )
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
     config_factory = MagicMock()
