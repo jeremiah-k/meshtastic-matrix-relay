@@ -174,9 +174,8 @@ identity without first logging out or deleting the working device session.
 
 ## Requirements and platform support
 
-- **Python 3.11 or higher**
-- **Linux or macOS** (E2EE is not supported on Windows due to library
-  limitations)
+- **Python 3.11 or higher** (Windows: 3.11–3.14, see below)
+- **Linux, macOS, or Windows**
 - **MMRelay v1.2+** with E2EE support:
 
 ```bash
@@ -185,17 +184,12 @@ pipx install 'mmrelay[e2e]'
 
 The `mmrelay[e2e]` extra installs **mindroom-nio[e2e]** which includes the
 **vodozemac** crypto backend (Rust-based, distributed as precompiled wheels
-for Linux and macOS — no additional system libraries needed on supported
-platforms).
+for Linux, macOS, and Windows — no additional system libraries needed on
+supported platforms).
 
-### Windows limitation
-
-**E2EE is not available on Windows** due to technical limitations with required
-cryptographic libraries. Vodozemac and the legacy python-olm backend both
-depend on native libraries that are not straightforward to install on Windows.
-
-Windows users can still use MMRelay for regular (unencrypted) Matrix
-communication.
+On Windows, prebuilt vodozemac wheels cover Python 3.11–3.14. A Python 3.15
+Windows wheel has not been published yet, so install E2EE support on Windows
+with Python 3.11–3.14.
 
 ## Quick start
 
@@ -384,22 +378,24 @@ that as a real issue (usually configuration/version related) and troubleshoot.
 
 ## Troubleshooting
 
-### "E2EE features not available on Windows"
+### "E2EE dependencies not installed" on Windows
 
-**Problem**: E2EE features do not work on Windows.
+**Problem**: MMRelay reports that E2EE dependencies are not installed.
 
-**Explanation**: E2EE requires native cryptographic libraries (vodozemac for
-mindroom-nio). Both vodozemac and the legacy python-olm have native
-dependencies that are difficult to install on Windows.
+**Explanation**: E2EE requires the `mmrelay[e2e]` extra, which provides the
+vodozemac crypto backend. Prebuilt vodozemac wheels cover Windows Python
+3.11–3.14; a Python 3.15 Windows wheel has not been published yet.
 
 **What to do**:
 
-- Use Linux or macOS for E2EE
-- On Windows, use MMRelay for regular Matrix communication
+- Install E2EE support: `pip install 'mmrelay[e2e]'`
+- On Windows, use Python 3.11–3.14 for the prebuilt wheel
+- MSYS/Cygwin environments cannot load the native backend; run MMRelay from
+  native Windows (venv/pip)
 
 ### "No E2EE dependencies found"
 
-Install E2EE dependencies (Linux/macOS):
+Install E2EE dependencies (Linux, macOS, and Windows):
 
 ```bash
 pipx install 'mmrelay[e2e]'

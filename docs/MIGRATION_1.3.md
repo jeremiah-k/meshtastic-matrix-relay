@@ -23,7 +23,7 @@ After migration, your MMRELAY_HOME follows this layout:
 ├── config.yaml              # User configuration (optional, can be elsewhere)
 ├── matrix/                  # Matrix runtime artifacts
 │   ├── credentials.json    # Matrix authentication credentials
-│   └── store/              # E2EE encryption keys (Unix/macOS only)
+│   └── store/              # E2EE encryption keys
 ├── database/
 │   └── meshtastic.sqlite  # SQLite database (with -wal, -shm)
 ├── logs/
@@ -191,7 +191,7 @@ After all migration steps succeed, redundant legacy SQLite database groups (incl
 
 ### Windows-Specific Limitations
 
-- **E2EE not supported**: Matrix End-to-End Encryption is not available on Windows due to library limitations. The `matrix/store/` directory is not created on Windows.
+- **E2EE**: Matrix End-to-End Encryption is supported on Windows via the `mmrelay[e2e]` extra (vodozemac backend, Python 3.11–3.14). The `matrix/store/` directory is created and migrated on Windows like on other platforms.
 - **File-in-use errors**: Migration includes retry logic for Windows file locks (antivirus, Windows Indexer), but may still fail if files are actively in use. Close MMRelay before running migration.
 
 ## Kubernetes-Specific Notes

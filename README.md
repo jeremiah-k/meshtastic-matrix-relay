@@ -44,7 +44,9 @@ boundary—see **[How MMRelay Works](https://github.com/jeremiah-k/meshtastic-ma
 - Optional MQTT integration through Meshtastic firmware
 
 > **E2EE:** MMRelay uses [mindroom-nio](https://github.com/mindroom-ai/mindroom-nio)
-> with vodozemac for encrypted Matrix rooms. Cross-signing applies to the Matrix
+> with vodozemac for encrypted Matrix rooms on Linux, macOS, and Windows
+> (install the `mmrelay[e2e]` extra; on Windows use Python 3.11–3.14).
+> Cross-signing applies to the Matrix
 > bot device only; it does not authenticate Meshtastic identities. See the
 > [E2EE guide](docs/E2EE.md), especially before resetting authentication or
 > cross-signing state.

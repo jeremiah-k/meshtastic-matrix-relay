@@ -22,8 +22,9 @@ mmrelay
 
 To upgrade, use `pipx upgrade mmrelay` or `uv tool upgrade mmrelay`, matching
 your installer. For direct device access, configure the serial, TCP, or BLE
-connection in `config.yaml`. Matrix E2EE is not supported by the native Windows
-build; see the [E2EE Guide](E2EE.md) for supported platforms.
+connection in `config.yaml`. Matrix E2EE is supported on Windows via the
+`mmrelay[e2e]` extra (vodozemac backend, Python 3.11–3.14); see the
+[E2EE Guide](E2EE.md).
 
 The optional packaged Windows installer provides `mmrelay.exe` and Start-menu
 shortcuts without requiring a separate Python installation. Its default install
@@ -47,7 +48,9 @@ window open until credentials are saved. The shortcut does not ask for a passwor
 or open a browser automatically; approval can be completed on another trusted
 device.
 
-OAuth is available on Windows independently of E2EE, which remains unsupported.
+OAuth is available on Windows independently of E2EE. For encrypted rooms,
+install the `mmrelay[e2e]` extra as described in the
+[E2EE Guide](E2EE.md).
 The homeserver must support native device authorization and public-client
 registration; this does not make every SSO server compatible. Existing credentials
 are not replaced automatically. See the [OAuth guide](MATRIX_OAUTH.md) for server

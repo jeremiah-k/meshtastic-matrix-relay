@@ -24,8 +24,9 @@ at the network layer instead.
 
 ## Create a session
 
-Windows supports native OAuth for unencrypted Matrix rooms; its E2EE limitation
-does not prevent OAuth login. Installer users can open **MM Relay OAuth Login**
+Windows supports native OAuth; OAuth login does not require E2EE, and E2EE on
+Windows is available separately through the `mmrelay[e2e]` extra (see the
+[E2EE guide](E2EE.md)). Installer users can open **MM Relay OAuth Login**
 from the Start menu, or run `.\mmrelay.exe auth login --oauth` in PowerShell from
 the installation directory. See the [Windows guide](WINDOWS.md#matrix-authentication).
 
