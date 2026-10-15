@@ -7,6 +7,8 @@ import warnings
 from typing import Any, Optional, Tuple
 from unittest.mock import MagicMock, call, mock_open, patch
 
+import pytest
+
 from tests.constants import TEST_SERIAL_PORT
 
 # Add src to path for imports
@@ -48,6 +50,26 @@ from mmrelay.constants.network import (
     DEFAULT_TCP_PORT,
 )
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
+
+
+@pytest.fixture(autouse=True)
+def _restore_config_globals():
+    """
+    Snapshot and restore the module-level config globals around every test.
+
+    ``load_config()`` records its parsed mapping and file path in
+    ``mmrelay.config.relay_config`` / ``mmrelay.config.config_path``.
+    Without a restore, the last test to call it leaves those globals set
+    after this file finishes, and later modules in the same pytest process
+    inherit the stale path — credentials-lookup tests then see extra
+    candidate directories (for example an additional ``os.listdir`` call)
+    depending on which test files ran before them.
+    """
+    saved_config = dict(mmrelay.config.relay_config)
+    saved_path = mmrelay.config.config_path
+    yield
+    mmrelay.config.relay_config = saved_config
+    mmrelay.config.config_path = saved_path
 
 
 def test_load_config_silently_reads_config_without_logging(
