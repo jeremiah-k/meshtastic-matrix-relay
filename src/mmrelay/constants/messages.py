@@ -39,9 +39,13 @@ MSG_AVAILABLE_COMMANDS_PREFIX: Final[str] = "Available commands: "
 MSG_GRAPH_UPLOAD_FAILED: Final[str] = "Failed to generate graph: Image upload failed."
 
 # E2EE messages
-MSG_E2EE_WINDOWS_UNSUPPORTED: Final[str] = "E2EE is not supported on Windows"
-MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL: Final[str] = "Use Linux or macOS for E2EE support"
-MSG_E2EE_WINDOWS_UNSUPPORTED_SHORT: Final[str] = "E2EE not supported on Windows"
+MSG_E2EE_ENV_UNSUPPORTED: Final[str] = (
+    "E2EE is not supported in MSYS/Cygwin environments"
+)
+MSG_E2EE_ENV_UNSUPPORTED_DETAIL: Final[str] = (
+    "Run MMRelay from native Windows, Linux, or macOS for E2EE support"
+)
+MSG_E2EE_DEPS_NOT_INSTALLED_SHORT: Final[str] = "E2EE dependencies not installed"
 MSG_E2EE_DISABLED: Final[str] = "E2EE is disabled in configuration"
 MSG_E2EE_DISABLED_SHORT: Final[str] = "E2EE disabled"
 MSG_E2EE_NO_AUTH: Final[str] = "Matrix authentication not configured"

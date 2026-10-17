@@ -1340,9 +1340,6 @@ class TestMigrateLogsEdgeCases:
                 migrate_logs([legacy_root_dir], new_home, dry_run=False, force=True)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="E2EE store not supported on Windows"
-)
 class TestMigrateStoreEdgeCases:
     """Test migrate_store error paths and edge cases."""
 

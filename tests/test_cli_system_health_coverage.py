@@ -99,10 +99,10 @@ class TestPrintSystemHealthDatabase(unittest.TestCase):
 
 
 class TestPrintSystemHealthWindows(unittest.TestCase):
-    """Tests for _print_system_health Windows platform branch."""
+    """Tests for _print_system_health on Windows (capability-driven)."""
 
-    def test_windows_platform_prints_not_supported(self):
-        """On Windows, _print_system_health should print 'Not supported on Windows'."""
+    def test_windows_platform_prints_capability_status(self):
+        """On Windows, _print_system_health reports E2EE from capability state."""
         db_path = Path(tempfile.gettempdir()) / "health_test.db"
         paths_info = {
             "home": tempfile.gettempdir(),
@@ -118,7 +118,8 @@ class TestPrintSystemHealthWindows(unittest.TestCase):
             _print_system_health(paths_info)
 
         printed = [str(c) for c in mock_print.call_args_list]
-        self.assertTrue(any("Not supported on Windows" in p for p in printed))
+        self.assertTrue(any("E2EE crypto libraries available" in p for p in printed))
+        self.assertFalse(any("Not supported on Windows" in p for p in printed))
 
 
 if __name__ == "__main__":

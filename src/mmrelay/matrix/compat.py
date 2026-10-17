@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import tempfile
 from dataclasses import dataclass
 from importlib import metadata
 from typing import Literal
@@ -29,6 +30,7 @@ class MatrixLibraryCapabilities:
     encryption_available: bool
     store_available: bool
     sqlite_store_available: bool
+    sqlite_store_openable: bool
     olm_available: bool
     vodozemac_available: bool
     nio_crypto_available: bool
@@ -40,6 +42,7 @@ class MatrixLibraryCapabilities:
     supports_stop_sync_forever: bool
     supports_thread_receipts: bool
     supports_authenticated_media: bool
+    store_failure: Literal["fcntl", "other"] | None = None
 
 
 def _distribution_version(distribution_name: str) -> str | None:
@@ -55,6 +58,36 @@ def _module_available(module_name: str) -> bool:
     except ImportError:
         return False
     return True
+
+
+def _probe_sqlite_store_status(
+    nio_store: object,
+) -> Literal["open", "fcntl", "error"]:
+    """Check a disposable crypto store, retaining only diagnosed POSIX lease errors."""
+    store_class = getattr(nio_store, "SqliteStore", None)
+    if store_class is None:
+        return "error"
+    try:
+        with tempfile.TemporaryDirectory(prefix="mmrelay-store-probe-") as probe_dir:
+            store = store_class("@probe:mmrelay.invalid", "PROBE", probe_dir)
+            database = getattr(store, "database", None)
+            if database is not None:
+                database.close()
+    except Exception as error:
+        # mindroom-nio's FileLease raises this specific error when fcntl
+        # cannot be imported. Other failures can be permissions, disk space,
+        # or an incompatible store and must not be called POSIX-lock failures.
+        if "store filesystem ownership requires fcntl support" in str(error):
+            return "fcntl"
+        if isinstance(error, ModuleNotFoundError) and error.name == "fcntl":
+            return "fcntl"
+        return "error"
+    return "open"
+
+
+def _probe_sqlite_store_openable(nio_store: object) -> bool:
+    """Prove the installed nio SQLite crypto store can open on this platform."""
+    return _probe_sqlite_store_status(nio_store) == "open"
 
 
 def _import_optional(module_name: str) -> object | None:
@@ -89,11 +122,26 @@ def _e2ee_install_guidance(
     provider_distribution: ProviderDistribution,
     crypto_backend: CryptoBackend,
     both_known_providers_installed: bool,
+    store_failure: Literal["fcntl", "other"] | None = None,
 ) -> tuple[str, str]:
     if both_known_providers_installed:
         return (
             "one nio provider E2EE extra",
             "matrix-nio and mindroom-nio are both installed; uninstall one nio namespace owner before enabling E2EE",
+        )
+    if store_failure == "fcntl":
+        return (
+            "a nio release whose crypto store supports this platform",
+            "this nio release's SQLite crypto store requires POSIX file locking "
+            "(fcntl), which this platform does not provide; on native Windows run "
+            "MMRelay on Python 3.11 (mindroom-nio 0.40.0) until a "
+            "Windows-compatible store ships",
+        )
+    if store_failure == "other":
+        return (
+            "an openable nio SQLite crypto store",
+            "the installed nio SQLite crypto store could not open; check filesystem "
+            "permissions, disk space, and store/provider compatibility",
         )
     if provider_distribution == "mindroom-nio" or crypto_backend == "vodozemac":
         extra = "mindroom-nio[e2e]"
@@ -124,6 +172,7 @@ def _build_conflict_capabilities(
         encryption_available=False,
         store_available=False,
         sqlite_store_available=False,
+        sqlite_store_openable=False,
         olm_available=False,
         vodozemac_available=False,
         nio_crypto_available=False,
@@ -175,14 +224,28 @@ def detect_matrix_capabilities() -> MatrixLibraryCapabilities:
     sqlite_store_available = bool(
         nio_store is not None and hasattr(nio_store, "SqliteStore")
     )
+    crypto_candidate = (olm_available and nio_crypto_olm_device_available) or (
+        vodozemac_available and nio_crypto_encryption_enabled is True
+    )
+    store_status: Literal["open", "fcntl", "error"] | None = None
+    if sqlite_store_available and crypto_candidate and nio_store is not None:
+        store_status = _probe_sqlite_store_status(nio_store)
+    sqlite_store_openable = store_status == "open"
+    store_failure: Literal["fcntl", "other"] | None
+    if store_status == "fcntl":
+        store_failure = "fcntl"
+    elif store_status == "error":
+        store_failure = "other"
+    else:
+        store_failure = None
 
     legacy_olm_ready = (
-        olm_available and nio_crypto_olm_device_available and sqlite_store_available
+        olm_available and nio_crypto_olm_device_available and sqlite_store_openable
     )
     vodozemac_ready = (
         vodozemac_available
         and nio_crypto_encryption_enabled is True
-        and sqlite_store_available
+        and sqlite_store_openable
     )
 
     crypto_backend: CryptoBackend = "unknown"
@@ -233,7 +296,10 @@ def detect_matrix_capabilities() -> MatrixLibraryCapabilities:
         crypto_backend = "unknown"
         encryption_available = False
     recommended_e2ee_extra, install_hint = _e2ee_install_guidance(
-        provider_distribution, crypto_backend, both_installed
+        provider_distribution,
+        crypto_backend,
+        both_installed,
+        store_failure=store_failure,
     )
 
     supports_stop_sync_forever = bool(
@@ -265,6 +331,7 @@ def detect_matrix_capabilities() -> MatrixLibraryCapabilities:
         encryption_available=encryption_available,
         store_available=store_available,
         sqlite_store_available=sqlite_store_available,
+        sqlite_store_openable=sqlite_store_openable,
         olm_available=olm_available,
         vodozemac_available=vodozemac_available,
         nio_crypto_available=nio_crypto_available,
@@ -276,6 +343,7 @@ def detect_matrix_capabilities() -> MatrixLibraryCapabilities:
         supports_stop_sync_forever=supports_stop_sync_forever,
         supports_thread_receipts=supports_thread_receipts,
         supports_authenticated_media=supports_authenticated_media,
+        store_failure=store_failure,
     )
 
 
@@ -311,6 +379,11 @@ def format_e2ee_unavailable_message(
             "E2EE is unavailable because matrix-nio and mindroom-nio are both "
             f"installed ({details})"
         )
+    if detected.store_failure is not None:
+        return (
+            "E2EE is unavailable because the installed nio crypto store cannot "
+            f"open on this platform ({detected.install_hint}; {details})"
+        )
     return f"E2EE dependencies not installed ({detected.install_hint}; {details})"
 
 
@@ -324,6 +397,19 @@ def format_e2ee_install_command(
         return (
             "Uninstall either matrix-nio or mindroom-nio first; both provide the "
             "nio namespace and should not be installed together."
+        )
+    if detected.store_failure == "fcntl":
+        return (
+            "No package install enables E2EE here: this nio release's SQLite "
+            "crypto store requires POSIX file locking (fcntl), which this "
+            "platform does not provide. On native Windows, run MMRelay on "
+            "Python 3.11 (mindroom-nio 0.40.0) until a Windows-compatible "
+            "store ships; Linux and macOS are unaffected."
+        )
+    if detected.store_failure == "other":
+        return (
+            "The installed nio SQLite crypto store could not open; check "
+            "filesystem permissions, disk space, and provider compatibility."
         )
     if detected.provider_distribution == "mindroom-nio":
         return (

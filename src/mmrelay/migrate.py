@@ -1890,12 +1890,6 @@ def migrate_store(
     Returns:
         dict: Migration result.
     """
-    if sys.platform == "win32":
-        return {
-            "success": True,
-            "message": "E2EE not supported on Windows, skipping store migration",
-        }
-
     new_store_dir = new_home / MATRIX_DIRNAME / STORE_DIRNAME
     old_store_dir: Path | None = None
 

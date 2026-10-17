@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import os
 import ssl
-import sys
 from typing import Any, Optional, cast
 
 from nio import AsyncClient
@@ -56,39 +55,23 @@ async def _configure_e2ee(
         facade.logger.debug(f"E2EE detection: e2ee enabled = {e2ee_enabled}")
 
         if e2ee_enabled:
-            from mmrelay.constants.app import WINDOWS_PLATFORM
-
-            if sys.platform == WINDOWS_PLATFORM:
+            matrix_capabilities = get_matrix_capabilities()
+            if not matrix_capabilities.encryption_available:
+                facade.logger.error("Missing E2EE dependency")
                 facade.logger.error(
-                    "E2EE is not supported on Windows due to library limitations."
+                    format_e2ee_unavailable_message(matrix_capabilities)
                 )
-                facade.logger.error(
-                    "Matrix E2EE crypto backends require native libraries that are difficult to install on Windows."
-                )
-                facade.logger.error(
-                    "Please disable E2EE in your configuration or use a Linux/macOS system for E2EE support."
-                )
+                facade.logger.error(format_e2ee_install_command(matrix_capabilities))
+                facade.logger.warning("E2EE will be disabled for this session.")
                 e2ee_enabled = False
             else:
-                matrix_capabilities = get_matrix_capabilities()
-                if not matrix_capabilities.encryption_available:
-                    facade.logger.error("Missing E2EE dependency")
-                    facade.logger.error(
-                        format_e2ee_unavailable_message(matrix_capabilities)
-                    )
-                    facade.logger.error(
-                        format_e2ee_install_command(matrix_capabilities)
-                    )
-                    facade.logger.warning("E2EE will be disabled for this session.")
-                    e2ee_enabled = False
-                else:
-                    facade.logger.debug(
-                        "E2EE dependencies available: provider=%s version=%s backend=%s",
-                        matrix_capabilities.provider_name,
-                        matrix_capabilities.provider_version,
-                        matrix_capabilities.crypto_backend,
-                    )
-                    facade.logger.info("End-to-End Encryption (E2EE) is enabled")
+                facade.logger.debug(
+                    "E2EE dependencies available: provider=%s version=%s backend=%s",
+                    matrix_capabilities.provider_name,
+                    matrix_capabilities.provider_version,
+                    matrix_capabilities.crypto_backend,
+                )
+                facade.logger.info("End-to-End Encryption (E2EE) is enabled")
 
                 if e2ee_enabled:
                     store_override = None

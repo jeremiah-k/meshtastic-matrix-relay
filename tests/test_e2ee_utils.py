@@ -33,6 +33,7 @@ def _matrix_capabilities(
         encryption_available=encryption_available,
         store_available=encryption_available,
         sqlite_store_available=encryption_available,
+        sqlite_store_openable=encryption_available,
         olm_available=encryption_available,
         vodozemac_available=False,
         nio_crypto_available=True,
@@ -504,13 +505,14 @@ class TestGetE2eeErrorMessage:
         assert result == ""
 
     def test_platform_not_supported(self):
-        """Unavailable platform should return unavailable message."""
+        """Unsupported environment should return the environment message."""
         from mmrelay.e2ee_utils import get_e2ee_error_message
 
         result = get_e2ee_error_message(
             {"overall_status": "unavailable", "platform_supported": False}
         )
-        assert "Windows" in result
+        assert "MSYS/Cygwin" in result
+        assert "Windows" not in result
 
     def test_not_enabled(self):
         """Disabled E2EE should return disabled message."""
