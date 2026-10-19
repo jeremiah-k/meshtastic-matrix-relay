@@ -163,9 +163,13 @@ class TestGetPacketDetails:
 
 
 class TestGetNodeDisplayName:
-    def test_short_name_from_interface(self):
+    @pytest.mark.parametrize("node_key", ["!0000007b", 123])
+    def test_short_name_from_interface(self, node_key):
         interface = MagicMock()
-        interface.nodes = {"123": {"user": {"shortName": "SN", "longName": "LongName"}}}
+        # mtjk indexes nodes by user.id, including non-string user.id values.
+        interface.nodes = {
+            node_key: {"user": {"shortName": "SN", "longName": "LongName"}}
+        }
         result = _get_node_display_name(123, interface)
         assert result == "SN"
 
@@ -211,7 +215,9 @@ class TestGetNodeDisplayName:
             patch("mmrelay.db_utils.get_longname", return_value=None),
         ):
             result = _get_node_display_name(123, interface)
-            assert result == "123"
+            # With no name available the sender falls back to its canonical
+            # node-id form, matching how the library renders known nodes.
+            assert result == "!0000007b"
 
     def test_explicit_fallback(self):
         interface = MagicMock()
@@ -245,7 +251,7 @@ class TestGetNodeDisplayName:
 
     def test_node_not_in_interface_nodes(self):
         interface = MagicMock()
-        interface.nodes = {"999": {}}
+        interface.nodes = {"!000003e7": {}}
         with (
             patch("mmrelay.db_utils.get_shortname", return_value="S"),
             patch("mmrelay.db_utils.get_longname", return_value="L"),
@@ -255,7 +261,7 @@ class TestGetNodeDisplayName:
 
     def test_node_user_missing_short_name(self):
         interface = MagicMock()
-        interface.nodes = {"123": {"user": {"longName": "LN"}}}
+        interface.nodes = {"!0000007b": {"user": {"longName": "LN"}}}
         with (
             patch("mmrelay.db_utils.get_shortname", return_value="S"),
             patch("mmrelay.db_utils.get_longname", return_value="L"),

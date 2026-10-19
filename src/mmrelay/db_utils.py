@@ -36,6 +36,7 @@ from mmrelay.constants.database import (
 )
 from mmrelay.db_runtime import DatabaseManager
 from mmrelay.log_utils import get_logger
+from mmrelay.meshtastic.node_identity import normalize_node_id
 from mmrelay.paths import (
     get_legacy_dirs,
     is_deprecation_window_active,
@@ -1173,6 +1174,38 @@ def get_plugin_data(plugin_name: str) -> list[tuple[Any, ...]]:
     return cast(list[tuple[Any, ...]], result)
 
 
+def _name_table_id_keys(meshtastic_id: int | str) -> tuple[str, ...]:
+    """
+    Build the name-table lookup keys for a node, canonical form first.
+
+    Rows written before node-id normalization are keyed by the raw decimal
+    sender, so a canonical miss falls back to that key rather than degrading
+    to a bare node id in the UI. The decimal key is derived from the node
+    number, so it is produced whether the caller passes an integer or an
+    already-formatted id.
+
+    Parameters:
+        meshtastic_id: Node identifier of any supported type.
+
+    Returns:
+        tuple[str, ...]: Canonical key, plus the legacy decimal key when it differs.
+    """
+    canonical = str(normalize_node_id(meshtastic_id))
+
+    decimal_key: str | None = None
+    if isinstance(meshtastic_id, int) and not isinstance(meshtastic_id, bool):
+        decimal_key = str(meshtastic_id)
+    elif isinstance(meshtastic_id, str) and meshtastic_id.startswith("!"):
+        try:
+            decimal_key = str(int(meshtastic_id[1:], 16))
+        except ValueError:
+            decimal_key = None
+
+    if decimal_key is None or decimal_key == canonical:
+        return (canonical,)
+    return (canonical, decimal_key)
+
+
 def get_longname(meshtastic_id: int | str) -> str | None:
     """
     Get the stored long name for a Meshtastic node.
@@ -1184,24 +1217,27 @@ def get_longname(meshtastic_id: int | str) -> str | None:
         str | None: The long name if present, `None` if no entry exists or a database error occurs.
     """
     manager = _get_db_manager()
-    id_key = str(meshtastic_id)
+    id_keys = _name_table_id_keys(meshtastic_id)
 
-    def _fetch(cursor: sqlite3.Cursor) -> tuple[Any, ...] | None:
+    def _fetch(cursor: sqlite3.Cursor) -> str | None:
         """
-        Fetches the first row from the given cursor's result set.
+        Return the first name found for the node, canonical key before legacy.
 
         Parameters:
-            cursor (sqlite3.Cursor): A cursor whose query has already been executed and is positioned to read results.
+            cursor: A cursor whose query has already been executed and is positioned to read results.
 
         Returns:
-            tuple[Any, ...] | None: The first row as a tuple, or `None` if no row is available.
+            str | None: The stored name, or None when no key matches.
         """
-        cursor.execute(_SELECT_LONGNAME_BY_ID_SQL, (id_key,))
-        return cast(tuple[Any, ...] | None, cursor.fetchone())
+        for key in id_keys:
+            cursor.execute(_SELECT_LONGNAME_BY_ID_SQL, (key,))
+            row = cast(tuple[Any, ...] | None, cursor.fetchone())
+            if row:
+                return cast(str, row[0])
+        return None
 
     try:
-        result = manager.run_sync(_fetch)
-        return result[0] if result else None
+        return manager.run_sync(_fetch)
     except sqlite3.Error:
         logger.exception("Database error retrieving longname for %s", meshtastic_id)
         return None
@@ -1220,7 +1256,7 @@ def save_longname(meshtastic_id: int | str, longname: str) -> bool:
         bool: True if the save was successful, False if a database error occurred.
     """
     manager = _get_db_manager()
-    id_key = str(meshtastic_id)
+    id_key = str(normalize_node_id(meshtastic_id))
 
     def _store(cursor: sqlite3.Cursor) -> None:
         """
@@ -1503,7 +1539,7 @@ def _collect_node_name_snapshot(
             snapshot_complete = False
             continue
 
-        id_key = str(meshtastic_id)
+        id_key = str(normalize_node_id(meshtastic_id))
         if id_key in skipped_ids:
             continue
         current_ids.add(id_key)
@@ -2069,23 +2105,24 @@ def get_shortname(meshtastic_id: int | str) -> str | None:
         str | None: The shortname string if present in the database, `None` if not found or on database error.
     """
     manager = _get_db_manager()
-    id_key = str(meshtastic_id)
+    id_keys = _name_table_id_keys(meshtastic_id)
 
-    def _fetch(cursor: sqlite3.Cursor) -> tuple[Any, ...] | None:
+    def _fetch(cursor: sqlite3.Cursor) -> str | None:
         """
-        Retrieve the first shortname row for the normalized Meshtastic ID captured in the enclosing scope.
-
-        Executes a SELECT to fetch the `shortname` from the `shortnames` table for the normalized ID and returns the first matching row.
+        Return the first shortname found for the node, canonical key before legacy.
 
         Returns:
-            tuple[Any, ...] | None: The first row returned by the query (typically a single-item tuple containing the `shortname`), or `None` if no row is found.
+            str | None: The stored shortname, or None when no key matches.
         """
-        cursor.execute(_SELECT_SHORTNAME_BY_ID_SQL, (id_key,))
-        return cast(tuple[Any, ...] | None, cursor.fetchone())
+        for key in id_keys:
+            cursor.execute(_SELECT_SHORTNAME_BY_ID_SQL, (key,))
+            row = cast(tuple[Any, ...] | None, cursor.fetchone())
+            if row:
+                return cast(str, row[0])
+        return None
 
     try:
-        result = manager.run_sync(_fetch)
-        return result[0] if result else None
+        return manager.run_sync(_fetch)
     except sqlite3.Error:
         logger.exception("Database error retrieving shortname for %s", meshtastic_id)
         return None
@@ -2105,7 +2142,7 @@ def save_shortname(meshtastic_id: int | str, shortname: str) -> bool:
         bool: True if the save was successful, False if a database error occurred.
     """
     manager = _get_db_manager()
-    id_key = str(meshtastic_id)
+    id_key = str(normalize_node_id(meshtastic_id))
 
     def _store(cursor: sqlite3.Cursor) -> None:
         """
