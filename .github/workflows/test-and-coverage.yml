@@ -37,24 +37,31 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Cache pip dependencies
+      - name: Cache uv dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-py${{ matrix.python-version }}-pip-${{ hashFiles('**/pyproject.toml') }}
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-py${{ matrix.python-version }}-uv-${{ hashFiles('**/uv.lock') }}
           restore-keys: |
-            ${{ runner.os }}-py${{ matrix.python-version }}-pip-
-            ${{ runner.os }}-pip-
+            ${{ runner.os }}-py${{ matrix.python-version }}-uv-
+            ${{ runner.os }}-uv-
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: false
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -e '.[test,e2e]'
+          uv sync --locked --extra test --extra e2e
 
       - name: Verify Matrix provider selection and dependency consistency
         run: |
-          python -m pip check
-          python - <<'PY'
+          # `uv sync` creates .venv without activating it, so name the
+          # interpreter explicitly. A bare `uv pip check` would otherwise
+          # target whatever the runner resolves and can pass vacuously.
+          uv pip check --python .venv/bin/python
+          uv run --no-sync python - <<'PY'
           import tomllib
           from importlib.metadata import version
           from packaging.requirements import Requirement
@@ -79,15 +86,15 @@ jobs:
       - name: Prepare previous Matrix provider for store upgrade contract
         if: matrix.python-version == '3.12'
         run: |
-          python -m venv .sdk-previous
-          .sdk-previous/bin/python -m pip install 'mindroom-nio[e2e]==0.40.0'
+          uv venv --python 3.12 .sdk-previous
+          uv pip install --python .sdk-previous/bin/python 'mindroom-nio[e2e]==0.40.0'
 
       - name: Run tests with coverage
         env:
           MMRELAY_PREVIOUS_SDK_PYTHON: ${{ matrix.python-version == '3.12' && '.sdk-previous/bin/python' || '' }}
         run: |
           # Run full suite (including performance tests) now that they are fast and deterministic
-          python -m pytest tests/ -v --cov --cov-report=xml --cov-report=html --junitxml=junit.xml
+          uv run --no-sync python -m pytest tests/ -v --cov --cov-report=xml --cov-report=html --junitxml=junit.xml
 
       - name: Upload coverage reports to Codecov
         if: matrix.python-version == '3.13'
