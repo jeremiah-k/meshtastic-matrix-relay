@@ -134,8 +134,19 @@ class TestNameTableIdKeys:
         """
         assert db_utils._name_table_id_keys("!f66fb1ac") == ("!f66fb1ac", "4134515116")
 
-    def test_malformed_hex_passes_through_without_a_decimal_key(self) -> None:
-        assert db_utils._name_table_id_keys("!zzzz") == ("!zzzz",)
+    @pytest.mark.parametrize("invalid", ["!zzzz", "!1", "!000000001", "!0000_001"])
+    def test_malformed_hex_passes_through_without_a_decimal_key(
+        self, invalid: str
+    ) -> None:
+        """Only eight-digit node ids can alias historical decimal rows."""
+        assert db_utils._name_table_id_keys(invalid) == (invalid,)
+
+    def test_invalid_hex_does_not_resolve_an_unrelated_decimal_row(
+        self, relay_db: Path
+    ) -> None:
+        _insert_row(relay_db, "1", "Unrelated Node", "UN")
+        assert db_utils.get_longname("!1") is None
+        assert db_utils.get_shortname("!1") is None
 
 
 class TestInterfaceNodesKeyCompatibility:

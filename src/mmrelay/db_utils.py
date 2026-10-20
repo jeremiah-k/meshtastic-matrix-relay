@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sqlite3
 import threading
 from collections.abc import Collection
@@ -1195,11 +1196,10 @@ def _name_table_id_keys(meshtastic_id: int | str) -> tuple[str, ...]:
     decimal_key: str | None = None
     if isinstance(meshtastic_id, int) and not isinstance(meshtastic_id, bool):
         decimal_key = str(meshtastic_id)
-    elif isinstance(meshtastic_id, str) and meshtastic_id.startswith("!"):
-        try:
-            decimal_key = str(int(meshtastic_id[1:], 16))
-        except ValueError:
-            decimal_key = None
+    elif isinstance(meshtastic_id, str) and re.fullmatch(
+        r"![0-9a-fA-F]{8}", meshtastic_id
+    ):
+        decimal_key = str(int(meshtastic_id[1:], 16))
 
     if decimal_key is None or decimal_key == canonical:
         return (canonical,)
