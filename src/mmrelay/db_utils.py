@@ -2011,7 +2011,9 @@ def _update_names_core(
                 snapshot_complete = False
                 continue
 
-            id_key = str(meshtastic_id)
+            # Keep the independent single-column update helpers consistent with
+            # the atomic node-name snapshot and the packet sender cache keys.
+            id_key = str(normalize_node_id(meshtastic_id))
             if id_key in skipped_ids:
                 continue
             current_ids.add(id_key)

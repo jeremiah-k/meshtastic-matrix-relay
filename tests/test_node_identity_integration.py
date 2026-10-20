@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import contextlib
 import sqlite3
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
 
 import pytest
@@ -62,9 +62,7 @@ def relay_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         db_utils.clear_db_path_cache()
 
 
-def _insert_row(
-    db_path: Path, key: str, longname: str, shortname: str
-) -> None:
+def _insert_row(db_path: Path, key: str, longname: str, shortname: str) -> None:
     """Write rows under an explicit key, bypassing save_* normalization."""
     with _managed_connection(db_path) as con:
         con.execute(
@@ -76,9 +74,7 @@ def _insert_row(
             "(meshtastic_id TEXT PRIMARY KEY, shortname TEXT)"
         )
         con.execute("INSERT OR REPLACE INTO longnames VALUES (?, ?)", (key, longname))
-        con.execute(
-            "INSERT OR REPLACE INTO shortnames VALUES (?, ?)", (key, shortname)
-        )
+        con.execute("INSERT OR REPLACE INTO shortnames VALUES (?, ?)", (key, shortname))
         con.commit()
 
 
@@ -110,8 +106,12 @@ class TestLegacyDecimalKeyFallback:
         db_utils.save_shortname(4134515116, "AN")
 
         with _managed_connection(relay_db) as con:
-            long_keys = {r[0] for r in con.execute("SELECT meshtastic_id FROM longnames")}
-            short_keys = {r[0] for r in con.execute("SELECT meshtastic_id FROM shortnames")}
+            long_keys = {
+                r[0] for r in con.execute("SELECT meshtastic_id FROM longnames")
+            }
+            short_keys = {
+                r[0] for r in con.execute("SELECT meshtastic_id FROM shortnames")
+            }
 
         assert long_keys == {"!f66fb1ac"}
         assert short_keys == {"!f66fb1ac"}
@@ -162,3 +162,90 @@ class TestInterfaceNodesKeyCompatibility:
         once = normalize_node_id(4134515116)
 
         assert normalize_node_id(once) == once
+
+
+class TestIntegerNodeIdSnapshotUpdates:
+    """The independent name updates must use the same canonical snapshot key."""
+
+    @pytest.mark.parametrize(
+        ("update", "lookup", "table", "field", "value"),
+        [
+            (
+                db_utils.update_longnames,
+                db_utils.get_longname,
+                "longnames",
+                "longName",
+                "Integer Long",
+            ),
+            (
+                db_utils.update_shortnames,
+                db_utils.get_shortname,
+                "shortnames",
+                "shortName",
+                "IL",
+            ),
+        ],
+    )
+    def test_integer_user_id_writes_canonical_key(
+        self,
+        relay_db: Path,
+        update: Callable[..., bool],
+        lookup: Callable[..., str | None],
+        table: str,
+        field: str,
+        value: str,
+    ) -> None:
+        """An integer user.id in a complete snapshot cannot strand its name."""
+        nodes = {"!f66fb1ac": {"user": {"id": 4134515116, field: value}}}
+        assert update(nodes)
+        assert lookup("!f66fb1ac") == value
+        with _managed_connection(relay_db) as con:
+            keys = {
+                r[0]
+                for r in con.execute(
+                    f"SELECT meshtastic_id FROM {table}"  # nosec B608 - table is a parametrized test literal
+                )
+            }
+        assert keys == {"!f66fb1ac"}
+
+    @pytest.mark.parametrize(
+        ("update", "lookup", "table", "field", "value"),
+        [
+            (
+                db_utils.update_longnames,
+                db_utils.get_longname,
+                "longnames",
+                "longName",
+                "Preserved Long",
+            ),
+            (
+                db_utils.update_shortnames,
+                db_utils.get_shortname,
+                "shortnames",
+                "shortName",
+                "PL",
+            ),
+        ],
+    )
+    def test_integer_user_id_does_not_prune_canonical_row(
+        self,
+        relay_db: Path,
+        update: Callable[..., bool],
+        lookup: Callable[..., str | None],
+        table: str,
+        field: str,
+        value: str,
+    ) -> None:
+        """An integer-only refresh must not delete existing canonical names."""
+        _insert_row(relay_db, "!f66fb1ac", "Preserved Long", "PL")
+        nodes = {"node": {"user": {"id": 4134515116, field: value}}}
+        assert update(nodes)
+        assert lookup("!f66fb1ac") == value
+        with _managed_connection(relay_db) as con:
+            keys = {
+                r[0]
+                for r in con.execute(
+                    f"SELECT meshtastic_id FROM {table}"  # nosec B608 - table is a parametrized test literal
+                )
+            }
+        assert keys == {"!f66fb1ac"}
