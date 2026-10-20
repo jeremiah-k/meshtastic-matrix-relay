@@ -111,6 +111,42 @@ def _cache_step(job: Mapping[str, object], path: str) -> dict[str, Any]:
     return matches[0]
 
 
+def _sync_extras(script: str) -> set[str]:
+    """Return extras requested by the script's uv sync of the project."""
+    for raw_line in script.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        arguments = shlex.split(line)
+        if arguments[:2] != ["uv", "sync"]:
+            continue
+        extras: set[str] = set()
+        for index, argument in enumerate(arguments[2:], start=2):
+            if argument.startswith("--extra="):
+                extras.add(argument.split("=", 1)[1])
+            elif argument == "--extra":
+                # `--extra test` and `--extra=test` are both valid uv syntax.
+                assert index + 1 < len(arguments), "--extra requires a value"
+                extras.add(arguments[index + 1])
+        return extras
+    return set()
+
+
+def _has_uv_sync(script: str) -> bool:
+    """Report whether the script runs a uv sync.
+
+    Distinguishes a sync that requests no extras from a script with no sync
+    at all; only the latter may fall back to an editable pip install.
+    """
+    for raw_line in script.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if shlex.split(line)[:2] == ["uv", "sync"]:
+            return True
+    return False
+
+
 def _editable_install_extras(script: str) -> set[str]:
     """Return extras requested by the script's editable project install."""
     for raw_line in script.splitlines():
@@ -127,6 +163,19 @@ def _editable_install_extras(script: str) -> set[str]:
             continue
         return {extra.strip() for extra in target[2:-1].split(",") if extra.strip()}
     return set()
+
+
+def _declared_install_extras(script: str) -> set[str]:
+    """Return extras the workflow installs, for either installer.
+
+    A `uv sync` command is authoritative when present: the synced environment
+    is what `uv run` executes against, so fall back to an editable pip install
+    only when the script does not sync. Otherwise a stale pip line could
+    satisfy the policy check while the locked environment lacks the extras.
+    """
+    if _sync_extras(script) or _has_uv_sync(script):
+        return _sync_extras(script)
+    return _editable_install_extras(script)
 
 
 def test_python_floor_is_consistent_across_runtime_and_metadata() -> None:
@@ -159,15 +208,18 @@ def test_supported_ci_matrix_matches_declared_versions_and_runs_e2ee() -> None:
     assert setup_options.get("python-version") == _MATRIX_EXPRESSION
 
     assert any(
-        _editable_install_extras(script) >= {"test", "e2e"}
+        _declared_install_extras(script) >= {"test", "e2e"}
         for step in _workflow_steps(job)
         if isinstance((script := step.get("run")), str)
     )
 
-    cache_step = _cache_step(job, "~/.cache/pip")
+    cache_step = _cache_step(job, "~/.cache/uv")
     cache_options = cache_step.get("with")
     assert isinstance(cache_options, dict)
     assert _MATRIX_EXPRESSION in str(cache_options.get("key", ""))
+    # The cache must key on the lockfile so it invalidates when resolution
+    # changes, not merely when the manifest is edited.
+    assert "uv.lock" in str(cache_options.get("key", ""))
 
     restore_keys = cache_options.get("restore-keys")
     assert isinstance(restore_keys, str)
