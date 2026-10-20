@@ -6,6 +6,7 @@ and various error handling branches.
 
 import asyncio
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -24,6 +25,23 @@ def _make_login_bot_mocks():
     mock_temp.close = AsyncMock()
 
     return mock_temp
+
+
+@pytest.fixture
+def available_e2ee_backend() -> Iterator[None]:
+    """Model a usable store for login tests that exercise later E2EE paths.
+
+    Since login now checks actual installed provider/store capabilities before
+    proceeding, patching is_e2ee_enabled alone cannot enable a mocked E2EE
+    session. Keep these tests independent of the runner's optional libraries.
+    Other tests retain the real unavailable-backend behavior.
+    """
+    with patch("mmrelay.matrix.auth.get_matrix_capabilities") as capabilities:
+        capabilities.return_value.encryption_available = True
+        capabilities.return_value.provider_name = "mindroom-nio"
+        capabilities.return_value.provider_version = "test"
+        capabilities.return_value.crypto_backend = "vodozemac"
+        yield
 
 
 def _make_logged_in_client(**login_overrides):
@@ -652,6 +670,7 @@ async def test_login_matrix_bot_discovery_info_error_response(
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
+@pytest.mark.usefixtures("available_e2ee_backend")
 async def test_login_matrix_bot_e2ee_store_path_creation(
     mock_logger, mock_async_client, mock_ssl
 ):
@@ -735,6 +754,7 @@ async def test_login_matrix_bot_rejects_cross_signing_reset_when_e2ee_disabled(
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
+@pytest.mark.usefixtures("available_e2ee_backend")
 async def test_login_matrix_bot_rejects_cross_signing_reset_without_password(
     mock_logger: MagicMock,
     mock_async_client: MagicMock,
@@ -778,6 +798,7 @@ async def test_login_matrix_bot_rejects_cross_signing_reset_without_password(
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
+@pytest.mark.usefixtures("available_e2ee_backend")
 async def test_login_matrix_bot_closes_client_when_cross_signing_is_cancelled(
     mock_logger: MagicMock,
     mock_async_client: MagicMock,
@@ -827,6 +848,7 @@ async def test_login_matrix_bot_closes_client_when_cross_signing_is_cancelled(
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
+@pytest.mark.usefixtures("available_e2ee_backend")
 async def test_login_matrix_bot_preserves_cancellation_when_client_close_fails(
     mock_logger: MagicMock,
     mock_async_client: MagicMock,
@@ -1146,6 +1168,7 @@ async def test_login_matrix_bot_whoami_exception_fallback(
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
+@pytest.mark.usefixtures("available_e2ee_backend")
 async def test_login_matrix_bot_e2ee_not_supported(
     mock_logger, mock_async_client, mock_ssl
 ):
@@ -1186,6 +1209,7 @@ async def test_login_matrix_bot_e2ee_not_supported(
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
+@pytest.mark.usefixtures("available_e2ee_backend")
 async def test_login_matrix_bot_e2ee_os_error(mock_logger, mock_async_client, mock_ssl):
     mock_client, _ = _make_logged_in_client()
     mock_async_client.return_value = mock_client
