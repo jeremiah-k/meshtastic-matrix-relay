@@ -9,14 +9,17 @@ import sys
 import tempfile
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from functools import partial
 from pathlib import Path
 from typing import Any, BinaryIO, TypeVar
 
+from mmrelay.log_utils import get_logger
 from mmrelay.matrix.oauth import OAuthError, OAuthSession
 from mmrelay.matrix.oauth_async import finish_task
 
 _Result = TypeVar("_Result")
 _MAX_RECORD_BYTES = 65536
+logger = get_logger(name="Matrix")
 
 
 async def _finish_io(function: Callable[[], _Result]) -> _Result:
@@ -58,25 +61,52 @@ class OAuthStore:
                 "OAuth credentials are in use by another operation."
             ) from None
 
-    @asynccontextmanager
-    async def locked(self) -> AsyncIterator[OAuthStore]:
-        task = asyncio.create_task(asyncio.to_thread(self._acquire))
+    @staticmethod
+    def _release(stream: BinaryIO) -> None:
         try:
-            stream = await finish_task(task)
-        except asyncio.CancelledError:
+            if sys.platform == "win32":
+                import msvcrt
+
+                try:
+                    stream.seek(0)
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+                except OSError:
+                    # Closing the descriptor remains the cleanup fallback.
+                    pass
+        finally:
+            stream.close()
+
+    @asynccontextmanager
+    async def locked(
+        self, *, wait_timeout: float | None = None
+    ) -> AsyncIterator[OAuthStore]:
+        deadline = (
+            asyncio.get_running_loop().time() + wait_timeout
+            if wait_timeout is not None
+            else None
+        )
+        while True:
+            task = asyncio.create_task(asyncio.to_thread(self._acquire))
             try:
-                stream = task.result()
-            except BaseException:
-                # The acquisition may have failed after the caller cancelled.
-                # finish_task has drained and observed its failure; do not
-                # replace the caller's cancellation with a late lock error.
-                raise asyncio.CancelledError from None
-            await _finish_io(stream.close)
-            raise
+                stream = await finish_task(task)
+                break
+            except asyncio.CancelledError:
+                try:
+                    stream = task.result()
+                except BaseException:
+                    raise asyncio.CancelledError from None
+                await _finish_io(partial(self._release, stream))
+                raise
+            except OAuthError:
+                if deadline is None or asyncio.get_running_loop().time() >= deadline:
+                    raise
+                await asyncio.sleep(
+                    min(0.1, deadline - asyncio.get_running_loop().time())
+                )
         try:
             yield self
         finally:
-            await _finish_io(stream.close)
+            await _finish_io(partial(self._release, stream))
 
     def load_sync(self) -> dict[str, Any] | None:
         """Read a bounded record; synchronous CLI dispatch need not start a loop."""
@@ -113,11 +143,20 @@ class OAuthStore:
                     os.fsync(stream.fileno())
                 os.replace(name, self.path)
                 if os.name != "nt":
-                    directory = os.open(self.path.parent, os.O_RDONLY | os.O_DIRECTORY)
+                    # A successfully published token must not be treated as
+                    # unsaved (and revoked) if directory sync is unsupported.
                     try:
-                        os.fsync(directory)
-                    finally:
-                        os.close(directory)
+                        directory = os.open(
+                            self.path.parent, os.O_RDONLY | os.O_DIRECTORY
+                        )
+                        try:
+                            os.fsync(directory)
+                        finally:
+                            os.close(directory)
+                    except OSError:
+                        logger.debug(
+                            "OAuth credentials published; parent-directory sync unavailable"
+                        )
             finally:
                 try:
                     os.unlink(name)

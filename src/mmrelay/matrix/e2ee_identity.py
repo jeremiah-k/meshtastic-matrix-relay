@@ -561,8 +561,14 @@ async def _ensure_own_device_cross_signed(
     ensure_method, local_identity = provider
 
     timeout_phase = "server identity check"
+    # Browser approval alone may consume 120 seconds on OAuth resets.
+    operation_timeout = (
+        300.0
+        if oauth_authenticated and reset_cross_signing
+        else _CROSS_SIGNING_OPERATION_TIMEOUT_SECONDS
+    )
     try:
-        async with asyncio.timeout(_CROSS_SIGNING_OPERATION_TIMEOUT_SECONDS):
+        async with asyncio.timeout(operation_timeout):
             if not await _resolve_cross_signing_reset_policy(
                 client,
                 local_identity=local_identity,
@@ -603,7 +609,7 @@ async def _ensure_own_device_cross_signed(
                 "Timed out after %.0f seconds while confirming Matrix cross-signing "
                 "state for device %s. Refusing to generate a replacement identity "
                 "automatically.",
-                _CROSS_SIGNING_OPERATION_TIMEOUT_SECONDS,
+                operation_timeout,
                 _client_label(client, "device_id"),
             )
         else:
@@ -615,7 +621,7 @@ async def _ensure_own_device_cross_signed(
             logger.warning(
                 "Timed out after %.0f seconds while self-verifying Matrix device %s. "
                 "MMRelay startup will continue; run '%s' to retry.",
-                _CROSS_SIGNING_OPERATION_TIMEOUT_SECONDS,
+                operation_timeout,
                 _client_label(client, "device_id"),
                 recovery_command,
             )

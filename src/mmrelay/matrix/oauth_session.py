@@ -4,12 +4,21 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from mmrelay.matrix.oauth import OAuthClient, OAuthError, OAuthSession
 from mmrelay.matrix.oauth_async import finish_task
 from mmrelay.matrix.oauth_store import OAuthStore
+
+
+def _record_stamp(path: Path) -> tuple[int, int, int, int] | None:
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return None
+    return stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_size
 
 
 class OAuthSessionManager:
@@ -25,9 +34,18 @@ class OAuthSessionManager:
         self.store = store
         self.protocol = protocol if protocol is not None else OAuthClient()
         self._lock = asyncio.Lock()
+        # The supplied session may predate a cross-process replacement. Only
+        # cache a token after reading its record under the credentials lock.
+        self._stamp: tuple[int, int, int, int] | None = None
 
     async def access_token(self) -> str:
-        async with self._lock, self.store.locked():
+        if (
+            self.protocol.clock() < self.session.refresh_at
+            and self._stamp is not None
+            and self._stamp == _record_stamp(self.store.path)
+        ):
+            return self.session.access_token
+        async with self._lock, self.store.locked(wait_timeout=45.0):
             record = await self.store.load()
             if record is None:
                 raise OAuthError("OAuth credentials were removed; authenticate again.")
@@ -51,6 +69,7 @@ class OAuthSessionManager:
                 task = asyncio.create_task(self._rotate(session))
                 session = await finish_task(task)
             self.session = session
+            self._stamp = _record_stamp(self.store.path)
             return session.access_token
 
     async def _rotate(self, session: OAuthSession) -> OAuthSession:
@@ -68,7 +87,11 @@ class OAuthSessionManager:
             # persistence fails. Revoke the unpersisted result so MMRelay does
             # not leave an active session whose refresh token it has lost.
             try:
-                await finish_task(asyncio.create_task(self.protocol.revoke(refreshed)))
+                await finish_task(
+                    asyncio.create_task(
+                        self.protocol.revoke_unpersisted(refreshed, session)
+                    )
+                )
             except OAuthError:
                 pass
             raise OAuthError(
@@ -105,6 +128,7 @@ def attach_oauth_session(
             or parsed.netloc
             or not path.startswith("/")
             or path.startswith("//")
+            or "\\" in path
         ):
             raise OAuthError(
                 "OAuth Matrix requests must use homeserver-relative paths."
