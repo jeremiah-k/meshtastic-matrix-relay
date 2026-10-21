@@ -5,8 +5,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import ssl
 from pathlib import Path
 from typing import Any
+
+from aiohttp import ClientConnectorCertificateError
 
 from mmrelay.matrix.auth_input import (
     LoginInputError,
@@ -144,6 +147,14 @@ async def _login_and_self_sign(
     except OAuthError as exc:
         print(f"Own-device signing failed: {exc}")
         result = None
+    except (ssl.SSLError, ClientConnectorCertificateError):
+        print(
+            "Own-device signing failed because Matrix TLS verification failed. "
+            "Check the server certificate and SSL_CERT_FILE/SSL_CERT_DIR trust "
+            "settings. OAuth credentials and encryption keys are retained; "
+            "a cross-signing reset does not repair TLS trust."
+        )
+        return 1
     except Exception:  # noqa: BLE001 - SDK setup errors may contain session secrets
         print("Own-device signing failed. Check E2EE dependencies and store ownership.")
         result = None
