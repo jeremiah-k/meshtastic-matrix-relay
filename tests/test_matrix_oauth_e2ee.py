@@ -4,6 +4,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -224,3 +225,109 @@ async def test_unrelated_401_is_returned_without_uia_replay() -> None:
     assert result is response
     assert len(server.requests) == 1
     assert server.sleeps == []
+
+
+@pytest.mark.asyncio
+async def test_upload_with_sdk_query_token_still_prompts_for_approval() -> None:
+    server = Server([Response(401, challenge()), Response(200, {})])
+    path = _UPLOAD + "?access_token=old"
+    response = await server.sender()("POST", path, json.dumps(_KEYS))
+    assert response.status == 200
+    assert [request[1] for request in server.requests] == [path, path]
+
+
+@pytest.mark.asyncio
+async def test_approval_url_fragment_is_rejected(capsys) -> None:
+    body = challenge()
+    body["params"]["m.oauth"]["url"] = _URL + "#hidden"
+    server = Server([Response(401, body)])
+    with pytest.raises(OAuthError):
+        await server.sender()("POST", _UPLOAD, json.dumps(_KEYS))
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.asyncio
+async def test_oauth_reset_has_more_time_than_browser_approval(monkeypatch) -> None:
+    import mmrelay.matrix.e2ee_identity as identity
+
+    recorded = []
+    original_timeout = asyncio.timeout
+
+    def track_timeout(seconds):
+        recorded.append(seconds)
+        return original_timeout(seconds)
+
+    monkeypatch.setattr(identity.asyncio, "timeout", track_timeout)
+    monkeypatch.setattr(
+        identity,
+        "_inspect_cross_signing_provider",
+        lambda client: (AsyncMock(return_value="already_signed"), None),
+    )
+    monkeypatch.setattr(
+        identity,
+        "_resolve_cross_signing_reset_policy",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        identity,
+        "_verify_cross_signing_postcondition",
+        AsyncMock(return_value=True),
+    )
+    client = type("Client", (), {"device_id": "DEVICE"})()
+    result = await identity._ensure_own_device_cross_signed(
+        client, oauth_authenticated=True, reset_cross_signing=True
+    )
+    assert result == "already_signed"
+    assert recorded == [300.0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body_text", ["[]", "not-json", None])
+async def test_malformed_signing_upload_stays_a_safe_oauth_error(body_text) -> None:
+
+    original = AsyncMock(return_value=Response(401, challenge()))
+    guarded = approval_sender(
+        original, "https://auth.example.com", reset_cross_signing=True
+    )
+    with pytest.raises(OAuthError, match="malformed"):
+        await guarded("POST", _UPLOAD, body_text)
+    original.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("blocked_phase", ["request", "challenge_body"])
+async def test_browser_retry_deadline_includes_http_and_challenge_body(
+    monkeypatch, blocked_phase
+):
+    from types import SimpleNamespace
+
+    import mmrelay.matrix.oauth_e2ee as module
+
+    class BlockedContent:
+        async def iter_chunked(self, size):
+            await asyncio.Event().wait()
+            yield b"unreachable"
+
+    calls = []
+
+    async def original(*args):
+        calls.append(args)
+        if len(calls) == 1:
+            return Response(401, challenge())
+        if blocked_phase == "request":
+            await asyncio.Event().wait()
+        return SimpleNamespace(status=401, content=BlockedContent())
+
+    monkeypatch.setattr(
+        module, "asyncio", SimpleNamespace(timeout=lambda _: asyncio.timeout(0))
+    )
+    server = Server([])
+    with pytest.raises(OAuthError, match="timed out"):
+        await module.approval_sender(
+            original,
+            "https://auth.example.com",
+            reset_cross_signing=True,
+            clock=lambda: server.now,
+            sleep=server.sleep,
+        )("POST", _UPLOAD, json.dumps(_KEYS))
+    assert len(calls) == 2

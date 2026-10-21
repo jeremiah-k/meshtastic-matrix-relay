@@ -185,3 +185,85 @@ async def test_cancelled_acquisition_preserves_cancellation_after_lock_error(
             release.set()
         with pytest.raises(asyncio.CancelledError):
             await task
+
+
+@pytest.mark.asyncio
+async def test_published_credentials_survive_unsupported_directory_fsync(
+    tmp_path: Path,
+) -> None:
+    if os.name == "nt":
+        pytest.skip("Directory fsync applies only on POSIX")
+    store = OAuthStore(tmp_path / "credentials.json")
+    real_fsync = os.fsync
+    calls = []
+
+    def fsync(fd):
+        calls.append(fd)
+        if len(calls) == 2:
+            raise OSError("directory fsync unavailable PRIVATE_TOKEN")
+        return real_fsync(fd)
+
+    with (
+        patch("mmrelay.matrix.oauth_store.os.fsync", side_effect=fsync),
+        patch("mmrelay.matrix.oauth_store.logger.debug") as diagnostic,
+    ):
+        async with store.locked():
+            await store.save(session())
+    assert len(calls) == 2
+    diagnostic.assert_called_once_with(
+        "OAuth credentials published; parent-directory sync unavailable"
+    )
+    assert "PRIVATE_TOKEN" not in str(diagnostic.call_args)
+    assert await store.load() == session().credentials()
+
+
+@pytest.mark.asyncio
+async def test_runtime_waits_for_lock_but_cli_still_fails_fast(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = OAuthStore(tmp_path / "credentials.json")
+    second = OAuthStore(first.path)
+    entered = asyncio.Event()
+    contended = asyncio.Event()
+    original_acquire = second._acquire
+    loop = asyncio.get_running_loop()
+
+    def observed_acquire():
+        loop.call_soon_threadsafe(contended.set)
+        return original_acquire()
+
+    monkeypatch.setattr(second, "_acquire", observed_acquire)
+
+    async def acquire() -> None:
+        async with second.locked(wait_timeout=2.0):
+            entered.set()
+
+    async with first.locked():
+        with pytest.raises(OAuthError, match="in use"):
+            async with second.locked():
+                pytest.fail("CLI lock unexpectedly waited")
+        contended.clear()
+        task = asyncio.create_task(acquire())
+        await asyncio.wait_for(contended.wait(), timeout=1.0)
+        assert not entered.is_set()
+    await asyncio.wait_for(task, timeout=1.0)
+    assert entered.is_set()
+
+
+@pytest.mark.asyncio
+async def test_lock_wait_is_bounded_and_operation_failures_are_not_retried(
+    tmp_path: Path,
+) -> None:
+    store = OAuthStore(tmp_path / "credentials.json")
+    async with store.locked():
+        with pytest.raises(OAuthError, match="in use"):
+            async with OAuthStore(store.path).locked(wait_timeout=0):
+                pytest.fail("Acquired a held credentials lock")
+    executions = []
+    with pytest.raises(OAuthError, match="protected operation failed"):
+        async with store.locked(wait_timeout=1.0):
+            executions.append("started")
+            raise OAuthError("protected operation failed")
+    assert executions == ["started"]
+    async with store.locked():
+        pass
