@@ -50,7 +50,10 @@ class TestSerialPortExists:
     def test_non_existing_port(self):
         from mmrelay.meshtastic.connection import serial_port_exists
 
-        with patch.object(mu.serial.tools.list_ports, "comports", return_value=[]):
+        with (
+            patch("mmrelay.meshtastic.connection.Path.is_char_device", return_value=False),
+            patch.object(mu.serial.tools.list_ports, "comports", return_value=[]),
+        ):
             assert serial_port_exists("/dev/ttyUSB0") is False
 
 
@@ -1802,3 +1805,21 @@ def test_regular_file_and_dangling_serial_alias_are_not_devices(tmp_path):
     with patch.object(mu.serial.tools.list_ports, "comports", return_value=[]):
         assert not serial_port_exists(str(regular))
         assert not serial_port_exists(str(dangling))
+
+
+def test_serial_port_exists_rejects_nul_without_probing_filesystem():
+    from mmrelay.meshtastic.connection import serial_port_exists
+
+    with patch("mmrelay.meshtastic.connection.Path.is_char_device") as probe:
+        assert not serial_port_exists("/dev/ttyUSB0\x00bad")
+        probe.assert_not_called()
+
+
+def test_serial_port_exists_handles_invalid_path(tmp_path):
+    from mmrelay.meshtastic.connection import serial_port_exists
+
+    with (
+        patch("mmrelay.meshtastic.connection.Path.is_char_device", side_effect=ValueError),
+        patch.object(mu.serial.tools.list_ports, "comports", return_value=[]),
+    ):
+        assert not serial_port_exists("/dev/radio-custom")

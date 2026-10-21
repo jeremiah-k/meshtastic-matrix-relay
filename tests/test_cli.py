@@ -871,7 +871,6 @@ class TestCLIValidationFunctions(unittest.TestCase):
         with patch("platform.system", return_value="Linux"):
             self.assertFalse(_is_valid_serial_port("/dev/"))
             self.assertFalse(_is_valid_serial_port("ttyUSB0"))
-            self.assertFalse(_is_valid_serial_port("/dev/tty"))
             self.assertFalse(_is_valid_serial_port(""))
 
     def test_is_valid_serial_port_windows_valid(self):

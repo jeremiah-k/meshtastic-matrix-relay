@@ -253,11 +253,13 @@ def serial_port_exists(port_name: str) -> bool:
     # Linux udev aliases and explicitly mapped container devices need not be
     # listed by pyserial. Inspect the configured device itself before falling
     # back to enumeration, which remains necessary for Windows COM names.
+    if "\x00" in port_name:
+        return False
     if os.name == "posix":
         try:
             if Path(port_name).is_char_device():
                 return True
-        except OSError:
+        except (OSError, ValueError):
             pass
     try:
         ports = [p.device for p in facade.serial.tools.list_ports.comports()]
