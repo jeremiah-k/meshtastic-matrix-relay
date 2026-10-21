@@ -2,9 +2,11 @@ import contextlib
 import functools
 import inspect
 import math
+import os
 import threading
 from collections.abc import Callable
 from concurrent.futures import Future
+from pathlib import Path
 from typing import Any, Literal, NoReturn
 
 import mmrelay.meshtastic_utils as facade
@@ -248,6 +250,15 @@ def serial_port_exists(port_name: str) -> bool:
     Returns:
         `True` if a matching port device name is present, `False` otherwise.
     """
+    # Linux udev aliases and explicitly mapped container devices need not be
+    # listed by pyserial. Inspect the configured device itself before falling
+    # back to enumeration, which remains necessary for Windows COM names.
+    if os.name == "posix":
+        try:
+            if Path(port_name).is_char_device():
+                return True
+        except OSError:
+            pass
     try:
         ports = [p.device for p in facade.serial.tools.list_ports.comports()]
     except OSError as exc:

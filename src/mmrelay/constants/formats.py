@@ -72,7 +72,9 @@ MARKDOWN_ESCAPE_REGEX: Final[re.Pattern[str]] = re.compile(r"([*_`~\\\[\]])")
 
 # Serial port patterns
 WINDOWS_SERIAL_PORT_PATTERN: Final[re.Pattern[str]] = re.compile(r"^COM[1-9]\d*$")
-UNIX_SERIAL_PORT_PATTERN: Final[re.Pattern[str]] = re.compile(r"^/dev/(tty|cu).+$")
+UNIX_SERIAL_PORT_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^/dev/(?:(?:tty|cu).+|serial/by-(?:id|path)/[^/\s\x00]+)$"
+)
 
 # Network patterns
 MAC_ADDRESS_PATTERN: Final[re.Pattern[str]] = re.compile(
