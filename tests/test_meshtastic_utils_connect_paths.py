@@ -1562,12 +1562,18 @@ class TestSerialPortExistsEdgeCases:
 
     def test_serial_port_exists_permission_error(self):
         """serial_port_exists returns False on permission-denied serial port."""
-        with patch(
-            "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
-            side_effect=PermissionError("Permission denied"),
+        with (
+            patch(
+                "mmrelay.meshtastic.connection.Path.is_char_device", return_value=False
+            ),
+            patch(
+                "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
+                side_effect=PermissionError("Permission denied"),
+            ) as enumerate_ports,
         ):
             result = serial_port_exists("/dev/ttyUSB0")
             assert result is False
+            enumerate_ports.assert_called_once_with()
 
     def test_serial_port_exists_device_present_in_comports(self):
         """serial_port_exists returns True when device is listed in comports (port openability is checked by the caller)."""
