@@ -507,7 +507,26 @@ async def connect_matrix(
         )
 
         try:
-            await facade._perform_matrix_login(client, auth_info)
+            try:
+                await facade._perform_matrix_login(client, auth_info)
+            except facade.E2EEStoreOpenError as store_error:
+                # The crypto store exists but nio cannot open it (permissions,
+                # read-only filesystem, lease, corrupt database). Degrade to an
+                # unencrypted session instead of losing the login.
+                facade._log_e2ee_store_open_failure(e2ee_store_path, store_error)
+                await facade._close_matrix_client_after_failure(
+                    client, "E2EE crypto store open failure"
+                )
+                client = facade._initialize_matrix_client(
+                    homeserver=local_homeserver,
+                    user_id=local_bot_user_id,
+                    device_id=e2ee_device_id,
+                    e2ee_enabled=False,
+                    e2ee_store_path=None,
+                    ssl_context=ssl_context,
+                )
+                e2ee_enabled = False
+                await facade._perform_matrix_login(client, auth_info)
 
             if auth_info.user_id and auth_info.user_id != effective_bot_user_id:
                 effective_bot_user_id = auth_info.user_id
@@ -796,7 +815,10 @@ async def login_matrix_bot(
         store_path = None
         if e2ee_enabled:
             try:
-                store_path = str(await asyncio.to_thread(facade.get_e2ee_store_dir))
+                e2ee_config = loaded_config_for_paths or {}
+                e2ee_enabled, store_path = await facade._configure_e2ee(
+                    e2ee_config, e2ee_config.get("matrix"), existing_device_id
+                )
             except E2EENotSupportedError as e:
                 facade.logger.warning(
                     "E2EE is not supported on this platform; "
@@ -814,9 +836,6 @@ async def login_matrix_bot(
                 e2ee_enabled = False
                 store_path = None
 
-            if store_path is not None:
-                await asyncio.to_thread(os.makedirs, store_path, exist_ok=True)
-                facade.logger.debug(f"Using E2EE store path: {store_path}")
         else:
             facade.logger.debug("E2EE disabled in configuration, not using store path")
 

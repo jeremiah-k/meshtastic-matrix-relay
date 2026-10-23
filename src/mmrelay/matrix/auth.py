@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sqlite3
 import ssl
-import sys
 from typing import Any, Optional, cast
 
 from nio import AsyncClient
@@ -15,13 +15,23 @@ from mmrelay.matrix.compat import (
     get_matrix_capabilities,
 )
 
+try:
+    from peewee import DatabaseError as _PeeweeDatabaseError
+except ImportError:  # pragma: no cover - peewee ships with every nio crypto store
+    _PeeweeDatabaseError = sqlite3.Error
+
 __all__ = [
+    "E2EEStoreOpenError",
     "_configure_e2ee",
     "_initialize_matrix_client",
     "_perform_matrix_login",
     "_maybe_upload_e2ee_keys",
     "_close_matrix_client_after_failure",
 ]
+
+
+class E2EEStoreOpenError(RuntimeError):
+    """The nio E2EE crypto store could not be opened at login time."""
 
 
 async def _configure_e2ee(
@@ -56,39 +66,23 @@ async def _configure_e2ee(
         facade.logger.debug(f"E2EE detection: e2ee enabled = {e2ee_enabled}")
 
         if e2ee_enabled:
-            from mmrelay.constants.app import WINDOWS_PLATFORM
-
-            if sys.platform == WINDOWS_PLATFORM:
+            matrix_capabilities = get_matrix_capabilities()
+            if not matrix_capabilities.encryption_available:
+                facade.logger.error("Missing E2EE dependency")
                 facade.logger.error(
-                    "E2EE is not supported on Windows due to library limitations."
+                    format_e2ee_unavailable_message(matrix_capabilities)
                 )
-                facade.logger.error(
-                    "Matrix E2EE crypto backends require native libraries that are difficult to install on Windows."
-                )
-                facade.logger.error(
-                    "Please disable E2EE in your configuration or use a Linux/macOS system for E2EE support."
-                )
+                facade.logger.error(format_e2ee_install_command(matrix_capabilities))
+                facade.logger.warning("E2EE will be disabled for this session.")
                 e2ee_enabled = False
             else:
-                matrix_capabilities = get_matrix_capabilities()
-                if not matrix_capabilities.encryption_available:
-                    facade.logger.error("Missing E2EE dependency")
-                    facade.logger.error(
-                        format_e2ee_unavailable_message(matrix_capabilities)
-                    )
-                    facade.logger.error(
-                        format_e2ee_install_command(matrix_capabilities)
-                    )
-                    facade.logger.warning("E2EE will be disabled for this session.")
-                    e2ee_enabled = False
-                else:
-                    facade.logger.debug(
-                        "E2EE dependencies available: provider=%s version=%s backend=%s",
-                        matrix_capabilities.provider_name,
-                        matrix_capabilities.provider_version,
-                        matrix_capabilities.crypto_backend,
-                    )
-                    facade.logger.info("End-to-End Encryption (E2EE) is enabled")
+                facade.logger.debug(
+                    "E2EE dependencies available: provider=%s version=%s backend=%s",
+                    matrix_capabilities.provider_name,
+                    matrix_capabilities.provider_version,
+                    matrix_capabilities.crypto_backend,
+                )
+                facade.logger.info("End-to-End Encryption (E2EE) is enabled")
 
                 if e2ee_enabled:
                     store_override = None
@@ -207,6 +201,67 @@ def _initialize_matrix_client(
     return facade.AsyncClient(**client_kwargs)
 
 
+def _restore_login(
+    client: AsyncClient,
+    *,
+    user_id: str,
+    device_id: str,
+    access_token: str,
+) -> None:
+    """
+    Restore a client login, converting crypto-store open failures to E2EEStoreOpenError.
+
+    Only clients created with an E2EE store path can fail while opening the
+    store; exceptions raised for other clients propagate unchanged.
+
+    Failure modes observed when nio opens its SQLite crypto store
+    (mindroom-nio 1.1.4): LocalProtocolError for fcntl-free platforms, held
+    lifetime leases, and foreign store databases; OSError for store/lock file
+    creation problems; sqlite3 or peewee database errors for corrupt or
+    unusable store files.
+    """
+    try:
+        client.restore_login(
+            user_id=user_id,
+            device_id=device_id,
+            access_token=access_token,
+        )
+    except (
+        facade.NioLocalProtocolError,
+        sqlite3.Error,
+        _PeeweeDatabaseError,
+        OSError,
+    ) as exc:
+        store_path = getattr(client, "store_path", None)
+        if not store_path:
+            raise
+        raise E2EEStoreOpenError(
+            f"could not open the E2EE crypto store at {store_path}: {exc}"
+        ) from exc
+
+
+def _log_e2ee_store_open_failure(
+    store_path: str | None, error: E2EEStoreOpenError
+) -> None:
+    """Log the failing store path, provider-aware guidance, and the session warning."""
+    capabilities = get_matrix_capabilities()
+    facade.logger.error(
+        "Could not open the E2EE crypto store at %s: %s",
+        store_path,
+        error.__cause__ or error,
+    )
+    if capabilities.store_failure is not None:
+        facade.logger.error(format_e2ee_install_command(capabilities))
+    else:
+        # The global capability probe opened a disposable store fine, so the
+        # configured store path itself is the problem; mirror the store guidance.
+        facade.logger.error(
+            "The installed nio SQLite crypto store could not open; check "
+            "filesystem permissions, disk space, and provider compatibility."
+        )
+    facade.logger.warning("E2EE will be disabled for this session.")
+
+
 async def _perform_matrix_login(
     client: AsyncClient,
     auth_info: "facade.MatrixAuthInfo",
@@ -238,7 +293,12 @@ async def _perform_matrix_login(
         store = await asyncio.to_thread(OAuthStore, auth_info.credentials_path)
         manager = OAuthSessionManager(session, store)
         token = await manager.access_token()
-        client.restore_login(session.user_id, session.device_id, token)
+        _restore_login(
+            client,
+            user_id=session.user_id,
+            device_id=session.device_id,
+            access_token=token,
+        )
 
         def update_token(value: str) -> None:
             auth_info.access_token = value
@@ -255,7 +315,8 @@ async def _perform_matrix_login(
 
     if auth_info.credentials:
         if e2ee_device_id and user_id:
-            client.restore_login(
+            _restore_login(
+                client,
                 user_id=user_id,
                 device_id=e2ee_device_id,
                 access_token=access_token,
@@ -314,7 +375,8 @@ async def _perform_matrix_login(
                         )
 
                     if e2ee_device_id and user_id:
-                        client.restore_login(
+                        _restore_login(
+                            client,
                             user_id=user_id,
                             device_id=e2ee_device_id,
                             access_token=access_token,
@@ -340,6 +402,8 @@ async def _perform_matrix_login(
                         facade.logger.debug(
                             "whoami confirmed existing device_id and user_id; no credential updates needed"
                         )
+            except E2EEStoreOpenError:
+                raise
             except facade.WHOAMI_USER_ID_FALLBACK_EXCEPTIONS as e:
                 facade.logger.warning(f"Failed to discover device_id via whoami: {e}")
                 facade.logger.warning("E2EE may not work properly without a device_id")

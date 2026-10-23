@@ -368,11 +368,14 @@ from mmrelay.matrix.e2ee_identity import (
     _ensure_own_device_cross_signed,
 )
 from mmrelay.matrix.auth import (
+    E2EEStoreOpenError,
     _close_matrix_client_after_failure,
     _configure_e2ee,
     _initialize_matrix_client,
+    _log_e2ee_store_open_failure,
     _maybe_upload_e2ee_keys,
     _perform_matrix_login,
+    _restore_login,
 )
 from mmrelay.matrix.client_config import build_matrix_client_config
 from mmrelay.matrix.room_authorization import (

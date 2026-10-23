@@ -48,20 +48,24 @@ class TestAuthFlowFixes(unittest.TestCase):
             result, "E2EE should not be detected as enabled without matrix section"
         )
 
-    def test_windows_e2ee_always_disabled(self):
-        """Test that E2EE is always disabled on Windows."""
-        # Test with config that would enable E2EE on other platforms
+    def test_windows_e2ee_follows_config(self):
+        """Test that E2EE on Windows follows the configuration, not the platform."""
+        # Config that enables E2EE is honored on Windows (vodozemac backend)
         config_with_e2ee = {"matrix": {"e2ee": {"enabled": True}}}
 
         with patch("sys.platform", "win32"):
             result = is_e2ee_enabled(config_with_e2ee)
-            self.assertFalse(result, "E2EE should always be disabled on Windows")
+            self.assertTrue(result, "E2EE config should be honored on Windows")
 
             # Test silent check too
-            result = check_e2ee_enabled_silently()
-            self.assertFalse(
-                result, "E2EE silent check should always return False on Windows"
-            )
+            with patch(
+                "mmrelay.config.get_config_paths",
+                return_value=["/nonexistent/config.yaml"],
+            ):
+                result = check_e2ee_enabled_silently()
+                self.assertFalse(
+                    result, "E2EE silent check should follow the config, not Windows"
+                )
 
     def test_windows_credentials_path_handling(self):
         """Test that credentials.json path handling works on Windows."""

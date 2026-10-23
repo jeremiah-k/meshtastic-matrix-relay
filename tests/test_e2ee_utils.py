@@ -23,7 +23,7 @@ from mmrelay.matrix.compat import MatrixLibraryCapabilities
 
 
 def _matrix_capabilities(
-    *, encryption_available: bool = True
+    *, encryption_available: bool = True, store_failure: str | None = None
 ) -> MatrixLibraryCapabilities:
     return MatrixLibraryCapabilities(
         provider_name="matrix-nio",
@@ -33,6 +33,7 @@ def _matrix_capabilities(
         encryption_available=encryption_available,
         store_available=encryption_available,
         sqlite_store_available=encryption_available,
+        sqlite_store_openable=encryption_available and store_failure is None,
         olm_available=encryption_available,
         vodozemac_available=False,
         nio_crypto_available=True,
@@ -44,6 +45,7 @@ def _matrix_capabilities(
         supports_stop_sync_forever=True,
         supports_thread_receipts=False,
         supports_authenticated_media=False,
+        store_failure=store_failure,
     )
 
 
@@ -370,6 +372,42 @@ def test_deprecation_window_not_active(
     assert not any("legacy" in path for path in paths_checked)
 
 
+@patch("sys.platform", "linux")
+@patch("mmrelay.e2ee_utils.resolve_all_paths")
+def test_store_failure_threaded_into_status(
+    mock_resolve_all_paths, e2ee_test_config
+) -> None:
+    """get_e2ee_status threads the diagnosed store failure into the status dict."""
+    _temp_dir, config_path, _credentials_path, base_config = e2ee_test_config
+
+    mock_resolve_all_paths.return_value = {
+        "credentials_path": f"/primary/matrix/{CREDENTIALS_FILENAME}",
+        "legacy_sources": [],
+    }
+
+    caps = _matrix_capabilities(encryption_available=False, store_failure="fcntl")
+    with (
+        patch("mmrelay.e2ee_utils.get_matrix_capabilities", return_value=caps),
+        patch("mmrelay.e2ee_utils.os.path.exists", return_value=False),
+    ):
+        status = get_e2ee_status(base_config, config_path)
+
+    assert status["store_failure"] == "fcntl"
+    assert status["overall_status"] == "incomplete"
+    assert any(
+        "store cannot open on this platform" in issue for issue in status["issues"]
+    )
+
+    caps_open = _matrix_capabilities(encryption_available=True)
+    with (
+        patch("mmrelay.e2ee_utils.get_matrix_capabilities", return_value=caps_open),
+        patch("mmrelay.e2ee_utils.os.path.exists", return_value=False),
+    ):
+        status_open = get_e2ee_status(base_config, config_path)
+
+    assert status_open["store_failure"] is None
+
+
 # ---- Additional coverage tests for e2ee_utils.py uncovered lines ----
 
 
@@ -458,6 +496,27 @@ class TestRoomEncryptionWarnings:
         assert len(result) == 2
         assert "will be blocked" in result[1]
 
+    def test_unavailable_store_failure_names_store(self):
+        """Warning names the unopenable crypto store, not missing dependencies."""
+        from mmrelay.e2ee_utils import get_room_encryption_warnings
+
+        rooms = {"!r1:t": MockRoom("!r1:t", encrypted=True)}
+        status = {"overall_status": "unavailable", "store_failure": "fcntl"}
+        result = get_room_encryption_warnings(rooms, status)
+        assert len(result) == 2
+        assert "crypto store cannot be opened" in result[0]
+        assert "dependencies not installed" not in result[0]
+
+    def test_unavailable_without_store_failure_keeps_deps_wording(self):
+        """Warning keeps the dependencies wording when no store failure is set."""
+        from mmrelay.e2ee_utils import get_room_encryption_warnings
+
+        rooms = {"!r1:t": MockRoom("!r1:t", encrypted=True)}
+        status = {"overall_status": "unavailable"}
+        result = get_room_encryption_warnings(rooms, status)
+        assert len(result) == 2
+        assert "dependencies not installed" in result[0]
+
     def test_disabled_status_encrypted_rooms(self):
         """Warning for encrypted rooms when E2EE is disabled."""
         from mmrelay.e2ee_utils import get_room_encryption_warnings
@@ -492,6 +551,27 @@ class TestFormatRoomList:
         assert len(result) == 1
         assert "incomplete" in result[0].lower()
 
+    def test_unavailable_store_failure_names_store(self):
+        """Room line names the unopenable crypto store, not missing dependencies."""
+        from mmrelay.e2ee_utils import format_room_list
+
+        rooms = {"!r1:t": MockRoom("!r1:t", "MyRoom", encrypted=True)}
+        status = {"overall_status": "unavailable", "store_failure": "other"}
+        result = format_room_list(rooms, status)
+        assert len(result) == 1
+        assert "crypto store cannot be opened" in result[0]
+        assert "dependencies not installed" not in result[0]
+
+    def test_unavailable_without_store_failure_keeps_deps_wording(self):
+        """Room line keeps the dependencies wording when no store failure is set."""
+        from mmrelay.e2ee_utils import format_room_list
+
+        rooms = {"!r1:t": MockRoom("!r1:t", "MyRoom", encrypted=True)}
+        status = {"overall_status": "unavailable"}
+        result = format_room_list(rooms, status)
+        assert len(result) == 1
+        assert "dependencies not installed" in result[0]
+
 
 class TestGetE2eeErrorMessage:
     """Tests for get_e2ee_error_message."""
@@ -504,13 +584,14 @@ class TestGetE2eeErrorMessage:
         assert result == ""
 
     def test_platform_not_supported(self):
-        """Unavailable platform should return unavailable message."""
+        """Unsupported environment should return the environment message."""
         from mmrelay.e2ee_utils import get_e2ee_error_message
 
         result = get_e2ee_error_message(
             {"overall_status": "unavailable", "platform_supported": False}
         )
-        assert "Windows" in result
+        assert "MSYS/Cygwin" in result
+        assert "Windows" not in result
 
     def test_not_enabled(self):
         """Disabled E2EE should return disabled message."""

@@ -12,7 +12,6 @@ Tests edge cases and error handling including:
 """
 
 import json
-import ntpath
 import os
 import sys
 import tempfile
@@ -466,8 +465,8 @@ class TestConfigEdgeCases(unittest.TestCase):
         ):
             result = get_e2ee_store_dir()
 
-            # Should use home/matrix/store on Windows fallback
-            expected = ntpath.join(
+            # The unified store path under home/matrix/store is used on Windows too
+            expected = os.path.join(
                 str(Path("C:\\mmrelay").expanduser().absolute()),
                 "matrix",
                 "store",
@@ -720,7 +719,7 @@ class TestConfigAdditionalCoverage(unittest.TestCase):
     def test_is_e2ee_enabled_win32(self):
         from mmrelay.config import is_e2ee_enabled
 
-        assert is_e2ee_enabled({"matrix": {"encryption": {"enabled": True}}}) is False
+        assert is_e2ee_enabled({"matrix": {"encryption": {"enabled": True}}}) is True
 
     @patch("sys.platform", "linux")
     @patch("os.path.isfile", return_value=True)
@@ -749,7 +748,8 @@ class TestConfigAdditionalCoverage(unittest.TestCase):
         assert result is False
 
     @patch("sys.platform", "win32")
-    def test_check_e2ee_enabled_silently_win32(self):
+    @patch("mmrelay.config.get_config_paths", return_value=["/nonexistent/config.yaml"])
+    def test_check_e2ee_enabled_silently_win32(self, _mock_paths):
         from mmrelay.config import check_e2ee_enabled_silently
 
         assert check_e2ee_enabled_silently() is False
