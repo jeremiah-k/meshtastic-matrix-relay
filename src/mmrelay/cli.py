@@ -552,9 +552,10 @@ def _e2ee_dependencies_available() -> bool:
 
 def _validate_e2ee_dependencies() -> bool:
     """
-    Check whether the required E2EE Python libraries are available.
+    Check local E2EE crypto and disposable-store capabilities.
 
-    Performs only local checks (importability) and prints user-facing guidance when dependencies are missing.
+    Print package guidance for missing dependencies and storage guidance when
+    installed crypto cannot open its store.
 
     Returns:
         True if required E2EE libraries can be imported, False otherwise.
@@ -566,10 +567,15 @@ def _validate_e2ee_dependencies() -> bool:
 
     from mmrelay.matrix.compat import (
         format_e2ee_install_command,
+        format_e2ee_unavailable_message,
         get_matrix_capabilities,
     )
 
     caps = get_matrix_capabilities()
+    if caps.store_failure is not None:
+        print(f"❌ Error: {format_e2ee_unavailable_message(caps)}")
+        print(f"   Fix: {format_e2ee_install_command(caps)}")
+        return False
     print("❌ Error: E2EE dependencies not installed")
     print("   End-to-end encryption features require additional dependencies")
     print(f"   Install E2EE support: {format_e2ee_install_command(caps)}")
