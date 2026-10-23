@@ -824,15 +824,22 @@ class Plugin(BasePlugin):
             self.plugin_name,
         )
 
+        # Native packets retain the numeric sender before NodeDB enrichment
+        # supplies fromId. Location resolution must not require cache membership.
         fromId = packet.get("fromId")
-        if not fromId or fromId not in meshtastic_client.nodes:
-            self.logger.debug("Ignoring weather request from unknown node: %s", fromId)
-            return True  # Unknown node, treat as handled without responding
+        if not fromId:
+            sender = packet.get("from")
+            if type(sender) is int and 0 <= sender < BROADCAST_NUM:
+                fromId = f"!{sender:08x}"
+        if is_direct_message and not fromId:
+            self.logger.warning("Weather direct request has no reply address")
+            return False
 
         coords = await self._resolve_location_from_args(arg_text)
+        nodes = getattr(meshtastic_client, "nodes", None) or {}
 
         if coords is None:
-            requesting_node = meshtastic_client.nodes.get(fromId)
+            requesting_node = nodes.get(fromId)
             if (
                 requesting_node
                 and "position" in requesting_node
@@ -846,7 +853,7 @@ class Plugin(BasePlugin):
             else:
                 coords = self._determine_mesh_location(meshtastic_client)
 
-        weather_notice = "Cannot determine location"
+        weather_notice = "Cannot determine location; share GPS or use !weather LAT,LON."
         mode = parsed_command
         reply_id = packet.get("id")
         if coords:
@@ -1049,7 +1056,7 @@ class Plugin(BasePlugin):
             A (latitude, longitude) tuple representing the averaged position across available nodes, or None if no valid node coordinates are found.
         """
         positions = []
-        for info in meshtastic_client.nodes.values():
+        for info in (getattr(meshtastic_client, "nodes", None) or {}).values():
             pos = info.get("position") if isinstance(info, dict) else None
             if not pos:
                 continue
