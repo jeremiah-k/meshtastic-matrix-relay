@@ -1600,7 +1600,7 @@ requires-dist = [
     { name = "mindroom-nio", marker = "python_full_version >= '3.12'", specifier = "==1.1.5" },
     { name = "mindroom-nio", extras = ["e2e"], marker = "python_full_version >= '3.12' and extra == 'e2e'", specifier = "==1.1.5" },
     { name = "mindroom-nio", extras = ["e2e"], marker = "python_full_version < '3.12' and extra == 'e2e'", specifier = "==0.40.0" },
-    { name = "mtjk", specifier = "==2.7.11.post11" },
+    { name = "mtjk", git = "https://github.com/jeremiah-k/mtjk.git?rev=487116e023a8b4dcc60881e7fdefce2eab48bddc" },
     { name = "mypy", marker = "extra == 'dev'", specifier = "==2.4.0" },
     { name = "nh3", specifier = "==0.3.7" },
     { name = "pillow", specifier = "==13.0.0" },
@@ -1625,8 +1625,8 @@ provides-extras = ["e2e", "test", "dev"]
 
 [[package]]
 name = "mtjk"
-version = "2.7.11.post11"
-source = { registry = "https://pypi.org/simple" }
+version = "2.7.11.post12"
+source = { git = "https://github.com/jeremiah-k/mtjk.git?rev=487116e023a8b4dcc60881e7fdefce2eab48bddc#487116e023a8b4dcc60881e7fdefce2eab48bddc" }
 dependencies = [
     { name = "argcomplete" },
     { name = "bleak" },
@@ -1641,10 +1641,6 @@ dependencies = [
     { name = "tabulate" },
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
     { name = "wcwidth" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a2/e2/e7a422653ba6e6237656817f6bda951d86908b82ba96227d2ebaf25fc3af/mtjk-2.7.11.post11.tar.gz", hash = "sha256:958386deae33d4258db73cf4c1781b988b2aeb894d6ead67c30054645db85edc", size = 1539134, upload-time = "2026-10-13T00:10:53.05Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/31/f5/2bec9526df060d4b7458ae10406390216fb0feb44c4b08e81a9f5effea9a/mtjk-2.7.11.post11-py3-none-any.whl", hash = "sha256:7c9255cf4a6dfdb33abad05009fe90937360488cb0bd459c028d39e12b984e18", size = 1739190, upload-time = "2026-10-13T00:10:50.691Z" },
 ]
 
 [[package]]
