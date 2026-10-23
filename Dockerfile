@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.15-slim-bookworm@sha256:2a41267d9de9d358f77a1de356e0f16ecba8d39827855be0ce9ef4792edce402 AS builder
+FROM python:3.15-slim-bookworm@sha256:575f8bc12ec26542e0678bc6b60e385218248019d433157ec327264a78c3a853 AS builder
 
 # Install build dependencies with pinned versions
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -22,7 +22,7 @@ RUN python -m pip install --no-cache-dir --timeout=300 --retries=3 \
     --prefix=/install ".[e2e]"
 
 # Runtime stage
-FROM python:3.15-slim-bookworm@sha256:2a41267d9de9d358f77a1de356e0f16ecba8d39827855be0ce9ef4792edce402
+FROM python:3.15-slim-bookworm@sha256:575f8bc12ec26542e0678bc6b60e385218248019d433157ec327264a78c3a853
 
 # Create non-root user for security
 RUN groupadd --gid 1000 mmrelay && \
