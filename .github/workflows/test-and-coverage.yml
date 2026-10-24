@@ -9,6 +9,10 @@ on:
       - develop
       - "**-review"
   workflow_dispatch:
+    inputs:
+      sdk_ref:
+        description: Full commit SHA from jeremiah-k/mindroom-nio (Python 3.12+ only)
+        type: string
 
 permissions:
   contents: read
@@ -54,6 +58,38 @@ jobs:
       - name: Install dependencies
         run: |
           uv sync --locked --extra test --extra e2e
+
+      - name: Validate candidate Matrix SDK revision
+        if: inputs.sdk_ref != ''
+        shell: bash
+        env:
+          SDK_REF: ${{ inputs.sdk_ref }}
+        run: '[[ "$SDK_REF" =~ ^[0-9a-f]{40}$ ]] || { echo "sdk_ref must be a full commit SHA"; exit 1; }'
+
+      - name: Checkout candidate Matrix SDK
+        if: inputs.sdk_ref != '' && matrix.python-version != '3.11'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: jeremiah-k/mindroom-nio
+          ref: ${{ inputs.sdk_ref }}
+          path: .sdk
+          persist-credentials: false
+
+      - name: Install candidate SDK within locked dependency constraints
+        if: inputs.sdk_ref != '' && matrix.python-version != '3.11'
+        shell: bash
+        run: |
+          uv export --locked --extra test --extra e2e --no-emit-project --no-emit-package mindroom-nio --format requirements-txt --output-file "$RUNNER_TEMP/sdk-constraints.txt"
+          uv pip install --python .venv/bin/python --constraint "$RUNNER_TEMP/sdk-constraints.txt" './.sdk[e2e]'
+          .venv/bin/python - <<'PYCODE'
+          import json
+          from importlib.metadata import distribution
+          from pathlib import Path
+          source = json.loads(distribution("mindroom-nio").read_text("direct_url.json") or "{}")
+          assert source.get("url") == Path(".sdk").resolve().as_uri(), source
+          PYCODE
+          sdk_sha=$(git -C .sdk rev-parse HEAD)
+          echo "Candidate SDK: ${sdk_sha}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify Matrix provider selection and dependency consistency
         run: |
