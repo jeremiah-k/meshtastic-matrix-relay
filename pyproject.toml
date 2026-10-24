@@ -42,6 +42,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Experimental SDK combination, selected explicitly for Python 3.12+.
+integration = [
+  "mindroom-nio[e2e] @ git+https://github.com/jeremiah-k/mindroom-nio.git@a7456b50635aea5180c1c11b7afeccb66e4ed3d0 ; python_version >= '3.12'",
+]
 e2e = [
   "mindroom-nio[e2e]==0.40.0; python_version < '3.12'",
   "mindroom-nio[e2e]==1.1.5; python_version >= '3.12'",

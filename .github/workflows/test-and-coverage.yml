@@ -57,7 +57,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --locked --extra test --extra e2e
+          uv sync --locked --extra test --extra e2e --extra integration
+
+      - name: Verify the integration SDK source
+        if: matrix.python-version != '3.11' && inputs.sdk_ref == ''
+        run: uv run --no-sync python scripts/verify_integration_sdk.py
 
       - name: Validate candidate Matrix SDK revision
         if: inputs.sdk_ref != ''
@@ -157,11 +161,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Both arms of the pinned version split: 3.13 installs
-        # mindroom-nio 1.1.x, whose crypto store takes a POSIX file lease
-        # (fcntl) — the contract pins the fail-closed capability outcome
-        # there. 3.11 installs mindroom-nio 0.40.0 (py<3.12), whose store
-        # opens natively, pinning the full store-lifecycle contract.
+        # Python 3.13 exercises the combined Windows/signing SDK candidate;
+        # Python 3.11 retains the released 0.40.0 compatibility arm.
         python-version: ["3.13", "3.11"]
 
     steps:
@@ -181,8 +182,16 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --locked --extra test --extra e2e
+          uv sync --locked --extra test --extra e2e --extra integration
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           uv pip check --python .venv/Scripts/python.exe
+
+      - name: Verify the integration SDK source and Windows store ownership
+        if: matrix.python-version != '3.11'
+        run: |
+          uv run --no-sync python scripts/verify_integration_sdk.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run --no-sync python -c "from tempfile import TemporaryDirectory; from nio.store import SqliteStore; directory = TemporaryDirectory(); store = SqliteStore('@contract:example.invalid', 'DEVICE', directory.name); store.database.close(); directory.cleanup()"
 
       - name: Prove installed cryptography is enabled, not merely importable
         env:

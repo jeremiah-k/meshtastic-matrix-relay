@@ -60,11 +60,11 @@ def test_default_dependency_is_mindroom_not_matrix_nio():
     assert not any("matrix-nio" in dep for dep in deps)
 
 
-def test_only_e2e_extra_for_matrix_providers():
+def test_only_e2e_and_integration_extras_select_matrix_providers():
     project = _read_pyproject_deps()
     extras = project.get("optional-dependencies", {})
     for name, deps in extras.items():
-        if name == "e2e":
+        if name in {"e2e", "integration"}:
             continue
         for dep in deps:
             assert (
