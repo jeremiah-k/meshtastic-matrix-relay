@@ -513,6 +513,7 @@ async def test_connect_matrix_e2ee_windows_enables(monkeypatch):
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
         ),
         patch("mmrelay.e2ee_utils.get_room_encryption_warnings", return_value=[]),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
     ):
         await connect_matrix(config)
 
@@ -640,6 +641,7 @@ async def test_connect_matrix_e2ee_store_path_from_config(monkeypatch):
     )
     with (
         patch("mmrelay.matrix_utils.os.makedirs"),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
@@ -706,6 +708,7 @@ async def test_connect_matrix_e2ee_store_path_precedence_e2ee(monkeypatch):
     )
     with (
         patch("mmrelay.matrix_utils.os.makedirs"),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
@@ -772,6 +775,7 @@ async def test_connect_matrix_e2ee_store_path_uses_e2ee_section(monkeypatch):
     )
     with (
         patch("mmrelay.matrix_utils.os.makedirs"),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
@@ -963,6 +967,7 @@ async def test_connect_matrix_e2ee_store_missing_db_files_warns(
             return_value=None,
         ),
         patch("mmrelay.matrix_utils.matrix_client", None),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
     ):
         await connect_matrix(test_config)
 
@@ -1022,6 +1027,7 @@ async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch, tmp_path):
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch("mmrelay.matrix_utils.os.makedirs"),
         patch("mmrelay.matrix_utils.os.listdir", return_value=["test.db"]),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
         patch("mmrelay.matrix_utils.asyncio.sleep", sleep_mock),
     ):
         config = {
@@ -1394,6 +1400,105 @@ async def test_connect_matrix_e2ee_makedirs_oserror_disables(
     )
 
 
+@pytest.mark.skipif(
+    os.name != "posix" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="read-only directory enforcement is unavailable to root or on this platform",
+)
+async def test_configure_e2ee_non_writable_store_dir_disables(tmp_path):
+    """A readable but non-writable store directory must disable E2EE at preflight."""
+    store_dir = tmp_path / "store"
+    store_dir.mkdir()
+    os.chmod(store_dir, 0o555)
+    test_config = {
+        "matrix": {
+            "homeserver": "https://matrix.example.org",
+            "access_token": "test_token",
+            "bot_user_id": "@bot:example.org",
+            "encryption": {"enabled": True, "store_path": str(store_dir)},
+        },
+    }
+
+    try:
+        with patch("mmrelay.matrix_utils.logger") as mock_logger:
+            enabled, store_path = await matrix_utils_module._configure_e2ee(
+                test_config, test_config["matrix"], "DEV"
+            )
+    finally:
+        os.chmod(store_dir, 0o755)
+
+    assert enabled is False
+    assert store_path is None
+    assert any(
+        "Could not write to E2EE store directory" in call.args[0]
+        and call.args[1] == str(store_dir)
+        for call in mock_logger.error.call_args_list
+    )
+
+
+async def test_configure_e2ee_probe_failure_disables_with_guidance(
+    tmp_path, monkeypatch
+):
+    """A failed writeability probe takes the same fallback as mkdir failures."""
+    store_dir = tmp_path / "store"
+    store_dir.mkdir()
+    monkeypatch.setattr(
+        "mmrelay.matrix.auth.tempfile.TemporaryFile",
+        MagicMock(side_effect=PermissionError(13, "Permission denied")),
+    )
+    test_config = {
+        "matrix": {
+            "homeserver": "https://matrix.example.org",
+            "access_token": "test_token",
+            "bot_user_id": "@bot:example.org",
+            "encryption": {"enabled": True, "store_path": str(store_dir)},
+        },
+    }
+
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        enabled, store_path = await matrix_utils_module._configure_e2ee(
+            test_config, test_config["matrix"], "DEV"
+        )
+
+    assert enabled is False
+    assert store_path is None
+    assert any(
+        "Could not write to E2EE store directory" in call.args[0]
+        and call.args[1] == str(store_dir)
+        for call in mock_logger.error.call_args_list
+    )
+
+
+async def test_configure_e2ee_probe_leaves_no_files_or_identity(tmp_path, monkeypatch):
+    """Successful preflight must not leave probe files or crypto identity artifacts."""
+    store_dir = tmp_path / "store"
+    store_dir.mkdir()
+    (store_dir / "keep.txt").write_text("unrelated")
+    monkeypatch.setattr(
+        "mmrelay.matrix.auth.sqlite3.connect",
+        MagicMock(
+            side_effect=AssertionError("preflight must not open a SQLite database")
+        ),
+    )
+    test_config = {
+        "matrix": {
+            "homeserver": "https://matrix.example.org",
+            "access_token": "test_token",
+            "bot_user_id": "@bot:example.org",
+            "encryption": {"enabled": True, "store_path": str(store_dir)},
+        },
+    }
+
+    enabled, store_path = await matrix_utils_module._configure_e2ee(
+        test_config, test_config["matrix"], "DEV"
+    )
+
+    assert enabled is True
+    assert store_path == str(store_dir)
+    # TemporaryFile self-cleans: only the pre-existing file remains, with no
+    # probe temp files and no SqliteStore/account database artifacts.
+    assert sorted(os.listdir(store_dir)) == ["keep.txt"]
+
+
 @pytest.mark.asyncio
 async def test_connect_matrix_e2ee_store_inspection_oserror_disables(
     mock_logger,
@@ -1446,6 +1551,7 @@ async def test_connect_matrix_e2ee_store_inspection_oserror_disables(
             return_value=None,
         ),
         patch("mmrelay.matrix_utils.matrix_client", None),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
     ):
         result = await connect_matrix(test_config)
 
@@ -1512,6 +1618,7 @@ async def test_connect_matrix_e2ee_missing_device_id_logs(
             "mmrelay.matrix_utils.async_load_credentials",
             new=AsyncMock(return_value={"homeserver": "https://matrix.example.org"}),
         ),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
     ):
         await connect_matrix(test_config)
 

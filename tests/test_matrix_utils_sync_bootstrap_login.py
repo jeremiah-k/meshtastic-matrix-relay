@@ -694,6 +694,7 @@ async def test_login_matrix_bot_e2ee_store_path_creation(
             "mmrelay.matrix_utils.get_e2ee_store_dir", return_value=TEST_E2EE_STORE_PATH
         ),
         patch("os.makedirs") as mock_makedirs,
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
     ):
         result = await login_matrix_bot(
             homeserver="https://matrix.org",
@@ -776,6 +777,7 @@ async def test_login_matrix_bot_rejects_cross_signing_reset_without_password(
             return_value=TEST_E2EE_STORE_PATH,
         ),
         patch("os.makedirs"),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
     ):
         result = await login_matrix_bot(
             homeserver="https://matrix.org",
@@ -827,6 +829,7 @@ async def test_login_matrix_bot_closes_client_when_cross_signing_is_cancelled(
             return_value=TEST_E2EE_STORE_PATH,
         ),
         patch("os.makedirs"),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
         pytest.raises(asyncio.CancelledError),
     ):
         await login_matrix_bot(
@@ -878,6 +881,7 @@ async def test_login_matrix_bot_preserves_cancellation_when_client_close_fails(
             return_value=TEST_E2EE_STORE_PATH,
         ),
         patch("os.makedirs"),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
         pytest.raises(asyncio.CancelledError),
     ):
         await login_matrix_bot(

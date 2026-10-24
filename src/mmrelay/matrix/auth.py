@@ -4,6 +4,7 @@ import asyncio
 import os
 import sqlite3
 import ssl
+import tempfile
 from typing import Any, Optional, cast
 
 from nio import AsyncClient
@@ -32,6 +33,21 @@ __all__ = [
 
 class E2EEStoreOpenError(RuntimeError):
     """The nio E2EE crypto store could not be opened at login time."""
+
+
+def _probe_e2ee_store_writeability(store_path: str) -> None:
+    """
+    Check that files can be created inside the E2EE store directory.
+
+    Creates a self-deleting temporary file in `store_path` so a readable but
+    non-writable directory fails preflight here instead of failing later when
+    nio opens its SQLite crypto store. Raises OSError when the probe file
+    cannot be created; a successful probe leaves no persistent files. This
+    deliberately does not open a database, generate keys, or create any
+    account state — those are still verified when the real SDK store opens.
+    """
+    with tempfile.TemporaryFile(dir=store_path):
+        pass
 
 
 async def _configure_e2ee(
@@ -113,6 +129,20 @@ async def _configure_e2ee(
                         )
                         e2ee_enabled = False
                         e2ee_store_path = None
+
+                    if e2ee_enabled and e2ee_store_path:
+                        try:
+                            await asyncio.to_thread(
+                                _probe_e2ee_store_writeability, e2ee_store_path
+                            )
+                        except OSError as exc:
+                            facade.logger.error(
+                                "Could not write to E2EE store directory %s: %s; check directory permissions and ownership; disabling E2EE for this session.",
+                                e2ee_store_path,
+                                exc,
+                            )
+                            e2ee_enabled = False
+                            e2ee_store_path = None
 
                     if e2ee_enabled and e2ee_store_path:
                         try:
