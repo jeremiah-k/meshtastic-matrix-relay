@@ -32,6 +32,9 @@ def _matrix_capabilities(
         install_hint=install_hint,
         recommended_e2ee_extra=recommended_e2ee_extra,
         both_known_providers_installed=both_known_providers_installed,
+        sqlite_store_available=True,
+        sqlite_store_openable=True,
+        store_failure=None,
     )
 
 
@@ -190,6 +193,11 @@ async def test_connect_matrix_uploads_keys_when_needed(monkeypatch):
     )
     monkeypatch.setattr(
         "mmrelay.matrix_utils.is_e2ee_enabled", lambda _cfg: True, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix.auth._probe_e2ee_store_writeability",
+        lambda _store_path: None,
+        raising=False,
     )
     monkeypatch.setattr(
         "mmrelay.matrix_utils.get_e2ee_status",
@@ -435,6 +443,11 @@ async def test_connect_matrix_keys_upload_failure_logs(monkeypatch):
     monkeypatch.setattr(
         "mmrelay.config.is_e2ee_enabled", lambda _cfg: True, raising=False
     )
+    monkeypatch.setattr(
+        "mmrelay.matrix.auth._probe_e2ee_store_writeability",
+        lambda _store_path: None,
+        raising=False,
+    )
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
     monkeypatch.setattr(
         "mmrelay.matrix_utils.AsyncClient",
@@ -517,6 +530,7 @@ class TestMatrixE2EEHasAttrChecks:
                 "mmrelay.matrix.auth.get_matrix_capabilities",
                 return_value=_matrix_capabilities(),
             ) as mock_capabilities,
+            patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
         ):
             # Mock AsyncClient instance with proper async methods
             mock_client_instance = MagicMock()

@@ -552,19 +552,14 @@ def _e2ee_dependencies_available() -> bool:
 
 def _validate_e2ee_dependencies() -> bool:
     """
-    Check whether the current platform supports end-to-end encryption (E2EE) and the required Python libraries are available.
+    Check local E2EE crypto and disposable-store capabilities.
 
-    Performs only local checks (platform and importability) and prints user-facing guidance when E2EE is unsupported or dependencies are missing.
+    Print package guidance for missing dependencies and storage guidance when
+    installed crypto cannot open its store.
 
     Returns:
-        True if the platform supports E2EE and required E2EE libraries can be imported, False otherwise.
+        True if required E2EE libraries can be imported, False otherwise.
     """
-    if sys.platform == WINDOWS_PLATFORM:
-        print("❌ Error: E2EE is not supported on Windows")
-        print("   Reason: E2EE crypto requires native C libraries")
-        print("   Solution: Use Linux or macOS for E2EE support")
-        return False
-
     # Check if E2EE dependencies are available
     if _e2ee_dependencies_available():
         print("✅ E2EE dependencies are installed")
@@ -572,10 +567,15 @@ def _validate_e2ee_dependencies() -> bool:
 
     from mmrelay.matrix.compat import (
         format_e2ee_install_command,
+        format_e2ee_unavailable_message,
         get_matrix_capabilities,
     )
 
     caps = get_matrix_capabilities()
+    if caps.store_failure is not None:
+        print(f"❌ Error: {format_e2ee_unavailable_message(caps)}")
+        print(f"   Fix: {format_e2ee_install_command(caps)}")
+        return False
     print("❌ Error: E2EE dependencies not installed")
     print("   End-to-end encryption features require additional dependencies")
     print(f"   Install E2EE support: {format_e2ee_install_command(caps)}")
@@ -735,8 +735,7 @@ def _validate_matrix_authentication(
 
     if has_valid_credentials:
         print("✅ Using credentials.json for Matrix authentication")
-        if sys.platform != WINDOWS_PLATFORM:
-            print("   E2EE support available (if enabled)")
+        print("   E2EE support available (if enabled)")
         return True
 
     elif has_password:
@@ -820,9 +819,9 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
     Analyze local end-to-end encryption (E2EE) readiness without contacting Matrix.
 
     Performs an offline inspection of the environment and provided configuration to
-    determine whether E2EE can be used. The check includes platform support,
-    presence of required E2EE dependencies, whether E2EE is enabled in the
-    configuration, and whether a usable credentials.json can be located.
+    determine whether E2EE can be used. The check includes the presence of
+    required E2EE dependencies, whether E2EE is enabled in the configuration,
+    and whether a usable credentials.json can be located.
 
     Parameters:
         config (dict): Parsed configuration (usually from config.yaml); the
@@ -835,8 +834,8 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
           - config_enabled (bool): True if E2EE/encryption is enabled in config.
           - dependencies_available (bool): True if the active Matrix provider's crypto backend is available.
           - credentials_available (bool): True if a usable credentials.json was found.
-          - platform_supported (bool): False when the current platform does not support E2EE (e.g., Windows).
-          - overall_status (str): One of "ready", "disabled", "not_supported", "incomplete", or "unknown".
+          - platform_supported (bool): Always True; E2EE is supported on every platform MMRelay runs on.
+          - overall_status (str): One of "ready", "disabled", "incomplete", or "unknown".
           - recommendations (list[str]): Human-actionable suggestions to resolve gaps (e.g., enable E2EE, install dependencies, run auth login).
     """
     analysis: dict[str, Any] = {
@@ -848,25 +847,21 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
         "recommendations": [],
     }
 
-    # Check platform support
-    if sys.platform == WINDOWS_PLATFORM:
-        analysis["platform_supported"] = False
-        analysis["recommendations"].append(
-            "E2EE is not supported on Windows. Use Linux/macOS for E2EE support."
+    # Check dependencies
+    analysis["dependencies_available"] = _e2ee_dependencies_available()
+    if not analysis["dependencies_available"]:
+        from mmrelay.matrix.compat import (
+            format_e2ee_install_command,
+            get_matrix_capabilities,
         )
-    else:
-        # Check dependencies only on supported platforms
-        analysis["dependencies_available"] = _e2ee_dependencies_available()
-        if not analysis["dependencies_available"]:
-            from mmrelay.matrix.compat import (
-                format_e2ee_install_command,
-                get_matrix_capabilities,
-            )
 
-            caps = get_matrix_capabilities()
+        caps = get_matrix_capabilities()
+        if caps.store_failure is None:
             analysis["recommendations"].append(
                 f"Install E2EE dependencies: {format_e2ee_install_command(caps)}"
             )
+        else:
+            analysis["recommendations"].append(format_e2ee_install_command(caps))
 
     # Check config setting
     matrix_section = config.get("matrix", {})
@@ -891,9 +886,7 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
         )
 
     # Determine overall status based on setup only
-    if not analysis["platform_supported"]:
-        analysis["overall_status"] = "not_supported"
-    elif (
+    if (
         analysis["config_enabled"]
         and analysis["dependencies_available"]
         and analysis["credentials_available"]
@@ -968,7 +961,7 @@ def _print_unified_e2ee_analysis(e2ee_status: E2EEStatus) -> None:
     if e2ee_status.get("platform_supported", True):
         print("✅ Platform: E2EE supported")
     else:
-        print("❌ Platform: E2EE not supported on Windows")
+        print("❌ Platform: E2EE not supported in this environment")
 
     # Dependencies
     if e2ee_status.get(
@@ -1013,9 +1006,9 @@ def _print_e2ee_analysis(analysis: dict[str, Any]) -> None:
         analysis (dict[str, Any]): Mapping describing E2EE status with these keys:
             - dependencies_available (bool): True if required E2EE dependencies (e.g., active provider crypto backend) are present.
             - credentials_available (bool): True if a usable credentials.json was found.
-            - platform_supported (bool): True if the current platform supports E2EE (Windows is considered unsupported).
+            - platform_supported (bool): Always True; E2EE is supported on every platform MMRelay runs on.
             - config_enabled (bool): True if E2EE is enabled in the application's configuration.
-            - overall_status (str): Aggregated readiness state; expected values include "ready", "disabled", "not_supported", or "incomplete".
+            - overall_status (str): Aggregated readiness state; expected values include "ready", "disabled", or "incomplete".
             - recommendations (list[str]): Zero-or-more user-facing remediation steps or suggestions.
 
     """
@@ -1037,10 +1030,7 @@ def _print_e2ee_analysis(analysis: dict[str, Any]) -> None:
         print("   ❌ Authentication: Missing (no credentials.json)")
 
     # Platform
-    if not analysis["platform_supported"]:
-        print("   ❌ Platform: Windows (E2EE not supported)")
-    else:
-        print("   ✅ Platform: Supported")
+    print("   ✅ Platform: Supported")
 
     # Config setting
     if analysis["config_enabled"]:
@@ -1058,9 +1048,6 @@ def _print_e2ee_analysis(analysis: dict[str, Any]) -> None:
         print("   ⚠️  E2EE is disabled in configuration")
         print("   ❌ Messages to encrypted rooms will be BLOCKED")
         print("   ✅ Messages to unencrypted rooms will work normally")
-    elif analysis["overall_status"] == "not_supported":
-        print("   ❌ E2EE not supported on Windows")
-        print("   ❌ Messages to encrypted rooms will be BLOCKED")
     else:
         print("   ⚠️  E2EE setup incomplete - some issues need to be resolved")
         print("   ❌ Messages to encrypted rooms may be BLOCKED")
@@ -1089,28 +1076,28 @@ def _print_environment_summary() -> None:
     """
     Print a concise summary of the runtime environment and Matrix E2EE readiness.
 
-    Reports the current platform and Python version, whether the platform supports E2EE (Windows is reported as not supported), and whether required E2EE dependencies are installed. If E2EE is supported but dependencies are missing, prints a brief installation hint.
+    Reports the current platform and Python version and whether required E2EE dependencies are installed. If E2EE dependencies are missing, prints a brief installation hint.
     """
     print("\n🖥️  Environment Summary:")
     print(f"   Platform: {sys.platform}")
     print(f"   Python: {sys.version.split()[0]}")
 
     # E2EE capability check
-    if sys.platform == WINDOWS_PLATFORM:
-        print("   E2EE Support: ❌ Not available (Windows limitation)")
-        print("   Matrix Support: ✅ Available")
+    if _e2ee_dependencies_available():
+        print("   E2EE Support: ✅ Available and installed")
     else:
-        if _e2ee_dependencies_available():
-            print("   E2EE Support: ✅ Available and installed")
-        else:
-            from mmrelay.matrix.compat import (
-                format_e2ee_install_command,
-                get_matrix_capabilities,
-            )
+        from mmrelay.matrix.compat import (
+            format_e2ee_install_command,
+            get_matrix_capabilities,
+        )
 
-            caps = get_matrix_capabilities()
+        caps = get_matrix_capabilities()
+        if caps.store_failure is None:
             print("   E2EE Support: ⚠️  Available but not installed")
             print(f"   Install: {format_e2ee_install_command(caps)}")
+        else:
+            print("   E2EE Support: ⚠️  Installed but the crypto store cannot open")
+            print(f"   Fix: {format_e2ee_install_command(caps)}")
 
 
 def _is_valid_serial_port(port: str) -> bool:
@@ -1355,7 +1342,9 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
 
                     # Check if there are critical E2EE issues
                     if not e2ee_status.get("platform_supported", True):
-                        print("\n⚠️  Warning: E2EE is not supported on Windows")
+                        print(
+                            "\n⚠️  Warning: E2EE is not supported in this environment"
+                        )
                         print("   Messages to encrypted rooms will be blocked")
                 except (ImportError, OSError) as e:
                     print(f"\n⚠️  Could not perform E2EE analysis: {e}")
@@ -2200,9 +2189,7 @@ def _print_system_health(paths_info: dict[str, Any]) -> None:
 
     # E2EE Dependencies
     print("\n🔐 E2EE Dependencies:")
-    if sys.platform == WINDOWS_PLATFORM:
-        print("   ⚠️  Not supported on Windows")
-    elif _e2ee_dependencies_available():
+    if _e2ee_dependencies_available():
         print("   ✅ E2EE crypto libraries available")
     else:
         from mmrelay.matrix.compat import (
@@ -2211,8 +2198,14 @@ def _print_system_health(paths_info: dict[str, Any]) -> None:
         )
 
         caps = get_matrix_capabilities()
-        print("   ❌ Missing E2EE crypto libraries")
-        print(f"       Install with: {format_e2ee_install_command(caps)}")
+        if caps.store_failure is None:
+            print("   ❌ Missing E2EE crypto libraries")
+            print(f"       Install with: {format_e2ee_install_command(caps)}")
+        else:
+            print(
+                "   ⚠️  E2EE crypto libraries installed but the crypto store cannot open"
+            )
+            print(f"       {format_e2ee_install_command(caps)}")
 
     # Disk Space
     print("\n💾 Disk Space:")

@@ -39,6 +39,9 @@ def _matrix_capabilities(
         install_hint=install_hint,
         recommended_e2ee_extra=recommended_e2ee_extra,
         both_known_providers_installed=both_known_providers_installed,
+        sqlite_store_available=True,
+        sqlite_store_openable=True,
+        store_failure=None,
     )
 
 
@@ -457,8 +460,8 @@ async def test_on_decryption_failure_timeout_on_to_device():
         ] == expected_sleep_list
 
 
-async def test_connect_matrix_e2ee_windows_disables(monkeypatch):
-    """E2EE should be disabled on Windows platforms."""
+async def test_connect_matrix_e2ee_windows_enables(monkeypatch):
+    """Windows supports E2EE: enabled config plus available capabilities enable encryption."""
     mock_client = MagicMock()
     mock_client.rooms = {}
     mock_client.sync = AsyncMock(return_value=SimpleNamespace())
@@ -470,6 +473,81 @@ async def test_connect_matrix_e2ee_windows_disables(monkeypatch):
     monkeypatch.setattr("mmrelay.matrix_utils.sys.platform", "win32", raising=False)
     monkeypatch.setattr(
         "mmrelay.config.is_e2ee_enabled", lambda _cfg: True, raising=False
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+    config_factory = MagicMock()
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.build_matrix_client_config", config_factory
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._resolve_aliases_in_mapping",
+        AsyncMock(return_value=None),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._display_room_channel_mappings",
+        lambda *_args, **_kwargs: None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.AsyncClient",
+        lambda *_args, **_kwargs: mock_client,
+    )
+
+    config = {
+        "matrix": {
+            "homeserver": "https://example.org",
+            "access_token": "token",
+            "bot_user_id": "@bot:example.org",
+            "encryption": {"enabled": True},
+        },
+        "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch(
+            "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
+        ),
+        patch("mmrelay.e2ee_utils.get_room_encryption_warnings", return_value=[]),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
+    ):
+        await connect_matrix(config)
+
+    config_factory.assert_called_once_with(
+        e2ee_enabled=True,
+        max_limit_exceeded=0,
+        max_timeouts=0,
+    )
+
+
+async def test_connect_matrix_e2ee_missing_capabilities_disables(monkeypatch):
+    """Missing crypto capabilities disable E2EE on any platform, with dependency guidance."""
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.sync = AsyncMock(return_value=SimpleNamespace())
+    mock_client.should_upload_keys = False
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+
+    monkeypatch.setattr("mmrelay.matrix_utils.sys.platform", "win32", raising=False)
+    monkeypatch.setattr(
+        "mmrelay.config.is_e2ee_enabled", lambda _cfg: True, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix.auth.get_matrix_capabilities",
+        lambda: _matrix_capabilities(
+            encryption_available=False,
+            provider_distribution="mindroom-nio",
+            crypto_backend="vodozemac",
+            install_hint="install mindroom-nio[e2e] / vodozemac",
+            recommended_e2ee_extra="mindroom-nio[e2e]",
+        ),
+        raising=False,
     )
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
     config_factory = MagicMock()
@@ -563,6 +641,7 @@ async def test_connect_matrix_e2ee_store_path_from_config(monkeypatch):
     )
     with (
         patch("mmrelay.matrix_utils.os.makedirs"),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
@@ -629,6 +708,7 @@ async def test_connect_matrix_e2ee_store_path_precedence_e2ee(monkeypatch):
     )
     with (
         patch("mmrelay.matrix_utils.os.makedirs"),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
@@ -695,6 +775,7 @@ async def test_connect_matrix_e2ee_store_path_uses_e2ee_section(monkeypatch):
     )
     with (
         patch("mmrelay.matrix_utils.os.makedirs"),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
@@ -886,6 +967,7 @@ async def test_connect_matrix_e2ee_store_missing_db_files_warns(
             return_value=None,
         ),
         patch("mmrelay.matrix_utils.matrix_client", None),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
     ):
         await connect_matrix(test_config)
 
@@ -945,6 +1027,7 @@ async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch, tmp_path):
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch("mmrelay.matrix_utils.os.makedirs"),
         patch("mmrelay.matrix_utils.os.listdir", return_value=["test.db"]),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
         patch("mmrelay.matrix_utils.asyncio.sleep", sleep_mock),
     ):
         config = {
@@ -1073,6 +1156,84 @@ TEST_HOMESERVER = "https://matrix.org"
 TEST_USERNAME = "user"
 TEST_PASSWORD = "pass"
 TEST_FULL_MXID = "@user:matrix.org"
+
+
+@pytest.mark.parametrize("store_failure", ["fcntl", "other", None])
+async def test_password_login_disables_unavailable_crypto(
+    tmp_path, monkeypatch, store_failure
+):
+    """Password login must not open an unusable provider store or require crypto."""
+    capabilities = _matrix_capabilities(encryption_available=False)
+    capabilities.store_failure = store_failure
+    monkeypatch.setattr(
+        "mmrelay.matrix.auth.get_matrix_capabilities", lambda: capabilities
+    )
+    discovery = AsyncMock()
+    discovery.discovery_info.return_value = SimpleNamespace(
+        homeserver_url=TEST_HOMESERVER
+    )
+    client = AsyncMock()
+    client.login.return_value = SimpleNamespace(
+        access_token="token", device_id="DEV", user_id=TEST_FULL_MXID
+    )
+    client.whoami.return_value = SimpleNamespace(user_id=TEST_FULL_MXID)
+    config = {"matrix": {"e2ee": {"enabled": True}}}
+
+    with (
+        patch(
+            "mmrelay.matrix_utils.AsyncClient", side_effect=[discovery, client]
+        ) as constructor,
+        patch("mmrelay.matrix_utils._create_ssl_context", return_value=None),
+        patch(
+            "mmrelay.matrix_utils._resolve_credentials_save_path",
+            return_value=str(tmp_path / "credentials.json"),
+        ),
+        patch("mmrelay.matrix_utils.save_credentials") as save,
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.get_e2ee_store_dir") as store_dir,
+        patch("mmrelay.matrix_utils.build_matrix_client_config") as build_config,
+        patch(
+            "mmrelay.matrix_utils._ensure_own_device_cross_signed",
+            new_callable=AsyncMock,
+        ) as sign,
+    ):
+        result = await login_matrix_bot(
+            homeserver=TEST_HOMESERVER,
+            username=TEST_FULL_MXID,
+            password=TEST_PASSWORD,
+            logout_others=False,
+            config_for_paths=config,
+        )
+
+    assert result is True
+    build_config.assert_called_once_with(e2ee_enabled=False)
+    assert constructor.call_args.kwargs["store_path"] is None
+    store_dir.assert_not_called()
+    sign.assert_not_awaited()
+    save.assert_called_once()
+
+
+async def test_discovered_device_propagates_crypto_store_open_failure():
+    """Device discovery must not swallow the failure that triggers safe fallback."""
+    client = MagicMock()
+    client.store_path = "/crypto/store"
+    client.whoami = AsyncMock(
+        return_value=SimpleNamespace(user_id=TEST_FULL_MXID, device_id="DEV")
+    )
+    client.restore_login.side_effect = matrix_utils_module.NioLocalProtocolError(
+        "store lifetime lease is already held"
+    )
+    auth_info = SimpleNamespace(
+        credentials={"user_id": TEST_FULL_MXID},
+        credentials_path="/credentials.json",
+        device_id=None,
+        user_id=TEST_FULL_MXID,
+        access_token="token",
+    )
+
+    with patch("mmrelay.matrix_utils.save_credentials"):
+        with pytest.raises(matrix_utils_module.E2EEStoreOpenError):
+            await matrix_utils_module._perform_matrix_login(client, auth_info)
 
 
 @patch("mmrelay.matrix_utils.save_credentials")
@@ -1239,6 +1400,105 @@ async def test_connect_matrix_e2ee_makedirs_oserror_disables(
     )
 
 
+@pytest.mark.skipif(
+    os.name != "posix" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="read-only directory enforcement is unavailable to root or on this platform",
+)
+async def test_configure_e2ee_non_writable_store_dir_disables(tmp_path):
+    """A readable but non-writable store directory must disable E2EE at preflight."""
+    store_dir = tmp_path / "store"
+    store_dir.mkdir()
+    os.chmod(store_dir, 0o555)
+    test_config = {
+        "matrix": {
+            "homeserver": "https://matrix.example.org",
+            "access_token": "test_token",
+            "bot_user_id": "@bot:example.org",
+            "encryption": {"enabled": True, "store_path": str(store_dir)},
+        },
+    }
+
+    try:
+        with patch("mmrelay.matrix_utils.logger") as mock_logger:
+            enabled, store_path = await matrix_utils_module._configure_e2ee(
+                test_config, test_config["matrix"], "DEV"
+            )
+    finally:
+        os.chmod(store_dir, 0o755)
+
+    assert enabled is False
+    assert store_path is None
+    assert any(
+        "Could not write to E2EE store directory" in call.args[0]
+        and call.args[1] == str(store_dir)
+        for call in mock_logger.error.call_args_list
+    )
+
+
+async def test_configure_e2ee_probe_failure_disables_with_guidance(
+    tmp_path, monkeypatch
+):
+    """A failed writeability probe takes the same fallback as mkdir failures."""
+    store_dir = tmp_path / "store"
+    store_dir.mkdir()
+    monkeypatch.setattr(
+        "mmrelay.matrix.auth.tempfile.TemporaryFile",
+        MagicMock(side_effect=PermissionError(13, "Permission denied")),
+    )
+    test_config = {
+        "matrix": {
+            "homeserver": "https://matrix.example.org",
+            "access_token": "test_token",
+            "bot_user_id": "@bot:example.org",
+            "encryption": {"enabled": True, "store_path": str(store_dir)},
+        },
+    }
+
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        enabled, store_path = await matrix_utils_module._configure_e2ee(
+            test_config, test_config["matrix"], "DEV"
+        )
+
+    assert enabled is False
+    assert store_path is None
+    assert any(
+        "Could not write to E2EE store directory" in call.args[0]
+        and call.args[1] == str(store_dir)
+        for call in mock_logger.error.call_args_list
+    )
+
+
+async def test_configure_e2ee_probe_leaves_no_files_or_identity(tmp_path, monkeypatch):
+    """Successful preflight must not leave probe files or crypto identity artifacts."""
+    store_dir = tmp_path / "store"
+    store_dir.mkdir()
+    (store_dir / "keep.txt").write_text("unrelated")
+    monkeypatch.setattr(
+        "mmrelay.matrix.auth.sqlite3.connect",
+        MagicMock(
+            side_effect=AssertionError("preflight must not open a SQLite database")
+        ),
+    )
+    test_config = {
+        "matrix": {
+            "homeserver": "https://matrix.example.org",
+            "access_token": "test_token",
+            "bot_user_id": "@bot:example.org",
+            "encryption": {"enabled": True, "store_path": str(store_dir)},
+        },
+    }
+
+    enabled, store_path = await matrix_utils_module._configure_e2ee(
+        test_config, test_config["matrix"], "DEV"
+    )
+
+    assert enabled is True
+    assert store_path == str(store_dir)
+    # TemporaryFile self-cleans: only the pre-existing file remains, with no
+    # probe temp files and no SqliteStore/account database artifacts.
+    assert sorted(os.listdir(store_dir)) == ["keep.txt"]
+
+
 @pytest.mark.asyncio
 async def test_connect_matrix_e2ee_store_inspection_oserror_disables(
     mock_logger,
@@ -1291,6 +1551,7 @@ async def test_connect_matrix_e2ee_store_inspection_oserror_disables(
             return_value=None,
         ),
         patch("mmrelay.matrix_utils.matrix_client", None),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
     ):
         result = await connect_matrix(test_config)
 
@@ -1357,6 +1618,7 @@ async def test_connect_matrix_e2ee_missing_device_id_logs(
             "mmrelay.matrix_utils.async_load_credentials",
             new=AsyncMock(return_value={"homeserver": "https://matrix.example.org"}),
         ),
+        patch("mmrelay.matrix.auth._probe_e2ee_store_writeability"),
     ):
         await connect_matrix(test_config)
 
@@ -1422,3 +1684,226 @@ async def test_connect_matrix_e2ee_config_keyerror_handler(
         "Failed to determine E2EE status from config" in call.args[0]
         for call in mock_logger.warning.call_args_list
     )
+
+
+async def test_connect_matrix_degrades_when_e2ee_store_cannot_open(tmp_path):
+    """A crypto store that cannot open at login degrades to an unencrypted session."""
+    from unittest.mock import ANY
+
+    store_open_error = matrix_utils_module.NioLocalProtocolError
+
+    store_path = str(tmp_path / "store")
+    config = {
+        "matrix": {
+            "homeserver": "https://matrix.org",
+            "access_token": "test_token",
+            "bot_user_id": "@bot:matrix.org",
+            "encryption": {"enabled": True, "store_path": store_path},
+        },
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    failing_client = MagicMock()
+    failing_client.rooms = {}
+    failing_client.store_path = store_path
+    failing_client.restore_login = MagicMock(
+        side_effect=store_open_error("store lifetime lease is already held")
+    )
+    failing_client.close = AsyncMock()
+
+    healthy_client = MagicMock()
+    healthy_client.rooms = {}
+    healthy_client.store_path = ""
+    healthy_client.restore_login = MagicMock()
+    healthy_client.sync = AsyncMock(return_value=MagicMock())
+
+    async def mock_get_displayname(*args, **kwargs):
+        return MagicMock(displayname="Test Bot")
+
+    healthy_client.get_displayname = mock_get_displayname
+
+    with (
+        patch("mmrelay.matrix_utils.matrix_client", None),
+        patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch("mmrelay.matrix_utils._create_ssl_context"),
+        patch("mmrelay.matrix_utils.build_matrix_client_config") as mock_build_config,
+        patch(
+            "mmrelay.matrix_utils.async_load_credentials",
+            new=AsyncMock(
+                return_value={
+                    "homeserver": "https://matrix.org",
+                    "access_token": "test_token",
+                    "user_id": "@bot:matrix.org",
+                    "device_id": "DEVICE123",
+                }
+            ),
+        ),
+        patch("mmrelay.matrix_utils.os.path.isfile", return_value=False),
+    ):
+        mock_build_config.side_effect = lambda **kwargs: SimpleNamespace(**kwargs)
+        mock_async_client.side_effect = [failing_client, healthy_client]
+
+        result = await connect_matrix(config)
+
+    assert result is healthy_client
+
+    # The first client was built with the store; the rebuilt client is unencrypted.
+    first_kwargs = mock_async_client.call_args_list[0].kwargs
+    second_kwargs = mock_async_client.call_args_list[1].kwargs
+    assert first_kwargs["store_path"] == store_path
+    assert second_kwargs["store_path"] is None
+    assert [
+        call.kwargs["e2ee_enabled"] for call in mock_build_config.call_args_list
+    ] == [True, False]
+
+    # The failed client is closed and the session continues unencrypted.
+    failing_client.close.assert_awaited_once()
+    healthy_client.restore_login.assert_called_once_with(
+        user_id="@bot:matrix.org",
+        device_id="DEVICE123",
+        access_token="test_token",
+    )
+    healthy_client.sync.assert_awaited()
+
+    # Store path, store guidance, and the session warning are logged.
+    mock_logger.error.assert_any_call(
+        "Could not open the E2EE crypto store at %s: %s",
+        store_path,
+        ANY,
+    )
+    assert any(
+        "nio SQLite crypto store could not open" in str(call.args[0])
+        for call in mock_logger.error.call_args_list
+    )
+    mock_logger.warning.assert_any_call("E2EE will be disabled for this session.")
+
+
+async def test_self_sign_device_degrades_when_e2ee_store_cannot_open():
+    """OAuth device signing continues unencrypted when the crypto store cannot open."""
+    from unittest.mock import ANY
+
+    from mmrelay.matrix.oauth_e2ee import self_sign_device
+
+    store_open_error = matrix_utils_module.NioLocalProtocolError
+
+    store_path = "/crypto/store"
+    session = SimpleNamespace(
+        user_id="@bot:matrix.org",
+        device_id="DEVICE123",
+        access_token="oauth-token",
+        homeserver="https://matrix.org",
+        issuer="https://auth.example.com",
+    )
+    oauth_store = MagicMock()
+    config = {"matrix": {"e2ee": {"enabled": True, "store_path": store_path}}}
+
+    failing_client = MagicMock()
+    failing_client.store_path = store_path
+    failing_client.restore_login = MagicMock(
+        side_effect=store_open_error("store lifetime lease is already held")
+    )
+    failing_client.close = AsyncMock()
+
+    healthy_client = MagicMock()
+    healthy_client.store_path = ""
+    healthy_client.restore_login = MagicMock()
+    healthy_client.close = AsyncMock()
+
+    with (
+        patch(
+            "mmrelay.matrix_utils._configure_e2ee",
+            new=AsyncMock(return_value=(True, store_path)),
+        ),
+        patch("mmrelay.matrix_utils._initialize_matrix_client") as mock_init,
+        patch("mmrelay.matrix_utils._create_ssl_context", return_value=None),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch(
+            "mmrelay.matrix_utils._maybe_upload_e2ee_keys",
+            new=AsyncMock(),
+        ) as mock_upload,
+        patch(
+            "mmrelay.matrix_utils._ensure_own_device_cross_signed",
+            new=AsyncMock(return_value=None),
+        ),
+        patch("mmrelay.matrix.oauth_e2ee.attach_oauth_session") as mock_attach,
+        patch("mmrelay.matrix.oauth_e2ee.OAuthSessionManager"),
+    ):
+        mock_init.side_effect = [failing_client, healthy_client]
+
+        result = await self_sign_device(session, oauth_store, config)
+
+    assert result is None
+
+    # The first client was built with the store; the rebuilt client is unencrypted.
+    first_kwargs = mock_init.call_args_list[0].kwargs
+    second_kwargs = mock_init.call_args_list[1].kwargs
+    assert first_kwargs["e2ee_store_path"] == store_path
+    assert second_kwargs["e2ee_store_path"] is None
+    assert second_kwargs["e2ee_enabled"] is False
+
+    # The failed client is closed and the unencrypted session is restored.
+    failing_client.close.assert_awaited_once()
+    healthy_client.restore_login.assert_called_once_with(
+        user_id="@bot:matrix.org",
+        device_id="DEVICE123",
+        access_token="oauth-token",
+    )
+    mock_attach.assert_called_once()
+    mock_upload.assert_awaited_once_with(healthy_client)
+
+    # Store path, store guidance, and the session warning are logged.
+    mock_logger.error.assert_any_call(
+        "Could not open the E2EE crypto store at %s: %s",
+        store_path,
+        ANY,
+    )
+    mock_logger.warning.assert_any_call("E2EE will be disabled for this session.")
+
+
+async def test_self_sign_device_store_failure_with_reset_raises():
+    """Cross-signing reset fails loudly when the crypto store cannot open."""
+    from mmrelay.matrix.oauth import OAuthError
+    from mmrelay.matrix.oauth_e2ee import self_sign_device
+
+    store_open_error = matrix_utils_module.NioLocalProtocolError
+
+    store_path = "/crypto/store"
+    session = SimpleNamespace(
+        user_id="@bot:matrix.org",
+        device_id="DEVICE123",
+        access_token="oauth-token",
+        homeserver="https://matrix.org",
+        issuer="https://auth.example.com",
+    )
+    oauth_store = MagicMock()
+    config = {"matrix": {"e2ee": {"enabled": True, "store_path": store_path}}}
+
+    failing_client = MagicMock()
+    failing_client.store_path = store_path
+    failing_client.restore_login = MagicMock(
+        side_effect=store_open_error("store filesystem ownership requires fcntl")
+    )
+    failing_client.close = AsyncMock()
+
+    with (
+        patch(
+            "mmrelay.matrix_utils._configure_e2ee",
+            new=AsyncMock(return_value=(True, store_path)),
+        ),
+        patch("mmrelay.matrix_utils._initialize_matrix_client") as mock_init,
+        patch("mmrelay.matrix_utils._create_ssl_context", return_value=None),
+        patch("mmrelay.matrix_utils.logger"),
+        patch("mmrelay.matrix.oauth_e2ee.attach_oauth_session"),
+        patch("mmrelay.matrix.oauth_e2ee.OAuthSessionManager"),
+    ):
+        mock_init.side_effect = [failing_client]
+
+        with pytest.raises(OAuthError):
+            await self_sign_device(
+                session, oauth_store, config, reset_cross_signing=True
+            )
+
+    # No unencrypted rebuild happens for an explicit cross-signing reset.
+    assert mock_init.call_count == 1
+    failing_client.close.assert_awaited_once()
