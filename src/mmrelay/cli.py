@@ -1119,11 +1119,11 @@ def _is_valid_serial_port(port: str) -> bool:
     if is_windows:
         # Windows: COM1, COM3, COM10, etc.
         # COM followed by one or more digits (COM1, COM10, COM100, COM1000, etc.)
-        return WINDOWS_SERIAL_PORT_PATTERN.match(port) is not None
+        return WINDOWS_SERIAL_PORT_PATTERN.fullmatch(port) is not None
     else:
         # Linux/macOS: /dev/ttyUSB0, /dev/ttyACM0, /dev/cu.usbserial*, etc.
         # Must start with /dev/tty or /dev/cu followed by at least one character
-        return UNIX_SERIAL_PORT_PATTERN.match(port) is not None
+        return UNIX_SERIAL_PORT_PATTERN.fullmatch(port) is not None
 
 
 def _is_valid_host(host: str) -> bool:
@@ -1335,9 +1335,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
 
                 # Perform comprehensive E2EE analysis using centralized utilities
                 try:
-                    from mmrelay.e2ee_utils import (
-                        get_e2ee_status,
-                    )
+                    from mmrelay.e2ee_utils import get_e2ee_status
 
                     e2ee_status = get_e2ee_status(config, config_path)
                     _print_unified_e2ee_analysis(e2ee_status)

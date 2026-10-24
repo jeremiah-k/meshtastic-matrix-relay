@@ -2,9 +2,11 @@ import contextlib
 import functools
 import inspect
 import math
+import os
 import threading
 from collections.abc import Callable
 from concurrent.futures import Future
+from pathlib import Path
 from typing import Any, Literal, NoReturn
 
 import mmrelay.meshtastic_utils as facade
@@ -34,6 +36,7 @@ from mmrelay.constants.network import (
     DEFAULT_MESHTASTIC_TIMEOUT,
     DEFAULT_TCP_PORT,
 )
+from mmrelay.meshtastic.cancellation import construct_interface
 
 __all__ = [
     "_connect_meshtastic_impl",
@@ -248,6 +251,17 @@ def serial_port_exists(port_name: str) -> bool:
     Returns:
         `True` if a matching port device name is present, `False` otherwise.
     """
+    # Linux udev aliases and explicitly mapped container devices need not be
+    # listed by pyserial. Inspect the configured device itself before falling
+    # back to enumeration, which remains necessary for Windows COM names.
+    if "\x00" in port_name:
+        return False
+    if os.name == "posix":
+        try:
+            if Path(port_name).is_char_device():
+                return True
+        except (OSError, ValueError):
+            pass
     try:
         ports = [p.device for p in facade.serial.tools.list_ports.comports()]
     except OSError as exc:
@@ -856,8 +870,10 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                         f"Serial port {serial_port} does not exist or is not accessible."
                     )
 
-                client = facade.meshtastic.serial_interface.SerialInterface(
-                    serial_port, timeout=configured_timeout_arg
+                client = construct_interface(
+                    facade.meshtastic.serial_interface.SerialInterface,
+                    serial_port,
+                    timeout=configured_timeout_arg,
                 )
 
             elif connection_type == CONNECTION_TYPE_BLE:
@@ -1015,11 +1031,14 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                             # Create BLE interface with timeout protection to prevent indefinite hangs
                             # Run on the shared BLE executor with timeout protection, as BLEInterface.__init__
                             # can potentially block indefinitely if BlueZ is in a bad state.
+                            construction_cancel = threading.Event()
+
                             def create_ble_interface(
                                 kwargs: dict[str, Any],
                                 interface_cls: Callable[
                                     ..., object
                                 ] = ble_interface_cls,
+                                cancel_signal: threading.Event = construction_cancel,
                             ) -> object:
                                 """
                                 Create a BLEInterface configured for Meshtastic BLE connections.
@@ -1030,7 +1049,11 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                                 Returns:
                                     BLEInterface: A newly constructed Meshtastic BLEInterface instance.
                                 """
-                                return interface_cls(**kwargs)
+                                return construct_interface(
+                                    interface_cls,
+                                    cancel_event=cancel_signal,
+                                    **kwargs,
+                                )
 
                             # Guard against overlapping BLE tasks: if a previous BLE operation is
                             # still running (often due to a hung BlueZ/DBus call), we skip queuing
@@ -1158,6 +1181,7 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                                             ble_address=ble_address
                                         )
                                 except facade.FutureWaitShutdownError:
+                                    construction_cancel.set()
                                     facade.logger.debug(
                                         "BLE interface creation interrupted by shutdown for %s",
                                         ble_address,
@@ -1179,6 +1203,7 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                                     facade.meshtastic_iface = None
                                     raise
                                 except facade.FuturesTimeoutError as err:
+                                    construction_cancel.set()
                                     facade.logger.error(
                                         "BLE interface creation timed out after %.1f seconds for %s.",
                                         create_timeout_secs,
@@ -1576,7 +1601,8 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                 facade.logger.info(f"Connecting to host {target_host}:{target_port}")
 
                 # Connect without progress indicator
-                client = facade.meshtastic.tcp_interface.TCPInterface(
+                client = construct_interface(
+                    facade.meshtastic.tcp_interface.TCPInterface,
                     hostname=target_host,
                     portNumber=target_port,
                     timeout=configured_timeout_arg,

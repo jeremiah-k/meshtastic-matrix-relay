@@ -9,6 +9,10 @@ on:
       - develop
       - "**-review"
   workflow_dispatch:
+    inputs:
+      sdk_ref:
+        description: Full commit SHA from jeremiah-k/mindroom-nio (Python 3.12+ only)
+        type: string
 
 permissions:
   contents: read
@@ -33,7 +37,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -47,13 +51,45 @@ jobs:
             ${{ runner.os }}-uv-
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: false
 
       - name: Install dependencies
         run: |
           uv sync --locked --extra test --extra e2e
+
+      - name: Validate candidate Matrix SDK revision
+        if: inputs.sdk_ref != ''
+        shell: bash
+        env:
+          SDK_REF: ${{ inputs.sdk_ref }}
+        run: '[[ "$SDK_REF" =~ ^[0-9a-f]{40}$ ]] || { echo "sdk_ref must be a full commit SHA"; exit 1; }'
+
+      - name: Checkout candidate Matrix SDK
+        if: inputs.sdk_ref != '' && matrix.python-version != '3.11'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: jeremiah-k/mindroom-nio
+          ref: ${{ inputs.sdk_ref }}
+          path: .sdk
+          persist-credentials: false
+
+      - name: Install candidate SDK within locked dependency constraints
+        if: inputs.sdk_ref != '' && matrix.python-version != '3.11'
+        shell: bash
+        run: |
+          uv export --locked --extra test --extra e2e --no-emit-project --no-emit-package mindroom-nio --format requirements-txt --output-file "$RUNNER_TEMP/sdk-constraints.txt"
+          uv pip install --python .venv/bin/python --constraint "$RUNNER_TEMP/sdk-constraints.txt" './.sdk[e2e]'
+          .venv/bin/python - <<'PYCODE'
+          import json
+          from importlib.metadata import distribution
+          from pathlib import Path
+          source = json.loads(distribution("mindroom-nio").read_text("direct_url.json") or "{}")
+          assert source.get("url") == Path(".sdk").resolve().as_uri(), source
+          PYCODE
+          sdk_sha=$(git -C .sdk rev-parse HEAD)
+          echo "Candidate SDK: ${sdk_sha}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify Matrix provider selection and dependency consistency
         run: |

@@ -5,10 +5,7 @@ from typing import Any, Iterable
 from meshtastic import BROADCAST_NUM
 
 import mmrelay.meshtastic_utils as facade
-from mmrelay.constants.config import (
-    CONFIG_KEY_MESHNET_NAME,
-    CONFIG_SECTION_MESHTASTIC,
-)
+from mmrelay.constants.config import CONFIG_KEY_MESHNET_NAME, CONFIG_SECTION_MESHTASTIC
 from mmrelay.constants.formats import (
     DETECTION_SENSOR_APP,
     EMOJI_FLAG_VALUE,
@@ -19,6 +16,7 @@ from mmrelay.constants.messages import (
     PORTNUM_DETECTION_SENSOR_APP,
     PORTNUM_TEXT_MESSAGE_APP,
 )
+from mmrelay.meshtastic.node_identity import normalize_node_id
 from mmrelay.meshtastic.packet_routing import (
     PacketAction,
     _get_portnum_name,
@@ -712,7 +710,8 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
 
     loop = facade.event_loop
 
-    sender = packet.get("fromId") or packet.get("from")
+    raw_sender = packet.get("fromId") or packet.get("from")
+    sender = normalize_node_id(raw_sender)
     toId = packet.get("to")
 
     text = decoded.get("text")
@@ -878,6 +877,8 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
 
     if not longname or not shortname:
         node = interface.nodes.get(sender)
+        if not node and raw_sender != sender:
+            node = interface.nodes.get(raw_sender)
         if node:
             user = node.get("user")
             if user:

@@ -67,6 +67,13 @@ For Docker, run the command through the deployment's existing interactive
 `docker compose run --rm mmrelay ...` workflow, using the same persistent home
 mount and service account. Do not create a separate disposable credentials volume.
 
+Private certificate authorities can be selected with `SSL_CERT_FILE` or
+`SSL_CERT_DIR`. OAuth and Matrix SDK requests use the same explicit trust
+settings, including device signing and relay startup. Invalid explicit trust
+fails rather than silently switching back to certifi's bundle. Container users
+can mount the CA bundle read-only and set these variables in the container;
+changing the host trust store is unnecessary.
+
 The session receives a distinct device ID. MMRelay verifies the account and device
 through whoami before saving credentials. When E2EE is configured, login initializes
 the persistent encryption store and attempts the same own-device cross-signing

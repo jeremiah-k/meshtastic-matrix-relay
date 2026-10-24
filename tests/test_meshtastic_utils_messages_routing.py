@@ -65,16 +65,20 @@ def _base_packet():
     """
     Create a representative Meshtastic packet dictionary used by tests.
 
+    ``fromId`` carries the library's `!hex` node-id string. The Meshtastic
+    interface keys ``interface.nodes`` by that same string, so fixtures using
+    an integer here would not match how a real packet looks up NodeDB entries.
+
     Returns:
         dict: A packet containing:
-            - fromId: sender node id (123)
+            - fromId: sender node id (!0000007b)
             - to: recipient id (BROADCAST_NUM)
             - decoded: payload with `text` ("Hello") and `portnum` (TEXT_MESSAGE_APP)
             - channel: channel index (0)
             - id: message id (999)
     """
     return {
-        "fromId": 123,
+        "fromId": "!0000007b",
         "to": BROADCAST_NUM,
         "decoded": {"text": "Hello", "portnum": TEXT_MESSAGE_APP},
         "channel": 0,
@@ -541,13 +545,16 @@ def test_on_meshtastic_message_detection_sensor_enabled_relays():
     mock_relay.assert_awaited_once()
 
 
-def test_on_meshtastic_message_saves_node_names_from_interface():
+@pytest.mark.parametrize("node_key", ["!0000007b", 123])
+def test_on_meshtastic_message_saves_node_names_from_interface(node_key):
     config = _base_config()
     _set_globals(config)
     packet = _base_packet()
+    packet["fromId"] = None
+    packet["from"] = 123
 
     nodes = {
-        123: {
+        node_key: {
             "user": {"longName": "Mesh Long", "shortName": "ML"},
         }
     }
@@ -563,8 +570,8 @@ def test_on_meshtastic_message_saves_node_names_from_interface():
     ):
         on_meshtastic_message(packet, _make_interface(nodes=nodes))
 
-    mock_save_long.assert_called_once_with(123, "Mesh Long")
-    mock_save_short.assert_called_once_with(123, "ML")
+    mock_save_long.assert_called_once_with("!0000007b", "Mesh Long")
+    mock_save_short.assert_called_once_with("!0000007b", "ML")
 
 
 def test_on_meshtastic_message_falls_back_to_sender_id():
@@ -586,15 +593,17 @@ def test_on_meshtastic_message_falls_back_to_sender_id():
     ):
         on_meshtastic_message(packet, _make_interface(nodes={}))
 
-    mock_prefix.assert_called_once_with(config, "123", "123", "TestNet")
-    mock_logger.debug.assert_any_call("Node info for sender 123 not available yet.")
+    mock_prefix.assert_called_once_with(config, "!0000007b", "!0000007b", "TestNet")
+    mock_logger.debug.assert_any_call(
+        "Node info for sender !0000007b not available yet."
+    )
 
 
 def test_on_meshtastic_message_node_without_user_keeps_sender_fallback():
     config = _base_config()
     _set_globals(config)
     packet = _base_packet()
-    nodes = {123: {"snr": 6.5, "lastHeard": 1234567890}}
+    nodes = {"!0000007b": {"snr": 6.5, "lastHeard": 1234567890}}
 
     with (
         _patch_message_deps(
@@ -608,7 +617,7 @@ def test_on_meshtastic_message_node_without_user_keeps_sender_fallback():
     ):
         on_meshtastic_message(packet, _make_interface(nodes=nodes))
 
-    mock_prefix.assert_called_once_with(config, "123", "123", "TestNet")
+    mock_prefix.assert_called_once_with(config, "!0000007b", "!0000007b", "TestNet")
     mock_save_long.assert_not_called()
     mock_save_short.assert_not_called()
 
@@ -617,7 +626,7 @@ def test_on_meshtastic_message_interface_supplies_only_missing_shortname():
     config = _base_config()
     _set_globals(config)
     packet = _base_packet()
-    nodes = {123: {"user": {"shortName": "ML"}}}
+    nodes = {"!0000007b": {"user": {"shortName": "ML"}}}
 
     with (
         _patch_message_deps(
@@ -633,14 +642,14 @@ def test_on_meshtastic_message_interface_supplies_only_missing_shortname():
 
     mock_prefix.assert_called_once_with(config, "Mesh Long", "ML", "TestNet")
     mock_save_long.assert_not_called()
-    mock_save_short.assert_called_once_with(123, "ML")
+    mock_save_short.assert_called_once_with("!0000007b", "ML")
 
 
 def test_on_meshtastic_message_interface_supplies_only_missing_longname():
     config = _base_config()
     _set_globals(config)
     packet = _base_packet()
-    nodes = {123: {"user": {"longName": "Mesh Long"}}}
+    nodes = {"!0000007b": {"user": {"longName": "Mesh Long"}}}
 
     with (
         _patch_message_deps(
@@ -655,7 +664,7 @@ def test_on_meshtastic_message_interface_supplies_only_missing_longname():
         on_meshtastic_message(packet, _make_interface(nodes=nodes))
 
     mock_prefix.assert_called_once_with(config, "Mesh Long", "ML", "TestNet")
-    mock_save_long.assert_called_once_with(123, "Mesh Long")
+    mock_save_long.assert_called_once_with("!0000007b", "Mesh Long")
     mock_save_short.assert_not_called()
 
 

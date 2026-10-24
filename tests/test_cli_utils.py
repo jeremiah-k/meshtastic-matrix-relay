@@ -307,6 +307,38 @@ class TestIntegration:
 class TestCreateSslContext:
     """Test the _create_ssl_context function."""
 
+    @pytest.fixture(autouse=True)
+    def isolate_tls_environment(self, monkeypatch):
+        monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+        monkeypatch.delenv("SSL_CERT_DIR", raising=False)
+
+    @pytest.mark.parametrize("setting", ["SSL_CERT_FILE", "SSL_CERT_DIR"])
+    def test_explicit_ca_settings_are_not_replaced_by_certifi(
+        self, setting, monkeypatch
+    ):
+        from mmrelay.cli_utils import _create_ssl_context
+
+        monkeypatch.setenv(setting, "/operator/private-ca")
+        with (
+            patch("ssl.create_default_context") as create,
+            patch("mmrelay.cli_utils.certifi") as bundle,
+        ):
+            assert _create_ssl_context() is create.return_value
+        create.assert_called_once_with(
+            cafile="/operator/private-ca" if setting == "SSL_CERT_FILE" else None,
+            capath="/operator/private-ca" if setting == "SSL_CERT_DIR" else None,
+        )
+        bundle.where.assert_not_called()
+
+    def test_invalid_explicit_ca_does_not_fall_back(self, monkeypatch, tmp_path):
+        from mmrelay.cli_utils import _create_ssl_context
+
+        bundle = tmp_path / "invalid.pem"
+        bundle.write_text("invalid CA data")
+        monkeypatch.setenv("SSL_CERT_FILE", str(bundle))
+        with pytest.raises(ssl.SSLError):
+            _create_ssl_context()
+
     @patch("ssl.create_default_context")
     @patch("mmrelay.cli_utils.certifi", None)
     def test_create_ssl_context_no_certifi(self, mock_ssl_context):
