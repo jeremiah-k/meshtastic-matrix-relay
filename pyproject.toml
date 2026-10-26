@@ -50,7 +50,7 @@ test = [
   "coverage==7.17.0",
   "pytest==9.1.1",
   "pytest-cov==7.1.0",
-  "pytest-asyncio==1.4.0",
+  "pytest-asyncio==1.4.1",
   "pytest-env==1.8.1",
   "pytest-timeout==2.5.0",
 ]
