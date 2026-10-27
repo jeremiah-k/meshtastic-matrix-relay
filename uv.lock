@@ -1600,7 +1600,7 @@ requires-dist = [
     { name = "mindroom-nio", marker = "python_full_version >= '3.12'", specifier = "==1.2.0" },
     { name = "mindroom-nio", extras = ["e2e"], marker = "python_full_version >= '3.12' and extra == 'e2e'", specifier = "==1.2.0" },
     { name = "mindroom-nio", extras = ["e2e"], marker = "python_full_version < '3.12' and extra == 'e2e'", specifier = "==0.40.0" },
-    { name = "mtjk", specifier = "==2.7.11.post11" },
+    { name = "mtjk", specifier = "==2.7.11.post12" },
     { name = "mypy", marker = "extra == 'dev'", specifier = "==2.4.0" },
     { name = "nh3", specifier = "==0.3.7" },
     { name = "pillow", specifier = "==13.0.0" },
@@ -1625,7 +1625,7 @@ provides-extras = ["e2e", "test", "dev"]
 
 [[package]]
 name = "mtjk"
-version = "2.7.11.post11"
+version = "2.7.11.post12"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "argcomplete" },
@@ -1642,9 +1642,9 @@ dependencies = [
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
     { name = "wcwidth" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a2/e2/e7a422653ba6e6237656817f6bda951d86908b82ba96227d2ebaf25fc3af/mtjk-2.7.11.post11.tar.gz", hash = "sha256:958386deae33d4258db73cf4c1781b988b2aeb894d6ead67c30054645db85edc", size = 1539134, upload-time = "2026-10-13T00:10:53.05Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/54/ca/06cdb667c6936e3078a81bda5ccc5c36b5209ae59868aae452546d83204f/mtjk-2.7.11.post12.tar.gz", hash = "sha256:648fa4d3cf4d7a46657bfb5964c3ca92a40bb5e342f3dec734d0087f03cbf184", size = 1549794, upload-time = "2026-10-27T16:10:38.388Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/31/f5/2bec9526df060d4b7458ae10406390216fb0feb44c4b08e81a9f5effea9a/mtjk-2.7.11.post11-py3-none-any.whl", hash = "sha256:7c9255cf4a6dfdb33abad05009fe90937360488cb0bd459c028d39e12b984e18", size = 1739190, upload-time = "2026-10-13T00:10:50.691Z" },
+    { url = "https://files.pythonhosted.org/packages/02/d6/c634a811acbecfa623c3a96c476559fed521504b7d7d754cb98223909ed0/mtjk-2.7.11.post12-py3-none-any.whl", hash = "sha256:f0ffffeffac93054ab80ef8ab144d6f5fd9a22830f9d183190883c1f06680550", size = 1749846, upload-time = "2026-10-27T16:10:36.674Z" },
 ]
 
 [[package]]
