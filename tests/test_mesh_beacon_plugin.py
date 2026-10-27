@@ -156,12 +156,28 @@ class _Interface:
         )
 
 
+def _pin_lazy_mock_attributes(target: Any, *names: str) -> None:
+    """Pin a mock double's lazily-created child attributes into its __dict__.
+
+    MonkeyPatch.setattr (pytest 9.2.0+) records the pre-patch value from the
+    instance __dict__, where lazily-created mock children are absent, so
+    teardown would delete the attribute instead of restoring it. mock marks
+    deleted children permanently inaccessible, which would make later
+    ``from meshtastic.protobuf import ...`` statements against the double
+    fail with ImportError. Pinning each child first keeps teardown restoring
+    the child instead of deleting it.
+    """
+    for name in names:
+        if name not in vars(target):
+            setattr(target, name, getattr(target, name))
+
+
 def _install_fake_beacon_proto(monkeypatch: pytest.MonkeyPatch) -> None:
     module = SimpleNamespace(MeshBeacon=_FakeBeacon)
     monkeypatch.setitem(sys.modules, "meshtastic.protobuf.mesh_beacon_pb2", module)
-    monkeypatch.setattr(
-        sys.modules["meshtastic.protobuf"], "mesh_beacon_pb2", module, raising=False
-    )
+    double = sys.modules["meshtastic.protobuf"]
+    _pin_lazy_mock_attributes(double, "mesh_beacon_pb2")
+    monkeypatch.setattr(double, "mesh_beacon_pb2", module, raising=False)
     monkeypatch.setattr(
         sys.modules["meshtastic.protobuf.portnums_pb2"].PortNum,
         "MESH_BEACON_APP",
@@ -1534,7 +1550,9 @@ def _real_join_protobuf(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Any, Any]
 
     The suite replaces the meshtastic namespace with doubles; briefly import the
     real descriptors, restore the doubles, and attach the real join-URL modules
-    to the double parent so in-process calls exercise real serialization.
+    to the double parent so in-process calls exercise real serialization. The
+    double's attributes are pinned first so monkeypatch teardown restores the
+    mock children instead of deleting them.
     """
     saved = {
         name: module
@@ -1558,6 +1576,7 @@ def _real_join_protobuf(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Any, Any]
             del sys.modules[name]
         sys.modules.update(saved)
     double = sys.modules["meshtastic.protobuf"]
+    _pin_lazy_mock_attributes(double, "apponly_pb2", "config_pb2", "mesh_beacon_pb2")
     monkeypatch.setattr(double, "apponly_pb2", apponly_pb2, raising=False)
     monkeypatch.setattr(double, "config_pb2", config_pb2, raising=False)
     monkeypatch.setattr(double, "mesh_beacon_pb2", mesh_beacon_pb2, raising=False)
