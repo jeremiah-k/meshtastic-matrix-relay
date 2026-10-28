@@ -1611,7 +1611,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'test'", specifier = "==9.2.0" },
     { name = "pytest-asyncio", marker = "extra == 'test'", specifier = "==1.4.1" },
     { name = "pytest-cov", marker = "extra == 'test'", specifier = "==7.1.0" },
-    { name = "pytest-env", marker = "extra == 'test'", specifier = "==1.8.2" },
+    { name = "pytest-env", marker = "extra == 'test'", specifier = "==1.8.3" },
     { name = "pytest-timeout", marker = "extra == 'test'", specifier = "==2.5.0" },
     { name = "requests", specifier = "==2.34.2" },
     { name = "rich", specifier = "==15.0.0" },
@@ -2607,15 +2607,15 @@ wheels = [
 
 [[package]]
 name = "pytest-env"
-version = "1.8.2"
+version = "1.8.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pytest" },
     { name = "python-dotenv" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bc/f9/e5b1fbf953bf4adf8bf04f567d3701fb6a6c0d8d6933cf965bd2c7860adb/pytest_env-1.8.2.tar.gz", hash = "sha256:a68e0973f204de3988645bb0a3e2ce8b23d2bfc13c3abac9992bb3b047cf7415", size = 49224, upload-time = "2026-10-27T06:00:10.819Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/71/10/fb9c10b886bf04070ee4152a54a8319ac9327eecea9a6804e5930fc3c64f/pytest_env-1.8.3.tar.gz", hash = "sha256:50fbdd23c64406bdc51ddd0cd17977b8f642b497b1ce0cd5a9ae39dd3cdbe16f", size = 49380, upload-time = "2026-10-27T17:36:40.699Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/63/50/e85e09550ee2b19981db987fe2c5cdd779d4dc0eb594d00db134db8371bc/pytest_env-1.8.2-py3-none-any.whl", hash = "sha256:eb78670f4410157cf0dc33519d45e2fea2b7cae2dc36136d0d246553410a9384", size = 9961, upload-time = "2026-10-27T06:00:09.587Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/a7/43081d5f61b102a3801bfb748d00b157ef00e47fd924f5d402cceb5fdf6a/pytest_env-1.8.3-py3-none-any.whl", hash = "sha256:b3f26d04140b0ffaca3b7dc7765386291ba03dced58f2a58221a0597bc59824c", size = 9962, upload-time = "2026-10-27T17:36:39.541Z" },
 ]
 
 [[package]]
