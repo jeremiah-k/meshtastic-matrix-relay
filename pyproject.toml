@@ -58,7 +58,7 @@ dev = [
   "mypy==2.4.1",
   "pyright==1.1.414",
   "types-PyYAML==6.0.12.20260906",
-  "types-Markdown==3.10.2.20261007",
+  "types-Markdown==3.11.2.20261029",
   "types-jsonschema==4.26.0.20261006",
 ]
 
