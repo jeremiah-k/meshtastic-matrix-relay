@@ -10,11 +10,7 @@ from pathlib import Path
 
 from packaging.requirements import Requirement
 
-from tests.constants import (
-    MINDROOM_BACKFILL_LIMITED_TIMELINES_DEFAULT,
-    MINDROOM_BACKFILL_PERSIST_RECOVERY_DEFAULT,
-    MINDROOM_STORE_VERSION,
-)
+from tests.constants import MINDROOM_STORE_VERSION
 from tests.helpers import select_mindroom_requirements
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -116,14 +112,9 @@ def test_installed_mindroom_nio_exposes_mmrelay_e2ee_contract() -> None:
         assert config.store_sync_tokens is True
         assert config.replace_rotated_device_keys is True
         for provider_config in (default_config, config):
-            if {expected_version!r} == "0.40.0":
-                assert provider_config.backfill_limited_timelines is {MINDROOM_BACKFILL_LIMITED_TIMELINES_DEFAULT!r}
-                assert provider_config.backfill_persist_recovery is {MINDROOM_BACKFILL_PERSIST_RECOVERY_DEFAULT!r}
-                assert provider_config.backfill_sliding_seed_rooms == 1000
-            else:
-                assert not hasattr(provider_config, "backfill_limited_timelines")
-                assert not hasattr(provider_config, "backfill_persist_recovery")
-                assert not hasattr(provider_config, "backfill_sliding_seed_rooms")
+            assert not hasattr(provider_config, "backfill_limited_timelines")
+            assert not hasattr(provider_config, "backfill_persist_recovery")
+            assert not hasattr(provider_config, "backfill_sliding_seed_rooms")
 
         ensure_parameters = signature(AsyncClient.ensure_cross_signing).parameters
         password = ensure_parameters["password"]
