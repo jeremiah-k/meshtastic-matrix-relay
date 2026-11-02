@@ -40,4 +40,3 @@ Quick overview:
 ## Notes
 
 - Meshtastic devices support one active client connection at a time
-- MMRelay 1.4 is the final release series with legacy credential/location fallback and migration tooling; migrate before upgrading to v1.5
