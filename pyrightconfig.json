@@ -3,5 +3,5 @@
   "venv": "venv",
   "include": ["src", "scripts"],
   "exclude": ["tests"],
-  "pythonVersion": "3.11"
+  "pythonVersion": "3.12"
 }

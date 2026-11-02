@@ -41,12 +41,6 @@
       "minimumReleaseAge": "12 hours"
     },
     {
-      "description": "Keep the Python 3.11 mindroom-nio pin at 0.40.0; the 1.1.x line requires Python 3.12+",
-      "matchDepNames": ["mindroom-nio"],
-      "matchCurrentValue": "/^==0\\./",
-      "enabled": false
-    },
-    {
       "description": "Hold the Windows packaging runner's python-version pin until winrt cp315 wheels ship; bump it manually with the comment in package-windows.yml",
       "matchManagers": ["github-actions"],
       "matchPackageNames": ["python"],
