@@ -174,7 +174,7 @@ identity without first logging out or deleting the working device session.
 
 ## Requirements and platform support
 
-- **Python 3.11 or higher**
+- **Python 3.12 or higher**
 - **Linux or macOS** (E2EE is not supported on Windows due to library
   limitations)
 - **MMRelay v1.2+** with E2EE support:
