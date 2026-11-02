@@ -19,19 +19,16 @@ from pubsub import pub
 T = TypeVar("T")
 
 
-def select_mindroom_requirements(
-    requirements: Iterable[str], environment: dict[str, str] | None = None
-) -> list[Requirement]:
+def select_mindroom_requirements(requirements: Iterable[str]) -> list[Requirement]:
     """
-    Return the mindroom-nio requirements whose markers apply in an environment.
+    Return the mindroom-nio requirements whose markers apply in this interpreter.
 
     This helper centralizes provider-pin selection so the requirements manifest
-    test and the installed-provider contract test share one filter.
+    test and the installed-provider contract test share one filter. The manifest
+    carries a single unmarked mindroom-nio pin, so selection returns that pin.
 
     Parameters:
         requirements (Iterable[str]): Dependency requirement strings to inspect.
-        environment (dict[str, str] | None): Marker environment to evaluate
-            against, or None for the current interpreter.
 
     Returns:
         list[Requirement]: Matching requirements, without extras filtering.
@@ -40,7 +37,7 @@ def select_mindroom_requirements(
     for value in requirements:
         requirement = Requirement(value)
         if canonicalize_name(requirement.name) == "mindroom-nio" and (
-            requirement.marker is None or requirement.marker.evaluate(environment)
+            requirement.marker is None or requirement.marker.evaluate()
         ):
             selected.append(requirement)
     return selected
