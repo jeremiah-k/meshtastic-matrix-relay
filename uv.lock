@@ -1524,7 +1524,7 @@ e2e = [
 
 [[package]]
 name = "mindroom-nio"
-version = "1.2.1"
+version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -1540,9 +1540,9 @@ dependencies = [
     { name = "pycryptodome" },
     { name = "unpaddedbase64" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a0/e1/30ba3c245f7a2229809545c25a3a9e8d115db5f60677ae8692dfd3fcaaf9/mindroom_nio-1.2.1.tar.gz", hash = "sha256:6765ba6ed3e2bb918ba4412042042965e2ca161524d8f6ee01ec535953425e94", size = 219308, upload-time = "2026-10-27T01:31:58.897Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/7f/333c85639d67fa666e4f2b4622307fc260208f8f79c5430106f11a7b21f8/mindroom_nio-1.3.0.tar.gz", hash = "sha256:4840d972a5c60e85107d37b0148059b5d2db60b6ff5ae7ba83716ba8f18700b3", size = 221031, upload-time = "2026-10-31T19:25:35.262Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9e/e5/87c8c6a078d725399feab5b40a8905597ff6f9f89af5f2992266a0e19241/mindroom_nio-1.2.1-py3-none-any.whl", hash = "sha256:ce58900db4fbbbb09c033e8993f7396abcb635eec0ff69505e2cc088212d5d57", size = 255430, upload-time = "2026-10-27T01:31:56.853Z" },
+    { url = "https://files.pythonhosted.org/packages/bb/77/61fe7df2242b5aaf71072287e13c1b5dfb090523c800007d6ca2032e0776/mindroom_nio-1.3.0-py3-none-any.whl", hash = "sha256:4f807ac93044df43c1f38f5312307b2b4c986a9df34286203a6e9ce6103e7b03", size = 257171, upload-time = "2026-10-31T19:25:33.572Z" },
 ]
 
 [package.optional-dependencies]
@@ -1562,7 +1562,7 @@ dependencies = [
     { name = "markdown" },
     { name = "matplotlib" },
     { name = "mindroom-nio", version = "0.40.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "mindroom-nio", version = "1.2.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "mindroom-nio", version = "1.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "mtjk" },
     { name = "nh3" },
     { name = "pillow" },
@@ -1585,7 +1585,7 @@ dev = [
 ]
 e2e = [
     { name = "mindroom-nio", version = "0.40.0", source = { registry = "https://pypi.org/simple" }, extra = ["e2e"], marker = "python_full_version < '3.12'" },
-    { name = "mindroom-nio", version = "1.2.1", source = { registry = "https://pypi.org/simple" }, extra = ["e2e"], marker = "python_full_version >= '3.12'" },
+    { name = "mindroom-nio", version = "1.3.0", source = { registry = "https://pypi.org/simple" }, extra = ["e2e"], marker = "python_full_version >= '3.12'" },
 ]
 test = [
     { name = "coverage" },
@@ -1604,8 +1604,8 @@ requires-dist = [
     { name = "markdown", specifier = "==3.11.2" },
     { name = "matplotlib", specifier = "==3.11.2" },
     { name = "mindroom-nio", marker = "python_full_version < '3.12'", specifier = "==0.40.0" },
-    { name = "mindroom-nio", marker = "python_full_version >= '3.12'", specifier = "==1.2.1" },
-    { name = "mindroom-nio", extras = ["e2e"], marker = "python_full_version >= '3.12' and extra == 'e2e'", specifier = "==1.2.1" },
+    { name = "mindroom-nio", marker = "python_full_version >= '3.12'", specifier = "==1.3.0" },
+    { name = "mindroom-nio", extras = ["e2e"], marker = "python_full_version >= '3.12' and extra == 'e2e'", specifier = "==1.3.0" },
     { name = "mindroom-nio", extras = ["e2e"], marker = "python_full_version < '3.12' and extra == 'e2e'", specifier = "==0.40.0" },
     { name = "mtjk", specifier = "==2.7.11.post12" },
     { name = "mypy", marker = "extra == 'dev'", specifier = "==2.4.1" },
