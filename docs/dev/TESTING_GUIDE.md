@@ -82,7 +82,7 @@ def test_handle_auth_logout_keyboard_interrupt(self, mock_print, mock_logout):
 
 ### Coroutine Leak Prevention Patterns
 
-Some failures only show up on certain Python versions (commonly 3.11/3.12/3.13+) as:
+Some failures only show up on certain Python versions (commonly 3.12/3.13/3.14+) as:
 
 ```text
 PytestUnraisableExceptionWarning: coroutine ... was never awaited

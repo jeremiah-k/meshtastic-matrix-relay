@@ -1,7 +1,7 @@
 # MMRelay Instructions
 
 MMRelay runs on Linux, macOS, and Windows. Native installs require Python
-3.11+; Docker installs run MMRelay and the one-time Matrix login in containers.
+3.12+; Docker installs run MMRelay and the one-time Matrix login in containers.
 
 ## Choose an installation method
 
@@ -15,7 +15,7 @@ See the [Docker Guide](DOCKER.md#data-persistence) for mounts and persistence.
 |                   | Docker                                         | pipx / uv (native)                                 |
 | ----------------- | ---------------------------------------------- | -------------------------------------------------- |
 | Best for          | Always-on servers, NAS boxes, VPS hosts        | Desktops, laptops, Raspberry Pi boards             |
-| Host needs        | Docker                                         | Python 3.11+ and pipx or uv                        |
+| Host needs        | Docker                                         | Python 3.12+ and pipx or uv                        |
 | BLE / serial node | BLE on Linux hosts only; extra compose options | Direct device access; simplest setup               |
 | Upgrades          | `docker compose pull && docker compose up -d`  | `pipx upgrade mmrelay` / `uv tool upgrade mmrelay` |
 

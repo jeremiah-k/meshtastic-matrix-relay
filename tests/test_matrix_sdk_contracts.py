@@ -242,8 +242,8 @@ def test_previous_provider_store_reopens_without_identity_reset(tmp_path: Path) 
         "from importlib.metadata import version; print(version('mindroom-nio'))",
         tmp_path,
     ).strip()
-    if reader_version == "0.40.0":
-        pytest.skip("Requires the upgraded provider in the current reader interpreter")
+    # The reader interpreter runs the upgraded provider; the previous one ships
+    # the 0.40.0 release that wrote stores on MMRelay 1.4.
     assert reader_version != "0.40.0"
     # Preserve the venv entry point; resolving its symlink selects base Python.
     previous = str(Path(os.environ["MMRELAY_PREVIOUS_SDK_PYTHON"]).absolute())
