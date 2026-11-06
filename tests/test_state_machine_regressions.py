@@ -5,7 +5,7 @@ import threading
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from mmrelay.message_queue import MessageQueue, QueuedMessage, QueuePhase
 
@@ -19,9 +19,15 @@ class QueueLifecycleRegressions(unittest.TestCase):
         result = []
         queue._queue.append(QueuedMessage(0, lambda: None, (), {}, "original"))
 
-        def sleep_for_space(_delay):
-            waiting.set()
-            self.assertTrue(proceed.wait(2))
+        original_sleep = time.sleep
+        producer_thread = None
+
+        def sleep_for_space(delay):
+            if threading.current_thread() is producer_thread:
+                waiting.set()
+                self.assertTrue(proceed.wait(2))
+            else:
+                original_sleep(delay)
 
         def producer():
             result.append(queue.enqueue(lambda: None, description="late", wait=True))
@@ -31,15 +37,15 @@ class QueueLifecycleRegressions(unittest.TestCase):
                 patch("mmrelay.message_queue.MAX_QUEUE_SIZE", 1),
                 patch("mmrelay.message_queue.time.sleep", side_effect=sleep_for_space),
             ):
-                thread = threading.Thread(target=producer)
-                thread.start()
+                producer_thread = threading.Thread(target=producer)
+                producer_thread.start()
                 self.assertTrue(waiting.wait(2))
                 queue.stop()
                 self.assertTrue(queue.start())
                 queue._queue.clear()
                 proceed.set()
-                thread.join(2)
-                self.assertFalse(thread.is_alive())
+                producer_thread.join(2)
+                self.assertFalse(producer_thread.is_alive())
                 self.assertEqual(result, [False])
         finally:
             proceed.set()
@@ -91,6 +97,47 @@ class QueueLifecycleRegressions(unittest.TestCase):
         self.assertIsNone(queue._executor)
         self.assertTrue(queue.start())
         queue.stop()
+
+    def test_executor_worker_creation_failure_never_publishes_running(self):
+        queue = MessageQueue()
+        executor = MagicMock()
+        executor.submit.side_effect = RuntimeError("can't start new thread")
+        with patch("mmrelay.message_queue.ThreadPoolExecutor", return_value=executor):
+            self.assertFalse(queue.start())
+        self.assertEqual(queue.get_status()["phase"], QueuePhase.STOPPED)
+        self.assertIsNone(queue._executor)
+        executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+
+    def test_cancelled_submitted_send_is_never_requeued_if_status_is_reset(self):
+        async def run():
+            queue = MessageQueue()
+            entered = threading.Event()
+            release = threading.Event()
+
+            def send():
+                entered.set()
+                release.wait(3)
+
+            queue._should_send_message = lambda: True
+            queue.start()
+            queue.enqueue(send, description="already submitted")
+            try:
+                async with asyncio.timeout(2):
+                    while not entered.is_set():
+                        await asyncio.sleep(0.001)
+                task = queue._processor_task
+                self.assertIsNotNone(task)
+                queue._in_flight = (
+                    False  # Simulate status finalizer racing cancellation.
+                )
+                task.cancel()
+                await asyncio.wait_for(task, 2)
+                self.assertEqual(queue.get_queue_size(), 0)
+            finally:
+                release.set()
+                queue.stop()
+
+        asyncio.run(run())
 
     def test_failed_stop_blocks_restart_until_executor_finishes(self):
         queue = MessageQueue()

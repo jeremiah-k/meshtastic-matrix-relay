@@ -172,18 +172,23 @@ class MessageQueue:
                     f"Messages may be dropped by the firmware if sent too frequently."
                 )
 
-            # Construct the executor before publishing RUNNING. Resource
-            # exhaustion must not leave a queue reporting healthy without a
-            # worker that could ever submit sends.
+            # ThreadPoolExecutor creates workers lazily. Force the first worker
+            # to start before publishing RUNNING, so thread-creation failure is
+            # caught here rather than dropping the first outbound message.
             if self._executor is None:
+                executor = None
                 try:
-                    self._executor = ThreadPoolExecutor(
+                    executor = ThreadPoolExecutor(
                         max_workers=QUEUE_EXECUTOR_MAX_WORKERS,
                         thread_name_prefix=f"MessageQueue-{id(self)}",
                     )
+                    executor.submit(lambda: None)
                 except (OSError, RuntimeError):
                     logger.exception("Message queue executor initialization failed")
+                    if executor is not None:
+                        executor.shutdown(wait=False, cancel_futures=True)
                     return False
+                self._executor = executor
 
             self._running = True
             self._run_generation += 1
@@ -437,7 +442,10 @@ class MessageQueue:
         Parameters:
             description: Human-readable description used for logging.
             mapping_info: Optional metadata to correlate the sent message with an external event (e.g., Matrix IDs); stored after a successful send.
-            wait: If True, wait for queue space to become available instead of immediately dropping. Defaults to False.
+            wait: If True, wait for queue space from a synchronous caller. On a
+                thread running an asyncio event loop, waiting is never allowed:
+                a full queue drops the message immediately (with a drop count)
+                even if ``timeout`` has not expired. Defaults to False.
             timeout: Maximum time in seconds to wait for queue space when `wait` is True; `None` means wait indefinitely.
 
         Returns:
@@ -717,6 +725,7 @@ class MessageQueue:
         """
         logger.debug("Message queue processor started")
         current_message = None
+        submitted_to_executor = False
 
         while self._running:
             try:
@@ -736,6 +745,7 @@ class MessageQueue:
                     # Get next message (non-blocking)
                     try:
                         current_message = self._queue.popleft()
+                        submitted_to_executor = False
                         self._has_current = True
                     except IndexError:
                         # No messages, wait a bit and continue
@@ -802,7 +812,6 @@ class MessageQueue:
 
                 # Send the message
                 try:
-                    self._in_flight = True
                     logger.debug(
                         f"Sending queued message: {current_message.description}"
                     )
@@ -811,7 +820,7 @@ class MessageQueue:
                     exec_ref = self._executor
                     if exec_ref is None:
                         raise RuntimeError("MessageQueue executor is not initialized")
-                    result = await loop.run_in_executor(
+                    send_future = loop.run_in_executor(
                         exec_ref,
                         partial(
                             current_message.send_function,
@@ -819,6 +828,11 @@ class MessageQueue:
                             **current_message.kwargs,
                         ),
                     )
+                    # Use task-local ownership for cancellation: a concurrent
+                    # stop/finalizer can clear the shared status flag.
+                    submitted_to_executor = True
+                    self._in_flight = True
+                    result = await send_future
 
                     # Update last send time
                     self._last_send_time = time.time()
@@ -897,7 +911,7 @@ class MessageQueue:
             except asyncio.CancelledError:
                 logger.debug("Message queue processor cancelled")
                 if current_message:
-                    if self._in_flight:
+                    if submitted_to_executor:
                         # An executor may still have performed the send. Never
                         # retry an ambiguous in-flight operation automatically.
                         logger.warning(
