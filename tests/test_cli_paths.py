@@ -214,8 +214,8 @@ class TestDetectSameHomeLegacyItems:
         result = _detect_same_home_legacy_items(paths_info)
         assert result == []
 
-    def test_windows_store_dir_na(self, tmp_path):
-        """Test handles Windows case where store_dir is N/A."""
+    def test_skips_non_absolute_store_dir(self, tmp_path):
+        """Test skips store check when store_dir is not an absolute path."""
         from mmrelay.cli import _detect_same_home_legacy_items
 
         home = tmp_path / "home"
@@ -226,7 +226,7 @@ class TestDetectSameHomeLegacyItems:
         paths_info = {
             "home": str(home),
             "credentials_path": str(home / "matrix" / CREDENTIALS_FILENAME),
-            "store_dir": "N/A (Windows)",
+            "store_dir": "store",
         }
 
         result = _detect_same_home_legacy_items(paths_info)

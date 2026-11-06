@@ -13,16 +13,16 @@ from mmrelay.cli_utils import get_command
 from mmrelay.constants.app import (
     CREDENTIALS_FILENAME,
     MATRIX_DIRNAME,
-    WINDOWS_PLATFORM,
 )
 from mmrelay.constants.config import CONFIG_SECTION_MATRIX
 from mmrelay.constants.messages import (
+    MSG_E2EE_DEPS_NOT_INSTALLED_SHORT,
     MSG_E2EE_DISABLED,
     MSG_E2EE_DISABLED_SHORT,
+    MSG_E2EE_ENV_UNSUPPORTED,
+    MSG_E2EE_ENV_UNSUPPORTED_DETAIL,
     MSG_E2EE_NO_AUTH,
-    MSG_E2EE_WINDOWS_UNSUPPORTED,
-    MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL,
-    MSG_E2EE_WINDOWS_UNSUPPORTED_SHORT,
+    MSG_E2EE_STORE_UNOPENABLE_SHORT,
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.matrix.compat import (
@@ -47,6 +47,7 @@ class E2EEStatus(TypedDict):
     dependencies_installed: bool
     credentials_available: bool
     overall_status: Literal["ready", "disabled", "unavailable", "incomplete"]
+    store_failure: Literal["fcntl", "other"] | None
     issues: List[str]
 
 
@@ -65,10 +66,11 @@ def get_e2ee_status(
           - enabled (bool): E2EE enabled in configuration.
           - available (bool): Platform and dependencies allow E2EE.
           - configured (bool): Authentication/credentials are present.
-          - platform_supported (bool): False when running on unsupported platforms (e.g., Windows/msys/cygwin).
+          - platform_supported (bool): False when running in an unsupported POSIX-emulation environment (MSYS/Cygwin).
           - dependencies_installed (bool): True if the active Matrix provider's crypto backend is available.
           - credentials_available (bool): True if a Matrix `credentials.json` file was discovered in searched locations.
           - overall_status (str): One of "ready", "disabled", "unavailable", or "incomplete".
+          - store_failure ("fcntl" | "other" | None): Diagnosed reason the crypto store cannot open; None when no store failure was detected or dependency checks were skipped.
           - issues (List[str]): Human-readable issues that prevent full E2EE readiness.
     """
     status: E2EEStatus = {
@@ -79,18 +81,23 @@ def get_e2ee_status(
         "dependencies_installed": False,
         "credentials_available": False,
         "overall_status": "incomplete",
+        "store_failure": None,
         "issues": [],
     }
 
-    # Check platform support
-    if sys.platform == WINDOWS_PLATFORM or sys.platform.startswith(("msys", "cygwin")):
+    # Check platform support. Windows is supported (vodozemac backend); only
+    # POSIX-emulation environments cannot load the native crypto backend.
+    if sys.platform.startswith(("msys", "cygwin")):
         status["platform_supported"] = False
-        status["issues"].append(MSG_E2EE_WINDOWS_UNSUPPORTED)
-        logger.debug("E2EE platform check: Windows/msys/cygwin not supported")
+        status["issues"].append(MSG_E2EE_ENV_UNSUPPORTED)
+        logger.debug(
+            "E2EE platform check: POSIX-emulation environment (MSYS/Cygwin) not supported"
+        )
 
     # Check dependencies (skip on unsupported platforms — installing deps won't help)
     if status["platform_supported"]:
         matrix_capabilities = get_matrix_capabilities()
+        status["store_failure"] = matrix_capabilities.store_failure
         if matrix_capabilities.encryption_available:
             status["dependencies_installed"] = True
             logger.debug(
@@ -105,7 +112,8 @@ def get_e2ee_status(
             )
             logger.debug(
                 "E2EE dependency check failed: provider=%s version=%s backend=%s "
-                "olm=%s vodozemac=%s nio_crypto=%s sqlite_store=%s encryption_enabled=%s",
+                "olm=%s vodozemac=%s nio_crypto=%s sqlite_store=%s "
+                "sqlite_store_openable=%s encryption_enabled=%s",
                 matrix_capabilities.provider_name,
                 matrix_capabilities.provider_version,
                 matrix_capabilities.crypto_backend,
@@ -113,6 +121,7 @@ def get_e2ee_status(
                 matrix_capabilities.vodozemac_available,
                 matrix_capabilities.nio_crypto_available,
                 matrix_capabilities.sqlite_store_available,
+                matrix_capabilities.sqlite_store_openable,
                 matrix_capabilities.nio_crypto_encryption_enabled,
             )
     else:
@@ -232,7 +241,7 @@ def get_room_encryption_warnings(
 
     Parameters:
         rooms (Dict[str, Any]): Mapping of room_id to room object. Room objects should expose an `encrypted` attribute and may provide `display_name`; `room_id` is used as a fallback name.
-        e2ee_status (Dict[str, Any]): E2EE status dictionary (as returned by `get_e2ee_status`) — this function reads the `overall_status` key to determine warning text.
+        e2ee_status (Dict[str, Any]): E2EE status dictionary (as returned by `get_e2ee_status`) — this function reads the `overall_status` and `store_failure` keys to determine warning text.
 
     Returns:
         List[str]: Formatted warning lines. Returns an empty list if E2EE is ready, there are no encrypted rooms, or the `rooms` input is invalid.
@@ -258,8 +267,13 @@ def get_room_encryption_warnings(
     if encrypted_rooms:
         overall = e2ee_status["overall_status"]
         if overall == "unavailable":
+            unavailable_reason = (
+                MSG_E2EE_STORE_UNOPENABLE_SHORT
+                if e2ee_status.get("store_failure")
+                else MSG_E2EE_DEPS_NOT_INSTALLED_SHORT
+            )
             warnings.append(
-                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but {MSG_E2EE_WINDOWS_UNSUPPORTED}"
+                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but {unavailable_reason}"
             )
         elif overall == "disabled":
             warnings.append(
@@ -285,13 +299,13 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
 
     Given a mapping of room_id -> room-like objects, produce one display string per room:
     - If E2EE overall_status == "ready": encrypted rooms are marked "🔒 {name} - Encrypted"; non-encrypted rooms are "✅ {name}".
-    - If not ready: encrypted rooms are prefixed with "⚠️" and include a short reason derived from overall_status ("unavailable" -> not supported on Windows, "disabled" -> disabled in config, otherwise "incomplete"); non-encrypted rooms remain "✅ {name}".
+    - If not ready: encrypted rooms are prefixed with "⚠️" and include a short reason derived from overall_status ("unavailable" -> E2EE crypto store cannot be opened when store_failure is set, otherwise E2EE dependencies not installed; "disabled" -> disabled in config; otherwise "incomplete"); non-encrypted rooms remain "✅ {name}".
 
     Parameters:
         rooms: Mapping of room_id to a room-like object. Each room may have attributes:
             - display_name (str): human-friendly name (fallback: room_id)
             - encrypted (bool): whether the room is encrypted (default: False)
-        e2ee_status: E2EE status dictionary (as returned by get_e2ee_status()). Only e2ee_status["overall_status"] is used.
+        e2ee_status: E2EE status dictionary (as returned by get_e2ee_status()). Only e2ee_status["overall_status"] and e2ee_status["store_failure"] are used.
 
     Returns:
         List[str]: One formatted line per room suitable for user display.
@@ -316,8 +330,13 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
             # Show warnings for encrypted rooms when E2EE is not ready
             if encrypted:
                 if e2ee_status["overall_status"] == "unavailable":
+                    unavailable_reason = (
+                        MSG_E2EE_STORE_UNOPENABLE_SHORT
+                        if e2ee_status.get("store_failure")
+                        else MSG_E2EE_DEPS_NOT_INSTALLED_SHORT
+                    )
                     room_lines.append(
-                        f"   ⚠️ {room_name} - Encrypted ({MSG_E2EE_WINDOWS_UNSUPPORTED_SHORT} - messages will be blocked)"
+                        f"   ⚠️ {room_name} - Encrypted ({unavailable_reason} - messages will be blocked)"
                     )
                 elif e2ee_status["overall_status"] == "disabled":
                     room_lines.append(
@@ -340,12 +359,18 @@ def get_e2ee_warning_messages() -> dict[str, str]:
 
     Returns:
         dict[str, str]: Mapping of status keys to ready-to-display messages. Keys include
-            "unavailable", "disabled", "incomplete", "missing_deps", "missing_auth",
-            and "missing_config".
+            "unavailable", "unsupported_env", "disabled", "incomplete", "missing_deps",
+            "missing_auth", and "missing_config".
     """
     matrix_capabilities = get_matrix_capabilities()
+    unavailable_reason = (
+        MSG_E2EE_STORE_UNOPENABLE_SHORT
+        if matrix_capabilities.store_failure is not None
+        else MSG_E2EE_DEPS_NOT_INSTALLED_SHORT
+    )
     return {
-        "unavailable": f"{MSG_E2EE_WINDOWS_UNSUPPORTED} - messages to encrypted rooms will be blocked",
+        "unavailable": f"{unavailable_reason} - messages to encrypted rooms will be blocked",
+        "unsupported_env": f"{MSG_E2EE_ENV_UNSUPPORTED} - messages to encrypted rooms will be blocked",
         "disabled": f"{MSG_E2EE_DISABLED} - messages to encrypted rooms will be blocked",
         "incomplete": f"{_E2EE_INCOMPLETE_STATUS} - messages to encrypted rooms may be blocked",
         "missing_deps": format_e2ee_unavailable_message(matrix_capabilities),
@@ -358,7 +383,7 @@ def get_e2ee_error_message(e2ee_status: Dict[str, Any]) -> str:
     """
     Selects one actionable E2EE warning or instruction based on the provided E2EE status.
 
-    If the status indicates "ready", returns an empty string. Otherwise chooses a single message in priority order for the first failing condition: platform unsupported, E2EE disabled in config, missing E2EE dependencies, missing Matrix credentials, or general incomplete setup.
+    If the status indicates "ready", returns an empty string. Otherwise chooses a single message in priority order for the first failing condition: unsupported POSIX-emulation environment, E2EE disabled in config, missing E2EE dependencies, missing Matrix credentials, or general incomplete setup.
 
     Parameters:
         e2ee_status (dict): Status dictionary produced by get_e2ee_status(); expected keys used are
@@ -376,7 +401,7 @@ def get_e2ee_error_message(e2ee_status: Dict[str, Any]) -> str:
 
     # Build error message based on specific issues
     if not e2ee_status.get("platform_supported", True):
-        return warning_messages["unavailable"]
+        return warning_messages["unsupported_env"]
     elif not e2ee_status.get("enabled", False):
         return warning_messages["disabled"]
     elif not e2ee_status.get("dependencies_installed", False):
@@ -410,8 +435,8 @@ def get_e2ee_fix_instructions(e2ee_status: E2EEStatus) -> List[str]:
     instructions = []
 
     if not e2ee_status["platform_supported"]:
-        instructions.append(MSG_E2EE_WINDOWS_UNSUPPORTED)
-        instructions.append(MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL)
+        instructions.append(MSG_E2EE_ENV_UNSUPPORTED)
+        instructions.append(MSG_E2EE_ENV_UNSUPPORTED_DETAIL)
         return instructions
 
     step = 1

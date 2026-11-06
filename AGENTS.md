@@ -32,6 +32,11 @@
 - **Mock Patterns**: Mock external dependencies, not internal logic; use proper patch paths
 - **Coverage**: Run tests with `pytest --cov=src/mmrelay --cov-report=term-missing --tb=short` and ensure no warnings
 
+## Documentation Changes
+
+- **User-facing docs**: land on a `docs/<topic>` branch (name keyed to the topic; accumulate per release) and merge via PR only at release time, so main's shipped docs stay release-accurate
+- **Wiki**: follow the same pattern — commit on a branch off the wiki's `master` (for example `docs/<topic>`), not on `master` itself
+
 ## Inno Setup Guidelines (from INNO_SETUP_GUIDE.md)
 
 - **Critical Warning**: Always ask for feedback before committing changes to `scripts/mmrelay.iss`

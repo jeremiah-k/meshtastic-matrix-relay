@@ -32,7 +32,6 @@ MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS: Final[float] = 5.0
 
 # Package and installation constants
 PACKAGE_NAME_E2E: Final[str] = "mmrelay[e2e]"
-PYTHON_OLM_PACKAGE: Final[str] = "python-olm"
 
 # Configuration file names
 CREDENTIALS_FILENAME: Final[str] = "credentials.json"

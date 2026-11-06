@@ -1679,9 +1679,23 @@ def test_load_config_silently_handles_path_resolution_errors() -> None:
         assert load_config_silently() == {}
 
 
-def test_check_e2ee_enabled_silently_is_disabled_on_windows() -> None:
+def test_is_e2ee_enabled_ignores_platform() -> None:
+    """E2EE config is honored on Windows (vodozemac backend), not force-disabled."""
     with patch("mmrelay.config.sys.platform", "win32"):
-        assert check_e2ee_enabled_silently() is False
+        assert is_e2ee_enabled({"matrix": {"e2ee": {"enabled": True}}}) is True
+        assert is_e2ee_enabled({"matrix": {"e2ee": {"enabled": False}}}) is False
+
+
+def test_check_e2ee_enabled_silently_enabled_on_windows(tmp_path) -> None:
+    """check_e2ee_enabled_silently reflects the config on Windows like other platforms."""
+    enabled = tmp_path / "enabled.yaml"
+    enabled.write_text("matrix:\n  e2ee:\n    enabled: true\n", encoding="utf-8")
+
+    with (
+        patch("mmrelay.config.sys.platform", "win32"),
+        patch("mmrelay.config.get_config_paths", return_value=[str(enabled)]),
+    ):
+        assert check_e2ee_enabled_silently() is True
 
 
 def test_silent_config_readers_share_candidate_scanning(tmp_path) -> None:

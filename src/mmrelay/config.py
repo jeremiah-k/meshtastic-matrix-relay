@@ -521,8 +521,8 @@ def get_e2ee_store_dir() -> str:
         store_dir = str(get_unified_store_dir())
         os.makedirs(store_dir, exist_ok=True)
     except paths_module.E2EENotSupportedError as e:
-        # Match legacy behavior on Windows: logs warning and returns a path anyway
-        # (even if it won't be used for E2EE)
+        # Defensive path if a store resolver ever reports an unsupported
+        # location: log and return a home-based path anyway
         logger.warning("E2EE store not officially supported on this platform: %s", e)
         return _get_fallback_store_dir()
     except (OSError, PermissionError) as e:
@@ -702,18 +702,14 @@ def is_e2ee_enabled(config: dict[str, Any] | None) -> bool:
     """
     Determine whether End-to-End Encryption (E2EE) is enabled in the given configuration.
 
-    If the platform does not support E2EE (Windows), this function always reports that E2EE is disabled. The function inspects the top-level `matrix` section and treats E2EE as enabled when either `matrix.encryption.enabled` or `matrix.e2ee.enabled` is true.
+    The function inspects the top-level `matrix` section and treats E2EE as enabled when either `matrix.encryption.enabled` or `matrix.e2ee.enabled` is true. E2EE is supported on all platforms, including Windows via the vodozemac backend; actual availability still depends on the installed crypto dependencies.
 
     Parameters:
         config (dict[str, Any] | None): Top-level configuration mapping which may be empty or None.
 
     Returns:
-        bool: `True` if E2EE is enabled in the configuration and the platform supports E2EE, `False` otherwise.
+        bool: `True` if E2EE is enabled in the configuration, `False` otherwise.
     """
-    # E2EE is not supported on Windows
-    if sys.platform == "win32":
-        return False
-
     if not config:
         return False
 
@@ -785,7 +781,7 @@ def check_e2ee_enabled_silently(args: _ConfigPathArgs | None = None) -> bool:
     """
     Check whether End-to-End Encryption (E2EE) is enabled by inspecting the first readable configuration file.
 
-    This function examines candidate configuration files in priority order, ignoring unreadable files and YAML parsing errors, and returns as soon as a readable configuration enabling E2EE is found. On Windows this function always returns False.
+    This function examines candidate configuration files in priority order, ignoring unreadable files and YAML parsing errors, and returns as soon as a readable configuration enabling E2EE is found.
 
     Parameters:
         args: Optional parsed command-line arguments that can influence config search order.
@@ -793,10 +789,6 @@ def check_e2ee_enabled_silently(args: _ConfigPathArgs | None = None) -> bool:
     Returns:
         True if E2EE is enabled in the first readable configuration file, False otherwise.
     """
-    # E2EE is not supported on Windows
-    if sys.platform == "win32":
-        return False
-
     return any(
         is_e2ee_enabled(mapping)
         for mapping in _iter_readable_config_mappings(args)

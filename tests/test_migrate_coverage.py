@@ -428,13 +428,13 @@ class TestMigrateAdditionalCoverage:
 class TestVerifyMigration:
     """Test verify_migration and print_migration_verification coverage."""
 
-    def test_verify_migration_store_not_applicable(
+    def test_verify_migration_empty_store_with_legacy_store(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Test store not applicable and warning output."""
+        """Test that an empty new store with legacy store data flags migration output."""
         home = tmp_path / "home"
         home.mkdir()
         matrix_dir = home / "matrix"
@@ -446,12 +446,14 @@ class TestVerifyMigration:
         logs_dir.mkdir()
         plugins_dir = home / "plugins"
         plugins_dir.mkdir()
+        store_dir = matrix_dir / "store"
+        store_dir.mkdir()
 
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
-        store_dir = legacy_root_dir / "store"
-        store_dir.mkdir()
-        (store_dir / "keys.db").write_text("keys")
+        legacy_store = legacy_root_dir / "store"
+        legacy_store.mkdir()
+        (legacy_store / "keys.db").write_text("keys")
 
         paths_info = {
             "home": str(home),
@@ -459,7 +461,7 @@ class TestVerifyMigration:
             "database_dir": str(database_dir),
             "logs_dir": str(logs_dir),
             "plugins_dir": str(plugins_dir),
-            "store_dir": "N/A (Windows)",
+            "store_dir": str(store_dir),
             "legacy_sources": [str(legacy_root_dir)],
         }
 
@@ -471,12 +473,12 @@ class TestVerifyMigration:
             for artifact in report["artifacts"]
             if artifact["key"] == "e2ee_store"
         )
-        assert store_artifact["not_applicable"] is True
+        assert store_artifact["path"] == str(store_dir)
         assert any("E2EE store" in warning for warning in report["warnings"])
 
         print_migration_verification(report)
         captured = capsys.readouterr()
-        assert "N/A (Windows)" in captured.out
+        assert str(store_dir) in captured.out
 
     def test_verify_migration_store_applicable_no_legacy(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -515,7 +517,7 @@ class TestVerifyMigration:
             for artifact in report["artifacts"]
             if artifact["key"] == "e2ee_store"
         )
-        assert store_artifact["not_applicable"] is False
+        assert store_artifact["path"] == str(store_dir)
         assert report["ok"] is True
 
     def test_verify_migration_with_legacy_and_missing_credentials(
@@ -578,7 +580,6 @@ class TestVerifyMigration:
                     ),
                     "exists": True,
                     "inside_home": True,
-                    "not_applicable": False,
                 }
             ],
             "legacy_data": [],
@@ -1340,9 +1341,6 @@ class TestMigrateLogsEdgeCases:
                 migrate_logs([legacy_root_dir], new_home, dry_run=False, force=True)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="E2EE store not supported on Windows"
-)
 class TestMigrateStoreEdgeCases:
     """Test migrate_store error paths and edge cases."""
 
