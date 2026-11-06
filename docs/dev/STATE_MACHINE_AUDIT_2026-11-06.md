@@ -1,7 +1,9 @@
 # MMRelay implicit-state-machine audit — November 6, 2026
 
-**Repository:** `meshtastic-matrix-relay` (`mmrelay`), `main` at
-`1bc2ea53698d96a099e7ebd6d152fa8101dceda6` (v1.4.1).
+**Repository:** `meshtastic-matrix-relay` (`mmrelay`), updated November 6
+`main` at `0357ee5344fb6a84aa2821cfbece1c5c668e99c7` (v1.4.1).
+The companion PR heads (#827–#829) are checked independently against this base;
+the fixes described below include their adversarial-review amendments.
 **Attribution:** Original authors Geoff Whittington and Jeremiah K.; maintainer
 Jeremiah K. These identities and existing history remain unchanged.
 
@@ -53,8 +55,11 @@ are sampled under the same lock.
 completely different run after stop/restart; synchronous `wait=True` on an
 active asyncio loop will fail instead of deadlocking the processor; a late
 stop-timeout watchdog cannot poison a successfully recovered/new run; executor
-constructor failure leaves the phase `STOPPED`; an unsent dequeued message is
-returned to the front on processor cancellation. Cancellation **does not**
+constructor **or initial executor worker creation** failure leaves the phase
+`STOPPED`; a processor-local submission marker distinguishes a send accepted
+by the executor from a message merely dequeued, even when a stop finalizer
+resets shared status; an unsent dequeued message is returned to the front on
+processor cancellation. Cancellation **does not**
 requeue a send that may already have executed in the executor (ambiguous
 in-flight delivery), since that could duplicate traffic. The queue is
 in-memory and does not promise crash-persistent delivery.
@@ -70,16 +75,25 @@ without transport-backed duplicate-delivery tests.
 
 - **Idle** → **Running**: one daemon worker and its own stop Event.
 - **Running** → **Stopping**: stop Event asserted; join with bounded timeout.
-- **Stopping** → **Idle**: worker has actually exited, then clear jobs/owner.
+- **Stopping** → **Idle**: the worker has actually exited; old plugin jobs are
+  cleared at stop admission (before any new plugin can register its jobs).
 - **Stopping** → **Timed-out owner retained**: worker remains referenced and
-  cannot be replaced. A later explicit start cannot overlap `run_pending`.
+  cannot be replaced while it can still run `run_pending`.
+- **Timed-out owner retained** + new plugin load → **Deferred restart**:
+  register a restart request; a cleanup watcher starts one new worker only
+  **after** the old worker fully exits, without erasing new plugin jobs.
+- **Deferred restart** + a second shutdown → **Stopping**: withdraw the
+  pending restart so a late cleanup does not resurrect the scheduler.
 - A failing `run_pending` is isolated and logged so the scheduler's lifecycle
   does not silently die; job retry behavior still belongs to `schedule`.
 
 **Corrected:** timeout previously cleared the thread and Event unconditionally,
-allowing two workers to run plugin jobs simultaneously. Shutdown now also
-stops the scheduler when there were zero _active_ plugins, since startup can
-start it even with no active plugin instances.
+allowing two workers to run plugin jobs simultaneously. Adversarial review
+also found that a reload requested during that retained worker's shutdown
+could strand newly registered jobs with no scheduler: deferred replacement now
+preserves and eventually services those jobs. Shutdown stops the scheduler
+even when there were zero _active_ plugins, since startup can start it with
+no active plugin instances.
 
 ### 3. Plugin loader vs. shutdown
 
@@ -114,6 +128,11 @@ by `src/mmrelay/meshtastic_utils.py`.
   **Connected**, or retry/backoff/error. A reconnect is only marked scheduled
   when the loop is **running and open**; merely having a nonclosed loop is
   insufficient. On scheduling failure the `reconnecting` flag is rolled back.
+  A daemon owner monitor also notices a queued coroutine stranded if the loop
+  stops _after_ the initial check, cancelling its future and releasing the
+  reconnect flag only if it still owns the current reconnect task. A failed
+  monitor startup also cancels the accepted future rather than leaving a
+  potentially unmonitored owner.
 - **Subscribed** → **Tearing down** → **Unsubscribed**; delayed connection
   callbacks cannot reactivate pubsub while global shutdown is asserted.
 - Source interfaces are identified using `_relay_active_client_id` and BLE
@@ -121,7 +140,8 @@ by `src/mmrelay/meshtastic_utils.py`.
 
 **Corrected:** an existing but stopped loop could leave `reconnecting=True`
 with no task scheduled. A late connection completion could resubscribe pubsub
-callbacks after shutdown. Neither fix changes the source-owning facade API.
+callbacks after shutdown. The connect→subscription race is regression-tested
+through the actual connection path. Neither fix changes the facade API.
 
 ### 5. Startup drain and delayed metadata timers
 
@@ -135,8 +155,12 @@ callbacks after shutdown. Neither fix changes the source-owning facade API.
   Cancellation alone is not enough: a Timer callback may already be executing.
 
 **Corrected:** stale cancelled drain callbacks cannot clear the new timer,
-expire its deadline, or signal readiness. Failed probe Timer `.start()` no
-longer leaves a never-started timer registered as pending. The pre-existing
+expire its deadline, or signal readiness. Drain-expiry completion is now
+signalled under the same lock as rearming, preventing a callback that expires
+an old drain from signalling a newly rearmed drain. The same rule applies to
+the packet-arrival fallback and the timer-start failure path. Failed probe
+Timer `.start()` no longer leaves a never-started timer registered as pending;
+unexpected probe timer errors release ownership and propagate. The pre-existing
 client-identity check on delayed probe submission remains intact.
 
 ## Other implicit state machines / disposition inventory
@@ -193,31 +217,34 @@ locks/generations deserve retention rather than invasive replacement.
 
 ## Regression coverage and validation limits
 
-**New tests** (`tests/test_state_machine_regressions.py`,
-`tests/test_plugin_lifecycle_regressions.py`,
-`tests/test_mesh_lifecycle_regressions.py`) exercise queue start, full-queue
-wait, stop/restart admission, cancellation and watchdog recovery; global
-scheduler timed-out ownership; plugin load/shutdown handoff, epoch fencing and
-concurrent shutdown requests; stale reconnect loop; stale startup drain timer;
-probe timer startup failure; shutdown subscription suppression and regular
-subscription behavior. Existing dependency-light queue and scheduler tests
-are also run.
+**New/extended tests** (`tests/test_state_machine_regressions.py`,
+`tests/test_plugin_lifecycle_regressions.py`, and behavioral-domain files
+`tests/test_meshtastic_events.py`, `tests/test_meshtastic_connection.py`,
+`tests/test_meshtastic_subscriptions.py`,
+`tests/test_meshtastic_utils_connect_ready.py`) exercise queue startup
+(worker exhaustion), stop/restart fencing, task-local in-flight admission;
+scheduler stop timeouts, deferred restarts, plugin-load/shutdown races; a
+stopped-loop reconnect owner, drain completion under lock, timer failure
+handling, pubsub arguments, and a real connect-to-subscription teardown race.
+The original multi-domain mesh supplement was removed and its cases moved
+into their corresponding behavioral suites.
 
-The audit environment ran Python 3.11 against an offline dependency set that
-does **not** contain all runtime requirements (notably `meshtastic`, `nio`,
-`pubsub` and associated lockfile dependencies), so full `uv sync --locked` /
-project pytest collection cannot complete there. Consequently **do not
-interpret these tests as a hardware/Matrix E2EE integration sign-off**. The supplemental mesh tests load
-the individual modules with narrowly stubbed SDK/facade imports solely to
-exercise ownership transitions, not to simulate real transport delivery.
+The latest offline review environment used Python 3.13 and did not contain
+full runtime dependencies (`meshtastic`, `nio`, `pubsub`). The **pre-amendment**
+GitHub Actions runs for all four PRs were green, while Codecov reported
+77.08% (#827) and 71.76% (#828) patch coverage; #829 and #830 had all
+coverable modified lines covered. These results do not validate the amended
+patch set until CI is rerun on the updated PR heads. Dependency-light local
+queue/plugin tests and a stub-facade mesh test pass; they are **not** a
+hardware or Matrix E2EE integration sign-off.
 
-Validation procedures on a complete CI/target environment:
+Validation on a complete CI/target environment:
 
 ```bash
 uv sync --locked --extra test --extra dev
 uv run --no-sync python -m pytest -v --cov --tb=short
-uv run --no-sync python -m pytest -v tests/test_state_machine_regressions.py tests/test_plugin_lifecycle_regressions.py tests/test_mesh_lifecycle_regressions.py
-uv run --no-sync black --check --line-length 88 src/mmrelay/message_queue.py src/mmrelay/plugin_loader.py src/mmrelay/meshtastic tests/test_state_machine_regressions.py tests/test_plugin_lifecycle_regressions.py tests/test_mesh_lifecycle_regressions.py
+uv run --no-sync python -m pytest -v tests/test_state_machine_regressions.py tests/test_plugin_lifecycle_regressions.py tests/test_meshtastic_events.py tests/test_meshtastic_connection.py tests/test_meshtastic_subscriptions.py tests/test_meshtastic_utils_connect_ready.py
+uv run --no-sync black --check --line-length 88 src/mmrelay/message_queue.py src/mmrelay/plugin_loader.py src/mmrelay/meshtastic tests/test_state_machine_regressions.py tests/test_plugin_lifecycle_regressions.py tests/test_meshtastic_events.py tests/test_meshtastic_connection.py tests/test_meshtastic_subscriptions.py tests/test_meshtastic_utils_connect_ready.py
 ```
 
 **Recommended integration fault injections:** while Matrix E2EE sync is active,
