@@ -191,18 +191,57 @@ def _schedule_reconnect_after_disconnect() -> None:
         facade.reconnecting = True
         reconnect_coro = facade.reconnect()
         try:
-            facade.reconnect_task = facade.asyncio.run_coroutine_threadsafe(
+            reconnect_future = facade.asyncio.run_coroutine_threadsafe(
                 reconnect_coro,
                 facade.event_loop,
             )
+            facade.reconnect_task = reconnect_future
+            loop = facade.event_loop
+
+            def _watch_reconnect_owner() -> None:
+                # run_coroutine_threadsafe can accept a coroutine just before
+                # its loop stops; no coroutine/future callback will then run to
+                # release reconnecting. Monitor that orphaned owner off-loop.
+                stop_check = threading.Event()
+                while not reconnect_future.done():
+                    if facade.reconnect_task is not reconnect_future:
+                        return
+                    if loop.is_closed() or not loop.is_running():
+                        reconnect_future.cancel()
+                        with facade.meshtastic_lock:
+                            if facade.reconnect_task is reconnect_future:
+                                facade.reconnect_task = None
+                                facade.reconnecting = False
+                                facade.logger.warning(
+                                    "Reconnect task abandoned after its event loop stopped"
+                                )
+                        return
+                    stop_check.wait(0.1)
+
         except RuntimeError:
-            # If scheduling fails, close the unscheduled coroutine to avoid
-            # unawaited-coroutine warnings during teardown/error paths.
+            # Scheduling failed: the coroutine has not been accepted by the
+            # loop and must be closed to avoid unawaited-coroutine warnings.
             reconnect_coro.close()
             facade.reconnecting = False
             facade.logger.error(
                 "Failed to schedule reconnect; event loop became unavailable"
             )
+        else:
+            try:
+                threading.Thread(
+                    target=_watch_reconnect_owner,
+                    name="MeshtasticReconnectOwner",
+                    daemon=True,
+                ).start()
+            except RuntimeError:
+                # Without a monitor, a pending reconnect could be abandoned
+                # indefinitely by a stopped loop. Cancel and release the owner
+                # instead of retaining a permanently stuck reconnecting flag.
+                reconnect_future.cancel()
+                if facade.reconnect_task is reconnect_future:
+                    facade.reconnect_task = None
+                    facade.reconnecting = False
+                facade.logger.warning("Could not start reconnect owner monitor")
     else:
         facade.reconnecting = False
         facade.logger.error(
@@ -237,12 +276,14 @@ def _schedule_startup_drain_deadline_cleanup(startup_drain_deadline: float) -> N
                 reschedule_deadline = current_deadline
             else:
                 facade._relay_startup_drain_deadline_monotonic_secs = None
+                # Complete under the same lock used to arm/reset a new drain:
+                # a replaced timer must not set the new drain's shared event.
+                _signal_startup_drain_complete()
                 should_log_drain_end = True
         if reschedule_deadline is not None:
             _schedule_startup_drain_deadline_cleanup(reschedule_deadline)
             return
         if should_log_drain_end:
-            _signal_startup_drain_complete()
             facade.logger.debug("Startup drain window has ended - accepting packets")
 
     delay_secs = max(0.0, startup_drain_deadline - facade.time.monotonic())
@@ -250,6 +291,13 @@ def _schedule_startup_drain_deadline_cleanup(startup_drain_deadline: float) -> N
     timer.daemon = True
     previous_timer = None
     with facade._relay_rx_time_clock_skew_lock:
+        if (
+            facade._relay_startup_drain_deadline_monotonic_secs
+            != startup_drain_deadline
+        ):
+            # A different connection replaced or cancelled this deadline
+            # before its timer was registered. Do not displace its timer.
+            return
         previous_timer = facade._relay_startup_drain_expiry_timer
         facade._relay_startup_drain_expiry_timer = timer
     if previous_timer is not None:
@@ -257,7 +305,6 @@ def _schedule_startup_drain_deadline_cleanup(startup_drain_deadline: float) -> N
     try:
         timer.start()
     except Exception as exc:  # noqa: BLE001 - best-effort timer setup
-        should_signal_startup_drain_complete = False
         with facade._relay_rx_time_clock_skew_lock:
             if facade._relay_startup_drain_expiry_timer is timer:
                 facade._relay_startup_drain_expiry_timer = None
@@ -266,9 +313,7 @@ def _schedule_startup_drain_deadline_cleanup(startup_drain_deadline: float) -> N
                     == startup_drain_deadline
                 ):
                     facade._relay_startup_drain_deadline_monotonic_secs = None
-                    should_signal_startup_drain_complete = True
-        if should_signal_startup_drain_complete:
-            _signal_startup_drain_complete()
+                    _signal_startup_drain_complete()
         facade.logger.debug(
             "Failed to schedule startup drain expiry cleanup timer",
             exc_info=exc,
@@ -560,9 +605,9 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             ):
                 facade._relay_startup_drain_expiry_timer = None
                 facade._relay_startup_drain_deadline_monotonic_secs = None
+                _signal_startup_drain_complete()
                 should_log_drain_end = True
         if should_log_drain_end:
-            _signal_startup_drain_complete()
             facade.logger.debug("Startup drain window has ended - accepting packets")
 
     # Seed clock skew from the first non-health-probe packet with a valid

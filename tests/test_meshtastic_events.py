@@ -343,11 +343,27 @@ class TestScheduleStartupDrainDeadlineCleanup:
         mu._relay_startup_drain_expiry_timer = old_timer
 
         deadline = time.monotonic() + 10.0
+        # Only the current deadline's timer may displace the registered one.
+        mu._relay_startup_drain_deadline_monotonic_secs = deadline
         with patch("threading.Timer") as MockTimer:
             mock_timer = MagicMock()
             MockTimer.return_value = mock_timer
             _schedule_startup_drain_deadline_cleanup(deadline)
             old_timer.cancel.assert_called_once()
+            assert mu._relay_startup_drain_expiry_timer is mock_timer
+
+    def test_schedule_stale_deadline_does_not_replace_existing_timer(self):
+        from mmrelay.meshtastic.events import _schedule_startup_drain_deadline_cleanup
+
+        current_timer = MagicMock()
+        mu._relay_startup_drain_expiry_timer = current_timer
+
+        mu._relay_startup_drain_deadline_monotonic_secs = time.monotonic() + 20.0
+        with patch("threading.Timer") as MockTimer:
+            _schedule_startup_drain_deadline_cleanup(time.monotonic() + 10.0)
+        current_timer.cancel.assert_not_called()
+        assert mu._relay_startup_drain_expiry_timer is current_timer
+        MockTimer.return_value.start.assert_not_called()
 
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
@@ -359,3 +375,157 @@ class TestReconnect:
         mu.shutting_down = True
         await reconnect()
         assert mu.reconnecting is False
+
+
+def test_stopped_loop_reconnect_does_not_claim_owner(
+    reset_meshtastic_globals, monkeypatch
+):
+    from mmrelay.meshtastic.events import _schedule_reconnect_after_disconnect
+
+    loop = MagicMock()
+    loop.is_closed.return_value = False
+    loop.is_running.return_value = False
+    monkeypatch.setattr(mu, "event_loop", loop)
+    mu.reconnecting = True
+    with patch.object(mu, "reconnect") as reconnect:
+        _schedule_reconnect_after_disconnect()
+    assert mu.reconnecting is False
+    reconnect.assert_not_called()
+
+
+def test_accepted_reconnect_loses_owner_when_loop_stops(
+    reset_meshtastic_globals, monkeypatch
+):
+    import asyncio
+    import threading
+    from concurrent.futures import Future
+
+    from mmrelay.meshtastic.events import _schedule_reconnect_after_disconnect
+
+    loop = MagicMock()
+    loop.is_closed.return_value = False
+    loop.is_running.return_value = True
+    monkeypatch.setattr(mu, "event_loop", loop)
+    future = Future()
+
+    async def reconnect():
+        pass
+
+    def fake_submit(coroutine, _loop):
+        coroutine.close()  # Simulate the loop accepting but never running it.
+        return future
+
+    with (
+        patch.object(mu, "reconnect", reconnect),
+        patch.object(asyncio, "run_coroutine_threadsafe", side_effect=fake_submit),
+    ):
+        released_owner = threading.Event()
+        with patch.object(
+            mu.logger, "warning", side_effect=lambda *_: released_owner.set()
+        ):
+            _schedule_reconnect_after_disconnect()
+            assert mu.reconnecting is True
+            loop.is_running.return_value = False
+            assert released_owner.wait(
+                2
+            ), "Stopped-loop reconnect owner was not released"
+        assert future.cancelled()
+        assert mu.reconnecting is False
+        assert mu.reconnect_task is None
+
+
+def test_expired_startup_drain_signals_inside_ownership_lock(
+    reset_meshtastic_globals, monkeypatch
+):
+    import threading
+
+    from mmrelay.meshtastic.events import _schedule_startup_drain_deadline_cleanup
+
+    completed = threading.Event()
+    armed = []
+    mu._relay_startup_drain_deadline_monotonic_secs = 100.0
+    fake_time = MagicMock()
+    fake_time.monotonic.return_value = 100.0
+    monkeypatch.setattr(mu, "time", fake_time)
+
+    class Completion:
+        def set(self):
+            assert mu._relay_rx_time_clock_skew_lock.locked()
+            completed.set()
+
+    class Timer:
+        def __init__(self, _delay, action):
+            self.action = action
+            armed.append(self)
+
+        def start(self):
+            pass
+
+        def cancel(self):
+            pass
+
+    with (
+        patch.object(mu, "get_startup_drain_complete_event", return_value=Completion()),
+        patch("mmrelay.meshtastic.events.threading.Timer", Timer),
+    ):
+        _schedule_startup_drain_deadline_cleanup(100.0)
+        _schedule_startup_drain_deadline_cleanup(100.0)
+        armed[0].action()
+        assert not completed.is_set()
+        assert mu._relay_startup_drain_expiry_timer is armed[1]
+        armed[1].action()
+    assert completed.is_set()
+    assert mu._relay_startup_drain_expiry_timer is None
+
+
+def test_stale_startup_drain_scheduler_does_not_replace_new_owner(
+    reset_meshtastic_globals, monkeypatch
+):
+    from mmrelay.meshtastic.events import _schedule_startup_drain_deadline_cleanup
+
+    current_timer = MagicMock()
+    mu._relay_startup_drain_expiry_timer = current_timer
+    mu._relay_startup_drain_deadline_monotonic_secs = 200.0
+    fake_time = MagicMock()
+    fake_time.monotonic.return_value = 100.0
+    monkeypatch.setattr(mu, "time", fake_time)
+    with patch("mmrelay.meshtastic.events.threading.Timer") as timer_cls:
+        _schedule_startup_drain_deadline_cleanup(100.0)
+    assert mu._relay_startup_drain_expiry_timer is current_timer
+    current_timer.cancel.assert_not_called()
+    timer_cls.return_value.start.assert_not_called()
+
+
+def test_reconnect_monitor_start_failure_releases_owner(
+    reset_meshtastic_globals, monkeypatch
+):
+    from concurrent.futures import Future
+
+    from mmrelay.meshtastic.events import _schedule_reconnect_after_disconnect
+
+    loop = MagicMock()
+    loop.is_closed.return_value = False
+    loop.is_running.return_value = True
+    monkeypatch.setattr(mu, "event_loop", loop)
+    pending = Future()
+
+    async def reconnect():
+        pass
+
+    def accepted_but_not_started(coroutine, _loop):
+        coroutine.close()
+        return pending
+
+    worker = MagicMock()
+    worker.start.side_effect = RuntimeError("can't start new thread")
+    with (
+        patch.object(mu, "reconnect", reconnect),
+        patch.object(
+            mu.asyncio, "run_coroutine_threadsafe", side_effect=accepted_but_not_started
+        ),
+        patch("mmrelay.meshtastic.events.threading.Thread", return_value=worker),
+    ):
+        _schedule_reconnect_after_disconnect()
+    assert pending.cancelled()
+    assert mu.reconnect_task is None
+    assert not mu.reconnecting
