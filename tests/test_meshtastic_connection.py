@@ -51,7 +51,9 @@ class TestSerialPortExists:
         from mmrelay.meshtastic.connection import serial_port_exists
 
         with (
-            patch("mmrelay.meshtastic.connection.Path.is_char_device", return_value=False),
+            patch(
+                "mmrelay.meshtastic.connection.Path.is_char_device", return_value=False
+            ),
             patch.object(mu.serial.tools.list_ports, "comports", return_value=[]),
         ):
             assert serial_port_exists("/dev/ttyUSB0") is False
@@ -1819,7 +1821,68 @@ def test_serial_port_exists_handles_invalid_path(tmp_path):
     from mmrelay.meshtastic.connection import serial_port_exists
 
     with (
-        patch("mmrelay.meshtastic.connection.Path.is_char_device", side_effect=ValueError),
+        patch(
+            "mmrelay.meshtastic.connection.Path.is_char_device", side_effect=ValueError
+        ),
         patch.object(mu.serial.tools.list_ports, "comports", return_value=[]),
     ):
         assert not serial_port_exists("/dev/radio-custom")
+
+
+def test_probe_timer_start_failure_releases_owner(reset_meshtastic_globals):
+    from mmrelay.meshtastic.connection import _schedule_connect_time_calibration_probe
+
+    client = MagicMock()
+
+    class FailingTimer:
+        def __init__(self, _delay, _callback):
+            pass
+
+        def start(self):
+            raise RuntimeError("no threads available")
+
+        def cancel(self):
+            pass
+
+    with (
+        patch.object(mu, "_get_connect_time_probe_settings", return_value=(True, 3.0)),
+        patch(
+            "mmrelay.meshtastic.connection._get_connect_probe_stabilization_deadline",
+            return_value=(1000000000.0, "startup drain"),
+        ),
+        patch("mmrelay.meshtastic.connection.threading.Timer", FailingTimer),
+    ):
+        _schedule_connect_time_calibration_probe(
+            client, connection_type="serial", active_config={}
+        )
+    assert mu._pending_connect_time_probe_timer is None
+
+
+def test_probe_timer_unexpected_error_releases_owner_and_propagates(
+    reset_meshtastic_globals,
+):
+    from mmrelay.meshtastic.connection import _schedule_connect_time_calibration_probe
+
+    class BrokenTimer:
+        def __init__(self, _delay, _callback):
+            pass
+
+        def start(self):
+            raise ValueError("bad timer")
+
+        def cancel(self):
+            pass
+
+    with (
+        patch.object(mu, "_get_connect_time_probe_settings", return_value=(True, 3.0)),
+        patch(
+            "mmrelay.meshtastic.connection._get_connect_probe_stabilization_deadline",
+            return_value=(1000000000.0, "startup drain"),
+        ),
+        patch("mmrelay.meshtastic.connection.threading.Timer", BrokenTimer),
+        pytest.raises(ValueError, match="bad timer"),
+    ):
+        _schedule_connect_time_calibration_probe(
+            MagicMock(), connection_type="serial", active_config={}
+        )
+    assert mu._pending_connect_time_probe_timer is None
