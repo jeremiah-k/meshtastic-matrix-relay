@@ -47,6 +47,7 @@ class QueueLifecycleRegressions(unittest.TestCase):
                 producer_thread.join(2)
                 self.assertFalse(producer_thread.is_alive())
                 self.assertEqual(result, [False])
+                self.assertEqual(queue.get_status()["dropped_messages"], 1)
         finally:
             proceed.set()
             queue.stop()

@@ -543,6 +543,7 @@ class MessageQueue:
                                 "Queue stopped or restarted while waiting; dropping message: %s",
                                 description,
                             )
+                            self._dropped_messages += 1
                             return False
                         continue
                     else:
@@ -653,7 +654,7 @@ class MessageQueue:
                 - last_send_time (float or None): Wall-clock time (seconds since the epoch) of the last successful send, or `None` if no send has occurred.
                 - time_since_last_send (float or None): Seconds elapsed since the last send, or `None` if no send has occurred.
                 - in_flight (bool): `True` when a message is currently being sent, `False` otherwise.
-                - dropped_messages (int): Number of messages dropped due to the queue being full.
+                - dropped_messages (int): Number of messages dropped: queue full, waiting refused on an event-loop thread, or the queue stopped/restarted while a producer waited for space.
                 - default_msgs_to_keep (int): Default retention count for persisted message mappings.
         """
         with self._lock:
@@ -1146,7 +1147,7 @@ def get_queue_status() -> dict[str, Any]:
             - last_send_time: wall-clock timestamp of the last successful send or None
             - time_since_last_send: seconds since last send (monotonic) or None
             - in_flight: whether a send is currently executing
-            - dropped_messages: count of messages dropped due to a full queue
+            - dropped_messages: count of messages dropped (queue full, waiting refused on an event-loop thread, or queue stopped/restarted while waiting for space)
             - default_msgs_to_keep: configured number of message mappings to retain
     """
     return _message_queue.get_status()
