@@ -497,6 +497,7 @@ def reset_meshtastic_globals():
         "meshtastic_client": getattr(mu, "meshtastic_client", None),
         "meshtastic_iface": getattr(mu, "meshtastic_iface", None),
         "reconnecting": getattr(mu, "reconnecting", False),
+        "_relay_reconnect_owner": getattr(mu, "_relay_reconnect_owner", None),
         "shutting_down": getattr(mu, "shutting_down", False),
         "reconnect_task": getattr(mu, "reconnect_task", None),
         "reconnect_task_future": getattr(mu, "reconnect_task_future", None),
@@ -587,6 +588,7 @@ def reset_meshtastic_globals():
     mu.meshtastic_client = None
     mu.meshtastic_iface = None
     mu.reconnecting = False
+    mu._relay_reconnect_owner = None
     mu.shutting_down = False
     mu.reconnect_task = None
     mu.reconnect_task_future = None

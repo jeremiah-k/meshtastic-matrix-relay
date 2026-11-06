@@ -462,6 +462,7 @@ def _schedule_connect_time_calibration_probe(
             return True
 
     def _arm_delayed_probe(delay: float, window: str | None) -> None:
+        """Register a deferred probe, retaining only the latest timer owner."""
         facade.logger.debug(
             "Delaying connect-time metadata probe by %.1fs until after %s window",
             delay,

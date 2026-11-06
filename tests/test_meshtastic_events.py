@@ -408,7 +408,7 @@ def test_accepted_reconnect_loses_owner_when_loop_stops(
     monkeypatch.setattr(mu, "event_loop", loop)
     future = Future()
 
-    async def reconnect():
+    async def reconnect(*, _owner=None):
         pass
 
     def fake_submit(coroutine, _loop):
@@ -509,7 +509,7 @@ def test_reconnect_monitor_start_failure_releases_owner(
     monkeypatch.setattr(mu, "event_loop", loop)
     pending = Future()
 
-    async def reconnect():
+    async def reconnect(*, _owner=None):
         pass
 
     def accepted_but_not_started(coroutine, _loop):
@@ -549,3 +549,56 @@ def test_failed_startup_drain_timer_does_not_open_packet_gate(monkeypatch):
     assert mu._relay_startup_drain_deadline_monotonic_secs == deadline
     assert mu._relay_startup_drain_expiry_timer is None
     readiness.set.assert_not_called()
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+@pytest.mark.asyncio
+async def test_old_reconnect_finally_cannot_clear_new_attempt():
+    """An old loop may resume after its reconnect owner has been replaced."""
+    from mmrelay.meshtastic.events import reconnect
+
+    old_owner, new_owner = object(), object()
+    mu.shutting_down = True
+    mu._relay_reconnect_owner = new_owner
+    mu.reconnecting = True
+    await reconnect(_owner=old_owner)
+    assert mu.reconnecting is True
+    assert mu._relay_reconnect_owner is new_owner
+    # An unowned direct call must not clear an owned attempt either.
+    await reconnect()
+    assert mu.reconnecting is True
+
+    await reconnect(_owner=new_owner)
+    assert mu.reconnecting is False
+    assert mu._relay_reconnect_owner is None
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_cancelled_before_start_reconnect_releases_owner(monkeypatch):
+    """Cancellation can complete the concurrent Future before the coroutine runs."""
+    import threading
+    from concurrent.futures import Future
+
+    from mmrelay.meshtastic.events import _schedule_reconnect_after_disconnect
+
+    loop = MagicMock()
+    loop.is_closed.return_value = False
+    loop.is_running.return_value = True
+    monkeypatch.setattr(mu, "event_loop", loop)
+    future = Future()
+    future.cancel()
+    released = threading.Event()
+
+    def fake_submit(coroutine, _loop):
+        coroutine.close()
+        return future
+
+    with (
+        patch.object(mu.asyncio, "run_coroutine_threadsafe", side_effect=fake_submit),
+        patch.object(mu.logger, "warning", side_effect=lambda *_: released.set()),
+    ):
+        _schedule_reconnect_after_disconnect()
+        assert released.wait(2)
+    assert mu.reconnect_task is None
+    assert mu._relay_reconnect_owner is None
+    assert mu.reconnecting is False
