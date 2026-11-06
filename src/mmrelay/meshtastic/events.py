@@ -183,7 +183,11 @@ def _reset_ble_degraded_state_after_disconnect(
 
 
 def _schedule_reconnect_after_disconnect() -> None:
-    if facade.event_loop and not facade.event_loop.is_closed():
+    if (
+        facade.event_loop
+        and not facade.event_loop.is_closed()
+        and facade.event_loop.is_running()
+    ):
         facade.reconnecting = True
         reconnect_coro = facade.reconnect()
         try:
@@ -218,8 +222,11 @@ def _schedule_startup_drain_deadline_cleanup(startup_drain_deadline: float) -> N
         should_log_drain_end = False
         reschedule_deadline: float | None = None
         with facade._relay_rx_time_clock_skew_lock:
-            if facade._relay_startup_drain_expiry_timer is timer:
-                facade._relay_startup_drain_expiry_timer = None
+            # A cancelled timer can already be inside its callback. Only its
+            # current owner may mutate the drain state or signal readiness.
+            if facade._relay_startup_drain_expiry_timer is not timer:
+                return
+            facade._relay_startup_drain_expiry_timer = None
 
             current_deadline = facade._relay_startup_drain_deadline_monotonic_secs
             if current_deadline != startup_drain_deadline:
