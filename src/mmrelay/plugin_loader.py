@@ -93,6 +93,13 @@ _SENSITIVE_URL_PARAMS_LOWER: Final[frozenset[str]] = frozenset(
 
 sorted_active_plugins: list[Any] = []
 plugins_loaded = False
+# Plugin startup may run in a worker while the main task is cancelling. Keep
+# start/stop ownership serialized and communicate a shutdown request promptly.
+_plugin_lifecycle_lock = threading.RLock()
+_plugin_shutdown_ownership_lock = threading.Lock()
+_plugin_shutdown_requested = threading.Event()
+_plugin_shutdown_epoch = 0
+_plugin_shutdown_requests = 0
 _last_logged_plugin_roots: tuple[str | None, tuple[str, ...]] | None = None
 
 
@@ -109,6 +116,8 @@ class ValidationResult(NamedTuple):
 # Global scheduler management
 _global_scheduler_thread: threading.Thread | None = None
 _global_scheduler_stop_event: threading.Event | None = None
+# Serializes scheduler ownership across overlapping start/stop callers.
+_global_scheduler_lock = threading.RLock()
 
 
 # Plugin dependency directory (may not be set if base dir can't be resolved)
@@ -3163,13 +3172,7 @@ def clear_plugin_jobs(plugin_name: str) -> None:
 
 
 def start_global_scheduler() -> None:
-    """
-    Start a single global scheduler thread to execute all plugin scheduled jobs.
-
-    Creates and starts one daemon thread that periodically calls schedule.run_pending()
-    to run pending jobs for all plugins. If the schedule library is unavailable or a
-    global scheduler is already running, the function does nothing.
-    """
+    """Start one scheduler owner; never overlap an unjoined previous worker."""
     global _global_scheduler_thread, _global_scheduler_stop_event
 
     if schedule is None:
@@ -3178,67 +3181,101 @@ def start_global_scheduler() -> None:
         )
         return
 
-    if _global_scheduler_thread is not None and _global_scheduler_thread.is_alive():
-        logger.debug("Global scheduler thread already running")
-        return
+    with _global_scheduler_lock:
+        if _global_scheduler_thread is not None:
+            if _global_scheduler_thread.is_alive():
+                logger.debug("Global scheduler thread already running or stopping")
+                return
+            # A completed worker is safe to replace, even if a previous stop
+            # timed out. No two workers may own schedule.run_pending().
+            _global_scheduler_thread = None
+            _global_scheduler_stop_event = None
 
-    stop_event = threading.Event()
-    _global_scheduler_stop_event = stop_event
+        stop_event = threading.Event()
 
-    def scheduler_loop() -> None:
-        """
-        Runs the global scheduler loop that executes scheduled jobs until stopped.
+        def scheduler_loop() -> None:
+            logger.debug("Global scheduler thread started")
+            while not stop_event.is_set():
+                if schedule is not None:
+                    try:
+                        schedule.run_pending()
+                    except Exception:
+                        # Isolate plugin job failures from the scheduler's
+                        # lifecycle so other plugins continue to be serviced.
+                        logger.exception("Global plugin scheduler job failed")
+                stop_event.wait(SCHEDULER_LOOP_WAIT_SECONDS)
 
-        Continuously calls `schedule.run_pending()` (if the `schedule` library is available) and waits up to ``SCHEDULER_LOOP_WAIT_SECONDS`` between iterations. The loop exits when the module-level stop_event is set.
-        """
-        logger.debug("Global scheduler thread started")
-        # Capture stop_event locally to avoid races if globals are reset.
-        while not stop_event.is_set():
-            if schedule is not None:
-                schedule.run_pending()
-            # Wait until stop is requested or timeout elapses
-            stop_event.wait(SCHEDULER_LOOP_WAIT_SECONDS)
-
-    _global_scheduler_thread = threading.Thread(
-        target=scheduler_loop, name="global-plugin-scheduler", daemon=True
-    )
-    _global_scheduler_thread.start()
+        thread = threading.Thread(
+            target=scheduler_loop, name="global-plugin-scheduler", daemon=True
+        )
+        _global_scheduler_stop_event = stop_event
+        _global_scheduler_thread = thread
+        try:
+            thread.start()
+        except BaseException:
+            _global_scheduler_thread = None
+            _global_scheduler_stop_event = None
+            raise
     logger.info("Global plugin scheduler started")
 
 
 def stop_global_scheduler() -> None:
-    """
-    Stop the global scheduler thread.
+    """Stop the scheduler before dropping ownership or clearing its jobs.
 
-    Signals the scheduler loop to stop, waits up to ``SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS`` for the thread to terminate, clears all scheduled jobs, and resets the scheduler state.
+    A timed-out job may still be running. Retain the worker and stop event in
+    that case: a subsequent start must not launch a second scheduler.
     """
     global _global_scheduler_thread, _global_scheduler_stop_event
 
-    if _global_scheduler_thread is None:
-        return
+    with _global_scheduler_lock:
+        thread = _global_scheduler_thread
+        if thread is None:
+            return
 
-    logger.debug("Stopping global scheduler thread")
+        logger.debug("Stopping global scheduler thread")
+        if _global_scheduler_stop_event is not None:
+            _global_scheduler_stop_event.set()
+        if thread.is_alive():
+            if thread is threading.current_thread():
+                logger.error("Global scheduler cannot join itself")
+                return
+            thread.join(timeout=SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS)
+            if thread.is_alive():
+                logger.warning(
+                    "Global scheduler thread did not stop within timeout; "
+                    "retaining worker ownership until it exits"
+                )
+                return
 
-    # Signal the thread to stop
-    if _global_scheduler_stop_event:
-        _global_scheduler_stop_event.set()
-
-    # Wait for thread to finish
-    if _global_scheduler_thread.is_alive():
-        _global_scheduler_thread.join(timeout=SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS)
-        if _global_scheduler_thread.is_alive():
-            logger.warning("Global scheduler thread did not stop within timeout")
-
-    # Clear all scheduled jobs
-    if schedule is not None:
-        schedule.clear()
-
-    _global_scheduler_thread = None
-    _global_scheduler_stop_event = None
-    logger.info("Global plugin scheduler stopped")
+        if schedule is not None:
+            schedule.clear()
+        _global_scheduler_thread = None
+        _global_scheduler_stop_event = None
+        logger.info("Global plugin scheduler stopped")
 
 
 def load_plugins(passed_config: Any = None) -> list[Any]:
+    """Serialize plugin load, rejecting requests crossing a shutdown epoch."""
+    with _plugin_shutdown_ownership_lock:
+        request_epoch = _plugin_shutdown_epoch
+        if _plugin_shutdown_requests:
+            logger.info("Skipping plugin load while shutdown is requested")
+            return []
+    with _plugin_lifecycle_lock:
+        # A load blocked behind shutdown must not become a fresh startup just
+        # because the last shutdown caller has now cleared its Event.
+        if (
+            _plugin_shutdown_requested.is_set()
+            or request_epoch != _plugin_shutdown_epoch
+        ):
+            logger.info("Skipping plugin load across shutdown boundary")
+            return []
+        if plugins_loaded:
+            return sorted_active_plugins
+        return _load_plugins_impl(passed_config)
+
+
+def _load_plugins_impl(passed_config: Any = None) -> list[Any]:
     """
     Load, prepare, and start configured core, custom, and community plugins.
 
@@ -3793,12 +3830,21 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                 plugin_name,
             )
 
+    # This preparation may have run on an executor after main() was cancelled.
+    # A shutdown request must not start fresh jobs or plugins after cleanup.
+    if _plugin_shutdown_requested.is_set():
+        logger.info("Aborting plugin startup after shutdown request")
+        return []
+
     # Start global scheduler for all plugins
     start_global_scheduler()
 
     # Filter and sort active plugins by priority
     active_plugins = []
     for plugin in plugins:
+        if _plugin_shutdown_requested.is_set():
+            logger.info("Stopping further plugin activation after shutdown request")
+            break
         plugin_name = getattr(plugin, "plugin_name", plugin.__class__.__name__)
 
         # Determine if the plugin is active based on the configuration
@@ -3930,6 +3976,23 @@ def get_declared_unmapped_room_ids() -> list[str]:
 
 
 def shutdown_plugins() -> None:
+    """Request shutdown immediately, then serialize teardown with startup."""
+    global _plugin_shutdown_epoch, _plugin_shutdown_requests
+    with _plugin_shutdown_ownership_lock:
+        _plugin_shutdown_epoch += 1
+        _plugin_shutdown_requests += 1
+        _plugin_shutdown_requested.set()
+    try:
+        with _plugin_lifecycle_lock:
+            _shutdown_plugins_impl()
+    finally:
+        with _plugin_shutdown_ownership_lock:
+            _plugin_shutdown_requests -= 1
+            if not _plugin_shutdown_requests:
+                _plugin_shutdown_requested.clear()
+
+
+def _shutdown_plugins_impl() -> None:
     """
     Stop all active plugins and reset loader state to allow a clean reload.
 
@@ -3938,6 +4001,9 @@ def shutdown_plugins() -> None:
     global sorted_active_plugins, plugins_loaded
 
     if not sorted_active_plugins:
+        # The scheduler is started during load even when zero plugins are active.
+        # Resetting just the loaded flag would orphan that worker and its jobs.
+        stop_global_scheduler()
         plugins_loaded = False
         return
 
