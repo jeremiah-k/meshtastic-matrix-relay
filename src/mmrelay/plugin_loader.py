@@ -3397,6 +3397,12 @@ def _load_plugins_impl(passed_config: Any = None) -> list[Any]:
 
     plugins = core_plugins.copy()
 
+    def _shutdown_during_preparation() -> bool:
+        if _plugin_shutdown_requested.is_set():
+            logger.info("Aborting plugin preparation after shutdown request")
+            return True
+        return False
+
     def _section_dict(section_name: str) -> dict[str, Any]:
         section = config_dict.get(section_name, {})
         if isinstance(section, dict):
@@ -3449,6 +3455,8 @@ def _load_plugins_impl(passed_config: Any = None) -> list[Any]:
 
     # Only load custom plugins that are explicitly enabled
     for plugin_name in active_custom_plugins:
+        if _shutdown_during_preparation():
+            return []
         plugin_found = False
 
         # Validate plugin name to prevent path traversal attacks
@@ -3461,6 +3469,8 @@ def _load_plugins_impl(passed_config: Any = None) -> list[Any]:
 
         # Try each directory in order
         for custom_dir in custom_plugin_dirs:
+            if _shutdown_during_preparation():
+                return []
             plugin_path = os.path.join(custom_dir, plugin_name)
 
             # Validate path containment to prevent symlink escapes
@@ -3511,6 +3521,8 @@ def _load_plugins_impl(passed_config: Any = None) -> list[Any]:
     if active_community_plugins:
         # Ensure all community plugin directories exist
         for dir_path in community_plugin_dirs:
+            if _shutdown_during_preparation():
+                return []
             try:
                 os.makedirs(dir_path, exist_ok=True)
             except (OSError, PermissionError) as e:
@@ -3524,6 +3536,8 @@ def _load_plugins_impl(passed_config: Any = None) -> list[Any]:
 
     # Only process community plugins explicitly enabled in config.
     for plugin_name, plugin_info in community_plugins_config.items():
+        if _shutdown_during_preparation():
+            return []
         if not isinstance(plugin_name, str):
             logger.warning(
                 "Ignoring invalid %s plugin key %r; expected a string.",
@@ -3693,6 +3707,10 @@ def _load_plugins_impl(passed_config: Any = None) -> list[Any]:
                 ref,
                 community_plugins_dir,
             )
+            # Cloning may have blocked for a full subprocess timeout. Do not
+            # run pin checks or pip after teardown has been requested.
+            if _shutdown_during_preparation():
+                return []
             if not success:
                 logger.warning(f"Failed to clone/update plugin {plugin_name}, skipping")
                 continue
@@ -3702,6 +3720,8 @@ def _load_plugins_impl(passed_config: Any = None) -> list[Any]:
                     validation_result.repo_url,
                     repo_path,
                 )
+            if _shutdown_during_preparation():
+                return []
             if install_requirements:
                 ref_value = str(ref.get("value", "")).strip()
                 ref_type = str(ref.get("type", "")).strip()
@@ -3797,12 +3817,15 @@ def _load_plugins_impl(passed_config: Any = None) -> list[Any]:
                                 plugin_name,
                                 requirements_target,
                             )
-                        if _install_requirements_for_repo(
+                        installed = _install_requirements_for_repo(
                             repo_path,
                             repo_name,
                             plugin_type=PLUGIN_TYPE_COMMUNITY,
                             requirements_target=requirements_target,
-                        ):
+                        )
+                        if _shutdown_during_preparation():
+                            return []
+                        if installed:
                             state[PLUGIN_STATE_LAST_INSTALLED_REQUIREMENTS_COMMIT] = (
                                 pinned_sha
                             )
@@ -3824,6 +3847,8 @@ def _load_plugins_impl(passed_config: Any = None) -> list[Any]:
 
     # Only load community plugins that were successfully synced
     for plugin_name in ready_community_plugins:
+        if _shutdown_during_preparation():
+            return []
         plugin_info = community_plugins_config[plugin_name]
         repo_url = plugin_info.get("repository")
         if repo_url:
@@ -3847,6 +3872,8 @@ def _load_plugins_impl(passed_config: Any = None) -> list[Any]:
             # Try each directory in order
             plugin_found = False
             for dir_path in community_plugin_dirs:
+                if _shutdown_during_preparation():
+                    return []
                 plugin_path = os.path.join(dir_path, repo_name_candidate)
                 # Validate path containment to prevent symlink escapes
                 if not _is_path_contained(dir_path, plugin_path):
