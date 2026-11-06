@@ -476,3 +476,54 @@ def test_shutdown_during_dependency_install_aborts_before_recording_state(tmp_pa
         save_state.assert_not_called()
         import_plugin.assert_not_called()
         start_scheduler.assert_not_called()
+
+
+def test_scheduler_does_not_run_until_plugins_finish_starting():
+    """Registered jobs must not execute against partly initialized plugins."""
+    from mmrelay.plugins.health_plugin import Plugin as HealthPlugin
+
+    steps = []
+
+    def start_plugin(_self):
+        steps.append("plugin")
+
+    with (
+        patch.object(plugin_loader, "plugins_loaded", False),
+        patch.object(plugin_loader, "sorted_active_plugins", []),
+        patch.object(plugin_loader, "get_custom_plugin_dirs", return_value=[]),
+        patch.object(plugin_loader, "get_community_plugin_dirs", return_value=[]),
+        patch.object(HealthPlugin, "start", start_plugin),
+        patch.object(
+            plugin_loader,
+            "start_global_scheduler",
+            side_effect=lambda: steps.append("scheduler"),
+        ),
+    ):
+        active = plugin_loader.load_plugins({"plugins": {"health": {"active": True}}})
+    assert [plugin.plugin_name for plugin in active] == ["health"]
+    assert steps == ["plugin", "scheduler"]
+
+
+def test_shutdown_during_last_plugin_start_never_launches_scheduler():
+    """A shutdown request arriving in plugin.start() must win the handoff."""
+    from mmrelay.plugins.health_plugin import Plugin as HealthPlugin
+
+    def request_shutdown(_self):
+        plugin_loader._plugin_shutdown_requested.set()
+
+    try:
+        with (
+            patch.object(plugin_loader, "plugins_loaded", False),
+            patch.object(plugin_loader, "sorted_active_plugins", []),
+            patch.object(plugin_loader, "get_custom_plugin_dirs", return_value=[]),
+            patch.object(plugin_loader, "get_community_plugin_dirs", return_value=[]),
+            patch.object(HealthPlugin, "start", request_shutdown),
+            patch.object(plugin_loader, "start_global_scheduler") as start_scheduler,
+        ):
+            active = plugin_loader.load_plugins(
+                {"plugins": {"health": {"active": True}}}
+            )
+            start_scheduler.assert_not_called()
+            assert [plugin.plugin_name for plugin in active] == ["health"]
+    finally:
+        plugin_loader._plugin_shutdown_requested.clear()
