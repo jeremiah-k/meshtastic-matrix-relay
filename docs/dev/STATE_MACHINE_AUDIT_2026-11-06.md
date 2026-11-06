@@ -61,7 +61,10 @@ by the executor from a message merely dequeued, even when a stop finalizer
 resets shared status; an unsent dequeued message is returned to the front on
 processor cancellation. Cancellation **does not**
 requeue a send that may already have executed in the executor (ambiguous
-in-flight delivery), since that could duplicate traffic. The queue is
+in-flight delivery), since that could duplicate traffic. The final
+connection check and executor submission are also serialized against
+`stop()`: a stop that wins admission leaves the unsent message queued instead
+of letting an old processor submit after `STOPPING` begins. The queue is
 in-memory and does not promise crash-persistent delivery.
 
 **Monitor:** the pre-existing connection-error retry path can resend after a
@@ -110,14 +113,19 @@ shutdown request reference count, and monotonic shutdown epoch.
 
 **Corrected:** a cancelled `run_in_executor` startup could continue loading
 plugins after cleanup, and a queued load could cross a completed shutdown
-boundary. Keep the existing dynamically loaded plugin structure and existing
-`sorted_active_plugins` consumer contract; this is an ownership fix, not a
-plugin interface rewrite.
+boundary. Preparation now checks the shutdown signal between custom-plugin
+imports, community clone/update operations, dependency installs, and the final
+community import loop. A completed install cannot trigger later plugin
+activation or register successful install state once teardown was requested.
+Keep the dynamically loaded plugin structure and the `sorted_active_plugins`
+consumer contract; this is an ownership fix, not a plugin interface rewrite.
 
 **Monitor:** plugin-supplied `.start()`, `.stop()`, and scheduled jobs may do
-arbitrary blocking I/O. The global shutdown lock cannot _interrupt_ a hung
-plugin, and the enclosing application still has its independent bounded
-shutdown policy. No pre-emptive thread killing was introduced.
+arbitrary blocking I/O. Checks between operations do **not** interrupt an
+already-running git/pip subprocess, which may consume its configured timeout.
+The global shutdown lock also cannot _interrupt_ a hung plugin, and the
+enclosing application still has its independent bounded shutdown policy.
+No pre-emptive thread killing was introduced.
 
 ### 4. Meshtastic reconnection and callback subscription
 
@@ -160,8 +168,11 @@ signalled under the same lock as rearming, preventing a callback that expires
 an old drain from signalling a newly rearmed drain. The same rule applies to
 the packet-arrival fallback and the timer-start failure path. Failed probe
 Timer `.start()` no longer leaves a never-started timer registered as pending;
-unexpected probe timer errors release ownership and propagate. The pre-existing
-client-identity check on delayed probe submission remains intact.
+unexpected probe timer errors release ownership and propagate. If a startup
+drain Timer itself cannot start, the deadline now remains authoritative:
+no early readiness is signalled, and the async main startup waiter expires the
+drain under the same ownership lock even without an inbound packet. The
+pre-existing client-identity check on delayed probe submission remains intact.
 
 ## Other implicit state machines / disposition inventory
 
@@ -223,18 +234,21 @@ locks/generations deserve retention rather than invasive replacement.
 `tests/test_meshtastic_subscriptions.py`,
 `tests/test_meshtastic_utils_connect_ready.py`) exercise queue startup
 (worker exhaustion), stop/restart fencing, task-local in-flight admission;
-scheduler stop timeouts, deferred restarts, plugin-load/shutdown races; a
+a stop racing executor admission; scheduler stop timeouts, deferred restarts,
+plugin preparation interrupted during an import, clone, or pip install; a
 stopped-loop reconnect owner, drain completion under lock, timer failure
 handling, pubsub arguments, and a real connect-to-subscription teardown race.
 The original multi-domain mesh supplement was removed and its cases moved
 into their corresponding behavioral suites.
 
 The latest offline review environment used Python 3.13 and did not contain
-full runtime dependencies (`meshtastic`, `nio`, `pubsub`). The **pre-amendment**
-GitHub Actions runs for all four PRs were green, while Codecov reported
-77.08% (#827) and 71.76% (#828) patch coverage; #829 and #830 had all
-coverable modified lines covered. These results do not validate the amended
-patch set until CI is rerun on the updated PR heads. Dependency-light local
+full runtime dependencies (`meshtastic`, `nio`, `pubsub`). As of the
+November 6, 14:15 source bundle, the current **pre-this-review** GitHub
+Actions runs for all four PRs were green. Seven earlier inline review threads
+on #829 were already marked resolved at the time of this follow-up review. Codecov reported patch coverage of
+84.75% (#827), 76.85% (#828), 87.04% (#829); #830 was fully covered or not
+applicable to code. These figures describe the previously pushed heads, **not**
+the additional changes in this review. These changes require CI reruns. Dependency-light local
 queue/plugin tests and a stub-facade mesh test pass; they are **not** a
 hardware or Matrix E2EE integration sign-off.
 
