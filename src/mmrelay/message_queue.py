@@ -13,6 +13,7 @@ import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from enum import Enum
 from functools import partial
 from typing import Any, Callable, Optional
 
@@ -48,6 +49,15 @@ class QueuedMessage:
     description: str
     # Optional message mapping information for replies/reactions
     mapping_info: Optional[dict[str, Any]] = None
+
+
+class QueuePhase(str, Enum):
+    """Observable queue lifecycle; STOPPING/FAILED_STOP prohibit a new owner."""
+
+    STOPPED = "stopped"
+    RUNNING = "running"
+    STOPPING = "stopping"
+    FAILED_STOP = "failed_stop"
 
 
 class MessageQueue:
@@ -91,6 +101,17 @@ class MessageQueue:
         self._last_queue_full_log_time: float | None = None
         self._stop_failed = False
         self._stop_logged = False
+        # Epochs fence stale producers/watchdogs across stop -> restart.
+        self._run_generation = 0
+        self._stop_generation = 0
+
+    def _phase_locked(self) -> QueuePhase:
+        """Return one lifecycle phase while holding ``_lock``."""
+        if self._stop_failed:
+            return QueuePhase.FAILED_STOP
+        if self._stopping:
+            return QueuePhase.STOPPING
+        return QueuePhase.RUNNING if self._running else QueuePhase.STOPPED
 
     def _clear_failed_stop_state_if_recovered_locked(self) -> bool:
         """
@@ -151,15 +172,22 @@ class MessageQueue:
                     f"Messages may be dropped by the firmware if sent too frequently."
                 )
 
-            self._running = True
-            self._stop_logged = False
-
-            # Create dedicated executor for this MessageQueue
+            # Construct the executor before publishing RUNNING. Resource
+            # exhaustion must not leave a queue reporting healthy without a
+            # worker that could ever submit sends.
             if self._executor is None:
-                self._executor = ThreadPoolExecutor(
-                    max_workers=QUEUE_EXECUTOR_MAX_WORKERS,
-                    thread_name_prefix=f"MessageQueue-{id(self)}",
-                )
+                try:
+                    self._executor = ThreadPoolExecutor(
+                        max_workers=QUEUE_EXECUTOR_MAX_WORKERS,
+                        thread_name_prefix=f"MessageQueue-{id(self)}",
+                    )
+                except (OSError, RuntimeError):
+                    logger.exception("Message queue executor initialization failed")
+                    return False
+
+            self._running = True
+            self._run_generation += 1
+            self._stop_logged = False
 
             # Start the processor in the event loop
             try:
@@ -199,6 +227,8 @@ class MessageQueue:
 
             self._running = False
             self._stopping = True
+            self._stop_generation += 1
+            stop_generation = self._stop_generation
             task = self._processor_task
             exec_ref = self._executor
 
@@ -209,8 +239,16 @@ class MessageQueue:
         if exec_ref is None:
             executor_cleanup_complete.set()
 
-        def _mark_stop_failed(reason: str) -> None:
+        def _mark_stop_failed(reason: str, unfinished: threading.Event) -> None:
+            # A watchdog can wake just after the completion callback. Never
+            # poison a successfully stopped/restarted queue with a stale timeout.
             with self._lock:
+                if (
+                    unfinished.is_set()
+                    or not self._stopping
+                    or self._stop_generation != stop_generation
+                ):
+                    return
                 self._stop_failed = True
             logger.error(
                 "Message queue stop timed out (%s). Queue remains in failed-stop state until cleanup completes.",
@@ -291,7 +329,7 @@ class MessageQueue:
 
                     def _watchdog_cleanup() -> None:
                         if not task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC):
-                            _mark_stop_failed("task cleanup")
+                            _mark_stop_failed("task cleanup", task_cleanup_complete)
 
                     threading.Thread(
                         target=_watchdog_cleanup,
@@ -314,12 +352,12 @@ class MessageQueue:
                     if current_loop is None:
                         task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
                         if not task_done.is_set():
-                            _mark_stop_failed("task cleanup")
+                            _mark_stop_failed("task cleanup", task_cleanup_complete)
                     else:
 
                         def _watchdog_cleanup() -> None:
                             if not task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC):
-                                _mark_stop_failed("task cleanup")
+                                _mark_stop_failed("task cleanup", task_cleanup_complete)
 
                         threading.Thread(
                             target=_watchdog_cleanup,
@@ -367,7 +405,7 @@ class MessageQueue:
 
             def _watch_executor_shutdown() -> None:
                 if not executor_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC):
-                    _mark_stop_failed("executor cleanup")
+                    _mark_stop_failed("executor cleanup", executor_cleanup_complete)
 
             if on_loop_thread:
                 threading.Thread(
@@ -424,6 +462,7 @@ class MessageQueue:
                 )
                 return False
 
+            run_generation = self._run_generation
             message = QueuedMessage(
                 timestamp=time.time(),
                 send_function=send_function,
@@ -463,6 +502,21 @@ class MessageQueue:
                             )
                             self._last_queue_full_log_time = current_time
 
+                        # This is a synchronous API. Blocking here on its
+                        # owning asyncio loop would prevent the consumer from
+                        # freeing space (and could deadlock indefinitely).
+                        try:
+                            asyncio.get_running_loop()
+                        except RuntimeError:
+                            pass
+                        else:
+                            logger.error(
+                                "Cannot wait for queue space on an asyncio event-loop thread: %s",
+                                description,
+                            )
+                            self._dropped_messages += 1
+                            return False
+
                         # Release lock and wait a bit before retrying
                         # Use try/finally to ensure lock is always reacquired
                         self._lock.release()
@@ -472,9 +526,13 @@ class MessageQueue:
                             self._lock.acquire()
 
                         # Re-check queue is still running
-                        if not self._running or self._stopping:
+                        if (
+                            not self._running
+                            or self._stopping
+                            or self._run_generation != run_generation
+                        ):
                             logger.error(
-                                "Queue stopped while waiting; dropping message: %s",
+                                "Queue stopped or restarted while waiting; dropping message: %s",
                                 description,
                             )
                             return False
@@ -569,6 +627,10 @@ class MessageQueue:
             )
             return False
 
+    def _phase_snapshot(self) -> QueuePhase:
+        with self._lock:
+            return self._phase_locked()
+
     def get_status(self) -> dict[str, Any]:
         """
         Get a snapshot of the message queue's runtime status for monitoring and debugging.
@@ -586,23 +648,25 @@ class MessageQueue:
                 - dropped_messages (int): Number of messages dropped due to the queue being full.
                 - default_msgs_to_keep (int): Default retention count for persisted message mappings.
         """
-        return {
-            "running": self._running,
-            "queue_size": len(self._queue),
-            "message_delay": self._message_delay,
-            "stop_failed": self._stop_failed,
-            "processor_task_active": self._processor_task is not None
-            and not self._processor_task.done(),
-            "last_send_time": self._last_send_time,
-            "time_since_last_send": (
-                time.monotonic() - self._last_send_mono
-                if self._last_send_mono > 0
-                else None
-            ),
-            "in_flight": self._in_flight,
-            "dropped_messages": getattr(self, "_dropped_messages", 0),
-            "default_msgs_to_keep": DEFAULT_MSGS_TO_KEEP,
-        }
+        with self._lock:
+            return {
+                "phase": self._phase_locked().value,
+                "running": self._running,
+                "queue_size": len(self._queue),
+                "message_delay": self._message_delay,
+                "stop_failed": self._stop_failed,
+                "processor_task_active": self._processor_task is not None
+                and not self._processor_task.done(),
+                "last_send_time": self._last_send_time,
+                "time_since_last_send": (
+                    time.monotonic() - self._last_send_mono
+                    if self._last_send_mono > 0
+                    else None
+                ),
+                "in_flight": self._in_flight,
+                "dropped_messages": getattr(self, "_dropped_messages", 0),
+                "default_msgs_to_keep": DEFAULT_MSGS_TO_KEEP,
+            }
 
     async def drain(self, timeout: Optional[float] = None) -> bool:
         """
@@ -833,9 +897,18 @@ class MessageQueue:
             except asyncio.CancelledError:
                 logger.debug("Message queue processor cancelled")
                 if current_message:
-                    logger.warning(
-                        f"Message in flight was dropped during shutdown: {current_message.description}"
-                    )
+                    if self._in_flight:
+                        # An executor may still have performed the send. Never
+                        # retry an ambiguous in-flight operation automatically.
+                        logger.warning(
+                            "Message in flight was dropped during shutdown: %s",
+                            current_message.description,
+                        )
+                    elif self._requeue_message(current_message):
+                        logger.debug(
+                            "Preserved unsent message for queue restart: %s",
+                            current_message.description,
+                        )
                 self._in_flight = False
                 self._has_current = False
                 break
