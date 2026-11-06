@@ -3917,8 +3917,8 @@ def _load_plugins_impl(passed_config: Any = None) -> list[Any]:
         logger.info("Aborting plugin startup after shutdown request")
         return []
 
-    # Start global scheduler for all plugins
-    start_global_scheduler()
+    # Activate plugins before the scheduler can run jobs registered by start().
+    # Otherwise run_pending() may execute against half-initialized plugin state.
 
     # Filter and sort active plugins by priority
     active_plugins = []
@@ -4009,6 +4009,11 @@ def _load_plugins_impl(passed_config: Any = None) -> list[Any]:
             active_plugins.append(plugin)
 
     sorted_active_plugins = sorted(active_plugins, key=lambda plugin: plugin.priority)
+
+    # A shutdown can arrive during the last blocking plugin.start() call.
+    # Never launch a fresh scheduler worker after teardown was requested.
+    if not _plugin_shutdown_requested.is_set():
+        start_global_scheduler()
 
     # Log all loaded plugins
     if sorted_active_plugins:
