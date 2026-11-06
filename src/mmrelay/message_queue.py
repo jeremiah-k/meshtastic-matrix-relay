@@ -717,6 +717,38 @@ class MessageQueue:
                         f"Message queue processor started with {self._message_delay}s message delay"
                     )
 
+    def _admit_send(
+        self,
+        loop: asyncio.AbstractEventLoop,
+        message: QueuedMessage,
+    ) -> Optional[asyncio.Future[Any]]:
+        """
+        Admit one queued send to the executor, or refuse when shutdown won.
+
+        The RUNNING/STOPPING decision and the executor submission are a single
+        atomic transition under the lifecycle lock, so no send is admitted
+        after stop() begins. Returns None when shutdown won the race; the
+        caller must then requeue the unsent message. The lock is never held
+        across a pending send: callers await the returned future only after
+        this method has released the lock.
+        """
+        with self._lock:
+            if not self._running or self._stopping:
+                return None
+            exec_ref = self._executor
+            if exec_ref is None:
+                raise RuntimeError("MessageQueue executor is not initialized")
+            send_future = loop.run_in_executor(
+                exec_ref,
+                partial(
+                    message.send_function,
+                    *message.args,
+                    **message.kwargs,
+                ),
+            )
+            self._in_flight = True
+            return send_future
+
     async def _process_queue(self) -> None:
         """
         Process queued messages and send them while respecting connection state and the configured inter-message delay.
@@ -817,21 +849,22 @@ class MessageQueue:
                     )
                     # Run synchronous Meshtastic I/O operations in executor to prevent blocking event loop
                     loop = asyncio.get_running_loop()
-                    exec_ref = self._executor
-                    if exec_ref is None:
-                        raise RuntimeError("MessageQueue executor is not initialized")
-                    send_future = loop.run_in_executor(
-                        exec_ref,
-                        partial(
-                            current_message.send_function,
-                            *current_message.args,
-                            **current_message.kwargs,
-                        ),
-                    )
-                    # Use task-local ownership for cancellation: a concurrent
-                    # stop/finalizer can clear the shared status flag.
+                    send_future = self._admit_send(loop, current_message)
+                    if send_future is None:
+                        # A stop on another thread won between the last
+                        # connection check and executor admission: the
+                        # dequeued-but-unsent message is preserved instead.
+                        logger.debug(
+                            "Shutdown won send admission, requeuing unsent message: %s",
+                            current_message.description,
+                        )
+                        self._requeue_message(current_message)
+                        # The loop exits below: keep current_message bound so
+                        # the except handler below keeps its non-Optional type.
+                        self._has_current = False
+                        break
+                    # Keep task-local ownership across stop finalization.
                     submitted_to_executor = True
-                    self._in_flight = True
                     result = await send_future
 
                     # Update last send time

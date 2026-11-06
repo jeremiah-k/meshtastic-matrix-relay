@@ -167,3 +167,33 @@ class QueueLifecycleRegressions(unittest.TestCase):
         self.assertEqual(queue.get_status()["phase"], QueuePhase.STOPPED)
         self.assertTrue(queue.start())
         queue.stop()
+
+
+def test_stop_between_final_connection_check_and_submission_preserves_unsent():
+    """A stop that wins admission cannot launch a late executor send."""
+
+    async def run():
+        queue = MessageQueue()
+        send = MagicMock(return_value={"id": 5})
+        checks = 0
+
+        def check_connection():
+            nonlocal checks
+            checks += 1
+            if checks == 2:
+                queue.stop()
+            return True
+
+        queue._should_send_message = check_connection
+        assert queue.start(message_delay=0)
+        assert queue.enqueue(send, description="not submitted")
+        task = queue._processor_task
+        assert task is not None
+        await asyncio.wait_for(task, 2)
+        assert checks == 2
+        send.assert_not_called()
+        assert queue.get_queue_size() == 1
+        assert queue._queue[0].description == "not submitted"
+        queue.stop()
+
+    asyncio.run(run())
