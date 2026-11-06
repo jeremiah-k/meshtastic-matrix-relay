@@ -304,19 +304,16 @@ def _schedule_startup_drain_deadline_cleanup(startup_drain_deadline: float) -> N
         previous_timer.cancel()
     try:
         timer.start()
-    except Exception as exc:  # noqa: BLE001 - best-effort timer setup
+    except (OSError, RuntimeError):
         with facade._relay_rx_time_clock_skew_lock:
             if facade._relay_startup_drain_expiry_timer is timer:
                 facade._relay_startup_drain_expiry_timer = None
-                if (
-                    facade._relay_startup_drain_deadline_monotonic_secs
-                    == startup_drain_deadline
-                ):
-                    facade._relay_startup_drain_deadline_monotonic_secs = None
-                    _signal_startup_drain_complete()
-        facade.logger.debug(
-            "Failed to schedule startup drain expiry cleanup timer",
-            exc_info=exc,
+                # Do not fail open: inbound packets must still be withheld
+                # until the monotonic deadline. The async readiness waiter
+                # can expire this gate even when no packets arrive.
+        facade.logger.warning(
+            "Startup drain timer could not start; using deadline-based fallback",
+            exc_info=True,
         )
 
 

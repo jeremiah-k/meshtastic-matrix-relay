@@ -529,3 +529,23 @@ def test_reconnect_monitor_start_failure_releases_owner(
     assert pending.cancelled()
     assert mu.reconnect_task is None
     assert not mu.reconnecting
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_failed_startup_drain_timer_does_not_open_packet_gate(monkeypatch):
+    """A missing timer must not admit historical packets before the deadline."""
+    from mmrelay.meshtastic.events import _schedule_startup_drain_deadline_cleanup
+
+    deadline = time.monotonic() + 10
+    mu._relay_startup_drain_deadline_monotonic_secs = deadline
+    readiness = MagicMock()
+    timer = MagicMock()
+    timer.start.side_effect = RuntimeError("can't start new thread")
+    with (
+        patch("mmrelay.meshtastic.events.threading.Timer", return_value=timer),
+        patch.object(mu, "get_startup_drain_complete_event", return_value=readiness),
+    ):
+        _schedule_startup_drain_deadline_cleanup(deadline)
+    assert mu._relay_startup_drain_deadline_monotonic_secs == deadline
+    assert mu._relay_startup_drain_expiry_timer is None
+    readiness.set.assert_not_called()
