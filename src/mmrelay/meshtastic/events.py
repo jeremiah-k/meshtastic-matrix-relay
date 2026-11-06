@@ -183,46 +183,85 @@ def _reset_ble_degraded_state_after_disconnect(
 
 
 def _schedule_reconnect_after_disconnect() -> None:
+    """Schedule a reconnect owned by the current disconnect generation.
+
+    An accepted submission may never run if its loop stops. A separate
+    monitor relinquishes that owner so a later disconnect can retry.
+    """
     if (
         facade.event_loop
         and not facade.event_loop.is_closed()
         and facade.event_loop.is_running()
     ):
         facade.reconnecting = True
-        reconnect_coro = facade.reconnect()
+        owner = object()
+        facade._relay_reconnect_owner = owner
+        reconnect_coro = facade.reconnect(_owner=owner)
         try:
             reconnect_future = facade.asyncio.run_coroutine_threadsafe(
                 reconnect_coro,
                 facade.event_loop,
             )
             facade.reconnect_task = reconnect_future
+            if reconnect_future.done() is True:
+                # A settled submission (for example a pre-cancelled future)
+                # would otherwise leave the owner stranded until the monitor
+                # thread's first poll. Release synchronously so the shared
+                # reconnect state cannot fence later attempts. The identity
+                # comparison ignores stand-ins whose done() is merely truthy.
+                with facade.meshtastic_lock:
+                    if (
+                        facade.reconnect_task is reconnect_future
+                        and facade._relay_reconnect_owner is owner
+                    ):
+                        facade.reconnect_task = None
+                        facade._relay_reconnect_owner = None
+                        facade.reconnecting = False
+                        facade.logger.warning(
+                            "Reconnect owner abandoned before completion"
+                        )
             loop = facade.event_loop
 
             def _watch_reconnect_owner() -> None:
-                # run_coroutine_threadsafe can accept a coroutine just before
-                # its loop stops; no coroutine/future callback will then run to
-                # release reconnecting. Monitor that orphaned owner off-loop.
+                """Release only this submission when its loop or future dies."""
                 stop_check = threading.Event()
-                while not reconnect_future.done():
+                while True:
                     if facade.reconnect_task is not reconnect_future:
                         return
-                    if loop.is_closed() or not loop.is_running():
+                    abandoned = loop.is_closed() or not loop.is_running()
+                    completed = reconnect_future.done()
+                    if not abandoned and not completed:
+                        stop_check.wait(0.1)
+                        continue
+                    # A cancelled Future may be done even if its coroutine was
+                    # never started; its finally block cannot release the flag.
+                    failed = completed and (
+                        reconnect_future.cancelled()
+                        or reconnect_future.exception() is not None
+                    )
+                    if abandoned and not completed:
                         reconnect_future.cancel()
+                    if abandoned or failed:
                         with facade.meshtastic_lock:
-                            if facade.reconnect_task is reconnect_future:
+                            if (
+                                facade.reconnect_task is reconnect_future
+                                and facade._relay_reconnect_owner is owner
+                            ):
                                 facade.reconnect_task = None
+                                facade._relay_reconnect_owner = None
                                 facade.reconnecting = False
                                 facade.logger.warning(
-                                    "Reconnect task abandoned after its event loop stopped"
+                                    "Reconnect owner abandoned before completion"
                                 )
-                        return
-                    stop_check.wait(0.1)
+                    return
 
         except RuntimeError:
             # Scheduling failed: the coroutine has not been accepted by the
             # loop and must be closed to avoid unawaited-coroutine warnings.
             reconnect_coro.close()
-            facade.reconnecting = False
+            if facade._relay_reconnect_owner is owner:
+                facade._relay_reconnect_owner = None
+                facade.reconnecting = False
             facade.logger.error(
                 "Failed to schedule reconnect; event loop became unavailable"
             )
@@ -238,8 +277,12 @@ def _schedule_reconnect_after_disconnect() -> None:
                 # indefinitely by a stopped loop. Cancel and release the owner
                 # instead of retaining a permanently stuck reconnecting flag.
                 reconnect_future.cancel()
-                if facade.reconnect_task is reconnect_future:
+                if (
+                    facade.reconnect_task is reconnect_future
+                    and facade._relay_reconnect_owner is owner
+                ):
                     facade.reconnect_task = None
+                    facade._relay_reconnect_owner = None
                     facade.reconnecting = False
                 facade.logger.warning("Could not start reconnect owner monitor")
     else:
@@ -258,6 +301,7 @@ def _schedule_startup_drain_deadline_cleanup(startup_drain_deadline: float) -> N
     """
 
     def _cleanup() -> None:
+        """Expire only the currently registered timer and deadline."""
         should_log_drain_end = False
         reschedule_deadline: float | None = None
         with facade._relay_rx_time_clock_skew_lock:
@@ -396,11 +440,13 @@ def on_lost_meshtastic_connection(
         _schedule_reconnect_after_disconnect()
 
 
-async def reconnect() -> None:
+async def reconnect(*, _owner: object | None = None) -> None:
     """
     Re-establish the Meshtastic connection using exponential backoff.
 
-    Retries connect_meshtastic(force_connect=True) until a connection is obtained, the application begins shutting down, or the task is cancelled. Starts with DEFAULT_BACKOFF_TIME and doubles the wait after each failed attempt, capped at 300 seconds. Stops promptly on cancellation or when shutting_down is set, and ensures the module-level `reconnecting` flag is cleared before returning.
+    Retry with exponential backoff until connected or shutting down. An
+    internal owner token prevents a previously abandoned coroutine from
+    clearing a newer reconnect's state when its old loop resumes.
     """
     backoff_time = facade.DEFAULT_BACKOFF_TIME
     try:
@@ -472,13 +518,19 @@ async def reconnect() -> None:
     except facade.asyncio.CancelledError:
         facade.logger.info("Reconnection task was cancelled.")
     finally:
-        if facade.reconnect_task_future is not None:
-            if (
-                facade.reconnect_task_future.done()
-                and not facade.reconnect_task_future.cancelled()
-            ):
-                facade.reconnect_task_future = None
-        facade.reconnecting = False
+        # An abandoned old coroutine can finish only after a new disconnect
+        # acquires reconnect ownership. Never clear the newer run's flag.
+        with facade.meshtastic_lock:
+            if facade._relay_reconnect_owner is _owner:
+                if facade.reconnect_task_future is not None:
+                    if (
+                        facade.reconnect_task_future.done()
+                        and not facade.reconnect_task_future.cancelled()
+                    ):
+                        facade.reconnect_task_future = None
+                facade.reconnecting = False
+                if _owner is not None:
+                    facade._relay_reconnect_owner = None
 
 
 def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
