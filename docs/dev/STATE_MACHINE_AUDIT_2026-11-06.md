@@ -211,6 +211,48 @@ The inventory covers **state-owning runtime subsystems**, not every local
 branch is not a separate long-lived state machine. Existing explicit
 locks/generations deserve retention rather than invasive replacement.
 
+## Fourth-round adversarial review (2026-11-06, 15:42 bundle)
+
+The source-of-truth PR heads for this review were `c2c1d28` (#827),
+`2ad2304` (#828), `4f7c2d0` (#829), and `3183322` (#830). These branches
+must remain separate until they have each passed CI and review; the findings
+below are follow-up changes, not claims about the already-pushed heads.
+
+- **Queue metrics (#827):** A producer rejected because its wait crossed
+  stop/restart already returned `False`, but that drop was not included in
+  `dropped_messages`. The counter now includes that case, and the existing
+  deterministic generation regression checks the observable metric.
+- **Plugin scheduler (#828):** `run_pending()` previously started _before_
+  the activation loop finished calling `plugin.start()`. It could therefore
+  run newly registered jobs on incompletely initialized plugins. Starting the
+  scheduler only after activation completes removes this startup race. A
+  shutdown arriving during the last `start()` suppresses the scheduler launch.
+  Plugin startup remains serial with teardown, and timed-out workers retain
+  their existing deferred-restart ownership.
+- **Reconnect owners (#829):** A reconnect coroutine abandoned by a stopped
+  loop could resume after a newer attempt started, and its unconditional
+  `finally` would clear the newer attempt's global reconnect flag. Each
+  scheduled reconnect now carries a distinct ownership identity; completion
+  changes shared state only when that identity still owns it. The monitor
+  also detects a cancelled or failed concurrent Future, including cancellation
+  _before_ the coroutine can enter its own `finally` cleanup. Direct unowned
+  calls are allowed only to clean up unowned state. Tests assert both sides
+  of these handoffs. Added behavioral docstrings address CodeRabbit's
+  documentation-coverage warning on #829.
+
+**Prior review comments:** the seven historical inline threads on #829 were
+already resolved when this round began. CodeRabbit's newer review found no
+blocking correctness defects, but reported 63.64% scoped docstring coverage
+against an 80% threshold. Actual CodeRabbit re-scoring and post-change GitHub
+CI require the PR updates; local docstring/pytest checks are not substitutes.
+
+**Limits:** A failed Python thread start, a blocked plugin `start()`/`stop()`,
+and genuinely ambiguous radio transmission remain inherently bounded or
+non-preemptible operations. The patches do not pretend to provide exactly-once
+radio delivery, hardware fault-injection coverage, or cancellation of a running
+plugin-controlled subprocess. Integration on the real Meshtastic device and
+Matrix SDK remains a separate merge gate.
+
 ## Compatibility decisions
 
 1. `mmrelay.meshtastic_utils` and `mmrelay.matrix_utils` are intentionally
