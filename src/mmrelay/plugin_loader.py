@@ -118,6 +118,8 @@ _global_scheduler_thread: threading.Thread | None = None
 _global_scheduler_stop_event: threading.Event | None = None
 # Serializes scheduler ownership across overlapping start/stop callers.
 _global_scheduler_lock = threading.RLock()
+_global_scheduler_restart_requested = False
+_global_scheduler_cleanup_thread: threading.Thread | None = None
 
 
 # Plugin dependency directory (may not be set if base dir can't be resolved)
@@ -3174,6 +3176,7 @@ def clear_plugin_jobs(plugin_name: str) -> None:
 def start_global_scheduler() -> None:
     """Start one scheduler owner; never overlap an unjoined previous worker."""
     global _global_scheduler_thread, _global_scheduler_stop_event
+    global _global_scheduler_restart_requested
 
     if schedule is None:
         logger.warning(
@@ -3184,7 +3187,19 @@ def start_global_scheduler() -> None:
     with _global_scheduler_lock:
         if _global_scheduler_thread is not None:
             if _global_scheduler_thread.is_alive():
-                logger.debug("Global scheduler thread already running or stopping")
+                if (
+                    _global_scheduler_stop_event is not None
+                    and _global_scheduler_stop_event.is_set()
+                ):
+                    # Stop timed out; the deferred cleanup owner will start a
+                    # replacement after the old worker exits. A plain no-op
+                    # here would abandon jobs registered by this plugin load.
+                    _global_scheduler_restart_requested = True
+                    logger.info(
+                        "Global scheduler restart deferred until old worker exits"
+                    )
+                else:
+                    logger.debug("Global scheduler thread already running")
                 return
             # A completed worker is safe to replace, even if a previous stop
             # timed out. No two workers may own schedule.run_pending().
@@ -3219,15 +3234,38 @@ def start_global_scheduler() -> None:
     logger.info("Global plugin scheduler started")
 
 
-def stop_global_scheduler() -> None:
-    """Stop the scheduler before dropping ownership or clearing its jobs.
+def _finish_stopping_scheduler(thread: threading.Thread) -> None:
+    """Retire a timed-out owner, starting its requested replacement only on exit."""
+    global _global_scheduler_thread, _global_scheduler_stop_event
+    global _global_scheduler_restart_requested, _global_scheduler_cleanup_thread
+    thread.join()
+    with _global_scheduler_lock:
+        if _global_scheduler_thread is not thread:
+            return
+        restart = _global_scheduler_restart_requested
+        _global_scheduler_restart_requested = False
+        _global_scheduler_thread = None
+        _global_scheduler_stop_event = None
+        _global_scheduler_cleanup_thread = None
+        logger.info("Global plugin scheduler worker exited after deferred stop")
+        # Recheck ownership and start under the reentrant lock. Otherwise a
+        # concurrent stop could cancel a newly requested restart.
+        if restart:
+            start_global_scheduler()
 
-    A timed-out job may still be running. Retain the worker and stop event in
-    that case: a subsequent start must not launch a second scheduler.
+
+def stop_global_scheduler() -> None:
+    """Stop the worker without losing ownership of a timed-out scheduler.
+
+    A subsequent load may request a deferred restart; the old worker must
+    exit before any new worker can call schedule.run_pending().
     """
     global _global_scheduler_thread, _global_scheduler_stop_event
+    global _global_scheduler_restart_requested, _global_scheduler_cleanup_thread
 
     with _global_scheduler_lock:
+        # A second shutdown supersedes any pending reload request.
+        _global_scheduler_restart_requested = False
         thread = _global_scheduler_thread
         if thread is None:
             return
@@ -3235,22 +3273,38 @@ def stop_global_scheduler() -> None:
         logger.debug("Stopping global scheduler thread")
         if _global_scheduler_stop_event is not None:
             _global_scheduler_stop_event.set()
+        # Clear old plugin jobs before a new load can register its jobs. If
+        # the old run_pending() is blocked, clearing after join would erase
+        # jobs registered by a load that requested deferred restart.
+        if schedule is not None:
+            schedule.clear()
         if thread.is_alive():
             if thread is threading.current_thread():
                 logger.error("Global scheduler cannot join itself")
-                return
-            thread.join(timeout=SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS)
+            else:
+                thread.join(timeout=SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS)
             if thread.is_alive():
                 logger.warning(
                     "Global scheduler thread did not stop within timeout; "
                     "retaining worker ownership until it exits"
                 )
+                if (
+                    _global_scheduler_cleanup_thread is None
+                    or not _global_scheduler_cleanup_thread.is_alive()
+                ):
+                    watcher = threading.Thread(
+                        target=_finish_stopping_scheduler,
+                        args=(thread,),
+                        name="global-plugin-scheduler-cleanup",
+                        daemon=True,
+                    )
+                    _global_scheduler_cleanup_thread = watcher
+                    watcher.start()
                 return
 
-        if schedule is not None:
-            schedule.clear()
         _global_scheduler_thread = None
         _global_scheduler_stop_event = None
+        _global_scheduler_cleanup_thread = None
         logger.info("Global plugin scheduler stopped")
 
 

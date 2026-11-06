@@ -14,11 +14,15 @@ class SchedulerLifecycleRegressions(unittest.TestCase):
             plugin_loader.schedule,
             plugin_loader._global_scheduler_thread,
             plugin_loader._global_scheduler_stop_event,
+            plugin_loader._global_scheduler_restart_requested,
+            plugin_loader._global_scheduler_cleanup_thread,
             plugin_loader.sorted_active_plugins,
             plugin_loader.plugins_loaded,
         )
         plugin_loader._global_scheduler_thread = None
         plugin_loader._global_scheduler_stop_event = None
+        plugin_loader._global_scheduler_restart_requested = False
+        plugin_loader._global_scheduler_cleanup_thread = None
         plugin_loader.sorted_active_plugins = []
         plugin_loader.plugins_loaded = False
 
@@ -27,6 +31,8 @@ class SchedulerLifecycleRegressions(unittest.TestCase):
             plugin_loader.schedule,
             plugin_loader._global_scheduler_thread,
             plugin_loader._global_scheduler_stop_event,
+            plugin_loader._global_scheduler_restart_requested,
+            plugin_loader._global_scheduler_cleanup_thread,
             plugin_loader.sorted_active_plugins,
             plugin_loader.plugins_loaded,
         ) = self.previous
@@ -62,6 +68,64 @@ class SchedulerLifecycleRegressions(unittest.TestCase):
             release.set()
             plugin_loader.stop_global_scheduler()
         self.assertIsNone(plugin_loader._global_scheduler_thread)
+
+    def test_timed_out_stop_can_restart_without_losing_new_plugin_jobs(self):
+        entered = threading.Event()
+        release = threading.Event()
+        restarted = threading.Event()
+        observed_jobs = []
+        active = 0
+        peak = 0
+        guard = threading.Lock()
+
+        class Schedule:
+            def __init__(self):
+                self.jobs = ["old"]
+                self.first = True
+
+            def run_pending(self):
+                nonlocal active, peak
+                with guard:
+                    active += 1
+                    peak = max(peak, active)
+                try:
+                    if self.first:
+                        self.first = False
+                        entered.set()
+                        release.wait(3)
+                    else:
+                        observed_jobs.append(tuple(self.jobs))
+                        restarted.set()
+                finally:
+                    with guard:
+                        active -= 1
+
+            def clear(self):
+                self.jobs.clear()
+
+        scheduler = Schedule()
+        plugin_loader.schedule = scheduler
+        try:
+            plugin_loader.start_global_scheduler()
+            self.assertTrue(entered.wait(2))
+            first = plugin_loader._global_scheduler_thread
+            with patch.object(
+                plugin_loader, "SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS", 0.01
+            ):
+                plugin_loader.stop_global_scheduler()
+            self.assertIs(plugin_loader._global_scheduler_thread, first)
+            self.assertEqual(scheduler.jobs, [])
+            scheduler.jobs.append("new")
+            plugin_loader.start_global_scheduler()
+            self.assertTrue(plugin_loader._global_scheduler_restart_requested)
+            release.set()
+            self.assertTrue(restarted.wait(2))
+            self.assertIn(("new",), observed_jobs)
+            self.assertEqual(peak, 1)
+            self.assertIsNot(plugin_loader._global_scheduler_thread, first)
+        finally:
+            release.set()
+            plugin_loader.stop_global_scheduler()
 
     def test_loader_serializes_duplicate_starts(self):
         started = threading.Event()
