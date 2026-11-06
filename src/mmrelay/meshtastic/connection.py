@@ -512,7 +512,15 @@ def _schedule_connect_time_calibration_probe(
         if old_timer is not None:
             with contextlib.suppress(Exception):
                 old_timer.cancel()
-        timer.start()
+        try:
+            timer.start()
+        except Exception:
+            # Timer startup is best-effort: do not leave an unstarted timer
+            # registered as the active probe owner after resource failure.
+            _clear_pending_timer(timer)
+            facade.logger.warning(
+                "Could not start delayed connect-time probe timer", exc_info=True
+            )
 
     if stabilization_deadline is not None:
         delay = (
