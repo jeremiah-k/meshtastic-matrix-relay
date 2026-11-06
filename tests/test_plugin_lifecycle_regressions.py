@@ -272,3 +272,207 @@ class SchedulerLifecycleRegressions(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_shutdown_interrupts_custom_plugin_preparation_between_directories(tmp_path):
+    """An interrupted import must not continue to another custom plugin."""
+    from unittest.mock import patch
+
+    first = tmp_path / "alpha"
+    second = tmp_path / "beta"
+    first.mkdir()
+    second.mkdir()
+    entered = threading.Event()
+    release = threading.Event()
+    calls = []
+    outcomes = []
+
+    def import_plugin(path, **_kwargs):
+        calls.append(path)
+        if path == str(first):
+            entered.set()
+            assert release.wait(3)
+        return []
+
+    with (
+        patch.object(plugin_loader, "plugins_loaded", False),
+        patch.object(plugin_loader, "sorted_active_plugins", []),
+        patch.object(
+            plugin_loader, "get_custom_plugin_dirs", return_value=[str(tmp_path)]
+        ),
+        patch.object(plugin_loader, "get_community_plugin_dirs", return_value=[]),
+        patch.object(
+            plugin_loader, "load_plugins_from_directory", side_effect=import_plugin
+        ),
+        patch.object(plugin_loader, "start_global_scheduler") as start_scheduler,
+        patch.object(plugin_loader, "stop_global_scheduler"),
+    ):
+        loading = threading.Thread(
+            target=lambda: outcomes.append(
+                plugin_loader.load_plugins(
+                    {
+                        "custom-plugins": {
+                            "alpha": {"active": True},
+                            "beta": {"active": True},
+                        }
+                    }
+                )
+            )
+        )
+        shutdown = threading.Thread(target=plugin_loader.shutdown_plugins)
+        try:
+            loading.start()
+            assert entered.wait(3)
+            shutdown.start()
+            assert plugin_loader._plugin_shutdown_requested.wait(3)
+        finally:
+            release.set()
+            loading.join(3)
+            if shutdown.ident is not None:
+                shutdown.join(3)
+        assert not loading.is_alive() and not shutdown.is_alive()
+        assert calls == [str(first)]
+        assert outcomes == [[]]
+        assert not plugin_loader.plugins_loaded
+        start_scheduler.assert_not_called()
+
+
+def test_shutdown_interrupts_community_preparation_before_next_clone(tmp_path):
+    """Do not perform another network operation after a blocked clone returns."""
+    from unittest.mock import patch
+
+    entered = threading.Event()
+    release = threading.Event()
+    clones = []
+    outcomes = []
+
+    def clone_repo(url, *_args):
+        clones.append(url)
+        entered.set()
+        assert release.wait(3)
+        return True
+
+    config = {
+        "community-plugins": {
+            "one": {
+                "active": True,
+                "repository": "https://github.com/example/one.git",
+                "branch": "main",
+            },
+            "two": {
+                "active": True,
+                "repository": "https://github.com/example/two.git",
+                "branch": "main",
+            },
+        }
+    }
+    with (
+        patch.object(plugin_loader, "plugins_loaded", False),
+        patch.object(plugin_loader, "sorted_active_plugins", []),
+        patch.object(plugin_loader, "get_custom_plugin_dirs", return_value=[]),
+        patch.object(
+            plugin_loader, "get_community_plugin_dirs", return_value=[str(tmp_path)]
+        ),
+        patch.object(plugin_loader, "clone_or_update_repo", side_effect=clone_repo),
+        patch.object(plugin_loader, "_install_requirements_for_repo") as install,
+        patch.object(plugin_loader, "load_plugins_from_directory") as import_plugin,
+        patch.object(plugin_loader, "start_global_scheduler") as start_scheduler,
+        patch.object(plugin_loader, "stop_global_scheduler"),
+    ):
+        loading = threading.Thread(
+            target=lambda: outcomes.append(plugin_loader.load_plugins(config))
+        )
+        shutdown = threading.Thread(target=plugin_loader.shutdown_plugins)
+        try:
+            loading.start()
+            assert entered.wait(3)
+            shutdown.start()
+            assert plugin_loader._plugin_shutdown_requested.wait(3)
+        finally:
+            release.set()
+            loading.join(3)
+            if shutdown.ident is not None:
+                shutdown.join(3)
+        assert not loading.is_alive() and not shutdown.is_alive()
+        assert clones == ["https://github.com/example/one.git"]
+        assert outcomes == [[]]
+        assert not plugin_loader.plugins_loaded
+        install.assert_not_called()
+        import_plugin.assert_not_called()
+        start_scheduler.assert_not_called()
+
+
+def test_shutdown_during_dependency_install_aborts_before_recording_state(tmp_path):
+    """A completed pip process must not restart plugin activation after teardown."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    repo = tmp_path / "one"
+    repo.mkdir()
+    (repo / plugin_loader.PLUGIN_REQUIREMENTS_FILENAME).write_text("six==1.0\n")
+    entered = threading.Event()
+    release = threading.Event()
+    outcomes = []
+
+    def install(*_args, **_kwargs):
+        entered.set()
+        assert release.wait(3)
+        return True
+
+    config = {
+        "community-plugins": {
+            "one": {
+                "active": True,
+                "repository": "https://github.com/example/one.git",
+                "commit": "a" * 40,
+                "install_requirements": True,
+            },
+        }
+    }
+    with (
+        patch.object(plugin_loader, "plugins_loaded", False),
+        patch.object(plugin_loader, "sorted_active_plugins", []),
+        patch.object(plugin_loader, "get_custom_plugin_dirs", return_value=[]),
+        patch.object(
+            plugin_loader, "get_community_plugin_dirs", return_value=[str(tmp_path)]
+        ),
+        patch.object(plugin_loader, "clone_or_update_repo", return_value=True),
+        patch.object(plugin_loader, "_check_commit_pin_for_upstream_updates"),
+        patch.object(
+            plugin_loader, "_resolve_local_head_commit", return_value="a" * 40
+        ),
+        patch.object(
+            plugin_loader,
+            "_effective_requirements_for_repo",
+            return_value=SimpleNamespace(allowed=["six==1.0"]),
+        ),
+        patch.object(
+            plugin_loader, "_requirements_install_target_identity", return_value="test"
+        ),
+        patch.object(
+            plugin_loader, "_install_requirements_for_repo", side_effect=install
+        ),
+        patch.object(plugin_loader, "_save_plugin_state") as save_state,
+        patch.object(plugin_loader, "load_plugins_from_directory") as import_plugin,
+        patch.object(plugin_loader, "start_global_scheduler") as start_scheduler,
+        patch.object(plugin_loader, "stop_global_scheduler"),
+    ):
+        loading = threading.Thread(
+            target=lambda: outcomes.append(plugin_loader.load_plugins(config))
+        )
+        shutdown = threading.Thread(target=plugin_loader.shutdown_plugins)
+        try:
+            loading.start()
+            assert entered.wait(3)
+            shutdown.start()
+            assert plugin_loader._plugin_shutdown_requested.wait(3)
+        finally:
+            release.set()
+            loading.join(3)
+            if shutdown.ident is not None:
+                shutdown.join(3)
+        assert not loading.is_alive() and not shutdown.is_alive()
+        assert outcomes == [[]]
+        save_state.assert_not_called()
+        import_plugin.assert_not_called()
+        start_scheduler.assert_not_called()
