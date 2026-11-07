@@ -6,7 +6,7 @@ This guide helps you upgrade from any legacy layout to the v1.3 unified HOME mod
 
 MMRelay now uses a single MMRELAY_HOME root for all runtime state:
 
-> **Deprecation Note**: MMRelay 1.4 is the final release series with legacy credential/location fallback and migration tooling. Warnings continue until you migrate; complete migration before upgrading to v1.5.
+> **Migration Note**: MMRelay 1.4 ships the v1.3 legacy-layout path fallbacks and the `migrate`/`verify-migration` tooling, so users upgrading directly from MMRelay 1.2 or older can migrate their data without installing an intermediate 1.3 build.
 
 - Credentials (moved to `matrix/` subdirectory)
 - Database (moved to `database/` subdirectory)
@@ -62,8 +62,10 @@ If your credentials are missing or malformed, run `mmrelay auth login` again to 
 
 ## Upgrade Steps (All Deployments)
 
+The migration commands ship in MMRelay 1.3 and later; upgrading directly to 1.4 avoids an intermediate 1.3 install.
+
 1. Stop MMRelay.
-2. Upgrade the package or container image to 1.3.
+2. Upgrade the package or container image to 1.4 (or later).
 3. Run `mmrelay migrate` to move legacy data into MMRELAY_HOME.
 4. Start MMRelay.
 
@@ -83,7 +85,7 @@ If you need to overwrite existing target files, use `mmrelay migrate --force`. N
 
 ### Local / systemd / venv / pipx installs
 
-1. Upgrade package to 1.3.0.
+1. Upgrade package to 1.4 or later.
 2. Run:
    - `mmrelay migrate --dry-run`
    - `mmrelay migrate`

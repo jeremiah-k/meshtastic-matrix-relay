@@ -6,7 +6,7 @@ the [Docker Guide](DOCKER.md) and does not use the native Windows paths below.
 
 ## Install and run
 
-With Python 3.11 or newer, install the native command in an isolated environment
+With Python 3.12 or newer, install the native command in an isolated environment
 using either [pipx](https://pipx.pypa.io/stable/) or
 [uv](https://docs.astral.sh/uv/):
 

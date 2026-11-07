@@ -7,13 +7,12 @@ name = "mmrelay"
 version = "1.4.1"
 description = "Bridge between Meshtastic mesh networks and Matrix chat rooms"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = "GPL-3.0-or-later"
 authors = [{ name = "Geoff Whittington" }, { name = "Jeremiah K." }]
 maintainers = [{ name = "Jeremiah K.", email = "jeremiahk@gmx.com" }]
 classifiers = [
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
@@ -27,8 +26,7 @@ dependencies = [
   "Pillow==13.0.0",
   "segno==1.6.6",
   "aiohttp==3.14.5",
-  "mindroom-nio==0.40.0; python_version < '3.12'",
-  "mindroom-nio==1.3.0; python_version >= '3.12'",
+  "mindroom-nio==1.3.0",
   "matplotlib==3.11.2",
   "requests==2.34.2",
   "markdown==3.11.3",
@@ -42,10 +40,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-e2e = [
-  "mindroom-nio[e2e]==0.40.0; python_version < '3.12'",
-  "mindroom-nio[e2e]==1.3.0; python_version >= '3.12'",
-]
+e2e = ["mindroom-nio[e2e]==1.3.0"]
 test = [
   "coverage==7.17.2",
   "pytest==9.2.0",
