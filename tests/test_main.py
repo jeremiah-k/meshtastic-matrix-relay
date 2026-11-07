@@ -692,3 +692,31 @@ def test_does_not_suppress_non_timeout_background_exceptions():
         "future": object(),
     }
     assert not _should_suppress_unretrieved_matrix_task_timeout(context)
+
+
+@pytest.mark.asyncio
+async def test_startup_drain_readiness_falls_back_when_timer_unavailable(
+    reset_meshtastic_globals,
+):
+    """Even with no timer or inbound packet, readiness follows the deadline."""
+    import time
+
+    import mmrelay.meshtastic_utils as mu
+    from mmrelay.main import _wait_for_startup_drain_completion
+
+    ready = mu.get_startup_drain_complete_event()
+    assert ready is not None
+    ready.clear()
+    deadline = time.monotonic() + 0.03
+    with mu._relay_rx_time_clock_skew_lock:
+        mu._relay_startup_drain_deadline_monotonic_secs = deadline
+        mu._relay_startup_drain_expiry_timer = None
+    try:
+        await asyncio.wait_for(
+            _wait_for_startup_drain_completion(asyncio.Event()), timeout=1
+        )
+        assert time.monotonic() >= deadline
+        assert ready.is_set()
+        assert mu._relay_startup_drain_deadline_monotonic_secs is None
+    finally:
+        ready.set()

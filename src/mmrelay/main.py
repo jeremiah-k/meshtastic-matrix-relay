@@ -10,6 +10,7 @@ import signal
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable, cast
 
@@ -58,16 +59,18 @@ from mmrelay.constants.network import (
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
 from mmrelay.db_utils import initialize_database, wipe_message_map
 from mmrelay.log_utils import get_logger
+from mmrelay.matrix_utils import InviteMemberEvent  # type: ignore[attr-defined]
 from mmrelay.matrix_utils import (
-    InviteMemberEvent,  # type: ignore[attr-defined]
     connect_matrix,
     join_matrix_room,
+)
+from mmrelay.matrix_utils import logger as matrix_logger
+from mmrelay.matrix_utils import (
     on_decryption_failure,
     on_invite,
     on_room_member,
     on_room_message,
 )
-from mmrelay.matrix_utils import logger as matrix_logger
 from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.meshtastic_utils import logger as meshtastic_logger
 from mmrelay.message_queue import (
@@ -238,6 +241,21 @@ async def _wait_for_startup_drain_completion(
     if drain_complete_event is None:
         return
     while not drain_complete_event.is_set() and not shutdown_event.is_set():
+        # The background Timer is best-effort: thread exhaustion can prevent
+        # its startup entirely. Expire under the same lock as timer callbacks
+        # so the drain cannot remain stuck or be released before its deadline.
+        expired_timer = None
+        with meshtastic_utils._relay_rx_time_clock_skew_lock:
+            deadline = meshtastic_utils._relay_startup_drain_deadline_monotonic_secs
+            if deadline is not None and time.monotonic() >= deadline:
+                expired_timer = meshtastic_utils._relay_startup_drain_expiry_timer
+                meshtastic_utils._relay_startup_drain_expiry_timer = None
+                meshtastic_utils._relay_startup_drain_deadline_monotonic_secs = None
+                drain_complete_event.set()
+        if expired_timer is not None:
+            expired_timer.cancel()
+        if drain_complete_event.is_set():
+            return
         if sync_task is not None and sync_task.done():
             return
         try:

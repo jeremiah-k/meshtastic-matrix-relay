@@ -11,6 +11,12 @@ __all__ = [
 def ensure_meshtastic_callbacks_subscribed() -> None:
     """Ensure Meshtastic pubsub callbacks are subscribed exactly once."""
     with facade.meshtastic_sub_lock:
+        # A delayed connect completion must not undo shutdown unsubscribe.
+        if facade.shutting_down:
+            facade.logger.debug(
+                "Skipping Meshtastic callback subscription during shutdown"
+            )
+            return
         facade._callbacks_tearing_down = False
         if not facade.subscribed_to_messages:
             facade.pub.subscribe(facade.on_meshtastic_message, "meshtastic.receive")

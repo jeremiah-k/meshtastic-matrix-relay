@@ -462,6 +462,7 @@ def _schedule_connect_time_calibration_probe(
             return True
 
     def _arm_delayed_probe(delay: float, window: str | None) -> None:
+        """Register a deferred probe, retaining only the latest timer owner."""
         facade.logger.debug(
             "Delaying connect-time metadata probe by %.1fs until after %s window",
             delay,
@@ -512,7 +513,17 @@ def _schedule_connect_time_calibration_probe(
         if old_timer is not None:
             with contextlib.suppress(Exception):
                 old_timer.cancel()
-        timer.start()
+        try:
+            timer.start()
+        except RuntimeError:
+            # Thread.start() reports failed thread creation as RuntimeError.
+            _clear_pending_timer(timer)
+            facade.logger.warning(
+                "Could not start delayed connect-time probe timer", exc_info=True
+            )
+        except Exception:
+            _clear_pending_timer(timer)
+            raise
 
     if stabilization_deadline is not None:
         delay = (
@@ -542,7 +553,6 @@ def _rollback_connect_attempt_state(
     """
     _lock_ctx = contextlib.nullcontext() if lock_held else facade.meshtastic_lock
     startup_drain_timer_to_cancel: Any = None
-    mark_startup_drain_complete = False
     if client is not None and (
         client_assigned_for_this_connect or client is facade.meshtastic_iface
     ):
@@ -575,18 +585,17 @@ def _rollback_connect_attempt_state(
                 startup_drain_timer_to_cancel = facade._relay_startup_drain_expiry_timer
                 facade._relay_startup_drain_expiry_timer = None
                 facade._relay_startup_drain_deadline_monotonic_secs = None
-                mark_startup_drain_complete = True
+                # Signal while holding the drain-state lock so a newer drain
+                # cannot be armed between this rollback and its completion.
+                startup_drain_complete_event = facade.get_startup_drain_complete_event()
+                if startup_drain_complete_event is not None:
+                    startup_drain_complete_event.set()
                 if startup_drain_applied_for_this_connect:
                     facade._startup_packet_drain_applied = False
             if reconnect_bootstrap_armed_for_this_connect:
                 facade._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
                     None
                 )
-    if mark_startup_drain_complete:
-        # Keep lock scope focused on state mutation; event signaling is non-blocking.
-        startup_drain_complete_event = facade.get_startup_drain_complete_event()
-        if startup_drain_complete_event is not None:
-            startup_drain_complete_event.set()
     if startup_drain_timer_to_cancel is not None:
         with contextlib.suppress(AttributeError, RuntimeError, TypeError):
             startup_drain_timer_to_cancel.cancel()
@@ -848,7 +857,6 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
         startup_drain_armed_for_this_connect = False
         startup_drain_applied_for_this_connect = False
         reconnect_bootstrap_armed_for_this_connect = False
-        signal_startup_drain_complete_for_this_connect = False
         client_assigned_for_this_connect = False
 
         client: Any | None = None
@@ -1706,7 +1714,13 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                                     facade._relay_connection_started_monotonic_secs
                                     + facade.RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS
                                 )
-                                signal_startup_drain_complete_for_this_connect = True
+                                # Completion and deadline mutation must share
+                                # the lock that protects new drain arming.
+                                startup_drain_complete_event = (
+                                    facade.get_startup_drain_complete_event()
+                                )
+                                if startup_drain_complete_event is not None:
+                                    startup_drain_complete_event.set()
                                 reconnect_bootstrap_armed_for_this_connect = True
                                 timing_mode = "reconnect"
                         facade.logger.debug(
@@ -1717,14 +1731,6 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                             facade._relay_startup_drain_deadline_monotonic_secs,
                             facade._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs,
                         )
-                if signal_startup_drain_complete_for_this_connect:
-                    # Signal completion after clock-skew state updates are committed.
-                    startup_drain_complete_event = (
-                        facade.get_startup_drain_complete_event()
-                    )
-                    if startup_drain_complete_event is not None:
-                        startup_drain_complete_event.set()
-
                 # Publish the active client only after per-connection timing state
                 # has been reset, so callbacks cannot observe stale skew windows.
                 if facade.shutting_down:
@@ -1811,7 +1817,6 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                 # Arm startup drain only once setup completes, so the full drain
                 # interval is available when receive handling becomes active.
                 startup_drain_deadline: float | None = None
-                clear_startup_drain_complete_event = False
                 if startup_drain_pending_for_this_connect:
                     with facade._relay_rx_time_clock_skew_lock:
                         if not facade._startup_packet_drain_applied:
@@ -1825,14 +1830,13 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                             facade._startup_packet_drain_applied = True
                             startup_drain_applied_for_this_connect = True
                             startup_drain_armed_for_this_connect = True
-                            clear_startup_drain_complete_event = True
-                    if clear_startup_drain_complete_event:
-                        # Keep lock scope focused on shared timing state updates.
-                        startup_drain_complete_event = (
-                            facade.get_startup_drain_complete_event()
-                        )
-                        if startup_drain_complete_event is not None:
-                            startup_drain_complete_event.clear()
+                            # Clear readiness atomically with deadline arming.
+                            # A previous callback cannot complete this drain.
+                            startup_drain_complete_event = (
+                                facade.get_startup_drain_complete_event()
+                            )
+                            if startup_drain_complete_event is not None:
+                                startup_drain_complete_event.clear()
                     if (
                         startup_drain_armed_for_this_connect
                         and startup_drain_deadline is not None
