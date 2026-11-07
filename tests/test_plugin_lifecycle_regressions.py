@@ -5,7 +5,19 @@ import time
 import unittest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import mmrelay.plugin_loader as plugin_loader
+
+
+@pytest.fixture(autouse=True)
+def restore_loader_config():
+    """Keep real load_plugins() calls from leaking config across test cases."""
+    original = plugin_loader.config
+    try:
+        yield
+    finally:
+        plugin_loader.config = original
 
 
 class SchedulerLifecycleRegressions(unittest.TestCase):
@@ -125,6 +137,126 @@ class SchedulerLifecycleRegressions(unittest.TestCase):
             self.assertIsNot(plugin_loader._global_scheduler_thread, first)
         finally:
             release.set()
+            plugin_loader.stop_global_scheduler()
+
+    def test_stale_cleanup_watcher_adopts_new_timed_out_scheduler(self):
+        """A still-live watcher must not abandon a newer timed-out owner."""
+        old_join_entered = threading.Event()
+        release_old_join = threading.Event()
+        new_join_entered = threading.Event()
+        release_new_join = threading.Event()
+
+        class Worker:
+            def __init__(self, entered, release):
+                self.entered = entered
+                self.release = release
+
+            def is_alive(self):
+                return True
+
+            def join(self, timeout=None):
+                if timeout is not None:
+                    return
+                self.entered.set()
+                assert self.release.wait(3)
+
+        old = Worker(old_join_entered, release_old_join)
+        successor = Worker(new_join_entered, release_new_join)
+        plugin_loader.schedule = MagicMock()
+        plugin_loader._global_scheduler_thread = old
+        plugin_loader._global_scheduler_stop_event = threading.Event()
+        try:
+            with (
+                patch.object(plugin_loader, "SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS", 0.01),
+                patch.object(plugin_loader, "start_global_scheduler") as restart,
+            ):
+                plugin_loader.stop_global_scheduler()
+                watcher = plugin_loader._global_scheduler_cleanup_thread
+                self.assertIsNotNone(watcher)
+                self.assertTrue(old_join_entered.wait(2))
+                with plugin_loader._global_scheduler_lock:
+                    # T1 finished and T2 took ownership while W1 was still
+                    # joining T1; then T2 timed out before W1 could check.
+                    plugin_loader._global_scheduler_thread = successor
+                    plugin_loader._global_scheduler_stop_event = threading.Event()
+                    plugin_loader._global_scheduler_stop_event.set()
+                    plugin_loader._global_scheduler_restart_requested = True
+                release_old_join.set()
+                self.assertTrue(new_join_entered.wait(2))
+                self.assertIs(plugin_loader._global_scheduler_cleanup_thread, watcher)
+                release_new_join.set()
+                watcher.join(2)
+                self.assertFalse(watcher.is_alive())
+                self.assertIsNone(plugin_loader._global_scheduler_thread)
+                self.assertIsNone(plugin_loader._global_scheduler_cleanup_thread)
+                self.assertFalse(plugin_loader._global_scheduler_restart_requested)
+                restart.assert_called_once_with()
+        finally:
+            release_old_join.set()
+            release_new_join.set()
+
+    def test_stale_cleanup_watcher_retires_already_exited_successor(self):
+        """An exited replacement still needs its deferred restart processed."""
+        old_join_entered = threading.Event()
+        release_old_join = threading.Event()
+
+        class OldWorker:
+            def is_alive(self):
+                return True
+
+            def join(self, timeout=None):
+                if timeout is None:
+                    old_join_entered.set()
+                    assert release_old_join.wait(3)
+
+        class ExitedWorker:
+            def is_alive(self):
+                return False
+
+            def join(self, timeout=None):
+                pass
+
+        plugin_loader.schedule = MagicMock()
+        plugin_loader._global_scheduler_thread = OldWorker()
+        plugin_loader._global_scheduler_stop_event = threading.Event()
+        try:
+            with (
+                patch.object(plugin_loader, "SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS", 0.01),
+                patch.object(plugin_loader, "start_global_scheduler") as restart,
+            ):
+                plugin_loader.stop_global_scheduler()
+                watcher = plugin_loader._global_scheduler_cleanup_thread
+                self.assertIsNotNone(watcher)
+                self.assertTrue(old_join_entered.wait(2))
+                with plugin_loader._global_scheduler_lock:
+                    plugin_loader._global_scheduler_thread = ExitedWorker()
+                    plugin_loader._global_scheduler_stop_event = threading.Event()
+                    plugin_loader._global_scheduler_stop_event.set()
+                    plugin_loader._global_scheduler_restart_requested = True
+                release_old_join.set()
+                watcher.join(2)
+                self.assertFalse(watcher.is_alive())
+                self.assertIsNone(plugin_loader._global_scheduler_thread)
+                self.assertIsNone(plugin_loader._global_scheduler_cleanup_thread)
+                self.assertFalse(plugin_loader._global_scheduler_restart_requested)
+                restart.assert_called_once_with()
+        finally:
+            release_old_join.set()
+
+    def test_explicit_restart_consumes_stale_deferred_request(self):
+        """Replacing a dead worker also consumes its unfulfilled restart flag."""
+        dead_worker = MagicMock()
+        dead_worker.is_alive.return_value = False
+        plugin_loader._global_scheduler_thread = dead_worker
+        plugin_loader._global_scheduler_stop_event = threading.Event()
+        plugin_loader._global_scheduler_stop_event.set()
+        plugin_loader._global_scheduler_restart_requested = True
+        plugin_loader.schedule = MagicMock()
+        try:
+            plugin_loader.start_global_scheduler()
+            self.assertFalse(plugin_loader._global_scheduler_restart_requested)
+            self.assertIsNot(plugin_loader._global_scheduler_thread, dead_worker)
+        finally:
             plugin_loader.stop_global_scheduler()
 
     def test_loader_serializes_duplicate_starts(self):
