@@ -3205,10 +3205,14 @@ def start_global_scheduler() -> None:
             # timed out. No two workers may own schedule.run_pending().
             _global_scheduler_thread = None
             _global_scheduler_stop_event = None
+            # An explicit new start fulfills any deferred request associated
+            # with the previous, already exited worker.
+            _global_scheduler_restart_requested = False
 
         stop_event = threading.Event()
 
         def scheduler_loop() -> None:
+            """Service scheduled jobs until this worker's stop event is set."""
             logger.debug("Global scheduler thread started")
             while not stop_event.is_set():
                 if schedule is not None:
@@ -3235,23 +3239,47 @@ def start_global_scheduler() -> None:
 
 
 def _finish_stopping_scheduler(thread: threading.Thread) -> None:
-    """Retire a timed-out owner, starting its requested replacement only on exit."""
+    """Retire stopped scheduler owners, following any replacement timed out meanwhile.
+
+    Only one cleanup watcher is kept. A prior owner may finish before the
+    watcher acquires the lock; if a newer worker has also timed out, transfer
+    watcher ownership rather than leaving that worker without a cleanup path.
+    """
     global _global_scheduler_thread, _global_scheduler_stop_event
     global _global_scheduler_restart_requested, _global_scheduler_cleanup_thread
-    thread.join()
-    with _global_scheduler_lock:
-        if _global_scheduler_thread is not thread:
+
+    while True:
+        thread.join()
+        with _global_scheduler_lock:
+            if _global_scheduler_thread is not thread:
+                successor = _global_scheduler_thread
+                if (
+                    successor is not None
+                    and _global_scheduler_stop_event is not None
+                    and _global_scheduler_stop_event.is_set()
+                ):
+                    # The replacement may already have exited; joining it is
+                    # still necessary to retire its pending restart request.
+                    thread = successor
+                    continue
+                # Clear this registration while locked: a later timed-out stop
+                # must be able to install a watcher before we actually exit.
+                if _global_scheduler_cleanup_thread is threading.current_thread():
+                    _global_scheduler_cleanup_thread = None
+                return
+
+            restart = _global_scheduler_restart_requested
+            _global_scheduler_restart_requested = False
+            _global_scheduler_thread = None
+            _global_scheduler_stop_event = None
+            if _global_scheduler_cleanup_thread is threading.current_thread():
+                _global_scheduler_cleanup_thread = None
+            logger.info("Global plugin scheduler worker exited after deferred stop")
+            # Starting while still holding the reentrant ownership lock keeps
+            # concurrent stop() calls from cancelling a requested replacement.
+            if restart:
+                start_global_scheduler()
             return
-        restart = _global_scheduler_restart_requested
-        _global_scheduler_restart_requested = False
-        _global_scheduler_thread = None
-        _global_scheduler_stop_event = None
-        _global_scheduler_cleanup_thread = None
-        logger.info("Global plugin scheduler worker exited after deferred stop")
-        # Recheck ownership and start under the reentrant lock. Otherwise a
-        # concurrent stop could cancel a newly requested restart.
-        if restart:
-            start_global_scheduler()
 
 
 def stop_global_scheduler() -> None:
@@ -3398,6 +3426,7 @@ def _load_plugins_impl(passed_config: Any = None) -> list[Any]:
     plugins = core_plugins.copy()
 
     def _shutdown_during_preparation() -> bool:
+        """Stop preparing plugins once a concurrent teardown has been requested."""
         if _plugin_shutdown_requested.is_set():
             logger.info("Aborting plugin preparation after shutdown request")
             return True
