@@ -326,3 +326,60 @@ those system-level scenarios passed offline.
 - OAuth/E2EE and migration state machines were evaluated for ownership risks
   and left unchanged deliberately; they are **not** declared fully verified
   merely because source inspection found existing locks and postconditions.
+
+## Fifth adversarial review — November 6, 17:53 bundle
+
+Source heads reviewed: #827 `c2d8216`, #828 `245b3b6`, #829 `ae7beea`,
+and #830 `86c3586`. All four remained open/non-draft, and their recorded
+GitHub Actions checks were successful at the time of inspection. All seven
+#829 inline threads were resolved. The Codecov patch reports at these heads
+were 85.14% (#827), 74.81% (#828), and 90.20% (#829); the documentation
+PR's report had no missing coverable lines. Those results do **not** describe
+this follow-up until CI runs on the amended heads.
+
+### Confirmed correction — scheduler cleanup ownership (#828)
+
+A timed-out scheduler worker **T1** leaves a background cleanup watcher **W1**.
+After T1 exits, an explicit start can replace it with T2 before W1 acquires
+its ownership lock. If T2 subsequently times out while W1 is still alive,
+shutdown declines to create another watcher. Previously W1 returned simply
+because the current worker was no longer T1, leaving T2 and any deferred
+restart request without an owner.
+
+The watcher now adopts a successor **only when its stop Event is asserted**,
+then joins and revalidates under the scheduler lock. This works even when the
+successor has already exited, and refuses to retire a healthy replacement.
+Clearing the watcher registration under the same lock allows later timed-out
+stops to register their own watcher. An explicit restart of an already-exited
+worker consumes any stale deferred-restart flag. Test cases force both
+_live_ and _already exited_ replacement races deterministically.
+
+### Confirmed correction — test isolation (#828)
+
+Module-level plugin loader tests previously leaked the last `load_plugins`
+configuration into the module-global `plugin_loader.config`. A local autouse
+fixture now restores the prior configuration after each case, independent of
+pass/fail and test selection order. No production configuration persistence
+was changed.
+
+### Verified without changes
+
+- **Shutdown lock concern (#828):** `main.py` calls `shutdown_plugins` from
+  `_run_blocking_shutdown_step` in both normal shutdown and startup rollback.
+  That helper starts a daemon thread and awaits its result with a bounded
+  timeout; it does not hold the asyncio event-loop thread while plugin
+  preparation is running. The loader still cannot preempt a running git/pip
+  child process or an arbitrary plugin implementation; that remains a
+  documented limit, not a missing `asyncio.to_thread` call.
+- **Python compatibility (#827):** `asyncio.timeout` is supported by the
+  declared minimum Python 3.11 (`pyproject.toml`); the test CI matrix is
+  3.11–3.15. Replacing it with an older compatibility idiom would not fix
+  a supported-version regression.
+- **Meshtastic (#829):** all previously reported inline findings are
+  resolved, and no additional verified code defect was found during this
+  review. The dependency-mocked event/connection tests remain the local
+  signal; real radio/BLE, Matrix and Python-version CI gates still apply.
+
+Review artifact tests exercise scheduler handoff, queue stop/restart and
+Meshtastic readiness/connection paths. As always, successful mocked tests
+are not evidence of hardware delivery guarantees or production E2EE behavior.
