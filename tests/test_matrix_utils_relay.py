@@ -1239,6 +1239,42 @@ async def test_on_room_message_reply_enabled(
         mock_handle_matrix_reply.assert_called_once()
 
 
+@patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
+@patch("mmrelay.matrix_utils.handle_matrix_reply", new_callable=AsyncMock)
+async def test_on_room_message_reply_uses_legacy_parse_when_codec_fails(
+    mock_handle_matrix_reply,
+    mock_room,
+    mock_event,
+):
+    """Codec failures must fall back to the legacy reply parse, not drop replies."""
+    test_config = {
+        "meshtastic": {
+            "message_interactions": {"replies": True},
+            "meshnet_name": "test_mesh",
+        },
+        "matrix_rooms": [{"id": TEST_ROOM_ID, "meshtastic_channel": 0}],
+        "matrix": {"bot_user_id": TEST_BOT_USER_ID},
+    }
+    mock_handle_matrix_reply.return_value = True
+    mock_event.source = {
+        "content": {
+            "m.relates_to": {"m.in_reply_to": {"event_id": "original_event_id"}}
+        }
+    }
+
+    with (
+        patch(
+            "mmrelay.matrix.events.canonicalize_matrix_event",
+            side_effect=RuntimeError("codec failure"),
+        ),
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
+    ):
+        await on_room_message(mock_room, mock_event)
+        mock_handle_matrix_reply.assert_called_once()
+
+
 @patch("mmrelay.plugin_loader.load_plugins", return_value=[])
 @patch("mmrelay.matrix_utils.connect_meshtastic")
 @patch("mmrelay.matrix_utils.queue_message")
@@ -1254,9 +1290,11 @@ async def test_on_room_message_reply_disabled(
     test_config,
 ):
     """
-    Test that reply messages are relayed with full content when reply interactions are disabled.
+    Test that reply messages use the canonical body when reply interactions are disabled.
 
-    Ensures that when reply interactions are disabled in the configuration, the entire event body—including quoted original messages—is queued for Meshtastic relay without stripping quoted lines.
+    The Matrix reply fallback quote is presentation metadata; the MEDRE canonical
+    body carries the authored reply text. The reply relationship is not applied
+    when reply interactions are disabled.
     """
 
     # Create a proper async mock function
@@ -1293,10 +1331,12 @@ async def test_on_room_message_reply_disabled(
             # Run the function
             await on_room_message(mock_room, mock_event)
 
-            # Assert that the message was queued
+            # Assert that the message was queued with the canonical authored body,
+            # without the Matrix reply fallback quote.
             mock_queue_message.assert_called_once()
             call_args = mock_queue_message.call_args[1]
-            assert mock_event.body in call_args["text"]
+            assert "This is a reply" in call_args["text"]
+            assert "original message" not in call_args["text"]
 
 
 async def test_on_room_message_reaction_enabled(mock_room, test_config):

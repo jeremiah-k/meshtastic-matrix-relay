@@ -31,6 +31,7 @@ from nio.events.room_events import RoomMemberEvent
 
 import mmrelay.matrix_utils as facade
 from mmrelay.constants.formats import MATRIX_SUPPRESS_KEY
+from mmrelay.matrix.canonical_ingress import canonicalize_matrix_event
 
 __all__ = [
     "on_decryption_failure",
@@ -417,19 +418,50 @@ async def on_room_message(
         )
         return
 
+    # Matrix-native identity, message text, and relations now share MEDRE's
+    # canonical 0.1 contract. Keep the nio object for plugin callbacks, E2EE
+    # operations, and MMRelay-specific Meshtastic metadata on the wire.
+    canonical_event: Any = None
+    if not is_reaction:
+        try:
+            canonical_event = canonicalize_matrix_event(room, event)
+        except Exception:  # noqa: BLE001 - codec failure must not drop a relay message
+            facade.logger.exception(
+                "Failed to canonicalize Matrix event; using legacy ingress"
+            )
+        else:
+            if not mesh_text_override:
+                canonical_body = canonical_event.payload.get("body")
+                if isinstance(canonical_body, str):
+                    text = canonical_body.strip()
+
     local_meshnet_name = facade.get_meshtastic_config_value(
         facade.config, "meshnet_name", ""
     )
 
     is_reply = False
     reply_to_event_id = None
-    if not is_reaction and relates_to and "m.in_reply_to" in relates_to:
-        reply_to_event_id = relates_to["m.in_reply_to"].get("event_id")
-        if reply_to_event_id:
-            is_reply = True
-            facade.logger.debug(
-                f"Processing Matrix reply to event: {reply_to_event_id}"
-            )
+    if not is_reaction:
+        if canonical_event is not None:
+            # The codec distinguishes explicit replies from thread compatibility
+            # fallbacks and keeps the target in its original Matrix native ID space.
+            for relation in canonical_event.relations:
+                if relation.relation_type == "reply" and relation.target_native_ref:
+                    reply_to_event_id = relation.target_native_ref.native_message_id
+                    is_reply = True
+                    facade.logger.debug(
+                        "Processing Matrix reply to event: %s", reply_to_event_id
+                    )
+                    break
+        elif relates_to and "m.in_reply_to" in relates_to:
+            # Codec failure: preserve the legacy reply parse rather than dropping
+            # the reply relationship for this message.
+            reply_to_event_id = relates_to["m.in_reply_to"].get("event_id")
+            if reply_to_event_id:
+                is_reply = True
+                facade.logger.debug(
+                    "Processing Matrix reply to event: %s", reply_to_event_id
+                )
 
     if is_reaction and interactions["reactions"]:
         if (

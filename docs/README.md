@@ -52,6 +52,7 @@ container mounts are used. The deployment guides document those cases.
 - **[Windows Installer Build Guide](dev/INNO_SETUP_GUIDE.md)** — installer maintenance
 - **[BLE Compatibility Notes](dev/BLE_DUAL_LIBRARY_COMPATIBILITY.md)** — BLE library compatibility design
 - **[Matrix Compatibility Plan](dev/MATRIX_DUAL_LIBRARY_COMPATIBILITY_PLAN.md)** — Matrix-provider compatibility design
+- **[MEDRE Matrix ingress](dev/MEDRE_MATRIX_1_5_INTEGRATION.md)** — 1.5 canonical Matrix event boundary and Git dependency pins
 - **[mindroom-nio 1.x compatibility](dev/MINDROOM_NIO_UPGRADE.md)** — single provider pin, ordinary-client contracts, and live-validation requirements
 - **[Historical v1.3 migration guide](MIGRATION_1.3.md)** — reference for older data layouts, not required for new installs
 - **[Archived implementation notes](dev/archive/)** — historical design and migration material
