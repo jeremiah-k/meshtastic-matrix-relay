@@ -20,7 +20,7 @@ from packaging.requirements import Requirement
 def direct_requirements(manifest: Path) -> list[str]:
     """Return direct-URL dependencies from base and all optional extras."""
     with manifest.open("rb") as handle:
-        project = tomllib.load(handle)["project"]
+        project = tomllib.load(handle).get("project")
     if not isinstance(project, dict):
         raise ValueError("project must be a table")
     base = project.get("dependencies", [])
@@ -44,18 +44,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pyproject", type=Path, default=Path("pyproject.toml"))
     parser.add_argument("--github-output", type=Path)
+    parser.add_argument("--github-summary", type=Path)
     args = parser.parse_args()
     try:
         direct = direct_requirements(args.pyproject)
-    except (KeyError, OSError, TypeError, ValueError, tomllib.TOMLDecodeError) as exc:
+    except (OSError, TypeError, ValueError, tomllib.TOMLDecodeError) as exc:
         print(f"::error::Cannot validate PyPI requirements: {exc}", file=sys.stderr)
         return 1
     eligible = not direct
     if args.github_output:
         with args.github_output.open("a", encoding="utf-8") as output:
             output.write(f"eligible={'true' if eligible else 'false'}\n")
+    names = ", ".join(Requirement(req).name for req in direct)
     if direct:
-        names = ", ".join(req.split("@", 1)[0].strip() for req in direct)
         print(
             "::warning::Skipping PyPI upload: direct-URL Requires-Dist "
             f"not accepted by PyPI ({names}). Publish source/GitHub artifacts "
@@ -63,6 +64,20 @@ def main() -> int:
         )
     else:
         print("No direct-URL requirements declared; PyPI upload permitted.")
+    if args.github_summary:
+        with args.github_summary.open("a", encoding="utf-8") as summary:
+            if direct:
+                summary.write(
+                    "### PyPI upload skipped\n\n"
+                    f"Direct-URL dependencies in package metadata: {names}. "
+                    "GitHub/source releases remain available; publish indexed "
+                    "dependencies before enabling PyPI upload.\n"
+                )
+            else:
+                summary.write(
+                    "### PyPI upload eligible\n\n"
+                    "No direct-URL requirements declared.\n"
+                )
     return 0
 
 

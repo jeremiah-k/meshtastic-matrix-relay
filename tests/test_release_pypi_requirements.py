@@ -127,7 +127,8 @@ def test_workflow_upload_is_gated_and_preflight_matches_current_manifest(tmp_pat
     assert workflow.index("Install build dependencies") < workflow.index(
         "Check distribution requirements for PyPI"
     )
-    assert "python -m pip install build packaging" in workflow
+    assert 'python -m pip install "build==1.6.1" "packaging==26.3"' in workflow
+    assert '--github-summary "$GITHUB_STEP_SUMMARY"' in workflow
     output = tmp_path / "actions-output"
     subprocess.run(  # nosec B603 - repository script and manifest only
         [
@@ -142,3 +143,66 @@ def test_workflow_upload_is_gated_and_preflight_matches_current_manifest(tmp_pat
     )
     eligible = not direct_requirements(ROOT / "pyproject.toml")
     assert output.read_text() == f"eligible={str(eligible).lower()}\n"
+
+
+@pytest.mark.parametrize(
+    "body", ["", '[other]\nname="missing"\n', 'project = "not-a-table"\n']
+)
+def test_gate_rejects_missing_or_non_table_project(tmp_path: Path, body: str) -> None:
+    manifest = tmp_path / "pyproject.toml"
+    manifest.write_text(body, encoding="utf-8")
+    output = tmp_path / "actions-output"
+    result = subprocess.run(  # nosec B603 - repo script path and fixture manifest only
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--pyproject",
+            str(manifest),
+            "--github-output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert "project must be a table" in result.stderr
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("use_direct", [False, True])
+def test_gate_summary_reports_publish_decision_without_urls(
+    tmp_path: Path, use_direct: bool
+) -> None:
+    requirement = (
+        '"medre[dev] @ git+https://github.com/jeremiah-k/medre.git@' + "a" * 40 + '"'
+        if use_direct
+        else '"click==8.3.1"'
+    )
+    manifest = _manifest(tmp_path, base=requirement)
+    output = tmp_path / "actions-output"
+    summary = tmp_path / "actions-summary"
+    subprocess.run(  # nosec B603 - repo script path and fixture manifest only
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--pyproject",
+            str(manifest),
+            "--github-output",
+            str(output),
+            "--github-summary",
+            str(summary),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert output.read_text() == f"eligible={'false' if use_direct else 'true'}\n"
+    text = summary.read_text()
+    if use_direct:
+        assert "PyPI upload skipped" in text
+        assert "medre" in text
+        assert "git+https" not in text
+        assert "medre[dev]" not in text
+    else:
+        assert "PyPI upload eligible" in text
