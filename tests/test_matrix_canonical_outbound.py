@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 import sys
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from medre.adapters.matrix.codec import MatrixCodec
@@ -13,7 +13,6 @@ from medre.adapters.matrix.outbound import MatrixOutboundOperation
 from medre.config.adapters.matrix import MatrixConfig
 
 from mmrelay.matrix.canonical_outbound import render_matrix_relay_content
-from mmrelay.matrix_utils import matrix_relay
 
 ROOM = "!mesh:example.org"
 BOT = "@relay:example.org"
@@ -227,64 +226,6 @@ async def test_outbound_renderer_refuses_missing_native_reply_relation():
     ):
         with pytest.raises(ValueError, match="lost the native reply relation"):
             await render(reply_to_event_id="$target")
-
-
-@pytest.mark.asyncio
-async def test_matrix_relay_uses_canonical_renderer_without_second_matrix_client():
-    client = MagicMock()
-    client.rooms = {ROOM: SimpleNamespace(encrypted=False)}
-    client.user_id = BOT
-    client.room_send = AsyncMock(return_value=SimpleNamespace(event_id="$sent"))
-    with (
-        patch(
-            "mmrelay.matrix_utils.connect_matrix",
-            new_callable=AsyncMock,
-            return_value=client,
-        ),
-        patch(
-            "mmrelay.matrix_utils.config", {"meshtastic": {"meshnet_name": "LocalMesh"}}
-        ),
-        patch(
-            "mmrelay.matrix_utils.get_interaction_settings",
-            return_value={"replies": True},
-        ),
-        patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False),
-    ):
-        await matrix_relay(ROOM, "hello", "Alice", "A", "LocalMesh", 1, 19)
-    client.room_send.assert_awaited_once()
-    sent = client.room_send.call_args.kwargs
-    assert sent["content"]["medre"]["envelope"]["event_kind"] == "message.created"
-    assert sent["content"]["meshtastic_id"] == 19
-    assert sent["tx_id"].startswith("mmrelay-")
-
-
-@pytest.mark.asyncio
-async def test_matrix_relay_never_sends_when_renderer_fails():
-    client = MagicMock()
-    client.rooms = {ROOM: SimpleNamespace(encrypted=False)}
-    client.room_send = AsyncMock()
-    with (
-        patch(
-            "mmrelay.matrix_utils.connect_matrix",
-            new_callable=AsyncMock,
-            return_value=client,
-        ),
-        patch(
-            "mmrelay.matrix_utils.config", {"meshtastic": {"meshnet_name": "LocalMesh"}}
-        ),
-        patch(
-            "mmrelay.matrix_utils.get_interaction_settings",
-            return_value={"replies": False},
-        ),
-        patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False),
-        patch(
-            "mmrelay.matrix.relay.render_matrix_relay_content",
-            new_callable=AsyncMock,
-            side_effect=ValueError("bad operation"),
-        ),
-    ):
-        await matrix_relay(ROOM, "hello", "Alice", "A", "LocalMesh", 1)
-    client.room_send.assert_not_awaited()
 
 
 @pytest.mark.asyncio

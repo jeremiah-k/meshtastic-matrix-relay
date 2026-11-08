@@ -114,3 +114,69 @@ async def test_relay_preserves_canonical_quotes_and_legacy_codec_failure_behavio
     assert enqueue.call_args.kwargs["mapping_info"]["text"] == mapping_text
     if replies_enabled:
         assert enqueue.call_args.kwargs["reply_id"] == 42
+
+
+ROOM = "!mesh:example.org"
+BOT = "@relay:example.org"
+
+
+@pytest.mark.asyncio
+async def test_matrix_relay_uses_canonical_renderer_without_second_matrix_client():
+    from mmrelay.matrix_utils import matrix_relay
+
+    client = MagicMock()
+    client.rooms = {ROOM: SimpleNamespace(encrypted=False)}
+    client.user_id = BOT
+    client.room_send = AsyncMock(return_value=SimpleNamespace(event_id="$sent"))
+    with (
+        patch(
+            "mmrelay.matrix_utils.connect_matrix",
+            new_callable=AsyncMock,
+            return_value=client,
+        ),
+        patch(
+            "mmrelay.matrix_utils.config", {"meshtastic": {"meshnet_name": "LocalMesh"}}
+        ),
+        patch(
+            "mmrelay.matrix_utils.get_interaction_settings",
+            return_value={"replies": True},
+        ),
+        patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False),
+    ):
+        await matrix_relay(ROOM, "hello", "Alice", "A", "LocalMesh", 1, 19)
+    client.room_send.assert_awaited_once()
+    sent = client.room_send.call_args.kwargs
+    assert sent["content"]["medre"]["envelope"]["event_kind"] == "message.created"
+    assert sent["content"]["meshtastic_id"] == 19
+    assert sent["tx_id"].startswith("mmrelay-")
+
+
+@pytest.mark.asyncio
+async def test_matrix_relay_never_sends_when_renderer_fails():
+    from mmrelay.matrix_utils import matrix_relay
+
+    client = MagicMock()
+    client.rooms = {ROOM: SimpleNamespace(encrypted=False)}
+    client.room_send = AsyncMock()
+    with (
+        patch(
+            "mmrelay.matrix_utils.connect_matrix",
+            new_callable=AsyncMock,
+            return_value=client,
+        ),
+        patch(
+            "mmrelay.matrix_utils.config", {"meshtastic": {"meshnet_name": "LocalMesh"}}
+        ),
+        patch(
+            "mmrelay.matrix_utils.get_interaction_settings",
+            return_value={"replies": False},
+        ),
+        patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False),
+        patch(
+            "mmrelay.matrix.relay.render_matrix_relay_content",
+            new_callable=AsyncMock,
+            side_effect=ValueError("bad operation"),
+        ),
+    ):
+        await matrix_relay(ROOM, "hello", "Alice", "A", "LocalMesh", 1)
+    client.room_send.assert_not_awaited()
