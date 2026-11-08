@@ -339,3 +339,16 @@ async def test_outbound_renderer_rejects_inconsistent_provenance(field, value):
     with patch.object(_RENDERER, "render", side_effect=inconsistent_render):
         with pytest.raises(ValueError, match="canonical v1 provenance"):
             await render()
+
+
+@pytest.mark.asyncio
+async def test_outbound_provenance_identifies_actual_node_not_display_shortname():
+    """Canonical transport identity stays stable when the radio UI name changes."""
+    content = await render(source_node_id="!0000007b", shortname="A")
+    envelope = content["medre"]["envelope"]
+    assert envelope["source_transport_id"] == "!0000007b"
+    assert content["meshtastic_shortname"] == "A"
+    fallback = await render(shortname="A")
+    assert fallback["medre"]["envelope"]["source_transport_id"] == "A"
+    malformed = await render(source_node_id=123, shortname="A")
+    assert malformed["medre"]["envelope"]["source_transport_id"] == "A"

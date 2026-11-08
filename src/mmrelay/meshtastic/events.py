@@ -890,6 +890,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                     emote=True,
                     emoji=True,
                     reaction_key=reaction_symbol,
+                    source_node_id=sender,
                 ),
                 loop=loop,
             )
@@ -946,6 +947,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                     meshtastic_replyId=replyId,
                     meshtastic_text=text,
                     reply_to_event_id=matrix_event_id,
+                    source_node_id=sender,
                 ),
                 loop=loop,
             )
@@ -1152,6 +1154,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                             decoded.get("portnum", 0),
                             meshtastic_id=packet.get("id"),
                             meshtastic_text=text,
+                            source_node_id=sender,
                         ),
                         loop=loop,
                     )

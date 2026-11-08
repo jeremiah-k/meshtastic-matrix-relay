@@ -395,9 +395,13 @@ def test_on_meshtastic_message_zero_reply_id_preserves_interaction(reaction):
         message_map=("$original", "!room:test", "original text", "TestNet"),
     ) as (_, relay):
         on_meshtastic_message(packet, _make_interface())
+        # The canned mapping accepts any ID, so verify the lookup key itself.
+        mu.get_message_map_by_meshtastic_id.assert_called_once_with(0)
 
+    assert relay is not None
     relay.assert_awaited_once()
     assert relay.call_args.kwargs["meshtastic_replyId"] == 0
+    assert relay.call_args.kwargs["source_node_id"] == "!0000007b"
     if reaction:
         assert relay.call_args.kwargs["reaction_key"] == "👍"
         assert relay.call_args.kwargs["emoji"] is True

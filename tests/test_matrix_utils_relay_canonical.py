@@ -116,6 +116,53 @@ async def test_relay_preserves_canonical_quotes_and_legacy_codec_failure_behavio
         assert enqueue.call_args.kwargs["reply_id"] == 42
 
 
+@pytest.mark.asyncio
+async def test_codec_failure_preserves_legacy_reply_target_and_authoritative_mode():
+    """A codec exception must not lose the Matrix target or claim canonical text."""
+    from mmrelay.matrix_utils import on_room_message
+
+    room, event = _reply_event(
+        {
+            "msgtype": "m.text",
+            "body": "> <@bob:example.org> quote\n\nactual answer",
+            "m.relates_to": {"m.in_reply_to": {"event_id": "$original"}},
+        }
+    )
+    room_config = {"id": room.room_id, "meshtastic_channel": 0}
+    config = {
+        "meshtastic": {"meshnet_name": "LocalMesh", "prefix_enabled": False},
+        "matrix_rooms": [room_config],
+    }
+    with (
+        patch("mmrelay.matrix_utils.config", config),
+        patch("mmrelay.matrix_utils.matrix_rooms", [room_config]),
+        patch("mmrelay.matrix_utils.bot_start_time", 0),
+        patch("mmrelay.matrix_utils.bot_user_id", "@relay:example.org"),
+        patch(
+            "mmrelay.matrix_utils.get_interaction_settings",
+            return_value={"replies": True, "reactions": False},
+        ),
+        patch("mmrelay.matrix_utils.message_storage_enabled", return_value=True),
+        patch("mmrelay.matrix_utils._get_msgs_to_keep_config", return_value=20),
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch(
+            "mmrelay.matrix.events.canonicalize_matrix_event",
+            side_effect=RuntimeError("codec failure"),
+        ),
+        patch(
+            "mmrelay.matrix_utils.handle_matrix_reply",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as reply,
+    ):
+        await on_room_message(room, event)
+    reply.assert_awaited_once()
+    args, kwargs = reply.call_args
+    assert args[2] == "$original"
+    assert kwargs["text_is_canonical"] is False
+    assert args[3].endswith("actual answer")
+
+
 ROOM = "!mesh:example.org"
 BOT = "@relay:example.org"
 
@@ -143,10 +190,20 @@ async def test_matrix_relay_uses_canonical_renderer_without_second_matrix_client
         ),
         patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False),
     ):
-        await matrix_relay(ROOM, "hello", "Alice", "A", "LocalMesh", 1, 19)
+        await matrix_relay(
+            ROOM,
+            "hello",
+            "Alice",
+            "A",
+            "LocalMesh",
+            1,
+            19,
+            source_node_id="!0000007b",
+        )
     client.room_send.assert_awaited_once()
     sent = client.room_send.call_args.kwargs
     assert sent["content"]["medre"]["envelope"]["event_kind"] == "message.created"
+    assert sent["content"]["medre"]["envelope"]["source_transport_id"] == "!0000007b"
     assert sent["content"]["meshtastic_id"] == 19
     assert sent["tx_id"].startswith("mmrelay-")
 

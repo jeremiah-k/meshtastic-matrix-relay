@@ -147,6 +147,7 @@ async def render_matrix_relay_content(
     reaction_key: str | None = None,
     reply_preview: tuple[str, str | None] | None = None,
     bot_user_id: str | None = None,
+    source_node_id: str | None = None,
 ) -> dict[str, Any]:
     """Render one canonical radio message into a validated Matrix send operation.
 
@@ -155,6 +156,8 @@ async def render_matrix_relay_content(
     room message; a missing or malformed result fails closed before sending.
     Legacy Meshtastic wire fields retain their original types for existing
     MMRelay clients, independently of MEDRE's immutable metadata projection.
+    When provided, ``source_node_id`` carries the native Meshtastic identity;
+    display names are only a fallback for callers without that identity.
     """
     wire_fields: dict[str, object] = {
         KEY_LONGNAME: longname,
@@ -219,7 +222,13 @@ async def render_matrix_relay_content(
         schema_version=1,
         timestamp=datetime.now(UTC),
         source_adapter=_MESH_SOURCE,
-        source_transport_id=shortname or longname or "mesh",
+        # An actual native node ID is the transport identity. Shortname is
+        # only a backwards-compatible fallback for callers without a packet.
+        source_transport_id=(
+            source_node_id
+            if isinstance(source_node_id, str) and source_node_id
+            else shortname or longname or "mesh"
+        ),
         source_channel_id=meshnet_name,
         parent_event_id=None,
         lineage=(),

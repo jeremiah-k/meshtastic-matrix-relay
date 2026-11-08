@@ -59,8 +59,8 @@ session and transport; the shared room is the interoperability surface.
   and explicit reply/reaction relationship remain the semantics that MEDRE
   decodes on the other side of a shared room. Multiline reply quotes prefix
   every original line, including the attribution label, and cannot truncate
-  the authored reply at a blank line. CRLF and lone CR line breaks in *stored
-  quote previews only* are normalized to LF and quoted line-by-line in both
+  the authored reply at a blank line. CRLF and lone CR line breaks in _stored
+  quote previews only_ are normalized to LF and quoted line-by-line in both
   plain-text and HTML fallback; the canonical authored reply is not rewritten.
 - Native plugin-owned `room_send` content and separately uploaded Matrix media
   are not reclassified as radio-originated canonical events. They retain their
@@ -100,10 +100,15 @@ crypto backend; preserving a crypto-free base footprint requires a separate
 adapter metadata split.
 
 **Release blocker for PyPI:** PyPI rejects distributions that declare direct
-URLs under `Requires-Dist`. Thus these `pyproject.toml` pins support source or
-GitHub releases and `pip install` from the repository, **not a PyPI-uploaded
-MMRelay 1.5.0 wheel**. For a PyPI release, MEDRE and the adapter must first
-be available through an index that pip can resolve, and MMRelay must use
+URLs under `Requires-Dist`. Thus these `pyproject.toml` pins support GitHub
+releases and `pip install` from the repository, **not a PyPI-uploaded MMRelay
+1.5.0 wheel**. The `pypi-publish.yml` workflow checks _base and optional-extra_
+requirements on the tagged tree and skips its upload action while direct
+references remain; it still builds the release artifact for inspection. The
+guard permits a PyPI upload only once all requirements are index-resolvable.
+
+For a PyPI release, MEDRE and the adapter must first be available through an
+index that pip can resolve, and MMRelay must use
 index-resolvable requirements rather than Git URLs. Moving a Git pin to an
 optional extra does not remove that upload restriction. If the first 1.5.0
 release is source/GitHub-only, document that channel restriction explicitly.

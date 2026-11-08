@@ -30,6 +30,12 @@ jobs:
         if: ${{ github.event_name == 'release' }}
         run: python scripts/ci/validate_release_version.py --tag "${{ github.event.release.tag_name }}"
 
+      # PyPI rejects PEP 508 direct-URL Requires-Dist metadata. GitHub releases
+      # remain usable with immutable VCS pins; never attempt an invalid upload.
+      - name: Check distribution requirements for PyPI
+        id: pypi_requirements
+        run: python scripts/ci/check_pypi_requirements.py --github-output "$GITHUB_OUTPUT"
+
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
@@ -39,4 +45,5 @@ jobs:
         run: python -m build
 
       - name: Publish to PyPI
+        if: ${{ steps.pypi_requirements.outputs.eligible == 'true' }}
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3

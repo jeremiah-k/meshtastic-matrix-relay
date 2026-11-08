@@ -191,6 +191,7 @@ async def matrix_relay(
     emoji: bool = False,
     reply_to_event_id: str | None = None,
     reaction_key: str | None = None,
+    source_node_id: str | None = None,
 ) -> None:
     """
     Relay a Meshtastic-originated message into a Matrix room and optionally persist a Meshtastic↔Matrix mapping.
@@ -210,6 +211,7 @@ async def matrix_relay(
         emote (bool): If True, send as `m.emote` instead of `m.text`.
         emoji (bool): If True, include an emoji flag in the outbound metadata for downstream handling.
         reaction_key (str | None): Exact emoji for Meshtastic reactions; never inferred from the display message.
+        source_node_id (str | None): Native Meshtastic sender node ID for canonical provenance. Optional for existing callers without a packet context.
         reply_to_event_id (str | None): Optional Matrix event_id to reply to; if provided and the original mapping is resolvable, the outgoing event includes an `m.in_reply_to` relation and a quoted formatted body.
     """
     facade.logger.debug(
@@ -318,6 +320,7 @@ async def matrix_relay(
             emote=emote,
             emoji=emoji,
             reaction_key=reaction_key,
+            source_node_id=source_node_id,
             reply_to_event_id=reply_to_event_id,
             reply_preview=reply_preview,
             bot_user_id=getattr(matrix_client, "user_id", None),
