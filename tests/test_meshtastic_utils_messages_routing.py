@@ -382,6 +382,29 @@ def test_on_meshtastic_message_does_not_filter_plain_emoji_message_when_reaction
     mock_relay.assert_awaited_once()
 
 
+@pytest.mark.parametrize("reaction", [False, True])
+def test_on_meshtastic_message_zero_reply_id_preserves_interaction(reaction):
+    _set_globals(_base_config())
+    packet = _base_packet()
+    packet["decoded"].update({"text": "👍", "replyId": 0})
+    if reaction:
+        packet["decoded"]["emoji"] = EMOJI_FLAG_VALUE
+
+    with _patch_message_deps(
+        interaction_settings={"reactions": True, "replies": True},
+        message_map=("$original", "!room:test", "original text", "TestNet"),
+    ) as (_, relay):
+        on_meshtastic_message(packet, _make_interface())
+
+    relay.assert_awaited_once()
+    assert relay.call_args.kwargs["meshtastic_replyId"] == 0
+    if reaction:
+        assert relay.call_args.kwargs["reaction_key"] == "👍"
+        assert relay.call_args.kwargs["emoji"] is True
+    else:
+        assert relay.call_args.kwargs["reply_to_event_id"] == "$original"
+
+
 def test_on_meshtastic_message_reaction_missing_original():
     """Test that reactions with missing originals are relayed as normal messages."""
     config = _base_config()

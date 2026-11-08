@@ -112,11 +112,8 @@ def _reply_quote(
     # Matrix fallback quoting must prefix EVERY line. Otherwise an original
     # message containing blank lines creates an early quote terminator, and
     # MEDRE (or another Matrix client) treats its remainder as the new body.
-    lines = original_text.split("\n")
-    quoted_text = "\n".join(
-        [f"> <{bot_user_id}> [{label}]: {lines[0]}"]
-        + [f"> {line}" for line in lines[1:]]
-    )
+    lines = f"<{bot_user_id}> [{label}]: {original_text}".split("\n")
+    quoted_text = "\n".join(f"> {line}" for line in lines)
     safe_original_html = html.escape(original_text).replace("\n", "<br/>")
     quoted_html = (
         f'<mx-reply><blockquote><a href="{html.escape(reply_link, quote=True)}">'
@@ -267,9 +264,14 @@ async def render_matrix_relay_content(
     envelope = medre_fields.get("envelope") if isinstance(medre_fields, dict) else None
     if (
         not isinstance(envelope, dict)
+        or type(envelope.get("schema_version")) is not int
         or envelope.get("schema_version") != 1
         or envelope.get("canonical_event_id") != event.event_id
         or envelope.get("source_adapter") != _MESH_SOURCE
+        or envelope.get("source_channel") != event.source_channel_id
+        or envelope.get("event_kind") != event.event_kind
+        or envelope.get("relation_info")
+        != ",".join(sorted({relation.relation_type for relation in relations}))
     ):
         raise ValueError("MEDRE Matrix renderer lost canonical v1 provenance")
 

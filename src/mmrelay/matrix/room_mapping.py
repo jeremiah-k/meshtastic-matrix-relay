@@ -326,18 +326,21 @@ def _create_mapping_info(
     text: str,
     meshnet: str | None = None,
     msgs_to_keep: int | None = None,
+    *,
+    text_is_canonical: bool = False,
 ) -> dict[str, Any] | None:
     """
     Create a mapping dictionary that links a Matrix event to a Meshtastic message.
 
-    If `msgs_to_keep` is None, the value is obtained from _get_msgs_to_keep_config(). The `text` value in the mapping has quoted lines removed. Returns None when `matrix_event_id`, `room_id`, or `text` is missing or empty.
+    If `msgs_to_keep` is None, the value is obtained from _get_msgs_to_keep_config(). Legacy text has quoted lines removed; canonical text preserves the authored body. Returns None when `matrix_event_id`, `room_id`, or `text` is missing or empty.
 
     Parameters:
         matrix_event_id: The Matrix event ID to map from.
         room_id: The Matrix room ID where the event was posted.
-        text: The message text to store (quoted lines will be stripped).
+        text: The message text to store; canonical input retains authored quotes.
         meshnet: Optional meshnet name to record for the mapping.
         msgs_to_keep: Optional override for how many message mappings to retain; if omitted, the configured default is used.
+        text_is_canonical: Preserve authored quotes when the codec has already removed the wire fallback.
 
     Returns:
         A dict with keys `matrix_event_id`, `room_id`, `text`, `meshnet`, and `msgs_to_keep`, or `None` if required inputs are missing.
@@ -351,7 +354,7 @@ def _create_mapping_info(
     return {
         "matrix_event_id": matrix_event_id,
         "room_id": room_id,
-        "text": facade.strip_quoted_lines(text),
+        "text": text if text_is_canonical else facade.strip_quoted_lines(text),
         "meshnet": meshnet,
         "msgs_to_keep": msgs_to_keep,
     }

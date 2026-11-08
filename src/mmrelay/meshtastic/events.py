@@ -846,7 +846,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     if (
         action == PacketAction.RELAY
         and _is_text_message_portnum(decoded.get("portnum"))
-        and replyId
+        and replyId is not None
         and emoji_flag
         and interactions["reactions"]
     ):
@@ -911,7 +911,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     if (
         action == PacketAction.RELAY
         and _is_text_message_portnum(decoded.get("portnum"))
-        and replyId
+        and replyId is not None
         and not emoji_flag
         and interactions["replies"]
     ):

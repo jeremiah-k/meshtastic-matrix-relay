@@ -131,6 +131,7 @@ def format_reply_message(
     local_meshnet_name: str | None = None,
     mesh_text_override: str | None = None,
     user_id: str | None = None,
+    text_is_canonical: bool = False,
 ) -> str:
     """
     Format a Meshtastic-style reply, applying an appropriate sender prefix and truncating the result to the configured maximum length.
@@ -138,19 +139,24 @@ def format_reply_message(
     Parameters:
         config (dict[str, Any]): Runtime configuration used to build prefix formats.
         full_display_name (str): Sender's full display name used when constructing local prefixes.
-        text (str): Original reply text; quoted lines (leading '>') will be removed.
+        text (str): Reply text; legacy input has quoted lines removed, while canonical input preserves authored quotes.
         longname (str | None): Optional long form of the sender name for remote-meshnet prefixes.
         shortname (str | None): Optional short form of the sender name for remote-meshnet prefixes.
         meshnet_name (str | None): Remote meshnet name; when provided and different from local_meshnet_name, remote-prefix rules are applied.
         local_meshnet_name (str | None): Local meshnet name used to determine whether a reply is remote.
         mesh_text_override (str | None): Optional raw Meshtastic payload preferred over `text` when generating the reply body.
+        text_is_canonical (bool): Preserve authored quote lines and whitespace after the codec has removed the Matrix fallback.
 
     Returns:
-        str: The formatted reply message with quoted lines removed, the appropriate prefix applied (remote or local), and truncated to the configured maximum length.
+        str: The reply body with the appropriate sender prefix, truncated to the configured maximum length.
     """
     base_text = mesh_text_override if mesh_text_override else text
 
-    clean_text = strip_quoted_lines(base_text).strip()
+    # The codec removed only the wire fallback. Any remaining '>' lines are
+    # authored content and must survive both delivery and later correlation.
+    clean_text = (
+        base_text.strip() if text_is_canonical else strip_quoted_lines(base_text)
+    )
 
     if meshnet_name and local_meshnet_name and meshnet_name != local_meshnet_name:
         sender_long = longname or full_display_name or shortname or "???"
@@ -182,7 +188,11 @@ def format_reply_message(
                 break
 
         if not clean_text and mesh_text_override:
-            clean_text = strip_quoted_lines(mesh_text_override).strip()
+            clean_text = (
+                mesh_text_override.strip()
+                if text_is_canonical
+                else strip_quoted_lines(mesh_text_override)
+            )
 
         mesh_prefix = (
             matrix_prefix_short
@@ -209,6 +219,8 @@ async def send_reply_to_meshtastic(
     local_meshnet_name: str,
     reply_id: int | None = None,
     relay_config: dict[str, Any] | None = None,
+    *,
+    text_is_canonical: bool = False,
 ) -> bool:
     """
     Queue a Meshtastic delivery for a Matrix reply, optionally sending it as a structured reply that targets a specific Meshtastic message.
@@ -226,6 +238,7 @@ async def send_reply_to_meshtastic(
         local_meshnet_name (str): Local meshnet name to include in mapping metadata when present.
         reply_id (int | None): If provided, send as a structured Meshtastic reply targeting this Meshtastic message ID; if None, send as a regular broadcast.
         relay_config (dict[str, Any] | None): Optional config override to control Meshtastic broadcast and message-map settings.
+        text_is_canonical (bool): Preserve the canonical authored body in message mapping metadata.
 
     Returns:
         bool: `True` if the message was successfully queued for delivery to Meshtastic, `False` otherwise.
@@ -259,7 +272,12 @@ async def send_reply_to_meshtastic(
             msgs_to_keep = facade._get_msgs_to_keep_config(effective_config)
 
             mapping_info = facade._create_mapping_info(
-                event.event_id, room.room_id, text, local_meshnet_name, msgs_to_keep
+                event.event_id,
+                room.room_id,
+                text,
+                local_meshnet_name,
+                msgs_to_keep,
+                text_is_canonical=text_is_canonical,
             )
 
         if reply_id is not None:
@@ -334,6 +352,7 @@ async def handle_matrix_reply(
     longname: str | None = None,
     shortname: str | None = None,
     meshnet_name: str | None = None,
+    text_is_canonical: bool = False,
 ) -> bool:
     """
     Forward a Matrix reply to Meshtastic when the replied-to Matrix event maps to a Meshtastic message.
@@ -353,6 +372,7 @@ async def handle_matrix_reply(
         longname (str | None): Sender long display name used for prefixing.
         shortname (str | None): Sender short display name used for prefixing.
         meshnet_name (str | None): Remote meshnet name associated with the original mapping, if any.
+        text_is_canonical (bool): The codec has already removed the wire fallback; keep authored quotes in delivery and mapping.
 
     Returns:
         bool: `True` if a mapping was found and the reply was queued to Meshtastic, `False` otherwise.
@@ -400,6 +420,7 @@ async def handle_matrix_reply(
         local_meshnet_name=local_meshnet_name,
         mesh_text_override=mesh_text_override,
         user_id=event.sender,
+        text_is_canonical=text_is_canonical,
     )
 
     if original_meshtastic_id is not None:
@@ -422,4 +443,5 @@ async def handle_matrix_reply(
         local_meshnet_name,
         reply_id=original_meshtastic_id,
         relay_config=config,
+        text_is_canonical=text_is_canonical,
     )

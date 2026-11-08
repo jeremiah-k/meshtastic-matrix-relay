@@ -321,3 +321,52 @@ async def test_outbound_reaction_requires_structured_symbol_and_codec_recovers_i
     assert decoded.event_kind == "message.reacted"
     assert decoded.relations[0].relation_type == "reaction"
     assert decoded.relations[0].key == "🎉"
+
+
+@pytest.mark.asyncio
+async def test_multiline_reply_meshnet_label_cannot_escape_fallback_quote():
+    content = await render(
+        reply_to_event_id="$original",
+        reply_preview=("old text", "Remote\n\nMesh"),
+    )
+    codec = MatrixCodec(
+        "matrix-room",
+        MatrixConfig(adapter_id="matrix-room", homeserver="", user_id=""),
+    )
+    decoded = codec.decode(
+        {
+            "room_id": ROOM,
+            "event_id": "$reply",
+            "sender": BOT,
+            "source": {"type": "m.room.message", "content": content},
+        },
+        room_id=ROOM,
+    )
+    assert decoded.payload["body"] == "Radio text 🦉"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("schema_version", True),
+        ("event_kind", "message.deleted"),
+        ("source_channel", "OtherMesh"),
+        ("relation_info", "reaction"),
+    ],
+)
+async def test_outbound_renderer_rejects_inconsistent_provenance(field, value):
+    from mmrelay.matrix.canonical_outbound import _RENDERER
+
+    real_render = _RENDERER.render
+
+    async def inconsistent_render(event, context):
+        result = await real_render(event, context)
+        result.payload["_matrix_operation"]["content"]["medre"]["envelope"][
+            field
+        ] = value
+        return result
+
+    with patch.object(_RENDERER, "render", side_effect=inconsistent_render):
+        with pytest.raises(ValueError, match="canonical v1 provenance"):
+            await render()

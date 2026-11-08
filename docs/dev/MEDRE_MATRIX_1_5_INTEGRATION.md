@@ -26,6 +26,8 @@ session and transport; the shared room is the interoperability surface.
   compatibility fallback is **not** an authored reply, and the reply fallback
   quote is stripped from the canonical body even when reply interactions are
   disabled because it is presentation metadata rather than authored text.
+  Reply formatting and message-map metadata preserve the remaining authored
+  quote lines and line breaks; they do not strip the canonical body again.
   Original nio objects remain available to legacy MMRelay plugin callbacks and
   mesh relay helpers; MMRelay-specific wire fields remain in the incoming
   content for its relay features. Mesh reactions still follow MMRelay's
@@ -48,11 +50,16 @@ session and transport; the shared room is the interoperability surface.
   no Matrix `m.reaction` annotation or cross-room identity is invented. Normal
   radio replies carry a Matrix-native target scoped to the destination room;
   missing historical quote context never fabricates a target.
+  Radio reply packet ID `0` is a valid target for both replies and reactions,
+  including classification in the radio ingress handler.
 - A non-message Matrix render, altered authored body, or lost reply relation
-  **fails closed** before the SDK send. The original event's canonical body
+  **fails closed** before the SDK send. The provenance envelope must carry an
+  integer version `1` and match the event's identity, kind, source adapter,
+  source channel, and relation types. The original event's canonical body
   and explicit reply/reaction relationship remain the semantics that MEDRE
   decodes on the other side of a shared room. Multiline reply quotes prefix
-  every original line and cannot truncate the authored reply at a blank line.
+  every original line, including the attribution label, and cannot truncate
+  the authored reply at a blank line.
 - Native plugin-owned `room_send` content and separately uploaded Matrix media
   are not reclassified as radio-originated canonical events. They retain their
   existing direct-send contract; this patch intentionally does not impersonate
@@ -102,6 +109,10 @@ release is source/GitHub-only, document that channel restriction explicitly.
    the merged core main commit; the Matrix pin stays at the requested SHA
    because its schema-freeze follow-up is tests/docs only. These release
    branches do not tag or publish any package.
+   After the adapter merges, update MEDRE core's authoritative
+   `.github/adapter-compatibility.json` to the landed adapter commits and run
+   its ancestry and compatibility checks. The daily pin-drift canary expects
+   those landed heads; the frozen adapter schema bytes remain unchanged.
 2. Regenerate `uv.lock` **online** from the final MMRelay dependency list and
    confirm `uv lock --check`; this branch's lock resolves the two Git pins and
    adds `msgspec` and `termaid`. Regenerate it again after any pin change.
@@ -118,7 +129,8 @@ release is source/GitHub-only, document that channel restriction explicitly.
 
 The **core radio-to-Matrix outbound content renderer** is now MEDRE-backed,
 without moving delivery acknowledgements, identity, edit/delete authorization,
-plugin send APIs, or Matrix upload sessions into the MEDRE runtime. All four
-schema-freeze PRs must be merged before MMRelay 1.5.0 is tagged. The pinned
-adapter commit supplies the renderer API without depending on its unmerged
+plugin send APIs, or Matrix upload sessions into the MEDRE runtime. The three
+schema-freeze PRs and this MMRelay adoption PR must be merged before MMRelay
+1.5.0 is tagged. The pinned adapter commit supplies the renderer API without
+depending on its unmerged
 schema-freeze test/doc additions.

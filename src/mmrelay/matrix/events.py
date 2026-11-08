@@ -659,6 +659,7 @@ async def on_room_message(
             longname=longname,
             shortname=shortname,
             meshnet_name=meshnet_name,
+            text_is_canonical=canonical_event is not None,
         )
         if reply_handled:
             return
@@ -823,6 +824,7 @@ async def on_room_message(
                     text,
                     local_meshnet_name,
                     msgs_to_keep,
+                    text_is_canonical=canonical_event is not None,
                 )
 
             success = facade.queue_message(
