@@ -55,7 +55,8 @@ session and transport; the shared room is the interoperability surface.
 - A non-message Matrix render, altered authored body, or lost reply relation
   **fails closed** before the SDK send. The provenance envelope must carry an
   integer version `1` and match the event's identity, kind, source adapter,
-  source channel, and relation types. The original event's canonical body
+  source transport identity, native source reference, source channel, and
+  relation types. The original event's canonical body
   and explicit reply/reaction relationship remain the semantics that MEDRE
   decodes on the other side of a shared room. Multiline reply quotes prefix
   every original line, including the attribution label, and cannot truncate
@@ -84,17 +85,20 @@ The current `pyproject.toml` contains two immutable direct Git references:
   0.1.0 schema-freeze commit.
 - `medre-adapter-matrix` at the requested
   `241e9590035bb18750527c3ea1f02d26f28acfb5`; its schema-freeze follow-up
-  changes tests and documentation only.
+  corrects the native provenance projection. This pin predates that correction
+  and must be updated to the merged adapter freeze before the release.
 
 The adapter declares `medre>=0.1.0,<0.2.0` (not published yet at this
 snapshot), so **the adapter Git pin alone is not a complete install**. The
 core pin is needed until there is an index source satisfying that requirement.
-The dependency regression test verifies both immutable 40-hex Git references
-without hard-coding revisions. Every deliberate repin still requires pinned
-runtime compatibility qualification and a matching lockfile update: a valid
-URL and commit format alone are not proof of SDK compatibility.
-The core pin is the pushed schema-freeze commit; repin it to the merged core
-main commit before tagging MMRelay 1.5.0. The adapter declares the E2EE extra
+The dependency regression test accepts immutable 40-hex Git references from
+the canonical repositories or exact indexed version pins, so publishing the
+MEDRE packages does not require weakening reproducibility. Every deliberate
+repin still requires runtime compatibility qualification and a matching
+lockfile update; a dependency's syntax alone is not proof of compatibility.
+Repin both packages to their merged freeze commits before tagging MMRelay
+1.5.0. Once those commits are published to PyPI, select their exact indexed
+versions and regenerate the lockfile for a PyPI release. The adapter declares the E2EE extra
 in its base dependencies, so an MMRelay 1.5 base install includes the Matrix
 crypto backend; preserving a crypto-free base footprint requires a separate
 adapter metadata split.
@@ -105,7 +109,9 @@ releases and `pip install` from the repository, **not a PyPI-uploaded MMRelay
 1.5.0 wheel**. The `pypi-publish.yml` workflow checks _base and optional-extra_
 requirements on the tagged tree and skips its upload action while direct
 references remain; it still builds the release artifact for inspection. The
-guard permits a PyPI upload only once all requirements are index-resolvable.
+guard parses every requirement with the PEP 508 parser and permits an upload
+only when no direct references remain. Malformed requirement groups fail the
+preflight. An eligible manifest still needs the clean installation check below.
 
 For a PyPI release, MEDRE and the adapter must first be available through an
 index that pip can resolve, and MMRelay must use
@@ -116,14 +122,14 @@ release is source/GitHub-only, document that channel restriction explicitly.
 ## Pre-tag gates
 
 1. Merge the MEDRE core/Matrix/Meshtastic schema freezes and rerun the
-   adapter's native-namespace JSON Schema tests. Repin the core dependency to
-   the merged core main commit; the Matrix pin stays at the requested SHA
-   because its schema-freeze follow-up is tests/docs only. These release
+   adapter's native-namespace JSON Schema tests. Repin both the core and Matrix
+   adapter to their merged freeze commits: the adapter changes the native
+   provenance projection as well as its tests and documentation. These release
    branches do not tag or publish any package.
    After the adapter merges, update MEDRE core's authoritative
    `.github/adapter-compatibility.json` to the landed adapter commits and run
    its ancestry and compatibility checks. The daily pin-drift canary expects
-   those landed heads; the frozen adapter schema bytes remain unchanged.
+   those landed heads. Qualify MMRelay against this exact core/adapter pair.
 2. Regenerate `uv.lock` **online** from the final MMRelay dependency list and
    confirm `uv lock --check`; this branch's lock resolves the two Git pins and
    adds `msgspec` and `termaid`. Regenerate it again after any pin change.
@@ -137,11 +143,14 @@ release is source/GitHub-only, document that channel restriction explicitly.
    `python -m build` and `twine check`.
 5. Decide the 1.5.0 distribution channel before a tag; a PyPI upload with
    direct Git `Requires-Dist` entries will be rejected.
+   For PyPI, publish MEDRE core first, then its adapters (which depend on core),
+   then replace MMRelay's Git references with the exact published versions.
+   Inspect each wheel and sdist, verify its frozen schema bundle and manifest,
+   and test a clean install using the index rather than local source overrides.
 
 The **core radio-to-Matrix outbound content renderer** is now MEDRE-backed,
 without moving delivery acknowledgements, identity, edit/delete authorization,
 plugin send APIs, or Matrix upload sessions into the MEDRE runtime. The three
 schema-freeze PRs and this MMRelay adoption PR must be merged before MMRelay
-1.5.0 is tagged. The pinned adapter commit supplies the renderer API without
-depending on its unmerged
-schema-freeze test/doc additions.
+1.5.0 is tagged. The current adapter pin supplies the renderer API, but the
+corrected native provenance projection requires the merged adapter freeze.

@@ -10,24 +10,33 @@ before the upload action, not on the mutable default branch.
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 import tomllib
 from pathlib import Path
 
-_DIRECT_REFERENCE = re.compile(r"^\s*[A-Za-z0-9_.-]+(?:\[[^]]+\])?\s*@\s*\S")
+from packaging.requirements import Requirement
 
 
 def direct_requirements(manifest: Path) -> list[str]:
     """Return direct-URL dependencies from base and all optional extras."""
     with manifest.open("rb") as handle:
         project = tomllib.load(handle)["project"]
-    requirements = list(project.get("dependencies", []))
-    for extra in project.get("optional-dependencies", {}).values():
-        requirements.extend(extra)
-    if not all(isinstance(value, str) for value in requirements):
-        raise ValueError("All project requirements must be strings")
-    return [req for req in requirements if _DIRECT_REFERENCE.match(req)]
+    if not isinstance(project, dict):
+        raise ValueError("project must be a table")
+    base = project.get("dependencies", [])
+    extras = project.get("optional-dependencies", {})
+    if not isinstance(extras, dict):
+        raise ValueError("project.optional-dependencies must be a table")
+    direct = []
+    for group in (base, *extras.values()):
+        if not isinstance(group, list) or not all(
+            isinstance(req, str) for req in group
+        ):
+            raise ValueError("Each requirement group must be a list of strings")
+        for text in group:
+            if Requirement(text).url is not None:
+                direct.append(text)
+    return direct
 
 
 def main() -> int:
@@ -53,7 +62,7 @@ def main() -> int:
             "or replace with indexed requirements first."
         )
     else:
-        print("PyPI requirements are index-resolvable; upload permitted.")
+        print("No direct-URL requirements declared; PyPI upload permitted.")
     return 0
 
 

@@ -4,6 +4,10 @@ import re
 import tomllib
 from pathlib import Path
 
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+from packaging.version import Version
+
 from tests.helpers import select_mindroom_requirements
 
 
@@ -30,26 +34,34 @@ def test_manifest_selects_one_provider_pin_for_base_and_encryption_extra() -> No
     assert project["requires-python"] == ">=3.12"
 
 
-def test_medre_dependencies_use_immutable_git_pins_without_radio_adapter() -> None:
-    """Keep the MMRelay/MEDRE room schema boundary pinned without freezing a SHA.
+def test_medre_dependencies_are_pinned_without_a_competing_radio_adapter() -> None:
+    """Accept reviewed source commits or exact indexed releases at the boundary.
 
     Re-pinning is allowed after review and a fresh compatibility qualification;
-    the source form and exclusion of the competing Meshtastic adapter remain
+    reproducibility and exclusion of the competing Meshtastic adapter remain
     enforceable across future versions.
     """
     project = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())[
         "project"
     ]
     assert project["requires-python"] == ">=3.12"
-    dependencies = project["dependencies"]
-    pins = {dep.partition(" @ ")[0]: dep for dep in dependencies if " @ " in dep}
+    dependencies = [Requirement(dep) for dep in project["dependencies"]]
     for package in ("medre", "medre-adapter-matrix"):
-        pattern = (
-            rf"{package} @ git\+https://github\.com/jeremiah-k/"
-            rf"{package}\.git@[0-9a-f]{{40}}"
-        )
-        assert re.fullmatch(pattern, pins[package])
-    assert not any(
-        dep.lower().replace("_", "-").startswith("medre-adapter-meshtastic")
-        for dep in dependencies
-    )
+        selected = [
+            dep for dep in dependencies if canonicalize_name(dep.name) == package
+        ]
+        assert len(selected) == 1
+        (requirement,) = selected
+        assert requirement.marker is None
+        if requirement.url is not None:
+            assert re.fullmatch(
+                rf"git\+https://github\.com/jeremiah-k/{package}\.git@[0-9a-f]{{40}}",
+                requirement.url,
+            )
+        else:
+            pins = list(requirement.specifier)
+            assert len(pins) == 1 and pins[0].operator == "=="
+            Version(pins[0].version)  # Reject wildcard and arbitrary equality pins.
+    assert "medre-adapter-meshtastic" not in {
+        canonicalize_name(dep.name) for dep in dependencies
+    }
