@@ -377,13 +377,23 @@ async def on_room_message(
         meshtastic_replyId = content.get("meshtastic_replyId")
         emote_relates_to = content.get("m.relates_to") or {}
 
-        is_reaction = bool(
-            meshtastic_replyId or emote_relates_to.get("rel_type") == "m.annotation"
+        # Preserve legacy emote reaction detection, including radio packet ID 0.
+        is_reaction = (
+            meshtastic_replyId not in (None, "")
+            or emote_relates_to.get("rel_type") == "m.annotation"
         )
 
         if is_reaction:
-            reaction_match = re.search(r"reacted (.+?) to", reaction_body)
-            reaction_emoji = reaction_match.group(1).strip() if reaction_match else "?"
+            # MEDRE's explicit reaction symbol is authoritative. Older relays
+            # encoded it only in human-readable prose, which remains supported.
+            structured_key = content.get("meshtastic_reaction_key")
+            if isinstance(structured_key, str) and structured_key.strip():
+                reaction_emoji = structured_key.strip()
+            else:
+                reaction_match = re.search(r"reacted (.+?) to", reaction_body)
+                reaction_emoji = (
+                    reaction_match.group(1).strip() if reaction_match else "?"
+                )
             if emote_relates_to and "event_id" in emote_relates_to:
                 original_matrix_event_id = emote_relates_to["event_id"]
 
@@ -467,7 +477,7 @@ async def on_room_message(
         if (
             meshnet_name
             and meshnet_name != local_meshnet_name
-            and meshtastic_replyId
+            and meshtastic_replyId not in (None, "")
             and isinstance(event, RoomMessageEmote)
         ):
             facade.logger.info(f"Relaying reaction from remote meshnet: {meshnet_name}")

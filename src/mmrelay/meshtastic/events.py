@@ -889,6 +889,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                     meshtastic_text=meshtastic_text,
                     emote=True,
                     emoji=True,
+                    reaction_key=reaction_symbol,
                 ),
                 loop=loop,
             )

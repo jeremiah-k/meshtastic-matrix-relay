@@ -34,6 +34,29 @@ session and transport; the shared room is the interoperability surface.
 - A codec failure is isolated at the boundary: MMRelay logs the exception and
   falls back to the legacy nio body and reply parse so an unexpected Matrix
   event shape cannot drop a relay message.
+- Meshtastic→Matrix **core relay outbound** now constructs an immutable MEDRE
+  `CanonicalEvent`, uses `MatrixRenderer` and validates its closed
+  `MatrixOutboundOperation` before the existing nio `room_send` path. MMRelay
+  still owns transport acknowledgements, stable retry transaction IDs, E2EE
+  policy, database message mapping, and rendering of its historical Markdown,
+  Matrix reply fallback, and `meshtastic_*` wire presentation fields.
+- For radio reactions, the exact reaction symbol is carried as
+  `meshtastic_reaction_key`, independent of the human-readable emote body. MMRelay
+  consumes this field preferentially on Matrix ingress; older relays without it
+  still use the historic emote-text parser. The
+  canonical event is `message.reacted` with a radio-native target reference;
+  no Matrix `m.reaction` annotation or cross-room identity is invented. Normal
+  radio replies carry a Matrix-native target scoped to the destination room;
+  missing historical quote context never fabricates a target.
+- A non-message Matrix render, altered authored body, or lost reply relation
+  **fails closed** before the SDK send. The original event's canonical body
+  and explicit reply/reaction relationship remain the semantics that MEDRE
+  decodes on the other side of a shared room. Multiline reply quotes prefix
+  every original line and cannot truncate the authored reply at a blank line.
+- Native plugin-owned `room_send` content and separately uploaded Matrix media
+  are not reclassified as radio-originated canonical events. They retain their
+  existing direct-send contract; this patch intentionally does not impersonate
+  MEDRE attachment retention, edit/delete authorization, or plugin authorship.
 - The canonical event has `schema_version = 1`. Its native Matrix namespace is
   `metadata.native.data["matrix"]` with independent `schema_version = 1`.
   MMRelay does not invent per-event E2EE provenance from the room's encrypted
@@ -83,15 +106,19 @@ release is source/GitHub-only, document that channel restriction explicitly.
    confirm `uv lock --check`; this branch's lock resolves the two Git pins and
    adds `msgspec` and `termaid`. Regenerate it again after any pin change.
 3. Run the complete MMRelay 3.12–3.15 CI matrix, Matrix E2EE/device recovery,
-   plus live Matrix reply/edit/reaction, mixed meshnet and plugin dispatch.
+   plus live Matrix text/emote/reaction/reply and multiline quote roundtrips,
+   mixed meshnet and plugin dispatch. Specifically verify Medre decodes the
+   emitted `medre.envelope` and structured radio reaction key, while MMRelay's
+   message-map writes still happen only after confirmed SDK sends.
 4. Validate `pip install .` from a clean Python 3.12 environment, including
    its VCS-auth/network prerequisites, and validate package metadata with
    `python -m build` and `twine check`.
 5. Decide the 1.5.0 distribution channel before a tag; a PyPI upload with
    direct Git `Requires-Dist` entries will be rejected.
 
-The outbound Matrix event wire renderer is not replaced in this patch: doing
-that requires explicit ownership of delivery acknowledgements, reply mapping,
-identity, and edit/delete authorization. Canonical ingress is the intended
-1.5.0 adoption boundary; a transport-renderer replacement is a distinct
-change and should not be coupled to the schema freeze.
+The **core radio-to-Matrix outbound content renderer** is now MEDRE-backed,
+without moving delivery acknowledgements, identity, edit/delete authorization,
+plugin send APIs, or Matrix upload sessions into the MEDRE runtime. All four
+schema-freeze PRs must be merged before MMRelay 1.5.0 is tagged. The pinned
+adapter commit supplies the renderer API without depending on its unmerged
+schema-freeze test/doc additions.

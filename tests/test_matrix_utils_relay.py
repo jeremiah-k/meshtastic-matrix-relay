@@ -2105,7 +2105,17 @@ async def test_on_room_message_suppressed_message_returns(
     mock_queue_message.assert_not_called()
 
 
-async def test_on_room_message_remote_reaction_relay_success(monkeypatch, mock_room):
+@pytest.mark.parametrize(
+    ("reply_id", "reaction_key", "expected_symbol"),
+    [
+        (123, None, ":)"),
+        (123, "🎉", "🎉"),
+        (0, "🔥", "🔥"),
+    ],
+)
+async def test_on_room_message_remote_reaction_relay_success(
+    monkeypatch, mock_room, reply_id, reaction_key, expected_symbol
+):
     """Remote meshnet reactions should be relayed to the local mesh when enabled."""
     from mmrelay.matrix_utils import RoomMessageEmote
 
@@ -2114,7 +2124,8 @@ async def test_on_room_message_remote_reaction_relay_success(monkeypatch, mock_r
             self.source = {
                 "content": {
                     "body": 'reacted :) to "hello"',
-                    "meshtastic_replyId": 123,
+                    "meshtastic_replyId": reply_id,
+                    "meshtastic_reaction_key": reaction_key,
                     "meshtastic_longname": "RemoteUser",
                     "meshtastic_meshnet": "remote_mesh",
                     "meshtastic_text": "Original text from mesh",
@@ -2162,7 +2173,7 @@ async def test_on_room_message_remote_reaction_relay_success(monkeypatch, mock_r
 
     mock_queue.assert_called_once()
     queued_kwargs = mock_queue.call_args.kwargs
-    assert "reacted" in queued_kwargs["text"]
+    assert f"reacted {expected_symbol} to" in queued_kwargs["text"]
     assert queued_kwargs["description"] == "Remote reaction from remote_mesh"
 
 
