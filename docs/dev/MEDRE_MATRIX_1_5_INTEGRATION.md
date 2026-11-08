@@ -59,7 +59,9 @@ session and transport; the shared room is the interoperability surface.
   and explicit reply/reaction relationship remain the semantics that MEDRE
   decodes on the other side of a shared room. Multiline reply quotes prefix
   every original line, including the attribution label, and cannot truncate
-  the authored reply at a blank line.
+  the authored reply at a blank line. CRLF and lone CR line breaks in *stored
+  quote previews only* are normalized to LF and quoted line-by-line in both
+  plain-text and HTML fallback; the canonical authored reply is not rewritten.
 - Native plugin-owned `room_send` content and separately uploaded Matrix media
   are not reclassified as radio-originated canonical events. They retain their
   existing direct-send contract; this patch intentionally does not impersonate
@@ -87,6 +89,10 @@ The current `pyproject.toml` contains two immutable direct Git references:
 The adapter declares `medre>=0.1.0,<0.2.0` (not published yet at this
 snapshot), so **the adapter Git pin alone is not a complete install**. The
 core pin is needed until there is an index source satisfying that requirement.
+The dependency regression test verifies both immutable 40-hex Git references
+without hard-coding revisions. Every deliberate repin still requires pinned
+runtime compatibility qualification and a matching lockfile update: a valid
+URL and commit format alone are not proof of SDK compatibility.
 The core pin is the pushed schema-freeze commit; repin it to the merged core
 main commit before tagging MMRelay 1.5.0. The adapter declares the E2EE extra
 in its base dependencies, so an MMRelay 1.5 base install includes the Matrix

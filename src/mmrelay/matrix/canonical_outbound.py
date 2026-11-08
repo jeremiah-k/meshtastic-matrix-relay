@@ -100,7 +100,11 @@ def _reply_quote(
     """
     if not isinstance(bot_user_id, str) or not bot_user_id.startswith("@"):
         raise ValueError("A Matrix user ID is required for a reply quote")
-    label = original_meshnet or "Mesh"
+    # Only the human-readable fallback is normalized. Never rewrite the
+    # authored canonical reply body. CR and CRLF count as physical line breaks
+    # to text consumers and must not terminate the quoted fallback early.
+    label = (original_meshnet or "Mesh").replace("\r\n", "\n").replace("\r", "\n")
+    preview_text = original_text.replace("\r\n", "\n").replace("\r", "\n")
     via_server = bot_user_id.partition(":")[2]
     via_suffix = f"?{urlencode({'via': via_server})}" if via_server else ""
     reply_link = (
@@ -112,14 +116,15 @@ def _reply_quote(
     # Matrix fallback quoting must prefix EVERY line. Otherwise an original
     # message containing blank lines creates an early quote terminator, and
     # MEDRE (or another Matrix client) treats its remainder as the new body.
-    lines = f"<{bot_user_id}> [{label}]: {original_text}".split("\n")
+    lines = f"<{bot_user_id}> [{label}]: {preview_text}".split("\n")
     quoted_text = "\n".join(f"> {line}" for line in lines)
-    safe_original_html = html.escape(original_text).replace("\n", "<br/>")
+    safe_original_html = html.escape(preview_text).replace("\n", "<br/>")
+    safe_label_html = html.escape(label).replace("\n", "<br/>")
     quoted_html = (
         f'<mx-reply><blockquote><a href="{html.escape(reply_link, quote=True)}">'
         f'In reply to</a> <a href="{html.escape(bot_link, quote=True)}">'
         f"{html.escape(bot_user_id)}</a><br>"
-        f"[{html.escape(label)}]: {safe_original_html}"
+        f"[{safe_label_html}]: {safe_original_html}"
         f"</blockquote></mx-reply>"
     )
     return quoted_text, quoted_html

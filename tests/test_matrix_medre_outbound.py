@@ -346,6 +346,34 @@ async def test_multiline_reply_meshnet_label_cannot_escape_fallback_quote():
 
 
 @pytest.mark.asyncio
+async def test_cr_and_crlf_cannot_escape_optional_matrix_reply_fallback():
+    """The fallback quotes each physical line; canonical authored text is intact."""
+    content = await render(
+        reply_to_event_id="$original",
+        reply_preview=("old\r\nsecond\rthird", "Remote\rMesh"),
+    )
+    assert content["body"].startswith(
+        "> <@relay:example.org> [Remote\n> Mesh]: old\n> second\n> third\n\n"
+    )
+    assert content["body"].endswith("Radio text 🦉")
+    assert "[Remote<br/>Mesh]: old<br/>second<br/>third" in content["formatted_body"]
+    codec = MatrixCodec(
+        "matrix-room",
+        MatrixConfig(adapter_id="matrix-room", homeserver="", user_id=""),
+    )
+    decoded = codec.decode(
+        {
+            "room_id": ROOM,
+            "event_id": "$reply",
+            "sender": BOT,
+            "source": {"type": "m.room.message", "content": content},
+        },
+        room_id=ROOM,
+    )
+    assert decoded.payload["body"] == "Radio text 🦉"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "field,value",
     [
