@@ -322,6 +322,8 @@ async def test_cr_and_crlf_cannot_escape_optional_matrix_reply_fallback():
         ("event_kind", "message.deleted"),
         ("source_channel", "OtherMesh"),
         ("relation_info", "reaction"),
+        ("source_transport_id", "!ffffffff"),
+        ("source_native_ref", None),
     ],
 )
 async def test_outbound_renderer_rejects_inconsistent_provenance(field, value):

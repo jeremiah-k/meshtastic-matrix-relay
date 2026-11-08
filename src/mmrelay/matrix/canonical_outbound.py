@@ -276,12 +276,25 @@ async def render_matrix_relay_content(
         raise ValueError("MEDRE Matrix renderer invented a native relation")
     medre_fields = content.get("medre")
     envelope = medre_fields.get("envelope") if isinstance(medre_fields, dict) else None
+    native_ref = event.source_native_ref
+    expected_native_ref = (
+        {
+            "adapter": native_ref.adapter,
+            "native_channel_id": native_ref.native_channel_id,
+            "native_message_id": native_ref.native_message_id,
+            "native_thread_id": native_ref.native_thread_id,
+        }
+        if native_ref is not None
+        else None
+    )
     if (
         not isinstance(envelope, dict)
         or type(envelope.get("schema_version")) is not int
         or envelope.get("schema_version") != 1
         or envelope.get("canonical_event_id") != event.event_id
         or envelope.get("source_adapter") != _MESH_SOURCE
+        or envelope.get("source_transport_id") != event.source_transport_id
+        or envelope.get("source_native_ref") != expected_native_ref
         or envelope.get("source_channel") != event.source_channel_id
         or envelope.get("event_kind") != event.event_kind
         or envelope.get("relation_info")
