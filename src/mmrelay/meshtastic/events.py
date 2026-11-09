@@ -23,6 +23,7 @@ from mmrelay.meshtastic.packet_routing import (
     _is_text_message_portnum,
     classify_packet,
 )
+from mmrelay.meshtastic.reaction_preview import reaction_preview
 
 __all__ = [
     "_schedule_startup_drain_deadline_cleanup",
@@ -856,11 +857,10 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         if orig:
             # orig = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
             matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet = orig
-            abbreviated_text = (
-                meshtastic_text[:40] + "..."
-                if len(meshtastic_text) > 40
-                else meshtastic_text
-            )
+            # Canonical mapping retains authored quotes and whitespace. Flatten
+            # only this human-readable preview; keep the original stored text
+            # unchanged for replies, correlation, and MEDRE provenance.
+            abbreviated_text = reaction_preview(meshtastic_text or "")
 
             # Import the matrix prefix function
             from mmrelay.matrix_utils import get_matrix_prefix

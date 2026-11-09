@@ -41,9 +41,9 @@ def test_medre_dependencies_are_pinned_without_a_competing_radio_adapter() -> No
     reproducibility and exclusion of the competing Meshtastic adapter remain
     enforceable across future versions.
     """
-    project = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())[
-        "project"
-    ]
+    project = tomllib.loads(
+        (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    )["project"]
     assert project["requires-python"] == ">=3.12"
     dependencies = [Requirement(dep) for dep in project["dependencies"]]
     for package in ("medre", "medre-adapter-matrix"):

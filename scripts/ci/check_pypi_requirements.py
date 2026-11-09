@@ -55,8 +55,10 @@ def main() -> int:
     if args.github_output:
         with args.github_output.open("a", encoding="utf-8") as output:
             output.write(f"eligible={'true' if eligible else 'false'}\n")
-    names = ", ".join(Requirement(req).name for req in direct)
+    # Pre-bind: pyright cannot correlate the two `direct` guards below.
+    names = ""
     if direct:
+        names = ", ".join(Requirement(req).name for req in direct)
         print(
             "::warning::Skipping PyPI upload: direct-URL Requires-Dist "
             f"not accepted by PyPI ({names}). Publish source/GitHub artifacts "

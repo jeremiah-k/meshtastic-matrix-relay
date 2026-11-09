@@ -409,6 +409,37 @@ def test_on_meshtastic_message_zero_reply_id_preserves_interaction(reaction):
         assert relay.call_args.kwargs["reply_to_event_id"] == "$original"
 
 
+@pytest.mark.parametrize(
+    ("original", "expected"),
+    [
+        ("> q\n\nfirst\r\nsecond", 'reacted 👍 to "> q first second"'),
+        (
+            "> authored quote only\n> another line",
+            'reacted 👍 to "> authored quote only > another line"',
+        ),
+        ("first\nsecond\rthird", 'reacted 👍 to "first second third"'),
+    ],
+)
+def test_radio_reaction_preview_flattens_canonical_mapping_without_mutating_source(
+    original: str, expected: str
+) -> None:
+    """Preserve canonical quotes without adding newlines to reaction previews."""
+    _set_globals(_base_config())
+    packet = _base_packet()
+    packet["decoded"].update({"text": "👍", "replyId": 7, "emoji": EMOJI_FLAG_VALUE})
+    with _patch_message_deps(
+        interaction_settings={"reactions": True, "replies": True},
+        message_map=("$original", "!room:test", original, "TestNet"),
+    ) as (_, relay):
+        on_meshtastic_message(packet, _make_interface())
+    assert relay is not None
+    relay.assert_awaited_once()
+    presentation = relay.call_args.args[1]
+    assert expected in presentation
+    assert "\n" not in presentation.strip("\n")
+    assert relay.call_args.kwargs["meshtastic_text"] == original
+
+
 def test_on_meshtastic_message_reaction_missing_original():
     """Test that reactions with missing originals are relayed as normal messages."""
     config = _base_config()
