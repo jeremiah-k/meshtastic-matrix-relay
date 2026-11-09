@@ -1379,7 +1379,7 @@ requires-dist = [
     { name = "schedule", specifier = "==1.2.2" },
     { name = "segno", specifier = "==1.6.6" },
     { name = "types-jsonschema", marker = "extra == 'dev'", specifier = "==4.26.0.20261006" },
-    { name = "types-markdown", marker = "extra == 'dev'", specifier = "==3.11.2.20261107" },
+    { name = "types-markdown", marker = "extra == 'dev'", specifier = "==3.11.3.20261108" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = "==6.0.12.20261103" },
 ]
 provides-extras = ["e2e", "test", "dev"]
@@ -2556,11 +2556,11 @@ wheels = [
 
 [[package]]
 name = "types-markdown"
-version = "3.11.2.20261107"
+version = "3.11.3.20261108"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/5b/7c/1e48677620e364e3bd459cf1b08360d4067833ed46e06c43a1bd34adaec1/types_markdown-3.11.2.20261107.tar.gz", hash = "sha256:73043f9aecc4936b4530ce583eb443568cf33e9ed06b9d946f807a18bdf8c8ad", size = 20900, upload-time = "2026-11-07T07:55:15.677Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/56/49/b7e71464ac2a88112202cc19885169703897be958801ddc13d6f6b911e52/types_markdown-3.11.3.20261108.tar.gz", hash = "sha256:eac0188fc8dacbf9bbbea68a0aee98c7d3b0008f8b1def1a141cd669dd7c708a", size = 21043, upload-time = "2026-11-08T08:12:43.96Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/67/a1/1e03d179481d98776182575e46de416aba9b3866e2c817a68287070909a6/types_markdown-3.11.2.20261107-py3-none-any.whl", hash = "sha256:5ff026b9b364f7440c3ce5347f986170a4cf02eeb7e6bf96125833137df14a1c", size = 26346, upload-time = "2026-11-07T07:55:14.764Z" },
+    { url = "https://files.pythonhosted.org/packages/01/c8/d6538cf551ca721782891de6455a129679eab0d2fedd39570e66e5057c77/types_markdown-3.11.3.20261108-py3-none-any.whl", hash = "sha256:f906be98f35c745906ce2b88bd803f5e2af78d2f2f146d700110152ac20ffc38", size = 26452, upload-time = "2026-11-08T08:12:43.074Z" },
 ]
 
 [[package]]
