@@ -186,8 +186,10 @@ async def test_matrix_relay_simple_message(
     assert content["msgtype"] == "m.text"
     assert content["body"] == "Hello Matrix"
     assert content["formatted_body"] == "Hello Matrix"
-    assert content["meshtastic_meshnet"] == "TestMesh"
-    assert content["meshtastic_portnum"] == 1
+    assert content["medre"]["metadata"]["bridge_context"]["source"]["native_facts"] == {
+        "namespace": "meshtastic",
+        "fields": {"portnum": 1, "meshnet_label": "TestMesh"},
+    }
 
 
 @patch("mmrelay.matrix_utils.config", {"meshtastic": {"meshnet_name": "TestMesh"}})

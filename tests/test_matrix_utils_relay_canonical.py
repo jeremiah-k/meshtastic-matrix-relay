@@ -249,7 +249,10 @@ async def test_matrix_relay_uses_canonical_renderer_without_second_matrix_client
     sent = client.room_send.call_args.kwargs
     assert sent["content"]["medre"]["envelope"]["event_kind"] == "message.created"
     assert sent["content"]["medre"]["envelope"]["source_transport_id"] == "!0000007b"
-    assert sent["content"]["meshtastic_id"] == 19
+    assert (
+        sent["content"]["medre"]["envelope"]["source_native_ref"]["native_message_id"]
+        == "19"
+    )
     assert sent["tx_id"].startswith("mmrelay-")
 
 

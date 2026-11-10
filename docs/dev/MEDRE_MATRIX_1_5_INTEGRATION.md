@@ -36,6 +36,34 @@ Matrix-native metadata. They do not implement MMRelay's consumer migration or
 prove lossless source-native fact delivery. The runtime changes and live
 qualification remain release gates.
 
+## Canonical outbound source facts (implementation slice)
+
+The radio-to-Matrix core relay emits **no flat `meshtastic_*` content keys**.
+It constructs MEDRE `CanonicalEvent` with the authored body, packet ID
+(including zero) as a scoped `source_native_ref`, explicit reply/reaction
+relations, and the native radio node as `source_transport_id`. Public radio
+source facts use only `metadata.native.data["meshtastic"]["public_facts"]`
+in the source event. MEDRE projects those bounded values into the generic
+`medre.metadata.bridge_context.source.native_facts` object; its namespace is
+`meshtastic`, with `portnum` and an optional `meshnet_label`. Sender longname
+and shortname use `bridge_context.source.sender_name` and
+`sender_short_name` through a generic `RenderingContext.source_attribution`.
+The Matrix adapter remains the sole event renderer and existing nio transport
+continues to own send, E2EE, and durable message mapping.
+
+Source facts are **untrusted remote claims**, not authenticated proof or routing
+authority. The consumer still needs the approved global exact-MXID relay
+allowlist and canonical-only inbound migration, including removal of the
+`meshtastic_text` body override. The outbound-only slice is not a complete
+1.5 interoperability release. The MEDRE core, Matrix adapter, and Meshtastic
+adapter schema changes must land and MMRelay's pins and `uv.lock` be updated
+before full runtime qualification; the currently pinned MEDRE commits lack the
+new source-fact projection.
+
+The same bounded v1 `source.native_facts` context is supported by the LXMF
+fields and XMPP stanza extension; other adapters do not automatically promise
+lossless metadata exchange unless they explicitly support an embedding path.
+
 ## Decisions
 
 - **Matrix adapter only** in MMRelay's base dependencies. MEDRE and MMRelay
@@ -72,12 +100,13 @@ qualification remain release gates.
   `CanonicalEvent`, uses `MatrixRenderer` and validates its closed
   `MatrixOutboundOperation` before the existing nio `room_send` path. MMRelay
   still owns transport acknowledgements, stable retry transaction IDs, E2EE
-  policy, database message mapping, and rendering of its historical Markdown,
-  Matrix reply fallback, and `meshtastic_*` wire presentation fields.
+  policy, database message mapping, and its Markdown and Matrix reply fallback
+  presentation; no legacy flat `meshtastic_*` fields are emitted.
 - For radio reactions, the exact reaction symbol is carried as
-  `meshtastic_reaction_key`, independent of the human-readable emote body. MMRelay
-  consumes this field preferentially on Matrix ingress; older relays without it
-  still use the historic emote-text parser. The
+  an explicit `EventRelation.key`, independent of the human-readable emote
+  body. MMRelay inbound currently still uses the historic flat-field parser;
+  replacing it with allowlisted canonical relation consumption is a release
+  gate. The
   canonical event is `message.reacted` with a radio-native target reference;
   no Matrix `m.reaction` annotation or cross-room identity is invented. Normal
   radio replies carry a Matrix-native target scoped to the destination room;
@@ -202,7 +231,8 @@ deployment/development configuration rather than published direct requirements.
    Inspect each wheel and sdist, verify its frozen schema bundle and manifest,
    and test a clean install using the index rather than local source overrides.
 
-The **core radio-to-Matrix outbound content renderer** is now MEDRE-backed,
+The **core radio-to-Matrix outbound content renderer** is MEDRE-backed and
+now emits canonical metadata rather than legacy flat keys,
 without moving delivery acknowledgements, identity, edit/delete authorization,
 plugin send APIs, or Matrix upload sessions into the MEDRE runtime. The three
 schema-freeze PRs and this MMRelay adoption PR must be merged before MMRelay

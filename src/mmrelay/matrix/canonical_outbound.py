@@ -1,8 +1,8 @@
 """MMRelay's canonical Meshtastic-to-Matrix presentation boundary.
 
 MEDRE owns the immutable event, native reply relationship, Matrix operation
-and provenance envelope. MMRelay continues to own its existing wire fields,
-Markdown display convention and optional Matrix reply fallback quote. No
+and provenance envelope. MMRelay continues to own its Markdown display convention and optional
+Matrix reply fallback quote. No flat meshtastic_* keys are emitted. No
 MEDRE transport client or delivery pipeline is instantiated here.
 """
 
@@ -24,18 +24,9 @@ from medre.core.events import (
     NativeMetadata,
     NativeRef,
 )
+from medre.core.rendering.attribution import RelayAttribution
 from medre.core.rendering.renderer import RenderingContext
-from medre.interop.mmrelay import (
-    KEY_EMOJI,
-    KEY_ID,
-    KEY_LONGNAME,
-    KEY_MESHNET,
-    KEY_PORTNUM,
-    KEY_REACTION_KEY,
-    KEY_REPLY_ID,
-    KEY_SHORTNAME,
-    KEY_TEXT,
-)
+from medre.core.rendering.text_helpers import extract_relation_text
 
 _MATRIX_TARGET = "mmrelay.matrix"
 _MESH_SOURCE = "mmrelay.meshtastic"
@@ -154,35 +145,20 @@ async def render_matrix_relay_content(
     Reply relations use a **Matrix native** target reference scoped to this
     exact room, not a MEDRE canonical ID. The typed operation must remain a
     room message; a missing or malformed result fails closed before sending.
-    Legacy Meshtastic wire fields retain their original types for existing
-    MMRelay clients, independently of MEDRE's immutable metadata projection.
+    The canonical envelope is the only shared metadata surface.
     When provided, ``source_node_id`` carries the native Meshtastic identity;
     display names are only a fallback for callers without that identity.
     """
-    wire_fields: dict[str, object] = {
-        KEY_LONGNAME: longname,
-        KEY_SHORTNAME: shortname,
-        KEY_MESHNET: meshnet_name,
-        KEY_PORTNUM: portnum,
-    }
-    if meshtastic_id is not None:
-        wire_fields[KEY_ID] = meshtastic_id
-    if meshtastic_replyId is not None:
-        wire_fields[KEY_REPLY_ID] = meshtastic_replyId
-    if meshtastic_text is not None:
-        wire_fields[KEY_TEXT] = meshtastic_text
-    if emoji:
-        wire_fields[KEY_EMOJI] = 1
+    public_facts: dict[str, object] = {"portnum": portnum}
+    if len(meshnet_name) <= 256:
+        public_facts["meshnet_label"] = meshnet_name
 
     is_reaction = emoji and meshtastic_replyId is not None
-    reaction_symbol = reaction_key.strip() if isinstance(reaction_key, str) else ""
+    reaction_symbol = reaction_key if isinstance(reaction_key, str) else ""
     if is_reaction and reply_to_event_id:
         raise ValueError("Radio reactions cannot also carry a Matrix reply")
-    if is_reaction and not reaction_symbol:
+    if is_reaction and not reaction_symbol.strip():
         raise ValueError("Meshtastic reaction requires an explicit reaction_key")
-    if is_reaction:
-        wire_fields[KEY_REACTION_KEY] = reaction_symbol
-
     relations: tuple[EventRelation, ...] = ()
     if is_reaction:
         # This is a RADIO reaction, not a native Matrix annotation. There is
@@ -198,7 +174,6 @@ async def render_matrix_relay_content(
                 ),
                 key=reaction_symbol,
                 fallback_text=meshtastic_text,
-                metadata={"meshtastic_reply_id": str(meshtastic_replyId)},
             ),
         )
     elif reply_to_event_id:
@@ -210,6 +185,21 @@ async def render_matrix_relay_content(
                     adapter=_MATRIX_TARGET,
                     native_channel_id=room_id,
                     native_message_id=reply_to_event_id,
+                ),
+                key=None,
+                fallback_text=None,
+            ),
+        )
+
+    elif meshtastic_replyId is not None:
+        relations = (
+            EventRelation(
+                relation_type="reply",
+                target_event_id=None,
+                target_native_ref=NativeRef(
+                    adapter=_MESH_SOURCE,
+                    native_channel_id=meshnet_name,
+                    native_message_id=str(meshtastic_replyId),
                 ),
                 key=None,
                 fallback_text=None,
@@ -235,7 +225,21 @@ async def render_matrix_relay_content(
         relations=relations,
         payload={"body": message, "msgtype": "m.emote" if emote else "m.text"},
         metadata=EventMetadata(
-            native=NativeMetadata(data={"interop": {"mmrelay": wire_fields}})
+            native=NativeMetadata(
+                data={
+                    "meshtastic": {
+                        "schema_version": 1,
+                        "observation": "source_facts",
+                        "from_id": (
+                            source_node_id if isinstance(source_node_id, str) else ""
+                        ),
+                        "longname": longname,
+                        "shortname": shortname,
+                        "portnum": str(portnum),
+                        "public_facts": public_facts,
+                    }
+                }
+            )
         ),
         source_native_ref=(
             NativeRef(
@@ -254,7 +258,16 @@ async def render_matrix_relay_content(
             target_adapter=_MATRIX_TARGET,
             target_channel=room_id,
             target_platform="matrix",
-            source_origin_label="",  # MMRelay already owns its message prefixes
+            source_origin_label=meshnet_name,
+            source_attribution=RelayAttribution(
+                source_platform="meshtastic",
+                source_sender_id=(
+                    source_node_id if isinstance(source_node_id, str) else None
+                ),
+                source_sender_label=longname,
+                source_sender_short_label=shortname,
+                source_origin_label=meshnet_name,
+            ),
         ),
     )
     operation = MatrixOutboundOperation.from_payload(result.payload)
@@ -266,7 +279,10 @@ async def render_matrix_relay_content(
     ):
         raise ValueError("MEDRE returned a non-message Matrix operation")
     content: dict[str, Any] = dict(operation.content)
-    if not is_reaction and content.get("body") != message:
+    radio_reply = (
+        meshtastic_replyId is not None and not is_reaction and not reply_to_event_id
+    )
+    if not is_reaction and not radio_reply and content.get("body") != message:
         raise ValueError("MEDRE Matrix renderer changed the authored message body")
     if reply_to_event_id and content.get("m.relates_to") != {
         "m.in_reply_to": {"event_id": reply_to_event_id}
@@ -301,15 +317,32 @@ async def render_matrix_relay_content(
         != ",".join(sorted({relation.relation_type for relation in relations}))
     ):
         raise ValueError("MEDRE Matrix renderer lost canonical v1 provenance")
+    if radio_reply and (
+        getattr(result, "fallback_applied", None) != "relation_reply"
+        or content.get("body") != extract_relation_text(event)
+    ):
+        raise ValueError(
+            "MEDRE Matrix renderer changed the authored message body or radio reply"
+        )
+    metadata = medre_fields.get("metadata") if isinstance(medre_fields, dict) else None
+    context = metadata.get("bridge_context") if isinstance(metadata, dict) else None
+    source = context.get("source") if isinstance(context, dict) else None
+    if (
+        not isinstance(source, dict)
+        or source.get("sender_name") != longname
+        or source.get("sender_short_name") != shortname
+        or source.get("native_facts")
+        != {"namespace": "meshtastic", "fields": public_facts}
+    ):
+        raise ValueError("MEDRE Matrix renderer lost public source attribution")
 
-    # The pinned MEDRE 0.1 renderer defaults to m.text. MMRelay's radio emote
+    # The MEDRE renderer defaults to m.text. MMRelay's radio emote
     # fallback is a presentation choice, never an edit/reaction mutation.
     content["msgtype"] = "m.emote" if emote or is_reaction else "m.text"
-    if is_reaction:
-        # MEDRE owns the reaction relation and provenance; MMRelay retains its
-        # established human-readable radio reaction presentation in this room.
+    if is_reaction or radio_reply:
+        # MEDRE owns the relation and provenance; MMRelay retains its
+        # established human-readable radio presentation in this room.
         content["body"] = message
-    content.update(wire_fields)
     content["format"] = "org.matrix.custom.html"
     formatted_body = _formatted_message(message)
     if reply_to_event_id and reply_preview is not None:

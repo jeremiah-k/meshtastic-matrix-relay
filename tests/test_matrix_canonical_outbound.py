@@ -55,7 +55,7 @@ async def render(**kwargs):
 
 
 @pytest.mark.asyncio
-async def test_outbound_medre_envelope_and_legacy_fields_are_consistent():
+async def test_outbound_medre_envelope_is_only_metadata_surface():
     content = await render()
     envelope = content["medre"]["envelope"]
     assert envelope["schema_version"] == 1
@@ -65,11 +65,15 @@ async def test_outbound_medre_envelope_and_legacy_fields_are_consistent():
     assert envelope["canonical_event_id"]
     assert content["msgtype"] == "m.text"
     assert content["body"] == "Radio text 🦉"
-    assert content["meshtastic_id"] == 123
-    assert content["meshtastic_replyId"] == 4
-    assert content["meshtastic_text"] == "original radio text"
-    assert content["meshtastic_portnum"] == 1
-    assert content["meshtastic_longname"] == "Radio Alice"
+    assert not any(name.startswith("meshtastic_") for name in content)
+    assert envelope["source_native_ref"]["native_message_id"] == "123"
+    source = content["medre"]["metadata"]["bridge_context"]["source"]
+    assert source["sender_name"] == "Radio Alice"
+    assert source["sender_short_name"] == "RA"
+    assert source["native_facts"] == {
+        "namespace": "meshtastic",
+        "fields": {"portnum": 1, "meshnet_label": "LocalMesh"},
+    }
     assert "_matrix_operation" not in content
     assert "m.relates_to" not in content
 
@@ -125,13 +129,31 @@ async def test_outbound_emote_emoji_and_zero_packet_ids_are_not_lost():
     )
     assert content["msgtype"] == "m.emote"
     assert content["body"] == "waves"
-    assert content["meshtastic_emoji"] == 1
-    assert content["meshtastic_id"] == 0
-    assert content["meshtastic_replyId"] == 0
-    assert content["meshtastic_text"] == ""
-    assert content["meshtastic_reaction_key"] == "👍"
+    assert not any(name.startswith("meshtastic_") for name in content)
+    assert content["medre"]["envelope"]["source_native_ref"]["native_message_id"] == "0"
+    relation = content["medre"]["metadata"]["bridge_context"]["relations"][0]
+    assert relation["key"] == "👍"
+    assert relation["target_native_ref"]["native_message_id"] == "0"
     assert content["medre"]["envelope"]["event_kind"] == "message.reacted"
     assert content["medre"]["envelope"]["source_adapter"] == "mmrelay.meshtastic"
+
+
+@pytest.mark.asyncio
+async def test_radio_reaction_uses_native_ref_without_legacy_relation_metadata():
+    """The generic native relation is sufficient; no private MMRelay keys."""
+    with patch(
+        "mmrelay.matrix.canonical_outbound._RENDERER.render",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("capture"),
+    ) as render_mock:
+        with pytest.raises(RuntimeError, match="capture"):
+            await render(
+                emoji=True, reaction_key="👍", meshtastic_replyId=0, meshtastic_id=0
+            )
+    event = render_mock.await_args.args[0]
+    assert event.relations[0].target_native_ref.native_message_id == "0"
+    assert event.relations[0].key == "👍"
+    assert not event.relations[0].metadata
 
 
 @pytest.mark.asyncio
@@ -175,7 +197,7 @@ async def test_outbound_renderer_refuses_wrong_operation_and_body_mutation():
         return_value=SimpleNamespace(payload=wrong_body.to_payload()),
     ):
         with pytest.raises(ValueError, match="changed the authored message body"):
-            await render()
+            await render(meshtastic_replyId=None)
 
 
 @pytest.mark.asyncio
@@ -259,9 +281,12 @@ async def test_outbound_reaction_requires_structured_symbol_and_codec_recovers_i
         },
         room_id=ROOM,
     )
-    assert decoded.event_kind == "message.reacted"
-    assert decoded.relations[0].relation_type == "reaction"
-    assert decoded.relations[0].key == "🎉"
+    # A native Matrix emote is an ordinary Matrix message until an allowlisted
+    # peer has authorized use of the *embedded* canonical reaction claim.
+    assert decoded.event_kind == "message.created"
+    claim = decoded.metadata.native.data["matrix"]["relay"]["bridge_context"]
+    assert claim["relations"][0]["relation_type"] == "reaction"
+    assert claim["relations"][0]["key"] == "🎉"
 
 
 @pytest.mark.asyncio
@@ -349,7 +374,10 @@ async def test_outbound_provenance_identifies_actual_node_not_display_shortname(
     content = await render(source_node_id="!0000007b", shortname="A")
     envelope = content["medre"]["envelope"]
     assert envelope["source_transport_id"] == "!0000007b"
-    assert content["meshtastic_shortname"] == "A"
+    assert (
+        content["medre"]["metadata"]["bridge_context"]["source"]["sender_short_name"]
+        == "A"
+    )
     fallback = await render(shortname="A")
     assert fallback["medre"]["envelope"]["source_transport_id"] == "A"
     malformed = await render(source_node_id=123, shortname="A")
@@ -380,3 +408,15 @@ async def test_outbound_renderer_rejects_invented_native_relation():
     ):
         with pytest.raises(ValueError, match="invented a native relation"):
             await render(reply_to_event_id=None)
+
+
+@pytest.mark.parametrize("packet_id", [0, 4])
+async def test_unbound_radio_reply_keeps_generic_reference_and_authored_body(packet_id):
+    content = await render(meshtastic_replyId=packet_id)
+    assert content["body"] == "Radio text 🦉"
+    assert "m.relates_to" not in content
+    relation = content["medre"]["metadata"]["bridge_context"]["relations"][0]
+    assert relation["relation_type"] == "reply"
+    assert relation["target_native_ref"]["native_message_id"] == str(packet_id)
+    assert relation["target_native_ref"]["adapter"] == "mmrelay.meshtastic"
+    assert relation["target_native_ref"]["native_channel_id"] == "LocalMesh"

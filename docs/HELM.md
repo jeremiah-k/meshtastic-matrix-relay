@@ -508,7 +508,7 @@ Expected output:
 
 ## Upgrading
 
-### Upgrade to 1.3.x
+### Upgrade to 1.5.0
 
 If upgrading from 1.2.x or earlier, follow `docs/MIGRATION_1.3.md` first.
 
