@@ -157,14 +157,15 @@ lossless metadata exchange unless they explicitly support an embedding path.
 
 ## Git-install pins and distribution caveat
 
-The current `pyproject.toml` contains two immutable direct Git references:
+The candidate `pyproject.toml` and `uv.lock` pin the coordinated test pair:
 
-- MEDRE core at `0fd9f754c91a249a2daea2bf6d10e6e5fec7f976`, the pushed
-  0.1.0 schema-freeze commit.
-- `medre-adapter-matrix` at the requested
-  `241e9590035bb18750527c3ea1f02d26f28acfb5`; its schema-freeze follow-up
-  corrects the native provenance projection. This pin predates that correction
-  and must be updated to the merged adapter freeze before the release.
+- MEDRE core at `054d5dc7337c7970ed64064c944d93ab4d7446e2`.
+- Matrix adapter at `75d961d85f31b26a32f4d929badb1dede57ef310`.
+
+These immutable Git commits include bounded source facts, generic attribution,
+and explicit canonical reaction keys. Repin to the final merged release pair
+and repeat qualification before tagging; a development pin is not a release
+signoff.
 
 The adapter declares `medre>=0.1.0,<0.2.0` (not published yet at this
 snapshot), so **the adapter Git pin alone is not a complete install**. The

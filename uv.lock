@@ -1287,7 +1287,7 @@ wheels = [
 [[package]]
 name = "medre"
 version = "0.1.0"
-source = { git = "https://github.com/jeremiah-k/medre.git?rev=0fd9f754c91a249a2daea2bf6d10e6e5fec7f976#0fd9f754c91a249a2daea2bf6d10e6e5fec7f976" }
+source = { git = "https://github.com/jeremiah-k/medre.git?rev=054d5dc7337c7970ed64064c944d93ab4d7446e2#054d5dc7337c7970ed64064c944d93ab4d7446e2" }
 dependencies = [
     { name = "msgspec" },
     { name = "pyyaml" },
@@ -1297,7 +1297,7 @@ dependencies = [
 [[package]]
 name = "medre-adapter-matrix"
 version = "0.1.0"
-source = { git = "https://github.com/jeremiah-k/medre-adapter-matrix.git?rev=241e9590035bb18750527c3ea1f02d26f28acfb5#241e9590035bb18750527c3ea1f02d26f28acfb5" }
+source = { git = "https://github.com/jeremiah-k/medre-adapter-matrix.git?rev=75d961d85f31b26a32f4d929badb1dede57ef310#75d961d85f31b26a32f4d929badb1dede57ef310" }
 dependencies = [
     { name = "medre" },
     { name = "mindroom-nio", extra = ["e2e"] },
@@ -1380,8 +1380,8 @@ requires-dist = [
     { name = "haversine", specifier = "==2.9.0" },
     { name = "markdown", specifier = "==3.11.3" },
     { name = "matplotlib", specifier = "==3.11.2" },
-    { name = "medre", git = "https://github.com/jeremiah-k/medre.git?rev=0fd9f754c91a249a2daea2bf6d10e6e5fec7f976" },
-    { name = "medre-adapter-matrix", git = "https://github.com/jeremiah-k/medre-adapter-matrix.git?rev=241e9590035bb18750527c3ea1f02d26f28acfb5" },
+    { name = "medre", git = "https://github.com/jeremiah-k/medre.git?rev=054d5dc7337c7970ed64064c944d93ab4d7446e2" },
+    { name = "medre-adapter-matrix", git = "https://github.com/jeremiah-k/medre-adapter-matrix.git?rev=75d961d85f31b26a32f4d929badb1dede57ef310" },
     { name = "mindroom-nio", specifier = "==1.3.0" },
     { name = "mindroom-nio", extras = ["e2e"], marker = "extra == 'e2e'", specifier = "==1.3.0" },
     { name = "mtjk", specifier = "==2.7.11.post14" },

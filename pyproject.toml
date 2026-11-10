@@ -29,8 +29,8 @@ dependencies = [
   "mindroom-nio==1.3.0",
   # Unpublished MEDRE 0.1 core and Matrix codec, pinned for reproducibility.
   # Repin the core to its frozen-release commit before tagging MMRelay 1.5.0.
-  "medre @ git+https://github.com/jeremiah-k/medre.git@0fd9f754c91a249a2daea2bf6d10e6e5fec7f976",
-  "medre-adapter-matrix @ git+https://github.com/jeremiah-k/medre-adapter-matrix.git@241e9590035bb18750527c3ea1f02d26f28acfb5",
+  "medre @ git+https://github.com/jeremiah-k/medre.git@054d5dc7337c7970ed64064c944d93ab4d7446e2",
+  "medre-adapter-matrix @ git+https://github.com/jeremiah-k/medre-adapter-matrix.git@75d961d85f31b26a32f4d929badb1dede57ef310",
   "matplotlib==3.11.2",
   "requests==2.34.2",
   "markdown==3.11.3",
