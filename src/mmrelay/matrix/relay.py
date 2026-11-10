@@ -192,6 +192,7 @@ async def matrix_relay(
     reply_to_event_id: str | None = None,
     reaction_key: str | None = None,
     source_node_id: str | None = None,
+    source_channel_id: str | None = None,
 ) -> None:
     """
     Relay a Meshtastic-originated message into a Matrix room and optionally persist a Meshtastic↔Matrix mapping.
@@ -321,6 +322,7 @@ async def matrix_relay(
             emoji=emoji,
             reaction_key=reaction_key,
             source_node_id=source_node_id,
+            source_channel_id=source_channel_id,
             reply_to_event_id=reply_to_event_id,
             reply_preview=reply_preview,
             bot_user_id=getattr(matrix_client, "user_id", None),

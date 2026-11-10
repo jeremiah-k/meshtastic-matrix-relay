@@ -243,3 +243,11 @@ A native radio tapback must supply a nonempty text key. Empty or malformed
 keys are dropped instead of substituted with a warning symbol. The exact text
 key, including Unicode selectors and skin-tone modifiers, becomes the
 canonical relation key independently of its human-readable preview.
+
+## Source channel identity
+
+The radio packet's logical channel travels as canonical source_channel_id and
+scopes both the source packet reference and radio reply/reaction targets.
+The meshnet display label remains a separate public fact and origin label.
+Callers without radio channel observations retain the instance mesh label as
+the fallback source scope; they do not assert a fabricated numeric channel.

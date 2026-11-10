@@ -386,6 +386,7 @@ def test_on_meshtastic_message_does_not_filter_plain_emoji_message_when_reaction
 def test_on_meshtastic_message_zero_reply_id_preserves_interaction(reaction):
     _set_globals(_base_config())
     packet = _base_packet()
+    packet["channel"] = 2
     packet["decoded"].update({"text": "👍", "replyId": 0})
     if reaction:
         packet["decoded"]["emoji"] = EMOJI_FLAG_VALUE
@@ -402,6 +403,7 @@ def test_on_meshtastic_message_zero_reply_id_preserves_interaction(reaction):
     relay.assert_awaited_once()
     assert relay.call_args.kwargs["meshtastic_replyId"] == 0
     assert relay.call_args.kwargs["source_node_id"] == "!0000007b"
+    assert relay.call_args.kwargs["source_channel_id"] == "2"
     if reaction:
         assert relay.call_args.kwargs["reaction_key"] == "👍"
         assert relay.call_args.kwargs["emoji"] is True

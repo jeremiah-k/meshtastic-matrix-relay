@@ -139,6 +139,7 @@ async def render_matrix_relay_content(
     reply_preview: tuple[str, str | None] | None = None,
     bot_user_id: str | None = None,
     source_node_id: str | None = None,
+    source_channel_id: str | None = None,
 ) -> dict[str, Any]:
     """Render one canonical radio message into a validated Matrix send operation.
 
@@ -149,6 +150,9 @@ async def render_matrix_relay_content(
     When provided, ``source_node_id`` carries the native Meshtastic identity;
     display names are only a fallback for callers without that identity.
     """
+    source_channel = (
+        source_channel_id if source_channel_id is not None else meshnet_name
+    )
     public_facts: dict[str, object] = {"portnum": portnum}
     if len(meshnet_name) <= 256:
         public_facts["meshnet_label"] = meshnet_name
@@ -169,7 +173,7 @@ async def render_matrix_relay_content(
                 target_event_id=None,
                 target_native_ref=NativeRef(
                     adapter=_MESH_SOURCE,
-                    native_channel_id=meshnet_name,
+                    native_channel_id=source_channel,
                     native_message_id=str(meshtastic_replyId),
                 ),
                 key=reaction_symbol,
@@ -198,7 +202,7 @@ async def render_matrix_relay_content(
                 target_event_id=None,
                 target_native_ref=NativeRef(
                     adapter=_MESH_SOURCE,
-                    native_channel_id=meshnet_name,
+                    native_channel_id=source_channel,
                     native_message_id=str(meshtastic_replyId),
                 ),
                 key=None,
@@ -219,7 +223,7 @@ async def render_matrix_relay_content(
             if isinstance(source_node_id, str) and source_node_id
             else shortname or longname or "mesh"
         ),
-        source_channel_id=meshnet_name,
+        source_channel_id=source_channel,
         parent_event_id=None,
         lineage=(),
         relations=relations,
@@ -244,7 +248,7 @@ async def render_matrix_relay_content(
         source_native_ref=(
             NativeRef(
                 adapter=_MESH_SOURCE,
-                native_channel_id=meshnet_name,
+                native_channel_id=source_channel,
                 native_message_id=str(meshtastic_id),
             )
             if meshtastic_id is not None

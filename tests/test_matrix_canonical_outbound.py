@@ -420,3 +420,20 @@ async def test_unbound_radio_reply_keeps_generic_reference_and_authored_body(pac
     assert relation["target_native_ref"]["native_message_id"] == str(packet_id)
     assert relation["target_native_ref"]["adapter"] == "mmrelay.meshtastic"
     assert relation["target_native_ref"]["native_channel_id"] == "LocalMesh"
+
+
+@pytest.mark.parametrize("reaction", [False, True])
+async def test_radio_channel_is_independent_of_meshnet_label(reaction):
+    content = await render(
+        source_channel_id="0",
+        meshtastic_replyId=0,
+        emoji=reaction,
+        reaction_key="❤️" if reaction else None,
+    )
+    envelope = content["medre"]["envelope"]
+    context = content["medre"]["metadata"]["bridge_context"]
+    assert envelope["source_channel"] == "0"
+    assert envelope["source_native_ref"]["native_channel_id"] == "0"
+    assert context["relations"][0]["target_native_ref"]["native_channel_id"] == "0"
+    assert context["source"]["native_facts"]["fields"]["meshnet_label"] == "LocalMesh"
+    assert content["body"] == "Radio text 🦉"
