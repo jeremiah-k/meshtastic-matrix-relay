@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 from medre.adapters.matrix.event_shape import (
     MATRIX_NATIVE_SCHEMA_VERSION,
     matrix_namespace,
@@ -130,3 +131,22 @@ def test_encrypted_room_does_not_fabricate_event_decryption_or_leak_keys() -> No
     assert native["media"]["mxc_uri"] == "mxc://example.org/pic"
     assert "SECRET" not in str(canonical.metadata.native.data)
     assert "IV" not in str(canonical.metadata.native.data)
+
+
+@pytest.mark.parametrize("verified", [True, False, None])
+def test_decrypted_event_records_only_supported_crypto_facts(verified) -> None:
+    """Do not turn encrypted-room state into proof of decryption or verification."""
+    room, event = _message({"msgtype": "m.text", "body": "decrypted text"})
+    room.encrypted = True
+    event.decrypted = True
+    event.verified = verified
+    canonical = canonicalize_matrix_event(room, event)
+    native = matrix_namespace(canonical.metadata.native.data)
+    expected = {
+        "event_encrypted": True,
+        "decrypted": True,
+        "room_encrypted": True,
+    }
+    if verified is not None:
+        expected["verified"] = verified
+    assert native["encryption"] == expected

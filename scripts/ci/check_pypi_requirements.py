@@ -12,7 +12,10 @@ from __future__ import annotations
 import argparse
 import sys
 import tomllib
+from email import policy
+from email.parser import BytesParser
 from pathlib import Path
+from zipfile import BadZipFile, ZipFile
 
 from packaging.requirements import Requirement
 
@@ -23,6 +26,16 @@ def direct_requirements(manifest: Path) -> list[str]:
         project = tomllib.load(handle).get("project")
     if not isinstance(project, dict):
         raise ValueError("project must be a table")
+    dynamic = project.get("dynamic", [])
+    if not isinstance(dynamic, list) or not all(
+        isinstance(name, str) for name in dynamic
+    ):
+        raise ValueError("project.dynamic must be a list of field names")
+    if set(dynamic) & {"dependencies", "optional-dependencies"}:
+        raise ValueError(
+            "Dynamic dependency metadata cannot be checked before build; "
+            "the PyPI preflight requires static dependencies"
+        )
     base = project.get("dependencies", [])
     extras = project.get("optional-dependencies", {})
     if not isinstance(extras, dict):
@@ -39,16 +52,34 @@ def direct_requirements(manifest: Path) -> list[str]:
     return direct
 
 
+def direct_wheel_requirements(wheel: Path) -> list[str]:
+    """Read actual Requires-Dist fields from the built distribution."""
+    with ZipFile(wheel) as archive:
+        metadata_files = [
+            name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
+        ]
+        if len(metadata_files) != 1:
+            raise ValueError("Wheel must contain exactly one .dist-info/METADATA")
+        metadata = BytesParser(policy=policy.default).parsebytes(
+            archive.read(metadata_files[0])
+        )
+    requirements = metadata.get_all("Requires-Dist", [])
+    return [text for text in requirements if Requirement(text).url is not None]
+
+
 def main() -> int:
     """Set a GitHub Actions output; never upload unsupported PyPI metadata."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pyproject", type=Path, default=Path("pyproject.toml"))
+    parser.add_argument("--wheel", type=Path, help="Check the built wheel metadata too")
     parser.add_argument("--github-output", type=Path)
     parser.add_argument("--github-summary", type=Path)
     args = parser.parse_args()
     try:
         direct = direct_requirements(args.pyproject)
-    except (OSError, TypeError, ValueError, tomllib.TOMLDecodeError) as exc:
+        if args.wheel is not None:
+            direct.extend(direct_wheel_requirements(args.wheel))
+    except (OSError, TypeError, ValueError, BadZipFile, tomllib.TOMLDecodeError) as exc:
         print(f"::error::Cannot validate PyPI requirements: {exc}", file=sys.stderr)
         return 1
     eligible = not direct
@@ -58,7 +89,7 @@ def main() -> int:
     # Pre-bind: pyright cannot correlate the two `direct` guards below.
     names = ""
     if direct:
-        names = ", ".join(Requirement(req).name for req in direct)
+        names = ", ".join(sorted({Requirement(req).name for req in direct}))
         print(
             "::warning::Skipping PyPI upload: direct-URL Requires-Dist "
             f"not accepted by PyPI ({names}). Publish source/GitHub artifacts "

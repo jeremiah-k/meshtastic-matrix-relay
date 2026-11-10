@@ -27,8 +27,15 @@ jobs:
           python-version: 3.x
 
       - name: Validate release tag against package version
-        if: ${{ github.event_name == 'release' }}
-        run: python scripts/ci/validate_release_version.py --tag "${{ github.event.release.tag_name }}"
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [ "$REF_TYPE" != "tag" ]; then
+            echo "::error::PyPI publishing requires a version tag, including workflow_dispatch"
+            exit 1
+          fi
+          python scripts/ci/validate_release_version.py --tag "$RELEASE_TAG"
 
       - name: Install build dependencies
         run: |
@@ -44,6 +51,10 @@ jobs:
       - name: Build the package
         run: python -m build
 
+      - name: Check built wheel metadata for PyPI
+        id: pypi_wheel
+        run: python scripts/ci/check_pypi_requirements.py --wheel dist/*.whl --github-output "$GITHUB_OUTPUT" --github-summary "$GITHUB_STEP_SUMMARY"
+
       - name: Publish to PyPI
-        if: ${{ steps.pypi_requirements.outputs.eligible == 'true' }}
+        if: ${{ steps.pypi_requirements.outputs.eligible == 'true' && steps.pypi_wheel.outputs.eligible == 'true' }}
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3

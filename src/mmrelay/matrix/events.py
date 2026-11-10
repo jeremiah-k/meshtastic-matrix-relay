@@ -32,6 +32,7 @@ from nio.events.room_events import RoomMemberEvent
 import mmrelay.matrix_utils as facade
 from mmrelay.constants.formats import MATRIX_SUPPRESS_KEY
 from mmrelay.matrix.canonical_ingress import canonicalize_matrix_event
+from mmrelay.matrix.reaction_target import has_emote_reaction_target
 
 __all__ = [
     "on_decryption_failure",
@@ -422,6 +423,34 @@ async def on_room_message(
     if suppress:
         return
 
+    local_meshnet_name = facade.get_meshtastic_config_value(
+        facade.config, "meshnet_name", ""
+    )
+
+    if (
+        isinstance(event, RoomMessageEmote)
+        and is_reaction
+        and not has_emote_reaction_target(
+            original_matrix_event_id,
+            meshtastic_replyId,
+            meshnet_name,
+            local_meshnet_name,
+        )
+    ):
+        # A legacy emote may carry packet ID 0 without a radio/Matrix target.
+        # It was a regular message before ID-zero reaction detection; do not
+        # silently turn its authored body into an empty radio broadcast.
+        is_reaction = False
+        reaction_emoji = None
+        text = (
+            mesh_text_override
+            or getattr(event, "body", "")
+            or event.source["content"].get("body", "")
+        )
+        text = text.strip() if isinstance(text, str) else ""
+        if not text:
+            return
+
     if is_reaction and not interactions["reactions"]:
         facade.logger.debug(
             "Reaction event encountered but reactions are disabled. Doing nothing."
@@ -444,10 +473,6 @@ async def on_room_message(
                 canonical_body = canonical_event.payload.get("body")
                 if isinstance(canonical_body, str):
                     text = canonical_body.strip()
-
-    local_meshnet_name = facade.get_meshtastic_config_value(
-        facade.config, "meshnet_name", ""
-    )
 
     is_reply = False
     reply_to_event_id = None
@@ -644,6 +669,11 @@ async def on_room_message(
                     facade.logger.error("Failed to relay local reaction to Meshtastic")
                     return
             return
+
+        # A native annotation without an eligible target must never fall
+        # through to the ordinary message path with an empty body.
+        facade.logger.debug("Ignoring Matrix reaction without a resolved target")
+        return
 
     if is_reply and reply_to_event_id and interactions["replies"]:
         reply_handled = await facade.handle_matrix_reply(

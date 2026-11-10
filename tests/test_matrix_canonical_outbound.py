@@ -354,3 +354,29 @@ async def test_outbound_provenance_identifies_actual_node_not_display_shortname(
     assert fallback["medre"]["envelope"]["source_transport_id"] == "A"
     malformed = await render(source_node_id=123, shortname="A")
     assert malformed["medre"]["envelope"]["source_transport_id"] == "A"
+
+
+@pytest.mark.asyncio
+async def test_outbound_renderer_rejects_invented_native_relation():
+    """Do not let a renderer attach an unauthorized Matrix reply target."""
+    from mmrelay.matrix import canonical_outbound
+
+    original_render = canonical_outbound._RENDERER.render
+
+    async def forged_relation(event, context):
+        rendered = await original_render(event, context)
+        operation = MatrixOutboundOperation.from_payload(rendered.payload)
+        assert operation is not None
+        content = dict(operation.content)
+        content["m.relates_to"] = {"m.in_reply_to": {"event_id": "$forged"}}
+        return SimpleNamespace(
+            payload=MatrixOutboundOperation.send_event(
+                "m.room.message", content
+            ).to_payload()
+        )
+
+    with patch.object(
+        canonical_outbound._RENDERER, "render", side_effect=forged_relation
+    ):
+        with pytest.raises(ValueError, match="invented a native relation"):
+            await render(reply_to_event_id=None)

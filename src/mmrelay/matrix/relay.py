@@ -304,7 +304,7 @@ async def matrix_relay(
                         "Could not find original message for reply_to_event_id: %s",
                         reply_to_event_id,
                     )
-            except Exception:
+            except Exception:  # noqa: BLE001 - reply context is best-effort
                 facade.logger.exception("Error looking up Matrix reply context")
 
         content = await render_matrix_relay_content(

@@ -22,7 +22,10 @@ session and transport; the shared room is the interoperability surface.
   session is started. `canonicalize_matrix_event` is an SDK-to-schema boundary for eligible
   mapped, non-suppressed relay messages.
 - The canonical `payload["body"]` and `relations` are authoritative for
-  eligible ordinary Matrix text and explicit replies at relay ingress. A Matrix thread
+  eligible ordinary Matrix text and explicit replies at relay ingress **unless
+  a legacy `meshtastic_text` override is present**. That older field is still
+  preferred by the current relay for compatibility, and is not authenticated
+  merely because it appears in Matrix content. A Matrix thread
   compatibility fallback is **not** an authored reply, and the reply fallback
   quote is stripped from the canonical body even when reply interactions are
   disabled because it is presentation metadata rather than authored text.
@@ -76,6 +79,26 @@ session and transport; the shared room is the interoperability surface.
   first _tagged_ 0.1.0 core and adapter releases establish the support
   baseline. MMRelay's existing historical message-map and E2EE-store behavior
   remains independent of MEDRE's experimental database formats.
+
+## Pending trust and privacy decisions before the first 1.5 tag
+
+- Matrix members can provide legacy `meshtastic_text`, `meshtastic_meshnet`,
+  `meshtastic_longname`, and related fields. The codec normalizes Matrix
+  structure, but does **not** authorize these fields or prove that a sender
+  is a peer relay. Define an allowlist/compatibility policy before claiming
+  that a canonical payload is universally authoritative. Preserve the old
+  behavior for existing users until migration and rollback are qualified.
+- When a Meshtastic node ID is supplied to the outbound renderer,
+  `medre.envelope.source_transport_id` embeds that stable, linkable ID in
+  Matrix content. Public or unencrypted rooms may expose it to unintended
+  observers. This branch does **not** implement a disclosure opt-out; the
+  release owner must decide whether to retain it or gate it by configuration.
+  Never treat radio node IDs or wire-envelope provenance as cryptographic
+  proof of authorship.
+- A Matrix emote with a radio packet ID but no eligible radio/Matrix
+  reaction target is a normal authored message, not an empty reaction.
+  Only explicit valid targets are relayed as reactions; packet ID zero is
+  valid when a genuine target exists.
 
 ## Git-install pins and distribution caveat
 

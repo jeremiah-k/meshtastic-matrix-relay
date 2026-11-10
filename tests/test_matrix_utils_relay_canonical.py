@@ -2,12 +2,57 @@
 
 from __future__ import annotations
 
+import contextlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from mmrelay.matrix.canonical_ingress import canonicalize_matrix_event
+
+
+@contextlib.contextmanager
+def _patched_relay_facade(reactions_enabled):
+    """Yield ``(room, enqueue)`` with the relay facade patched for one event."""
+    room = SimpleNamespace(room_id="!room:example.org", encrypted=False)
+    room_config = {"id": room.room_id, "meshtastic_channel": 0}
+    config = {
+        "meshtastic": {
+            "meshnet_name": "LocalMesh",
+            "prefix_enabled": False,
+            "broadcast_enabled": True,
+        },
+        "matrix_rooms": [room_config],
+    }
+    queue = MagicMock()
+    queue.get_queue_size.return_value = 0
+    with (
+        patch("mmrelay.matrix_utils.config", config),
+        patch("mmrelay.matrix_utils.matrix_rooms", [room_config]),
+        patch("mmrelay.matrix_utils.bot_start_time", 0),
+        patch("mmrelay.matrix_utils.bot_user_id", "@relay:example.org"),
+        patch(
+            "mmrelay.matrix_utils.get_interaction_settings",
+            return_value={"replies": False, "reactions": reactions_enabled},
+        ),
+        patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False),
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            new_callable=AsyncMock,
+            return_value="Alice",
+        ),
+        patch("mmrelay.matrix_utils.get_meshtastic_prefix", return_value="Local[M]: "),
+        patch("mmrelay.matrix_utils.truncate_message", side_effect=lambda s: s),
+        patch(
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            new_callable=AsyncMock,
+            return_value=(MagicMock(), 0),
+        ),
+        patch("mmrelay.matrix_utils.get_message_queue", return_value=queue),
+        patch("mmrelay.matrix_utils.queue_message", return_value=True) as enqueue,
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+    ):
+        yield room, enqueue
 
 
 def _reply_event(content: dict[str, object]) -> tuple[SimpleNamespace, SimpleNamespace]:
@@ -237,3 +282,69 @@ async def test_matrix_relay_never_sends_when_renderer_fails():
     ):
         await matrix_relay(ROOM, "hello", "Alice", "A", "LocalMesh", 1)
     client.room_send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", ["waves hello", ""])
+@pytest.mark.parametrize("reactions_enabled", [False, True])
+async def test_emote_with_packet_id_zero_and_no_target_preserves_authored_body(
+    reactions_enabled, body
+):
+    """A bare packet ID zero cannot produce an empty relay message."""
+    from nio import RoomMessageEmote
+
+    from mmrelay.matrix_utils import on_room_message
+
+    class BareEmote(RoomMessageEmote):
+        def __init__(self):
+            self.source = {
+                "type": "m.room.message",
+                "event_id": "$emote:example.org",
+                "sender": "@alice:example.org",
+                "origin_server_ts": 1_700_000_000_123,
+                "content": {
+                    "msgtype": "m.emote",
+                    "body": body,
+                    "meshtastic_replyId": 0,
+                },
+            }
+            self.sender = "@alice:example.org"
+            self.server_timestamp = 1_700_000_000_123
+            self.event_id = "$emote:example.org"
+            self.body = body
+
+    with _patched_relay_facade(reactions_enabled) as (room, enqueue):
+        await on_room_message(room, BareEmote())
+
+    if body:
+        enqueue.assert_called_once()
+        assert enqueue.call_args.kwargs["text"] == f"Local[M]: {body}"
+    else:
+        enqueue.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reaction_without_resolvable_target_is_never_relayed_as_empty():
+    """A native reaction with no target is dropped, not queued as an empty body."""
+    from nio import ReactionEvent
+
+    from mmrelay.matrix_utils import on_room_message
+
+    class UntargetedReaction(ReactionEvent):
+        def __init__(self):
+            self.source = {
+                "type": "m.reaction",
+                "event_id": "$reaction:example.org",
+                "sender": "@alice:example.org",
+                "origin_server_ts": 1_700_000_000_123,
+                "content": {
+                    "m.relates_to": {"rel_type": "m.annotation", "key": "\U0001f44d"}
+                },
+            }
+            self.sender = "@alice:example.org"
+            self.server_timestamp = 1_700_000_000_123
+
+    with _patched_relay_facade(reactions_enabled=True) as (room, enqueue):
+        await on_room_message(room, UntargetedReaction())
+
+    enqueue.assert_not_called()

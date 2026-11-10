@@ -27,6 +27,7 @@ operator guidance**. Broader conceptual and community documentation lives in the
 
 ## Upgrade and release notes
 
+- **[What's New in 1.5.0 (release candidate)](WHATS_NEW_1.5.md)** — MEDRE Matrix integration, Python floor, packaging and privacy considerations
 - **[What's New in 1.4.0](WHATS_NEW_1.4.md)** — 1.4 release summary and upgrade guidance
 - **[What's New in 1.3.0](WHATS_NEW_1.3.md)** — historical 1.3 release summary
 - **[What's New in 1.2](WHATS_NEW_1.2.md)** — historical 1.2 release notes
