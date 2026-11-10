@@ -236,3 +236,10 @@ plugin send APIs, or Matrix upload sessions into the MEDRE runtime. The three
 schema-freeze PRs and this MMRelay adoption PR must be merged before MMRelay
 1.5.0 is tagged. The current adapter pin supplies the renderer API, but the
 corrected native provenance projection requires the merged adapter freeze.
+
+## Native radio reaction keys
+
+A native radio tapback must supply a nonempty text key. Empty or malformed
+keys are dropped instead of substituted with a warning symbol. The exact text
+key, including Unicode selectors and skin-tone modifiers, becomes the
+canonical relation key independently of its human-readable preview.

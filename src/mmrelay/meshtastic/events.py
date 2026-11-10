@@ -851,6 +851,9 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         and emoji_flag
         and interactions["reactions"]
     ):
+        if not isinstance(text, str) or not text.strip():
+            facade.logger.debug("Ignoring radio reaction without an explicit key")
+            return
         longname = facade._get_name_safely(facade.get_longname, sender)
         shortname = facade._get_name_safely(facade.get_shortname, sender)
         orig = facade.get_message_map_by_meshtastic_id(replyId)
@@ -870,7 +873,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 facade.config, longname, shortname, meshtastic_meshnet or meshnet_name
             )
 
-            reaction_symbol = text.strip() if (text and text.strip()) else "⚠️"
+            reaction_symbol = text
             reaction_message = (
                 f'\n {prefix}reacted {reaction_symbol} to "{abbreviated_text}"'
             )
@@ -916,6 +919,9 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         and not emoji_flag
         and interactions["replies"]
     ):
+        if not isinstance(text, str) or not text.strip():
+            facade.logger.debug("Ignoring radio reaction without an explicit key")
+            return
         longname = facade._get_name_safely(facade.get_longname, sender)
         shortname = facade._get_name_safely(facade.get_shortname, sender)
         orig = facade.get_message_map_by_meshtastic_id(replyId)

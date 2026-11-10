@@ -1588,3 +1588,30 @@ def _make_plugin_routing(name, handled=False):
     plugin.plugin_name = name
     plugin.handle_meshtastic_message = AsyncMock(return_value=handled)
     return plugin
+
+
+@pytest.mark.parametrize("key", [None, "", " \t ", 42])
+def test_radio_reaction_without_explicit_text_key_is_not_relayed(key):
+    _set_globals(_base_config())
+    packet = _base_packet()
+    packet["decoded"].update({"text": key, "replyId": 0, "emoji": EMOJI_FLAG_VALUE})
+    with _patch_message_deps(
+        interaction_settings={"reactions": True, "replies": True},
+        message_map=("$original", "!room:test", "original", "TestNet"),
+    ) as (_, relay):
+        on_meshtastic_message(packet, _make_interface())
+    assert relay is not None
+    relay.assert_not_awaited()
+
+
+def test_radio_reaction_preserves_exact_explicit_key():
+    _set_globals(_base_config())
+    packet = _base_packet()
+    packet["decoded"].update({"text": " ❤️ ", "replyId": 0, "emoji": EMOJI_FLAG_VALUE})
+    with _patch_message_deps(
+        interaction_settings={"reactions": True, "replies": True},
+        message_map=("$original", "!room:test", "original", "TestNet"),
+    ) as (_, relay):
+        on_meshtastic_message(packet, _make_interface())
+    assert relay is not None
+    assert relay.call_args.kwargs["reaction_key"] == " ❤️ "
