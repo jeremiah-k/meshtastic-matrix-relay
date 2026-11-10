@@ -24,12 +24,12 @@ invalid outbound renderer operations fail closed instead of being sent.
   **not authenticated merely because they appear in Matrix content**. Operators
   should restrict mapped-room senders accordingly; a strict relay-identity
   trust policy has not been introduced in this release candidate.
-- New outbound `medre.envelope.source_transport_id` exposes the native
-  Meshtastic node ID when available; in publicly readable or unencrypted
-  Matrix rooms this is a stable, linkable radio identity. Packet/native
-  references can also reveal correlation information. **No opt-out is
-  implemented yet.** Decide whether this disclosure is acceptable before
-  releasing 1.5.0 to users.
+- New outbound `medre.envelope.source_transport_id` carries the native
+  Meshtastic node ID when available, letting Matrix-side consumers relate
+  events before a long name is known. On Meshtastic firmware 2.8 and newer,
+  node IDs are advertised openly on the mesh and are regenerated together
+  with the node's keys, so they are neither private nor a stable identity;
+  on older firmware they remain stable identifiers.
 - Canonical envelope metadata is descriptive provenance, not proof of
   authenticated Meshtastic radio authorship, Matrix-room authorization,
   successful delivery, or user identity.
