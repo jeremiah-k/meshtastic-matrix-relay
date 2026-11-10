@@ -1,0 +1,223 @@
+"""Canonical peers pass through the actual codec, trust gate and radio queue."""
+
+from copy import deepcopy
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from mmrelay.matrix.canonical_outbound import render_matrix_relay_content
+
+ROOM = "!room:example.org"
+PEER = "@peer:example.org"
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.usefixtures("reset_matrix_utils_globals"),
+]
+
+
+@pytest.fixture
+def relay(monkeypatch):
+    import mmrelay.matrix_utils as facade
+
+    interface = MagicMock()
+    queue = MagicMock(return_value=True)
+    config = {
+        "matrix": {"trusted_relays": [PEER]},
+        "meshtastic": {"meshnet_name": "Local", "broadcast_enabled": True},
+    }
+    room = SimpleNamespace(room_id=ROOM, encrypted=False)
+    for name, value in {
+        "config": config,
+        "matrix_rooms": [{"id": ROOM, "meshtastic_channel": 0}],
+        "bot_start_time": 0,
+        "bot_user_id": "@relay:example.org",
+        "get_interaction_settings": lambda _: {"replies": True, "reactions": True},
+        "message_storage_enabled": lambda _: False,
+        "get_user_display_name": AsyncMock(return_value="Matrix user"),
+        "get_meshtastic_prefix": lambda *args: "Human: ",
+        "get_matrix_prefix": lambda cfg, long, short, mesh: f"{short}/{mesh}: ",
+        "_get_meshtastic_interface_and_channel": AsyncMock(return_value=(interface, 0)),
+        "queue_message": queue,
+        "get_message_queue": MagicMock(
+            return_value=SimpleNamespace(get_queue_size=lambda: 0)
+        ),
+    }.items():
+        monkeypatch.setattr(facade, name, value)
+    monkeypatch.setattr("mmrelay.plugin_loader.load_plugins", lambda: [])
+
+    async def deliver(content, sender=PEER, reaction=False):
+        event = SimpleNamespace(
+            sender=sender,
+            event_id="$incoming",
+            server_timestamp=1700000000000,
+            body=content.get("body", ""),
+            source={"type": "m.room.message", "content": content},
+        )
+        if reaction:
+            from nio import ReactionEvent
+
+            native_event = ReactionEvent()
+            vars(native_event).update(vars(event))
+            native_event.source["type"] = "m.reaction"
+            event = native_event
+
+        await facade.on_room_message(room, event)
+
+    return SimpleNamespace(
+        deliver=deliver, queue=queue, config=config, interface=interface
+    )
+
+
+async def content(**overrides):
+    values = dict(
+        room_id=ROOM,
+        message="Visible radio text",
+        longname="Alice",
+        shortname="AL",
+        meshnet_name="Remote",
+        portnum=1,
+        source_node_id="!000000ab",
+        meshtastic_id=0,
+    )
+    values.update(overrides)
+    return await render_matrix_relay_content(**values)
+
+
+@pytest.mark.parametrize(
+    "sender,trusted", [(PEER, True), ("@human:example.org", False)]
+)
+async def test_only_allowlisted_peers_supply_names_and_routing(relay, sender, trusted):
+    wire = await content()
+    wire.update(
+        meshtastic_text="HIDDEN",
+        meshtastic_longname="Spoof",
+        meshtastic_meshnet="Local",
+    )
+    await relay.deliver(wire, sender)
+    relay.queue.assert_called_once()
+    text = relay.queue.call_args.kwargs["text"]
+    assert text == (
+        "AL/Remo: Visible radio text" if trusted else "Human: Visible radio text"
+    )
+    assert "HIDDEN" not in text and "Spoof" not in text
+
+
+async def test_peer_on_local_mesh_is_suppressed_but_untrusted_claim_is_ignored(relay):
+    wire = await content(meshnet_name="Local")
+    await relay.deliver(wire)
+    relay.queue.assert_not_called()
+    await relay.deliver(wire, "@human:example.org")
+    relay.queue.assert_called_once()
+
+
+async def test_remote_packet_zero_reaction_preserves_authored_visible_text(relay):
+    wire = await content(
+        message="Alice reacted 🔥", emoji=True, meshtastic_replyId=0, reaction_key="🔥"
+    )
+    await relay.deliver(wire)
+    relay.queue.assert_called_once()
+    assert relay.queue.call_args.args[0] == relay.interface.sendText
+    assert relay.queue.call_args.kwargs["text"] == "AL/Remo: Alice reacted 🔥"
+    assert "reply_id" not in relay.queue.call_args.kwargs
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_untargeted_emote_keeps_body_with_reactions_enabled_or_disabled(
+    relay, enabled, monkeypatch
+):
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_interaction_settings",
+        lambda _: {"replies": True, "reactions": enabled},
+    )
+    wire = await content(message="waves hello", emote=True)
+    wire.update(meshtastic_replyId=0, meshtastic_emoji=1, meshtastic_reaction_key="🔥")
+    await relay.deliver(wire)
+    assert relay.queue.call_args.kwargs["text"].endswith("waves hello")
+
+
+async def test_conflicting_envelope_cannot_supply_authoritative_names(relay):
+    wire = await content()
+    wire["medre"]["envelope"]["source_transport_id"] = "forged"
+    await relay.deliver(wire)
+    assert relay.queue.call_args.kwargs["text"] == "Human: Visible radio text"
+
+
+async def test_untrusted_detection_claim_stays_ordinary_text(relay, monkeypatch):
+    detect = AsyncMock()
+    monkeypatch.setattr("mmrelay.matrix_utils._handle_detection_sensor_packet", detect)
+    wire = await content(portnum=10)
+    await relay.deliver(deepcopy(wire), "@human:example.org")
+    detect.assert_not_awaited()
+    await relay.deliver(wire)
+    detect.assert_awaited_once()
+
+
+async def test_plugin_can_claim_canonical_peer_message_before_radio_send(
+    relay, monkeypatch
+):
+    plugin = SimpleNamespace(
+        handle_room_message=AsyncMock(return_value=True), plugin_name="owner"
+    )
+    monkeypatch.setattr("mmrelay.plugin_loader.load_plugins", lambda: [plugin])
+    await relay.deliver(await content())
+    plugin.handle_room_message.assert_awaited_once()
+    assert plugin.handle_room_message.call_args.args[2] == "Visible radio text"
+    relay.queue.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "scope", ["adapter", "channel", "missing_key", "relation_info"]
+)
+async def test_peer_reaction_cannot_bind_conflicting_or_out_of_scope_target(
+    relay, scope
+):
+    wire = await content(
+        message="Visible reaction", emoji=True, meshtastic_replyId=0, reaction_key="🔥"
+    )
+    relation = wire["medre"]["metadata"]["bridge_context"]["relations"][0]
+    if scope == "adapter":
+        relation["target_native_ref"]["adapter"] = "unrelated"
+    elif scope == "channel":
+        relation["target_native_ref"]["native_channel_id"] = "unrelated"
+    elif scope == "missing_key":
+        relation["key"] = None
+    else:
+        wire["medre"]["envelope"]["relation_info"] = "reply"
+    await relay.deliver(wire)
+    relay.queue.assert_called_once()
+    assert relay.queue.call_args.args[0] == relay.interface.sendText
+    assert relay.queue.call_args.kwargs["text"].endswith("Visible reaction")
+    assert "reply_id" not in relay.queue.call_args.kwargs
+
+
+@pytest.mark.parametrize(
+    "mapping_room,expected", [(ROOM, True), ("!other:example.org", False)]
+)
+async def test_native_reaction_requires_mapping_in_actual_room_and_retains_zero(
+    relay, monkeypatch, mapping_room, expected
+):
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+        lambda _: ("0", mapping_room, "preview", "Local"),
+    )
+    await relay.deliver(
+        {
+            "m.relates_to": {
+                "rel_type": "m.annotation",
+                "event_id": "$target",
+                "key": "❤️",
+            }
+        },
+        sender="@human:example.org",
+        reaction=True,
+    )
+    assert relay.queue.called is expected
+    if expected:
+        assert relay.queue.call_args.kwargs["reply_id"] == 0
+
+
+async def test_self_echo_is_not_sent_to_radio(relay):
+    await relay.deliver(await content(), sender="@relay:example.org")
+    relay.queue.assert_not_called()

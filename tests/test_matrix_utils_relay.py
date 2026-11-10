@@ -33,6 +33,7 @@ from tests.constants import (
     TEST_ROOM_ID,
     TEST_USER_ID,
 )
+from tests.matrix_peer_fixtures import set_peer_content
 
 T = TypeVar("T")
 
@@ -1050,7 +1051,7 @@ async def test_on_room_message_simple_text(
         assert "Hello, world!" in queued_kwargs["text"]
 
 
-async def test_on_room_message_remote_prefers_meshtastic_text(
+async def test_on_room_message_never_relays_hidden_legacy_body(
     mock_room,
     mock_event,
     test_config,
@@ -1138,9 +1139,7 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
     ):
         await on_room_message(mock_room, mock_event)
 
-        mock_queue_message.assert_called_once()
-        queued_kwargs = mock_queue_message.call_args.kwargs
-        assert "Hello from remote mesh" in queued_kwargs["text"]
+        mock_queue_message.assert_not_called()
 
 
 async def test_on_room_message_dict_keyed_matrix_rooms_uses_direct_room_lookup(
@@ -1475,15 +1474,11 @@ async def test_on_room_message_reaction_non_numeric_meshtastic_id(
     ):
         await on_room_message(mock_room, mock_event)
 
-        mock_queue_message.assert_called_once()
-        queued_args = mock_queue_message.call_args.args
-        queued_kwargs = mock_queue_message.call_args.kwargs
-        assert "reacted" in queued_kwargs["text"]
-        assert "reply_id" not in queued_kwargs
-        assert queued_args[0] is mock_meshtastic.sendText
-    assert any(
-        "is not numeric" in call.args[0] for call in mock_logger.warning.call_args_list
-    )
+        mock_queue_message.assert_not_called()
+        assert any(
+            "invalid radio target" in str(call)
+            for call in mock_logger.debug.call_args_list
+        )
 
 
 async def test_on_room_message_reaction_mapped_int_id(mock_room, test_config):
@@ -1639,16 +1634,11 @@ async def test_on_room_message_reaction_unexpected_type_logs_warning(
     ):
         await on_room_message(mock_room, mock_event)
 
-        mock_queue_message.assert_called_once()
-        queued_args = mock_queue_message.call_args.args
-        queued_kwargs = mock_queue_message.call_args.kwargs
-        assert "reacted" in queued_kwargs["text"]
-        assert "reply_id" not in queued_kwargs
-        assert queued_args[0] is mock_meshtastic.sendText
-    assert any(
-        "has unexpected type" in call.args[0]
-        for call in mock_logger.warning.call_args_list
-    )
+        mock_queue_message.assert_not_called()
+        assert any(
+            "invalid radio target" in str(call)
+            for call in mock_logger.debug.call_args_list
+        )
 
 
 @patch("mmrelay.matrix_utils.connect_meshtastic")
@@ -1806,6 +1796,8 @@ async def test_on_room_message_detection_sensor_enabled(
             return func(*args)
 
     # Act - Process the detection sensor message
+    await set_peer_content(mock_event, mock_room, test_config)
+
     with (
         patch(
             "mmrelay.matrix_utils.queue_message", return_value=True
@@ -1831,7 +1823,9 @@ async def test_on_room_message_detection_sensor_enabled(
     # Verify the port number is set to DETECTION_SENSOR_APP (it will be a Mock object due to import)
     assert "portNum" in call_args.kwargs
     # The portNum should be the DETECTION_SENSOR_APP enum value from protobuf
-    assert call_args.kwargs["description"] == "Detection sensor data from TestUser"
+    assert (
+        call_args.kwargs["description"] == "Detection sensor data from TestUser/Remote"
+    )
     # The data should be raw text without prefix for detection sensor packets
     assert call_args.kwargs["data"] == b"Detection data"
 
@@ -1855,6 +1849,8 @@ async def test_on_room_message_detection_sensor_disabled(
     test_config["meshtastic"]["broadcast_enabled"] = True
 
     # Act - Process the detection sensor message
+    await set_peer_content(mock_event, mock_room, test_config)
+
     with (
         patch(
             "mmrelay.matrix_utils.queue_message", return_value=True
@@ -1886,6 +1882,8 @@ async def test_on_room_message_detection_sensor_broadcast_disabled(
     test_config["meshtastic"]["detection_sensor"] = True
     test_config["meshtastic"]["broadcast_enabled"] = False
 
+    await set_peer_content(mock_event, mock_room, test_config)
+
     with (
         patch(
             "mmrelay.matrix_utils.queue_message", return_value=True
@@ -1916,6 +1914,8 @@ async def test_on_room_message_detection_sensor_connect_failure(
     }
     test_config["meshtastic"]["detection_sensor"] = True
     test_config["meshtastic"]["broadcast_enabled"] = True
+
+    await set_peer_content(mock_event, mock_room, test_config)
 
     with (
         patch(
@@ -2046,7 +2046,7 @@ async def test_on_room_message_config_none_logs_and_returns(
         "No configuration available for Matrix message processing."
     )
     mock_logger.error.assert_any_call(
-        "No configuration available. Cannot process Matrix message."
+        "No configuration available for Matrix message processing."
     )
     mock_queue_message.assert_not_called()
 
@@ -2127,6 +2127,19 @@ async def test_on_room_message_remote_reaction_relay_success(
         raising=False,
     )
 
+    await set_peer_content(
+        mock_event,
+        mock_room,
+        config,
+        message='reacted :) to "hello"',
+        longname="RemoteUser",
+        shortname="RU",
+        meshnet_name="remote_mesh",
+        portnum=1,
+        emoji=reaction_key is not None,
+        meshtastic_replyId=reply_id,
+        reaction_key=reaction_key,
+    )
     with (
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
         patch(
@@ -2139,8 +2152,10 @@ async def test_on_room_message_remote_reaction_relay_success(
 
     mock_queue.assert_called_once()
     queued_kwargs = mock_queue.call_args.kwargs
-    assert f"reacted {expected_symbol} to" in queued_kwargs["text"]
-    assert queued_kwargs["description"] == "Remote reaction from remote_mesh"
+    assert 'reacted :) to "hello"' in queued_kwargs["text"]
+    assert queued_kwargs["description"].startswith(
+        "Remote reaction" if reaction_key is not None else "Message from"
+    )
 
 
 async def test_on_room_message_reaction_missing_mapping_logs_debug(
@@ -2156,7 +2171,15 @@ async def test_on_room_message_reaction_missing_mapping_logs_debug(
             self.server_timestamp = server_timestamp
 
     mock_event = MockReactionEvent(
-        source={"content": {"m.relates_to": {"event_id": "missing", "key": "x"}}},
+        source={
+            "content": {
+                "m.relates_to": {
+                    "rel_type": "m.annotation",
+                    "event_id": "missing",
+                    "key": "x",
+                }
+            }
+        },
         sender=TEST_USER_ID,
         server_timestamp=1,
     )
@@ -2194,7 +2217,7 @@ async def test_on_room_message_reaction_missing_mapping_logs_debug(
 
     mock_queue_message.assert_not_called()
     assert any(
-        "Original message for reaction not found" in call.args[0]
+        "Reaction target is not mapped" in call.args[0]
         for call in mock_logger.debug.call_args_list
     )
 
@@ -2212,7 +2235,15 @@ async def test_on_room_message_local_reaction_queue_failure_logs(
             self.server_timestamp = server_timestamp
 
     mock_event = MockReactionEvent(
-        source={"content": {"m.relates_to": {"event_id": "orig", "key": "x"}}},
+        source={
+            "content": {
+                "m.relates_to": {
+                    "event_id": "orig",
+                    "key": "x",
+                    "rel_type": "m.annotation",
+                }
+            }
+        },
         sender=TEST_USER_ID,
         server_timestamp=1,
     )
@@ -2337,6 +2368,16 @@ async def test_on_room_message_remote_meshnet_empty_after_prefix_skips(
         raising=False,
     )
 
+    await set_peer_content(
+        mock_event,
+        mock_room,
+        config,
+        message=prefix,
+        longname="RemoteUser",
+        shortname="RU",
+        meshnet_name="remote",
+        portnum=1,
+    )
     with (
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
         patch("mmrelay.matrix_utils.get_matrix_prefix", return_value=prefix),
@@ -2703,7 +2744,7 @@ async def test_on_room_message_emote_reaction_uses_original_event_id(monkeypatch
         raising=False,
     )
 
-    mapping = ("mesh_id", room_id, "text", "meshnet")
+    mapping = ("0", room_id, "text", "meshnet")
     get_map_mock = MagicMock(return_value=mapping)
     monkeypatch.setattr(
         "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",

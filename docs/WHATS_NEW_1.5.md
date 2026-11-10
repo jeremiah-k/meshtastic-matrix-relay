@@ -10,20 +10,22 @@ The core relay adopts MEDRE 0.1 canonical Matrix ingress and outbound rendering,
 while retaining its current nio/E2EE session, plugins, storage, Matrix reply
 fallback, and Meshtastic transport. It does not start a second Matrix or
 Meshtastic client. Plugin-authored messages and media uploads retain their
-existing direct-send paths. A failed ingress codec falls back to legacy parsing;
+existing direct-send paths. A failed ingress codec falls back to native Matrix text and relation parsing;
 invalid outbound renderer operations fail closed instead of being sent.
 
 ## Compatibility and privacy
 
 - **Python 3.12 or later is required.** Preserve E2EE key stores and message
   mappings during upgrades. Test a backup and roll-back strategy before switching.
-- MMRelay maintains existing `meshtastic_*` wire-field compatibility. In mapped
-  rooms, `meshtastic_text` may override the visible Matrix body for the
-  Meshtastic payload, and sender-provided `meshtastic_longname` and
-  `meshtastic_meshnet` may affect prefixing and routing. These fields are
-  **not authenticated merely because they appear in Matrix content**. Operators
-  should restrict mapped-room senders accordingly; a strict relay-identity
-  trust policy has not been introduced in this release candidate.
+- Shared-room peers use canonical MEDRE metadata. Configure exact bot MXIDs in
+  `matrix.trusted_relays` to accept their source names, mesh labels, portnums,
+  and scoped relation hints. The allowlist defaults to empty and applies globally;
+  it accepts no wildcards, implicit room trust, or trust-on-first-use.
+  Ordinary human text remains eligible. Flat `meshtastic_*` wire fields are
+  ignored, including hidden `meshtastic_text` body overrides.
+- Longnames and shortnames travel through generic sender attribution; explicitly
+  public source facts carry portnum and meshnet label through Matrix, LXMF, and
+  XMPP. Reactions require an exact nonempty key; packet ID zero remains valid.
 - New outbound `medre.envelope.source_transport_id` carries the native
   Meshtastic node ID when available, letting Matrix-side consumers relate
   events before a long name is known. On Meshtastic firmware 2.8 and newer,
@@ -37,8 +39,7 @@ invalid outbound renderer operations fail closed instead of being sent.
 ## Distribution and deployment
 
 The release-candidate source manifest currently pins unpublished MEDRE core
-and the Matrix adapter to immutable Git commits, including older pre-freeze
-revisions. **These must be repinned to the merged freeze commits and the lock
+and the Matrix adapter to immutable Git commits, for coordinated testing. **These must be repinned to the merged freeze commits and the lock
 regenerated before tagging**. A wheel with direct-URL `Requires-Dist` cannot
 be uploaded to PyPI; the publishing workflow skips such uploads. Choose
 between GitHub/source distribution with exact Git pins and a public indexed
@@ -52,7 +53,6 @@ For production, prefer immutable image digests.
 ## Release validation gates
 
 Before publishing: finish the three MEDRE schema freezes and compatibility
-manifest; decide the trust and node-identity disclosure policies; repin and
-relock MMRelay; rerun full Python 3.12–3.15 CI, Windows installation, live
+manifest; qualify the exact dependency pair and final release artifacts; rerun full Python 3.12–3.15 CI, Windows installation, live
 Matrix/E2EE, reply/emote/reaction and multi-meshnet round trips, plugin
 interference, radio reconnects, and clean install/upgrade/rollback drills.

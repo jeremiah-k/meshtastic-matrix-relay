@@ -1352,12 +1352,14 @@ def set_config(module: Any, passed_config: dict[str, Any]) -> dict[str, Any]:
     Returns:
         dict[str, Any]: The same `passed_config` object that was attached to the module.
     """
-    # Set the module's config variable
-    module.config = passed_config
-
-    # Handle module-specific setup based on module name
     module_name = module.__name__.split(".")[-1]
+    if module_name == "matrix_utils":
+        from mmrelay.matrix.peer_context import load_peer_relays
 
+        load_peer_relays(passed_config)
+
+    # Publish configuration only after its boundary-specific validation succeeds.
+    module.config = passed_config
     if module_name == "matrix_utils":
         # Set Matrix-specific configuration
         if hasattr(module, "matrix_rooms") and "matrix_rooms" in passed_config:

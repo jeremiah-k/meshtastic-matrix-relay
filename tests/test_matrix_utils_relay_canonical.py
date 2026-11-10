@@ -144,17 +144,8 @@ async def test_relay_preserves_canonical_quotes_and_legacy_codec_failure_behavio
         await on_room_message(room, event)
 
     enqueue.assert_called_once()
-    expected = mesh_text_override if mesh_text_override is not None else authored
-    mapping_text = expected
-    if codec_fails:
-        mapping_text = (
-            "radio answer" if mesh_text_override is not None else "actual answer"
-        )
-        expected = (
-            mapping_text
-            if replies_enabled
-            else mesh_text_override or event.source["content"]["body"]
-        )
+    expected = authored
+    mapping_text = authored
     assert enqueue.call_args.kwargs["text"] == expected
     assert enqueue.call_args.kwargs["mapping_info"]["text"] == mapping_text
     if replies_enabled:
@@ -204,7 +195,7 @@ async def test_codec_failure_preserves_legacy_reply_target_and_authoritative_mod
     reply.assert_awaited_once()
     args, kwargs = reply.call_args
     assert args[2] == "$original"
-    assert kwargs["text_is_canonical"] is False
+    assert kwargs["text_is_canonical"] is True
     assert args[3].endswith("actual answer")
 
 

@@ -9,8 +9,8 @@ session and transport; the shared room is the interoperability surface.
 
 ## Approved release completion requirements
 
-The implementation described below includes interim flat-key behavior. The
-approved 1.5 release contract requires these changes before tagging:
+The implementation follows the approved canonical-only contract below.
+Runtime qualification and final package publication remain required before tagging:
 
 - Emit and consume canonical MEDRE peer metadata without flat `meshtastic_*`
   content fields or a legacy compatibility mode.
@@ -31,10 +31,10 @@ approved 1.5 release contract requires these changes before tagging:
   forks, and editable checkouts supported for development. Official channel and
   saved custom-source selection is a package-management implementation task.
 
-The coordinated MEDRE and Matrix schema changes exclude `interop.mmrelay` from
-Matrix-native metadata. They do not implement MMRelay's consumer migration or
-prove lossless source-native fact delivery. The runtime changes and live
-qualification remain release gates.
+The coordinated MEDRE and Matrix schemas exclude `interop.mmrelay` from
+Matrix-native metadata. Runtime tests validate source-fact delivery and inbound
+authorization against the proposed source trees; live shared-room, E2EE, hardware,
+and release artifact qualification remain release gates.
 
 ## Canonical outbound source facts (implementation slice)
 
@@ -51,14 +51,22 @@ and shortname use `bridge_context.source.sender_name` and
 The Matrix adapter remains the sole event renderer and existing nio transport
 continues to own send, E2EE, and durable message mapping.
 
-Source facts are **untrusted remote claims**, not authenticated proof or routing
-authority. The consumer still needs the approved global exact-MXID relay
-allowlist and canonical-only inbound migration, including removal of the
-`meshtastic_text` body override. The outbound-only slice is not a complete
-1.5 interoperability release. The MEDRE core, Matrix adapter, and Meshtastic
-adapter schema changes must land and MMRelay's pins and `uv.lock` be updated
-before full runtime qualification; the currently pinned MEDRE commits lack the
-new source-fact projection.
+Source facts are **untrusted remote claims**. MMRelay authorizes them only when
+the observed Matrix sender exactly matches a global `matrix.trusted_relays`
+entry (or the relay's own identity). Self echoes are suppressed by the relay.
+The setting defaults to an empty list and configuration validation rejects
+wildcards and malformed entries. For example:
+
+```yaml
+matrix:
+  trusted_relays:
+    - "@peer-relay:example.org"
+```
+
+The codec-normalized envelope and bridge context must agree on version, event
+identity, source adapter, sender, channel, native reference, and relation types.
+Invalid or unauthorized peer claims are ignored; ordinary authored text still
+relays. No room power level or trust-on-first-use rule grants metadata authority.
 
 The same bounded v1 `source.native_facts` context is supported by the LXMF
 fields and XMPP stanza extension; other adapters do not automatically promise
@@ -78,24 +86,13 @@ lossless metadata exchange unless they explicitly support an embedding path.
   and outbound Meshtastic queue. No MEDRE runtime/daemon or second Matrix
   session is started. `canonicalize_matrix_event` is an SDK-to-schema boundary for eligible
   mapped, non-suppressed relay messages.
-- The canonical `payload["body"]` and `relations` are authoritative for
-  eligible ordinary Matrix text and explicit replies at relay ingress **unless
-  a legacy `meshtastic_text` override is present**. That older field is still
-  preferred by the current relay for compatibility, and is not authenticated
-  merely because it appears in Matrix content. A Matrix thread
-  compatibility fallback is **not** an authored reply, and the reply fallback
-  quote is stripped from the canonical body even when reply interactions are
-  disabled because it is presentation metadata rather than authored text.
-  Reply formatting and message-map metadata preserve the remaining authored
-  quote lines and line breaks; they do not strip the canonical body again.
-  Original nio objects remain available to legacy MMRelay plugin callbacks and
-  mesh relay helpers; MMRelay-specific wire fields remain in the incoming
-  content for its relay features. Mesh reactions still follow MMRelay's
-  existing queue contract, and native reaction classification still uses
-  MMRelay's existing handler.
-- A codec failure is isolated at the boundary: MMRelay logs the exception and
-  falls back to the legacy nio body and reply parse so an unexpected Matrix
-  event shape cannot drop a relay message.
+- The visible canonical `payload["body"]` is authoritative. Flat
+  `meshtastic_*` fields never supply names, routing, relation targets, or a
+  hidden body override. Native Matrix reply fallback quoting is stripped once;
+  authored quote lines remain. Thread fallback relations are not exact replies.
+  Plugins receive the original nio event and the canonical text.
+- A codec failure logs the exception and falls back to the native Matrix body
+  and native relation parser, retaining the same prohibition on flat peer fields.
 - Meshtastic→Matrix **core relay outbound** now constructs an immutable MEDRE
   `CanonicalEvent`, uses `MatrixRenderer` and validates its closed
   `MatrixOutboundOperation` before the existing nio `room_send` path. MMRelay
@@ -104,13 +101,13 @@ lossless metadata exchange unless they explicitly support an embedding path.
   presentation; no legacy flat `meshtastic_*` fields are emitted.
 - For radio reactions, the exact reaction symbol is carried as
   an explicit `EventRelation.key`, independent of the human-readable emote
-  body. MMRelay inbound currently still uses the historic flat-field parser;
-  replacing it with allowlisted canonical relation consumption is a release
-  gate. The
-  canonical event is `message.reacted` with a radio-native target reference;
+  body. Allowlisted peer relations require an explicit nonempty key and a
+  scoped target. The canonical event is `message.reacted` with a radio-native target reference;
   no Matrix `m.reaction` annotation or cross-room identity is invented. Normal
   radio replies carry a Matrix-native target scoped to the destination room;
-  missing historical quote context never fabricates a target.
+  unmapped radio replies retain their radio-native target in the generic context
+  without inventing a native Matrix relation. A missing historical quote preview
+  never changes the authored body.
   Radio reply packet ID `0` is a valid target for both replies and reactions,
   including classification in the radio ingress handler.
 - A non-message Matrix render, altered authored body, or lost reply relation
@@ -140,11 +137,12 @@ lossless metadata exchange unless they explicitly support an embedding path.
 
 ## Trust and provenance boundaries
 
-- Matrix members can provide legacy `meshtastic_text`, `meshtastic_meshnet`,
-  `meshtastic_longname`, and related fields. The codec normalizes Matrix
-  structure, but does **not** authorize these fields or prove that a sender
-  is a peer relay. A canonical payload is therefore not authoritative for
-  these sender-provided fields.
+- Matrix members can provide arbitrary peer claims. Only exact globally
+  allowlisted observed MXIDs may supply source names and public routing facts.
+  Native Matrix relations remain native user actions. Replies and reactions
+  require message mappings in the actual room; peer hints must also match the
+  adapter and channel of the target namespace. Remote radio reaction IDs are
+  never rebound to unrelated local packet IDs.
 - When a Meshtastic node ID is supplied to the outbound renderer,
   `medre.envelope.source_transport_id` embeds it in Matrix content. On
   Meshtastic firmware 2.8 and newer, node IDs are advertised openly on the

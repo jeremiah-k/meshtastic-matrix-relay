@@ -129,7 +129,6 @@ def format_reply_message(
     shortname: str | None = None,
     meshnet_name: str | None = None,
     local_meshnet_name: str | None = None,
-    mesh_text_override: str | None = None,
     user_id: str | None = None,
     text_is_canonical: bool = False,
 ) -> str:
@@ -144,13 +143,12 @@ def format_reply_message(
         shortname (str | None): Optional short form of the sender name for remote-meshnet prefixes.
         meshnet_name (str | None): Remote meshnet name; when provided and different from local_meshnet_name, remote-prefix rules are applied.
         local_meshnet_name (str | None): Local meshnet name used to determine whether a reply is remote.
-        mesh_text_override (str | None): Optional raw Meshtastic payload preferred over `text` when generating the reply body.
         text_is_canonical (bool): Preserve authored quote lines and whitespace after the codec has removed the Matrix fallback.
 
     Returns:
         str: The reply body with the appropriate sender prefix, truncated to the configured maximum length.
     """
-    base_text = mesh_text_override if mesh_text_override else text
+    base_text = text
 
     # The codec removed only the wire fallback. Any remaining '>' lines are
     # authored content and must survive both delivery and later correlation.
@@ -186,13 +184,6 @@ def format_reply_message(
             if candidate and clean_text.startswith(candidate):
                 clean_text = clean_text[len(candidate) :].lstrip()
                 break
-
-        if not clean_text and mesh_text_override:
-            clean_text = (
-                mesh_text_override.strip()
-                if text_is_canonical
-                else strip_quoted_lines(mesh_text_override)
-            )
 
         mesh_prefix = (
             matrix_prefix_short
@@ -348,7 +339,6 @@ async def handle_matrix_reply(
     local_meshnet_name: str,
     config: dict[str, Any],
     *,
-    mesh_text_override: str | None = None,
     longname: str | None = None,
     shortname: str | None = None,
     meshnet_name: str | None = None,
@@ -368,7 +358,6 @@ async def handle_matrix_reply(
         storage_enabled (bool): Whether message mapping/storage is enabled.
         local_meshnet_name (str): Local meshnet name used to determine cross-meshnet formatting.
         config (dict): Global relay configuration passed to formatting routines.
-        mesh_text_override (str | None): Optional override text to send instead of the derived text.
         longname (str | None): Sender long display name used for prefixing.
         shortname (str | None): Sender short display name used for prefixing.
         meshnet_name (str | None): Remote meshnet name associated with the original mapping, if any.
@@ -381,7 +370,7 @@ async def handle_matrix_reply(
     orig = await loop.run_in_executor(
         None, facade.get_message_map_by_matrix_event_id, reply_to_event_id
     )
-    if not orig:
+    if not orig or orig[1] != room.room_id:
         facade.logger.debug(
             f"Original message for Matrix reply not found in DB: {reply_to_event_id}"
         )
@@ -418,7 +407,6 @@ async def handle_matrix_reply(
         shortname=shortname,
         meshnet_name=reply_meshnet_name,
         local_meshnet_name=local_meshnet_name,
-        mesh_text_override=mesh_text_override,
         user_id=event.sender,
         text_is_canonical=text_is_canonical,
     )
