@@ -285,7 +285,7 @@ wheels = [
 
 [[package]]
 name = "bleak"
-version = "3.0.2"
+version = "3.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dbus-fast", marker = "sys_platform == 'linux'" },
@@ -302,9 +302,9 @@ dependencies = [
     { name = "winrt-windows-foundation-collections", marker = "sys_platform == 'win32'" },
     { name = "winrt-windows-storage-streams", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/16/df/05a3f80ca8e3f7f5b0dba68a9e618147c909ccdba1468f07487dc8d72a9d/bleak-3.0.2.tar.gz", hash = "sha256:c2229cb8238d5876b4bd05c74bf7a1aea1f88da39d2e51ac9dfd5cc319d5265f", size = 125293, upload-time = "2026-05-02T23:01:04.066Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/20/88/b06eabb07b6fea66af0adf3000e1e1edf48e0fd39b731b8de27a093f4f04/bleak-3.1.0.tar.gz", hash = "sha256:e37fd30c4691c908d31c8b92ca55b92a22ab924a77c35579822c859042992145", size = 152966, upload-time = "2026-11-07T23:19:25.185Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/26/54/05aceb9cd80073805b3ed8522e3196e8cb22f70e741873fa51406c31f4e7/bleak-3.0.2-py3-none-any.whl", hash = "sha256:39092feb9e83f1df5ad2f88e837723c7211c982ce9e9cda6235104bc2ebe0d0d", size = 146490, upload-time = "2026-05-02T23:01:02.592Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/f4/25642dbebe4d7aff3b36f95eae40c46a31f40b0f30f8c87b057456534ae3/bleak-3.1.0-py3-none-any.whl", hash = "sha256:3cb08e03039f6e477c276252540416b287d4e3de63a86732780ff93a2f6e73ef", size = 176301, upload-time = "2026-11-07T23:19:23.953Z" },
 ]
 
 [[package]]
@@ -1361,7 +1361,7 @@ requires-dist = [
     { name = "matplotlib", specifier = "==3.11.2" },
     { name = "mindroom-nio", specifier = "==1.3.0" },
     { name = "mindroom-nio", extras = ["e2e"], marker = "extra == 'e2e'", specifier = "==1.3.0" },
-    { name = "mtjk", specifier = "==2.7.11.post13" },
+    { name = "mtjk", specifier = "==2.7.11.post14" },
     { name = "mypy", marker = "extra == 'dev'", specifier = "==2.4.1" },
     { name = "nh3", specifier = "==0.3.7" },
     { name = "pillow", specifier = "==13.0.0" },
@@ -1386,11 +1386,12 @@ provides-extras = ["e2e", "test", "dev"]
 
 [[package]]
 name = "mtjk"
-version = "2.7.11.post13"
+version = "2.7.11.post14"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "argcomplete" },
     { name = "bleak" },
+    { name = "dbus-fast", marker = "sys_platform == 'linux'" },
     { name = "ifaddr" },
     { name = "packaging" },
     { name = "print-color" },
@@ -1404,9 +1405,9 @@ dependencies = [
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
     { name = "wcwidth" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/13/c8/ff4d2aede21a5f1241f6cadb751c4f7f743ba7bad4f607393fcf3d206b57/mtjk-2.7.11.post13.tar.gz", hash = "sha256:ae69fad4222dcebcd9cb16850de501e6babdcf330fcc659a9ce2d6550c4bac79", size = 1625483, upload-time = "2026-11-07T19:23:55.022Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1b/84/b12fc2321a30dbc54cf813f1aaa76235577eabb6bffd136c757ffa3e5062/mtjk-2.7.11.post14.tar.gz", hash = "sha256:01150a92291d242fd80fe7236429977d4058f5b08299cbe47ccc65f45d55be3f", size = 1707285, upload-time = "2026-11-10T02:51:38.388Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5a/05/072ce9d96d696eb9d2887b7d695ad2b7978193b0741d7d62bfc50d36f154/mtjk-2.7.11.post13-py3-none-any.whl", hash = "sha256:352229b0407c20cb8d003c690805be6f3ed80be468c62031ae16bd024468a9e4", size = 1835918, upload-time = "2026-11-07T19:23:53.018Z" },
+    { url = "https://files.pythonhosted.org/packages/f0/91/0602348717355241c1f589984cd6c7024a7162c1d971ff1c34a28fcbdc2b/mtjk-2.7.11.post14-py3-none-any.whl", hash = "sha256:5d9a71f3a254a777f1db3ac688c3b888d5eb8be74540cda28c6297e5516c96bd", size = 1922195, upload-time = "2026-11-10T02:51:36.48Z" },
 ]
 
 [[package]]
