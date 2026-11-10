@@ -7,6 +7,35 @@ MEDRE's standardized event contract for those shared rooms instead of its
 legacy hand-rolled body and reply parsing. MMRelay keeps its own Matrix
 session and transport; the shared room is the interoperability surface.
 
+## Approved release completion requirements
+
+The implementation described below includes interim flat-key behavior. The
+approved 1.5 release contract requires these changes before tagging:
+
+- Emit and consume canonical MEDRE peer metadata without flat `meshtastic_*`
+  content fields or a legacy compatibility mode.
+- Accept peer metadata assertions only from the relay itself or exact bot MXIDs
+  in a global allowlist. Ordinary human text still relays; untrusted metadata
+  cannot supply source identity, routing, body overrides, or relation targets.
+  No wildcard, trust-on-first-use, or room power-level rule substitutes for the
+  allowlist. Signed-event support is designed in MEDRE first for a later version.
+- Deliver the authored visible/canonical body to the radio. Remove the
+  `meshtastic_text` override; require an exact structured key for reactions.
+  Untargeted authored emotes remain ordinary messages.
+- Preserve source identity, packet ID zero, scoped reply/reaction references,
+  and sender attribution through generic canonical fields. Deliver source-owned
+  facts such as Meshtastic portnum through a bounded, validated transport-neutral
+  projection, with Matrix and non-Matrix tests proving preservation.
+- Publish stable core and adapter packages independently, and use index-resolvable
+  dependencies for release artifacts. Keep explicit Git branches, tags, commits,
+  forks, and editable checkouts supported for development. Official channel and
+  saved custom-source selection is a package-management implementation task.
+
+The coordinated MEDRE and Matrix schema changes exclude `interop.mmrelay` from
+Matrix-native metadata. They do not implement MMRelay's consumer migration or
+prove lossless source-native fact delivery. The runtime changes and live
+qualification remain release gates.
+
 ## Decisions
 
 - **Matrix adapter only** in MMRelay's base dependencies. MEDRE and MMRelay
@@ -138,8 +167,9 @@ preflight. An eligible manifest still needs the clean installation check below.
 For a PyPI release, MEDRE and the adapter must first be available through an
 index that pip can resolve, and MMRelay must use
 index-resolvable requirements rather than Git URLs. Moving a Git pin to an
-optional extra does not remove that upload restriction. If the first 1.5.0
-release is source/GitHub-only, document that channel restriction explicitly.
+optional extra does not remove that upload restriction. Git/source installs
+remain supported alongside stable indexed releases; source selection belongs to
+deployment/development configuration rather than published direct requirements.
 
 ## Pre-tag gates
 
@@ -163,8 +193,10 @@ release is source/GitHub-only, document that channel restriction explicitly.
 4. Validate `pip install .` from a clean Python 3.12 environment, including
    its VCS-auth/network prerequisites, and validate package metadata with
    `python -m build` and `twine check`.
-5. Decide the 1.5.0 distribution channel before a tag; a PyPI upload with
-   direct Git `Requires-Dist` entries will be rejected.
+5. Execute the approved hybrid distribution policy before a tag: stable PyPI
+   artifacts use index-resolvable requirements, with Git/fork/local source
+   selections retained for development. A PyPI upload with direct Git
+   `Requires-Dist` entries will be rejected.
    For PyPI, publish MEDRE core first, then its adapters (which depend on core),
    then replace MMRelay's Git references with the exact published versions.
    Inspect each wheel and sdist, verify its frozen schema bundle and manifest,
