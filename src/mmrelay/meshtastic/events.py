@@ -33,6 +33,21 @@ __all__ = [
 ]
 
 
+def _radio_source_channel(packet: dict[str, Any]) -> str:
+    """Normalize a radio channel index for canonical source/target references.
+
+    The primary channel is omitted by some Meshtastic packet sources. Native
+    references must use the same numeric channel for text, replies and reactions.
+    """
+    channel = packet.get("channel")
+    if channel is None:
+        return str(DEFAULT_CHANNEL_VALUE)
+    try:
+        return str(int(channel))
+    except (TypeError, ValueError):
+        return str(DEFAULT_CHANNEL_VALUE)
+
+
 def _get_iterable_matrix_rooms() -> Iterable[Any]:
     return (
         facade.matrix_rooms.values()
@@ -894,11 +909,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                     emoji=True,
                     reaction_key=reaction_symbol,
                     source_node_id=sender,
-                    source_channel_id=(
-                        str(packet["channel"])
-                        if type(packet.get("channel")) is int
-                        else None
-                    ),
+                    source_channel_id=_radio_source_channel(packet),
                 ),
                 loop=loop,
             )
@@ -923,10 +934,9 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         and replyId is not None
         and not emoji_flag
         and interactions["replies"]
+        and isinstance(text, str)
+        and bool(text.strip())
     ):
-        if not isinstance(text, str) or not text.strip():
-            facade.logger.debug("Ignoring radio reaction without an explicit key")
-            return
         longname = facade._get_name_safely(facade.get_longname, sender)
         shortname = facade._get_name_safely(facade.get_shortname, sender)
         orig = facade.get_message_map_by_meshtastic_id(replyId)
@@ -959,11 +969,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                     meshtastic_text=text,
                     reply_to_event_id=matrix_event_id,
                     source_node_id=sender,
-                    source_channel_id=(
-                        str(packet["channel"])
-                        if type(packet.get("channel")) is int
-                        else None
-                    ),
+                    source_channel_id=_radio_source_channel(packet),
                 ),
                 loop=loop,
             )
@@ -1171,7 +1177,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                             meshtastic_id=packet.get("id"),
                             meshtastic_text=text,
                             source_node_id=sender,
-                            source_channel_id=str(channel),
+                            source_channel_id=_radio_source_channel(packet),
                         ),
                         loop=loop,
                     )

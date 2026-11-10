@@ -383,10 +383,19 @@ def test_on_meshtastic_message_does_not_filter_plain_emoji_message_when_reaction
 
 
 @pytest.mark.parametrize("reaction", [False, True])
-def test_on_meshtastic_message_zero_reply_id_preserves_interaction(reaction):
+@pytest.mark.parametrize(
+    ("channel", "expected_channel"),
+    [(2, "2"), (None, "0"), ("2", "2"), ("invalid", "0")],
+)
+def test_on_meshtastic_message_zero_reply_id_preserves_interaction(
+    reaction, channel, expected_channel
+):
     _set_globals(_base_config())
     packet = _base_packet()
-    packet["channel"] = 2
+    if channel is None:
+        packet.pop("channel")
+    else:
+        packet["channel"] = channel
     packet["decoded"].update({"text": "👍", "replyId": 0})
     if reaction:
         packet["decoded"]["emoji"] = EMOJI_FLAG_VALUE
@@ -403,7 +412,7 @@ def test_on_meshtastic_message_zero_reply_id_preserves_interaction(reaction):
     relay.assert_awaited_once()
     assert relay.call_args.kwargs["meshtastic_replyId"] == 0
     assert relay.call_args.kwargs["source_node_id"] == "!0000007b"
-    assert relay.call_args.kwargs["source_channel_id"] == "2"
+    assert relay.call_args.kwargs["source_channel_id"] == expected_channel
     if reaction:
         assert relay.call_args.kwargs["reaction_key"] == "👍"
         assert relay.call_args.kwargs["emoji"] is True
@@ -1617,3 +1626,45 @@ def test_radio_reaction_preserves_exact_explicit_key():
         on_meshtastic_message(packet, _make_interface())
     assert relay is not None
     assert relay.call_args.kwargs["reaction_key"] == " ❤️ "
+
+
+@pytest.mark.parametrize(
+    ("channel", "expected_channel"),
+    [(0, "0"), (None, "0"), ("2", "2"), ("invalid", "0")],
+)
+def test_radio_normal_message_channel_matches_native_reply_refs(
+    channel, expected_channel
+):
+    """Normal messages and reply/reaction references share native channel IDs."""
+    packet = _base_packet()
+    if channel is None:
+        packet.pop("channel")
+    else:
+        packet["channel"] = channel
+    config = _base_config()
+    config["matrix_rooms"][0]["meshtastic_channel"] = int(expected_channel)
+    _set_globals(config)
+    with _patch_message_deps() as (_, relay):
+        on_meshtastic_message(packet, _make_interface())
+    assert relay is not None
+    relay.assert_awaited_once()
+    assert relay.call_args.kwargs["source_channel_id"] == expected_channel
+
+
+def test_blank_radio_reply_reaches_plugins_without_matrix_send():
+    """A blank reply is not a Matrix message but remains observable by plugins."""
+    _set_globals(_base_config())
+    packet = _base_packet()
+    packet["decoded"].update({"text": "", "replyId": 123})
+    plugin = MagicMock()
+    plugin.plugin_name = "observer"
+    plugin.handle_meshtastic_message.return_value = False
+    with _patch_message_deps(
+        interaction_settings={"reactions": True, "replies": True},
+        plugins=[plugin],
+        patch_logger=False,
+    ) as (_, relay):
+        on_meshtastic_message(packet, _make_interface())
+    assert relay is not None
+    relay.assert_not_called()
+    plugin.handle_meshtastic_message.assert_called_once()

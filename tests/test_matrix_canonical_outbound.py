@@ -61,7 +61,7 @@ async def test_outbound_medre_envelope_is_only_metadata_surface():
     assert envelope["schema_version"] == 1
     assert envelope["event_kind"] == "message.created"
     assert envelope["source_adapter"] == "mmrelay.meshtastic"
-    assert envelope["source_channel"] == "LocalMesh"
+    assert envelope["source_channel"] == "0"
     assert envelope["canonical_event_id"]
     assert content["msgtype"] == "m.text"
     assert content["body"] == "Radio text 🦉"
@@ -410,6 +410,7 @@ async def test_outbound_renderer_rejects_invented_native_relation():
             await render(reply_to_event_id=None)
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("packet_id", [0, 4])
 async def test_unbound_radio_reply_keeps_generic_reference_and_authored_body(packet_id):
     content = await render(meshtastic_replyId=packet_id)
@@ -419,9 +420,10 @@ async def test_unbound_radio_reply_keeps_generic_reference_and_authored_body(pac
     assert relation["relation_type"] == "reply"
     assert relation["target_native_ref"]["native_message_id"] == str(packet_id)
     assert relation["target_native_ref"]["adapter"] == "mmrelay.meshtastic"
-    assert relation["target_native_ref"]["native_channel_id"] == "LocalMesh"
+    assert relation["target_native_ref"]["native_channel_id"] == "0"
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("reaction", [False, True])
 async def test_radio_channel_is_independent_of_meshnet_label(reaction):
     content = await render(
@@ -437,3 +439,14 @@ async def test_radio_channel_is_independent_of_meshnet_label(reaction):
     assert context["relations"][0]["target_native_ref"]["native_channel_id"] == "0"
     assert context["source"]["native_facts"]["fields"]["meshnet_label"] == "LocalMesh"
     assert content["body"] == "Radio text 🦉"
+
+
+@pytest.mark.asyncio
+async def test_missing_radio_channel_uses_numeric_primary_not_meshnet_label():
+    content = await render(meshtastic_replyId=0, source_channel_id=None)
+    envelope = content["medre"]["envelope"]
+    context = content["medre"]["metadata"]["bridge_context"]
+    assert envelope["source_channel"] == "0"
+    assert envelope["source_native_ref"]["native_channel_id"] == "0"
+    assert context["relations"][0]["target_native_ref"]["native_channel_id"] == "0"
+    assert context["source"]["native_facts"]["fields"]["meshnet_label"] == "LocalMesh"

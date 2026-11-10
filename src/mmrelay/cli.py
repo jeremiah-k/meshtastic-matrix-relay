@@ -1264,6 +1264,11 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
 
                 # Merge environment variable overrides (if any)
                 config = apply_env_config_overrides(config)
+                if CONFIG_SECTION_MATRIX in config and not isinstance(
+                    config[CONFIG_SECTION_MATRIX], dict
+                ):
+                    print("Error: 'matrix' section must be a mapping (YAML object)")
+                    return False
                 from mmrelay.matrix.peer_context import load_peer_relays
 
                 try:

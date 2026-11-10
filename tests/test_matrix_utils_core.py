@@ -508,8 +508,8 @@ def test_format_reply_message_remote_without_longname():
     assert result == "[MtP Relay/Mt.P]:  Hi"
 
 
-def test_format_reply_message_remote_preserves_authored_body(monkeypatch):
-    """Remote replies strip matching prefixes before rebuilding the reply text."""
+def test_format_reply_message_remote_legacy_rebuilds_display_prefix(monkeypatch):
+    """The legacy formatting path rebuilds the reply with its display prefix."""
     config = {}
     monkeypatch.setattr(
         "mmrelay.matrix_utils.get_matrix_prefix", lambda *_args, **_kwargs: "PREFIX"
@@ -527,6 +527,26 @@ def test_format_reply_message_remote_preserves_authored_body(monkeypatch):
 
     assert result.startswith("PREFIX")
     assert result == "PREFIX Ignored"
+
+
+def test_format_reply_message_remote_canonical_keeps_authored_quote(monkeypatch):
+    """A canonical authored quote is not treated as a Matrix reply fallback."""
+    config = {}
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_matrix_prefix", lambda *_args, **_kwargs: "PREFIX"
+    )
+    result = format_reply_message(
+        config,
+        "Alice",
+        "> authored quote\n\nActual answer",
+        longname="Alice",
+        shortname="Al",
+        meshnet_name="RemoteMesh",
+        local_meshnet_name="LocalMesh",
+        text_is_canonical=True,
+    )
+    assert "> authored quote" in result
+    assert "Actual answer" in result
 
 
 # Utils Tests

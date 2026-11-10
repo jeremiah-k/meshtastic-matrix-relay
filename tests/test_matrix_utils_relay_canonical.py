@@ -153,8 +153,8 @@ async def test_relay_preserves_canonical_quotes_and_legacy_codec_failure_behavio
 
 
 @pytest.mark.asyncio
-async def test_codec_failure_preserves_legacy_reply_target_and_authoritative_mode():
-    """A codec exception must not lose the Matrix target or claim canonical text."""
+async def test_codec_failure_preserves_reply_target_and_sanitized_authored_body():
+    """A codec exception preserves the target and passes sanitized authored text."""
     from mmrelay.matrix_utils import on_room_message
 
     room, event = _reply_event(

@@ -2,6 +2,7 @@
 
 import pytest
 
+from mmrelay.constants.messages import MESSAGE_PREVIEW_LENGTH
 from mmrelay.meshtastic.reaction_preview import reaction_preview
 
 
@@ -12,7 +13,7 @@ from mmrelay.meshtastic.reaction_preview import reaction_preview
         ("> quote-only\n> second", "> quote-only > second"),
         ("alpha\tbeta\rcharlie", "alpha beta charlie"),
         ("", ""),
-        ("word " * 12, ("word " * 12).strip()[:40] + "..."),
+        ("word " * 12, ("word " * 12).strip()[:MESSAGE_PREVIEW_LENGTH] + "..."),
     ],
 )
 def test_reaction_preview_is_single_line_without_destroying_quotes(
@@ -21,4 +22,4 @@ def test_reaction_preview_is_single_line_without_destroying_quotes(
     """The preview is bounded and single-line; the source is left untouched."""
     assert reaction_preview(source) == expected
     assert "\n" not in reaction_preview(source)
-    assert len(reaction_preview(source)) <= 43
+    assert len(reaction_preview(source)) <= MESSAGE_PREVIEW_LENGTH + 3

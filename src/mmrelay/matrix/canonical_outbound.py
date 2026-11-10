@@ -28,6 +28,8 @@ from medre.core.rendering.attribution import RelayAttribution
 from medre.core.rendering.renderer import RenderingContext
 from medre.core.rendering.text_helpers import extract_relation_text
 
+from mmrelay.constants.messages import DEFAULT_CHANNEL_VALUE
+
 _MATRIX_TARGET = "mmrelay.matrix"
 _MESH_SOURCE = "mmrelay.meshtastic"
 _RENDERER = MatrixRenderer()
@@ -150,8 +152,11 @@ async def render_matrix_relay_content(
     When provided, ``source_node_id`` carries the native Meshtastic identity;
     display names are only a fallback for callers without that identity.
     """
+    # A meshnet name is a display label, never a numeric native channel ID.
     source_channel = (
-        source_channel_id if source_channel_id is not None else meshnet_name
+        source_channel_id
+        if source_channel_id is not None
+        else str(DEFAULT_CHANNEL_VALUE)
     )
     public_facts: dict[str, object] = {"portnum": portnum}
     if len(meshnet_name) <= 256:

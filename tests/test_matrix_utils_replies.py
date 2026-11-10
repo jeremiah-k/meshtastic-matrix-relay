@@ -279,6 +279,40 @@ async def test_handle_matrix_reply_integer_id():
 
 
 @pytest.mark.asyncio
+async def test_handle_matrix_reply_rejects_mapping_from_another_room():
+    """An existing event mapping must not authorize cross-room radio replies."""
+    room = MagicMock(room_id="!room123")
+    event = MagicMock(sender="@user:example.org")
+    config = {"matrix_rooms": []}
+    loop = asyncio.get_running_loop()
+    with (
+        patch(
+            "mmrelay.matrix_utils.asyncio.get_running_loop",
+            return_value=InlineExecutorLoop(loop),
+        ),
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+            return_value=(123, "!other:example.org", "original", "remote"),
+        ),
+        patch(
+            "mmrelay.matrix_utils.send_reply_to_meshtastic", new_callable=AsyncMock
+        ) as send,
+    ):
+        result = await handle_matrix_reply(
+            room,
+            event,
+            "$original",
+            "reply text",
+            {"meshtastic_channel": 0},
+            True,
+            "LocalMesh",
+            config,
+        )
+    assert result is False
+    send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_handle_matrix_reply_original_not_found():
     """Test handle_matrix_reply when original message is not found."""
 

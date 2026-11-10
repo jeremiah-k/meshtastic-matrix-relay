@@ -1056,7 +1056,7 @@ async def test_on_room_message_never_relays_hidden_legacy_body(
     mock_event,
     test_config,
 ):
-    """Ensure remote mesh messages fall back to raw meshtastic_text when body is empty."""
+    """Hidden flat metadata must never replace an empty canonical authored body."""
     mock_event.body = ""
     mock_event.source = {
         "content": {
@@ -1397,7 +1397,7 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
 async def test_on_room_message_reaction_non_numeric_meshtastic_id(
     mock_room, test_config
 ):
-    """Non-numeric mapped meshtastic_id should send as normal message, not reply."""
+    """Non-numeric native mapping IDs must not produce radio reactions."""
     from nio import ReactionEvent
 
     class MockReactionEvent(ReactionEvent):
@@ -1563,7 +1563,7 @@ async def test_on_room_message_reaction_mapped_int_id(mock_room, test_config):
 async def test_on_room_message_reaction_unexpected_type_logs_warning(
     mock_room, test_config
 ):
-    """A non-int, non-str meshtastic_id should log a type warning and fall back to sendText."""
+    """Invalid native mapping IDs must not trigger an unstructured send."""
     from nio import ReactionEvent
 
     class MockReactionEvent(ReactionEvent):
@@ -2072,15 +2072,15 @@ async def test_on_room_message_suppressed_message_returns(
 
 
 @pytest.mark.parametrize(
-    ("reply_id", "reaction_key", "expected_symbol"),
+    ("reply_id", "reaction_key"),
     [
-        (123, None, ":)"),
-        (123, "🎉", "🎉"),
-        (0, "🔥", "🔥"),
+        (123, None),
+        (123, "🎉"),
+        (0, "🔥"),
     ],
 )
 async def test_on_room_message_remote_reaction_relay_success(
-    monkeypatch, mock_room, reply_id, reaction_key, expected_symbol
+    monkeypatch, mock_room, reply_id, reaction_key
 ):
     """Remote meshnet reactions should be relayed to the local mesh when enabled."""
     from mmrelay.matrix_utils import RoomMessageEmote
@@ -2090,11 +2090,6 @@ async def test_on_room_message_remote_reaction_relay_success(
             self.source = {
                 "content": {
                     "body": 'reacted :) to "hello"',
-                    "meshtastic_replyId": reply_id,
-                    "meshtastic_reaction_key": reaction_key,
-                    "meshtastic_longname": "RemoteUser",
-                    "meshtastic_meshnet": "remote_mesh",
-                    "meshtastic_text": "Original text from mesh",
                 }
             }
             self.sender = "@user:remote"
