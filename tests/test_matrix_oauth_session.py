@@ -276,3 +276,71 @@ async def test_corrupt_saved_credentials_prevent_password_fallback(
         await facade._resolve_and_load_credentials(
             config, config["matrix"], str(tmp_path / "config.yaml")
         )
+
+
+@pytest.mark.asyncio
+async def test_cached_token_reloads_on_other_process_rotation_or_logout(
+    tmp_path: Path,
+) -> None:
+    from dataclasses import replace
+
+    manager, server = await manager_at(tmp_path, clock=1000)
+    assert await manager.access_token() == session().access_token
+    rotated = replace(session(), access_token="new-access")
+    async with manager.store.locked():
+        await manager.store.save(rotated)
+    assert await manager.access_token() == "new-access"
+    await manager.store.remove()
+    with pytest.raises(OAuthError, match="removed"):
+        await manager.access_token()
+    assert not server.requests
+
+
+@pytest.mark.asyncio
+async def test_initial_record_is_reloaded_before_enabling_token_cache(
+    tmp_path: Path,
+) -> None:
+    from dataclasses import replace
+
+    manager, server = await manager_at(tmp_path, clock=1000)
+    rotated = replace(session(), access_token="rotated-before-manager-start")
+    async with manager.store.locked():
+        await manager.store.save(rotated)
+    restarted = OAuthSessionManager(session(), manager.store, manager.protocol)
+    with patch.object(manager.store, "load", wraps=manager.store.load) as load:
+        assert await restarted.access_token() == rotated.access_token
+        assert await restarted.access_token() == rotated.access_token
+    load.assert_awaited_once()
+    assert not server.requests
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reuse_refresh", [False, True])
+@pytest.mark.parametrize("reuse_access", [False, True])
+async def test_failed_rotation_does_not_explicitly_revoke_saved_token_values(
+    tmp_path, reuse_refresh, reuse_access
+):
+    manager, server = await manager_at(tmp_path)
+    issued = {
+        "access_token": session().access_token if reuse_access else "ISSUED_ACCESS",
+        "refresh_token": session().refresh_token if reuse_refresh else "ISSUED_REFRESH",
+        "token_type": "Bearer",
+        "expires_in": 300,
+    }
+    server.polls = [JsonResponse(200, issued)]
+    with patch(
+        "mmrelay.matrix.oauth_store.os.replace", side_effect=OSError("disk failure")
+    ):
+        with pytest.raises(OAuthError, match="could not be saved"):
+            await manager.access_token()
+    revoked = {
+        (req[2]["form"]["token_type_hint"], req[2]["form"]["token"])
+        for req in server.requests[1:]
+    }
+    expected = {
+        (name, issued[name])
+        for name in ("refresh_token", "access_token")
+        if issued[name] != getattr(session(), name)
+    }
+    assert revoked == expected
+    assert await manager.store.load() == session().credentials()

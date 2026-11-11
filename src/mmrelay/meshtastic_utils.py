@@ -261,8 +261,10 @@ meshtastic_iface = None  # BLE interface instance for process lifetime
 event_loop = None  # Will be set from main.py
 
 meshtastic_lock = (
-    threading.Lock()
-)  # To prevent race conditions on meshtastic_client access
+    threading.RLock()
+)  # To prevent race conditions on meshtastic_client access. Reentrant so
+# reconnect cleanup (events.reconnect) can re-acquire it on a thread that
+# already holds it, such as a coroutine driven inline by its caller.
 # Serialize full connect attempt lifecycles so concurrent callers do not
 # create overlapping clients/interfaces and race rollback cleanup.
 _connect_attempt_lock = threading.RLock()
@@ -277,6 +279,8 @@ _CONNECT_ATTEMPT_BLE_WAIT_MAX_SECS = (
 )
 
 reconnecting = False
+# Identity of the reconnect currently allowed to clear the shared flag.
+_relay_reconnect_owner: object | None = None
 shutting_down = False
 
 reconnect_task: "asyncio.Task[Any] | Future[Any] | None" = (

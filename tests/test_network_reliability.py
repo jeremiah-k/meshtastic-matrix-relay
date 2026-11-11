@@ -473,11 +473,18 @@ class TestNetworkErrorRecovery:
             try:
                 assert queue.enqueue(send_fn, "first", description="first message")
                 assert queue.enqueue(send_fn, "second", description="second message")
-                drained = await queue.drain(timeout=2.0)
+                # drain() measures its timeout in wall-clock time while every
+                # sleep here is mocked away, so the budget only absorbs runner
+                # scheduling stalls (executor round-trips need ~0s of real
+                # time). Keep it aligned with the MessageQueue suite's budget.
+                drained = await queue.drain(timeout=15.0)
             finally:
                 queue.stop()
 
-        assert drained is True
+        assert drained is True, (
+            f"queue did not drain: completed {send_fn.call_count}/2 sends, "
+            f"requested delays={requested_delays!r}"
+        )
         assert send_fn.call_count == 2
         assert any(
             delay >= MINIMUM_MESSAGE_DELAY - 0.01 for delay in requested_delays

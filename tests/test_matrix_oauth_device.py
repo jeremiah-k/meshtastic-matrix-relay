@@ -414,3 +414,21 @@ async def test_html_error_preserves_status_without_server_body() -> None:
             "GET", "https://matrix.example.com/.well-known/matrix/client"
         )
         assert result == JsonResponse(404, {})
+
+
+@pytest.mark.asyncio
+async def test_invalid_refresh_response_keeps_echoed_access_and_refresh_values():
+    server = FakeServer()
+    server.polls = [
+        JsonResponse(
+            200,
+            {
+                "access_token": session().access_token,
+                "refresh_token": session().refresh_token,
+                "token_type": "invalid",
+            },
+        )
+    ]
+    with pytest.raises(OAuthError):
+        await protocol(server).refresh(session())
+    assert len(server.requests) == 1

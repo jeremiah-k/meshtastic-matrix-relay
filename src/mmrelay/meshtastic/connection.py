@@ -2,9 +2,11 @@ import contextlib
 import functools
 import inspect
 import math
+import os
 import threading
 from collections.abc import Callable
 from concurrent.futures import Future
+from pathlib import Path
 from typing import Any, Literal, NoReturn
 
 import mmrelay.meshtastic_utils as facade
@@ -34,6 +36,7 @@ from mmrelay.constants.network import (
     DEFAULT_MESHTASTIC_TIMEOUT,
     DEFAULT_TCP_PORT,
 )
+from mmrelay.meshtastic.cancellation import construct_interface
 
 __all__ = [
     "_connect_meshtastic_impl",
@@ -248,6 +251,17 @@ def serial_port_exists(port_name: str) -> bool:
     Returns:
         `True` if a matching port device name is present, `False` otherwise.
     """
+    # Linux udev aliases and explicitly mapped container devices need not be
+    # listed by pyserial. Inspect the configured device itself before falling
+    # back to enumeration, which remains necessary for Windows COM names.
+    if "\x00" in port_name:
+        return False
+    if os.name == "posix":
+        try:
+            if Path(port_name).is_char_device():
+                return True
+        except (OSError, ValueError):
+            pass
     try:
         ports = [p.device for p in facade.serial.tools.list_ports.comports()]
     except OSError as exc:
@@ -448,6 +462,7 @@ def _schedule_connect_time_calibration_probe(
             return True
 
     def _arm_delayed_probe(delay: float, window: str | None) -> None:
+        """Register a deferred probe, retaining only the latest timer owner."""
         facade.logger.debug(
             "Delaying connect-time metadata probe by %.1fs until after %s window",
             delay,
@@ -498,7 +513,17 @@ def _schedule_connect_time_calibration_probe(
         if old_timer is not None:
             with contextlib.suppress(Exception):
                 old_timer.cancel()
-        timer.start()
+        try:
+            timer.start()
+        except RuntimeError:
+            # Thread.start() reports failed thread creation as RuntimeError.
+            _clear_pending_timer(timer)
+            facade.logger.warning(
+                "Could not start delayed connect-time probe timer", exc_info=True
+            )
+        except Exception:
+            _clear_pending_timer(timer)
+            raise
 
     if stabilization_deadline is not None:
         delay = (
@@ -528,7 +553,6 @@ def _rollback_connect_attempt_state(
     """
     _lock_ctx = contextlib.nullcontext() if lock_held else facade.meshtastic_lock
     startup_drain_timer_to_cancel: Any = None
-    mark_startup_drain_complete = False
     if client is not None and (
         client_assigned_for_this_connect or client is facade.meshtastic_iface
     ):
@@ -561,18 +585,17 @@ def _rollback_connect_attempt_state(
                 startup_drain_timer_to_cancel = facade._relay_startup_drain_expiry_timer
                 facade._relay_startup_drain_expiry_timer = None
                 facade._relay_startup_drain_deadline_monotonic_secs = None
-                mark_startup_drain_complete = True
+                # Signal while holding the drain-state lock so a newer drain
+                # cannot be armed between this rollback and its completion.
+                startup_drain_complete_event = facade.get_startup_drain_complete_event()
+                if startup_drain_complete_event is not None:
+                    startup_drain_complete_event.set()
                 if startup_drain_applied_for_this_connect:
                     facade._startup_packet_drain_applied = False
             if reconnect_bootstrap_armed_for_this_connect:
                 facade._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs = (
                     None
                 )
-    if mark_startup_drain_complete:
-        # Keep lock scope focused on state mutation; event signaling is non-blocking.
-        startup_drain_complete_event = facade.get_startup_drain_complete_event()
-        if startup_drain_complete_event is not None:
-            startup_drain_complete_event.set()
     if startup_drain_timer_to_cancel is not None:
         with contextlib.suppress(AttributeError, RuntimeError, TypeError):
             startup_drain_timer_to_cancel.cancel()
@@ -834,7 +857,6 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
         startup_drain_armed_for_this_connect = False
         startup_drain_applied_for_this_connect = False
         reconnect_bootstrap_armed_for_this_connect = False
-        signal_startup_drain_complete_for_this_connect = False
         client_assigned_for_this_connect = False
 
         client: Any | None = None
@@ -856,8 +878,10 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                         f"Serial port {serial_port} does not exist or is not accessible."
                     )
 
-                client = facade.meshtastic.serial_interface.SerialInterface(
-                    serial_port, timeout=configured_timeout_arg
+                client = construct_interface(
+                    facade.meshtastic.serial_interface.SerialInterface,
+                    serial_port,
+                    timeout=configured_timeout_arg,
                 )
 
             elif connection_type == CONNECTION_TYPE_BLE:
@@ -1015,11 +1039,14 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                             # Create BLE interface with timeout protection to prevent indefinite hangs
                             # Run on the shared BLE executor with timeout protection, as BLEInterface.__init__
                             # can potentially block indefinitely if BlueZ is in a bad state.
+                            construction_cancel = threading.Event()
+
                             def create_ble_interface(
                                 kwargs: dict[str, Any],
                                 interface_cls: Callable[
                                     ..., object
                                 ] = ble_interface_cls,
+                                cancel_signal: threading.Event = construction_cancel,
                             ) -> object:
                                 """
                                 Create a BLEInterface configured for Meshtastic BLE connections.
@@ -1030,7 +1057,11 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                                 Returns:
                                     BLEInterface: A newly constructed Meshtastic BLEInterface instance.
                                 """
-                                return interface_cls(**kwargs)
+                                return construct_interface(
+                                    interface_cls,
+                                    cancel_event=cancel_signal,
+                                    **kwargs,
+                                )
 
                             # Guard against overlapping BLE tasks: if a previous BLE operation is
                             # still running (often due to a hung BlueZ/DBus call), we skip queuing
@@ -1158,6 +1189,7 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                                             ble_address=ble_address
                                         )
                                 except facade.FutureWaitShutdownError:
+                                    construction_cancel.set()
                                     facade.logger.debug(
                                         "BLE interface creation interrupted by shutdown for %s",
                                         ble_address,
@@ -1179,6 +1211,7 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                                     facade.meshtastic_iface = None
                                     raise
                                 except facade.FuturesTimeoutError as err:
+                                    construction_cancel.set()
                                     facade.logger.error(
                                         "BLE interface creation timed out after %.1f seconds for %s.",
                                         create_timeout_secs,
@@ -1576,7 +1609,8 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                 facade.logger.info(f"Connecting to host {target_host}:{target_port}")
 
                 # Connect without progress indicator
-                client = facade.meshtastic.tcp_interface.TCPInterface(
+                client = construct_interface(
+                    facade.meshtastic.tcp_interface.TCPInterface,
                     hostname=target_host,
                     portNumber=target_port,
                     timeout=configured_timeout_arg,
@@ -1680,7 +1714,13 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                                     facade._relay_connection_started_monotonic_secs
                                     + facade.RECONNECT_PRESTART_BOOTSTRAP_WINDOW_SECS
                                 )
-                                signal_startup_drain_complete_for_this_connect = True
+                                # Completion and deadline mutation must share
+                                # the lock that protects new drain arming.
+                                startup_drain_complete_event = (
+                                    facade.get_startup_drain_complete_event()
+                                )
+                                if startup_drain_complete_event is not None:
+                                    startup_drain_complete_event.set()
                                 reconnect_bootstrap_armed_for_this_connect = True
                                 timing_mode = "reconnect"
                         facade.logger.debug(
@@ -1691,14 +1731,6 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                             facade._relay_startup_drain_deadline_monotonic_secs,
                             facade._relay_reconnect_prestart_bootstrap_deadline_monotonic_secs,
                         )
-                if signal_startup_drain_complete_for_this_connect:
-                    # Signal completion after clock-skew state updates are committed.
-                    startup_drain_complete_event = (
-                        facade.get_startup_drain_complete_event()
-                    )
-                    if startup_drain_complete_event is not None:
-                        startup_drain_complete_event.set()
-
                 # Publish the active client only after per-connection timing state
                 # has been reset, so callbacks cannot observe stale skew windows.
                 if facade.shutting_down:
@@ -1785,7 +1817,6 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                 # Arm startup drain only once setup completes, so the full drain
                 # interval is available when receive handling becomes active.
                 startup_drain_deadline: float | None = None
-                clear_startup_drain_complete_event = False
                 if startup_drain_pending_for_this_connect:
                     with facade._relay_rx_time_clock_skew_lock:
                         if not facade._startup_packet_drain_applied:
@@ -1799,14 +1830,13 @@ def _connect_meshtastic_impl(  # pyright: ignore[reportGeneralTypeIssues]
                             facade._startup_packet_drain_applied = True
                             startup_drain_applied_for_this_connect = True
                             startup_drain_armed_for_this_connect = True
-                            clear_startup_drain_complete_event = True
-                    if clear_startup_drain_complete_event:
-                        # Keep lock scope focused on shared timing state updates.
-                        startup_drain_complete_event = (
-                            facade.get_startup_drain_complete_event()
-                        )
-                        if startup_drain_complete_event is not None:
-                            startup_drain_complete_event.clear()
+                            # Clear readiness atomically with deadline arming.
+                            # A previous callback cannot complete this drain.
+                            startup_drain_complete_event = (
+                                facade.get_startup_drain_complete_event()
+                            )
+                            if startup_drain_complete_event is not None:
+                                startup_drain_complete_event.clear()
                     if (
                         startup_drain_armed_for_this_connect
                         and startup_drain_deadline is not None

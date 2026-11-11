@@ -62,7 +62,7 @@ def _approval_challenge(body: object, issuer: str) -> tuple[str, str]:
             trusted_origin = (trusted.hostname, trusted.port or 443)
         except ValueError:
             raise OAuthError("Invalid cross-signing approval URL.") from None
-        if origin != trusted_origin:
+        if parsed.fragment or origin != trusted_origin:
             raise OAuthError("Cross-signing approval URL does not match the issuer.")
         return session, url
     raise OAuthError("The server does not offer OAuth cross-signing authorization.")
@@ -102,7 +102,7 @@ def approval_sender(
         timeout: float | None = None,
     ) -> Any:
         response = await send(method, path, data, headers, trace_context, timeout)
-        if method != "POST" or path != _SIGNING_UPLOAD:
+        if method != "POST" or urlsplit(path).path != _SIGNING_UPLOAD:
             return response
         if response.status == 200:
             return response
@@ -117,24 +117,41 @@ def approval_sender(
         print("Approve the cross-signing identity reset in your account browser:")
         print(url)
         print("Keep this command running while approving the reset.")
-        body = json.loads(data)
-        body["auth"] = {"session": session}
+        try:
+            body = json.loads(data)
+            if not isinstance(body, dict):
+                raise ValueError
+            body["auth"] = {"session": session}
+        except (TypeError, ValueError):
+            raise OAuthError("Cross-signing key upload request is malformed.") from None
         approved_data = json.dumps(body)
         deadline = clock() + _APPROVAL_TIMEOUT
         while clock() < deadline:
             await sleep(min(5.0, deadline - clock()))
             if clock() >= deadline:
                 break
-            response = await send(
-                method, path, approved_data, headers, trace_context, timeout
-            )
-            if response.status == 200:
-                return response
-            if response.status != 401:
-                raise OAuthError("Cross-signing browser authorization was rejected.")
-            challenge = _approval_challenge(await _read_challenge(response), issuer)
-            if challenge != (session, url):
-                raise OAuthError("Cross-signing browser authorization changed; retry.")
+            try:
+                async with asyncio.timeout(deadline - clock()):
+                    response = await send(
+                        method, path, approved_data, headers, trace_context, timeout
+                    )
+                    if response.status == 200:
+                        return response
+                    if response.status != 401:
+                        raise OAuthError(
+                            "Cross-signing browser authorization was rejected."
+                        )
+                    challenge = _approval_challenge(
+                        await _read_challenge(response), issuer
+                    )
+                    if challenge != (session, url):
+                        raise OAuthError(
+                            "Cross-signing browser authorization changed; retry."
+                        )
+            except TimeoutError:
+                raise OAuthError(
+                    "Cross-signing browser approval timed out; retry the command."
+                ) from None
         raise OAuthError("Cross-signing browser approval expired; retry the command.")
 
     # The guard shares the wrapped transport's exact signature, so callers keep

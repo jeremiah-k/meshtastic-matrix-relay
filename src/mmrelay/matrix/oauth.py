@@ -10,7 +10,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import aiohttp
 
@@ -69,6 +69,7 @@ class JsonTransport(Protocol):
         json_body: Mapping[str, Any] | None = None,
         form: Mapping[str, str] | None = None,
         access_token: str | None = None,
+        follow_redirects: bool = False,
     ) -> JsonResponse: ...
 
 
@@ -83,45 +84,92 @@ class HttpTransport:
         json_body: Mapping[str, Any] | None = None,
         form: Mapping[str, str] | None = None,
         access_token: str | None = None,
+        follow_redirects: bool = False,
     ) -> JsonResponse:
         secure_url(url)
+        if follow_redirects and (
+            method != "GET"
+            or urlsplit(url).path != "/.well-known/matrix/client"
+            or access_token is not None
+            or form is not None
+            or json_body is not None
+        ):
+            raise OAuthError(
+                "Redirects are allowed only for credential-free client discovery."
+            )
         headers = {"Accept": "application/json"}
         if access_token is not None:
             headers["Authorization"] = f"Bearer {access_token}"
         try:
-            async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=20), trust_env=False
-            ) as session:
-                async with session.request(
-                    method,
-                    url,
-                    json=dict(json_body) if json_body is not None else None,
-                    data=dict(form) if form is not None else None,
-                    headers=headers,
-                    allow_redirects=False,
-                ) as response:
-                    if 300 <= response.status < 400:
-                        raise OAuthError("OAuth HTTP redirects are not accepted.")
-                    raw = await read_bounded_response(
-                        response, "OAuth response exceeds the size limit."
-                    )
-                    if not raw and 200 <= response.status < 300:
-                        return JsonResponse(response.status, {})
-                    try:
-                        body = json.loads(raw)
-                    except (ValueError, UnicodeDecodeError):
-                        if not 200 <= response.status < 300:
-                            # Missing well-known documents and proxy failures may
-                            # be HTML. Preserve status without echoing that body.
-                            return JsonResponse(response.status, {})
-                        raise OAuthError(
-                            "OAuth endpoint returned invalid JSON."
-                        ) from None
-                    if not isinstance(body, dict):
-                        raise OAuthError(
-                            "OAuth endpoint returned a non-object response."
+            async with (
+                asyncio.timeout(20),
+                aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=20), trust_env=False
+                ) as session,
+            ):
+                redirects = 0
+                while True:
+                    async with session.request(
+                        method,
+                        url,
+                        json=dict(json_body) if json_body is not None else None,
+                        data=dict(form) if form is not None else None,
+                        headers=headers,
+                        allow_redirects=False,
+                    ) as response:
+                        if response.status in (301, 302, 303, 307, 308):
+                            if not follow_redirects:
+                                raise OAuthError(
+                                    "OAuth endpoint redirects are refused."
+                                )
+                            if redirects >= 5:
+                                raise OAuthError(
+                                    "Client discovery exceeded the redirect limit."
+                                )
+                            location = response.headers.get("Location")
+                            if not isinstance(location, str) or not location:
+                                raise OAuthError(
+                                    "Client discovery redirect has no destination."
+                                )
+                            try:
+                                if (
+                                    any(
+                                        ord(char) <= 32 or ord(char) == 127
+                                        for char in location
+                                    )
+                                    or "\\" in location
+                                ):
+                                    raise ValueError
+                                target = urljoin(url, location)
+                                parsed = urlsplit(target)
+                                secure_url(urlunsplit(parsed._replace(query="")))
+                            except ValueError:
+                                raise OAuthError(
+                                    "Invalid client discovery redirect URL."
+                                ) from None
+                            url = target
+                            redirects += 1
+                            continue
+                        raw = await read_bounded_response(
+                            response, "OAuth response exceeds the size limit."
                         )
-                    return JsonResponse(response.status, body)
+                        if not raw and 200 <= response.status < 300:
+                            return JsonResponse(response.status, {})
+                        try:
+                            body = json.loads(raw)
+                        except (ValueError, UnicodeDecodeError):
+                            if not 200 <= response.status < 300:
+                                # Missing well-known documents and proxy failures may
+                                # be HTML. Preserve status without echoing that body.
+                                return JsonResponse(response.status, {})
+                            raise OAuthError(
+                                "OAuth endpoint returned invalid JSON."
+                            ) from None
+                        if not isinstance(body, dict):
+                            raise OAuthError(
+                                "OAuth endpoint returned a non-object response."
+                            )
+                        return JsonResponse(response.status, body)
         except (aiohttp.ClientError, TimeoutError):
             raise OAuthTransportError("Could not contact the OAuth endpoint.") from None
 
@@ -394,7 +442,9 @@ class OAuthClient:
         # Matrix delegation applies before authentication-server discovery.
         parsed = urlsplit(homeserver)
         well_known = await self.transport.request(
-            "GET", f"{parsed.scheme}://{parsed.netloc}/.well-known/matrix/client"
+            "GET",
+            f"{parsed.scheme}://{parsed.netloc}/.well-known/matrix/client",
+            follow_redirects=True,
         )
         if well_known.status == 200:
             delegated = well_known.body.get("m.homeserver")
@@ -567,6 +617,7 @@ class OAuthClient:
             session.revocation_endpoint,
             session.client_id,
             session.refresh_token,
+            session.access_token,
         )
         return replace(
             session,
@@ -586,6 +637,7 @@ class OAuthClient:
         revocation_endpoint: str,
         client_id: str,
         previous_refresh: str | None = None,
+        previous_access: str | None = None,
     ) -> TokenSet:
         try:
             return _tokens(
@@ -604,7 +656,11 @@ class OAuthClient:
                 # still depends on, and revoking it would destroy the session.
                 rejected_token = refresh_token
                 token_type_hint = "refresh_token"
-            elif isinstance(access_token, str) and access_token:
+            elif (
+                isinstance(access_token, str)
+                and access_token
+                and access_token != previous_access
+            ):
                 rejected_token = access_token
                 token_type_hint = "access_token"
             else:
@@ -644,6 +700,21 @@ class OAuthClient:
                 },
             )
         )
+
+    async def revoke_unpersisted(
+        self, session: OAuthSession, previous: OAuthSession
+    ) -> None:
+        """Discard issued tokens without explicitly revoking saved token values."""
+        for name in ("access_token", "refresh_token"):
+            token = getattr(session, name)
+            if token == getattr(previous, name):
+                continue
+            try:
+                await self._revoke_token(
+                    session.revocation_endpoint, session.client_id, token, name
+                )
+            except OAuthError:
+                pass
 
     async def revoke(self, session: OAuthSession) -> None:
         await self._revoke_token(

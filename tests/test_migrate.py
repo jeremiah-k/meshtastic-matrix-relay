@@ -2078,8 +2078,19 @@ class TestMigrationRealWorldScenarios:
         # and migrate the remaining ones (logs)
         result = perform_migration(dry_run=False, force=False)
 
-        # Verify migration succeeded
+        # The legacy root holds config/credentials/logs but no database, so the
+        # re-run succeeds (nothing existed to lose) while the database step
+        # records that no node-name cache was carried over.
         assert result["success"] is True
+        database_steps = [
+            entry
+            for entry in result.get("migrations", [])
+            if entry.get("type") == "database"
+        ]
+        assert database_steps, f"expected a database step in {result.get('migrations')}"
+        database_result = database_steps[-1]["result"]
+        assert database_result["action"] == "not_found"
+        assert "no node-name cache was carried over" in database_result["message"]
 
     def test_idempotent_migration(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

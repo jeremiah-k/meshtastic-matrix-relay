@@ -243,14 +243,32 @@ def meshtastic_loop_safety(monkeypatch, request):
 @pytest.fixture(autouse=True)
 def reset_plugin_loader_cache():
     """
-    Pytest fixture that resets plugin loader caches before and after each test to prevent leakage of mocked objects between tests.
+    Reset plugin loader caches, config, and scheduler ownership around each test.
 
-    This helps avoid issues such as AsyncMock warnings caused by stale plugin instances persisting across test runs.
+    Caches are reset before and after every test so stale plugin instances do
+    not leak across tests. Teardown also stops any real scheduler worker and
+    clears the module-level config: tests such as ``main()`` can reach the real
+    ``load_plugins()`` through ``get_declared_unmapped_room_ids()`` even while
+    ``mmrelay.main.load_plugins`` is patched, and a leaked worker would call
+    later tests' ``schedule`` substitutes once per loop iteration.
     """
     import mmrelay.plugin_loader as pl
 
     pl._reset_caches_for_tests()
     yield
+    # Stop before clearing state so a worker cannot survive into the next test.
+    pl.stop_global_scheduler()
+    worker = pl._global_scheduler_thread
+    if worker is not None and worker.is_alive():
+        # A callback that outlived SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS still
+        # owns run_pending(); wait for it to return before the next test can
+        # observe or replace the shared scheduler.
+        worker.join()
+    # Jobs can outlive the worker registration. Clear the registry even when
+    # the test never started a scheduler.
+    if pl.schedule is not None:
+        pl.schedule.clear()
+    pl.config = None
     pl._reset_caches_for_tests()
 
 
@@ -497,6 +515,7 @@ def reset_meshtastic_globals():
         "meshtastic_client": getattr(mu, "meshtastic_client", None),
         "meshtastic_iface": getattr(mu, "meshtastic_iface", None),
         "reconnecting": getattr(mu, "reconnecting", False),
+        "_relay_reconnect_owner": getattr(mu, "_relay_reconnect_owner", None),
         "shutting_down": getattr(mu, "shutting_down", False),
         "reconnect_task": getattr(mu, "reconnect_task", None),
         "reconnect_task_future": getattr(mu, "reconnect_task_future", None),
@@ -587,6 +606,7 @@ def reset_meshtastic_globals():
     mu.meshtastic_client = None
     mu.meshtastic_iface = None
     mu.reconnecting = False
+    mu._relay_reconnect_owner = None
     mu.shutting_down = False
     mu.reconnect_task = None
     mu.reconnect_task_future = None

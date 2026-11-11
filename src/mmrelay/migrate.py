@@ -1508,11 +1508,25 @@ def migrate_database(
                 "action": "already_migrated",
                 "message": "Already migrated",
             }
-        logger.info("No database files found in legacy locations")
+        # No database in the legacy roots. This is a no-op, not a failure: a
+        # first-time install never had one, and a fresh home creates its own on
+        # first run. The runtime resolves the database from the new home via
+        # paths.get_database_path with no legacy fallback, so say explicitly
+        # that no node-name cache was carried over rather than letting a
+        # completed step imply one was.
+        logger.info(
+            "No database files found in legacy locations; no node-name cache "
+            "was carried over. This is expected when no prior database existed."
+        )
         return {
             "success": True,
             "action": "not_found",
-            "message": "No database files found in legacy locations",
+            "message": (
+                "No database files found in the scanned legacy locations; no "
+                "node-name cache was carried over from them. A database.path "
+                "or db.path override in the legacy config is used in place and "
+                "is not scanned here."
+            ),
         }
 
     if (new_db_dir / DATABASE_FILENAME).exists() and not force:

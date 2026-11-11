@@ -1006,7 +1006,10 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.plugin.send_message.assert_called_once()
         call_args = self.plugin.send_message.call_args
         self.assertEqual(call_args.kwargs["channel"], 0)
-        self.assertEqual(call_args.kwargs["text"], "Cannot determine location")
+        self.assertEqual(
+            call_args.kwargs["text"],
+            "Cannot determine location; share GPS or use !weather LAT,LON.",
+        )
 
         # Should check if channel is enabled for broadcast
         self.plugin.is_channel_enabled.assert_called_once_with(
@@ -1167,13 +1170,14 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     async def test_handle_meshtastic_message_unknown_node(self, mock_connect):
         """
-        Test that a weather request from an unknown node returns True without sending a response message.
+        Test that an unknown sender receives actionable location guidance.
         """
         # Mock meshtastic client with no nodes
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = TEST_NODE_NUM
         mock_client.nodes = {}  # No nodes
         mock_connect.return_value = mock_client
+        self.plugin.send_message = MagicMock()
 
         packet = {
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
@@ -1186,9 +1190,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             packet, "formatted_message", "longname", "meshnet_name"
         )
 
-        # Should return True but not send any message (node not found)
         self.assertTrue(result)
-        mock_client.sendText.assert_not_called()
+        self.plugin.send_message.assert_called_once()
+        self.assertIn("!weather", self.plugin.send_message.call_args.kwargs["text"])
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     async def test_handle_meshtastic_message_missing_channel(self, mock_connect):

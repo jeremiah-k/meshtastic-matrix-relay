@@ -58,16 +58,12 @@ expansion and refresh behavior. Component loggers are reattached when logging
 configuration is refreshed, and path-reporting commands agree with the file
 actually being written.
 
-## Final legacy-layout migration window
+## Legacy layout migration support
 
-The previously announced removal of v1.3 legacy-layout compatibility is deferred
-one release. **The 1.4 release series is the final bridge release that ships the
-legacy path fallbacks and `migrate`/`verify-migration` tooling.**
-
-This is intentional: users upgrading directly from MMRelay 1.2 or older should
-not have to install an intermediate 1.3 build merely to move their data. Finish
-migration during 1.4. Legacy layout compatibility and migration commands are
-planned for removal in 1.5.
+The 1.4 release series ships the v1.3 legacy-layout path fallbacks and the
+`migrate`/`verify-migration` tooling, so users upgrading directly from
+MMRelay 1.2 or older can migrate their data without installing an
+intermediate 1.3 build.
 
 See [MIGRATION_1.3.md](MIGRATION_1.3.md) for the migration procedure.
 

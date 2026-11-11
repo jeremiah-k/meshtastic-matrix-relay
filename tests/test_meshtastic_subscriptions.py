@@ -112,3 +112,33 @@ class TestEnsureMeshtasticCallbacksSubscribed:
         with patch.object(mu.pub, "unsubscribe", side_effect=RuntimeError("fail")):
             unsubscribe_meshtastic_callbacks()
         assert mu.subscribed_to_connection_lost is True
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_shutdown_cannot_resubscribe_callbacks():
+    from mmrelay.meshtastic.subscriptions import ensure_meshtastic_callbacks_subscribed
+
+    mu.shutting_down = True
+    mu._callbacks_tearing_down = True
+    with patch.object(mu.pub, "subscribe") as subscribe:
+        ensure_meshtastic_callbacks_subscribed()
+        subscribe.assert_not_called()
+    assert not mu.subscribed_to_messages
+    assert not mu.subscribed_to_connection_lost
+    assert mu._callbacks_tearing_down
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_subscription_uses_both_expected_callbacks_and_topics():
+    from mmrelay.meshtastic.subscriptions import ensure_meshtastic_callbacks_subscribed
+
+    mu.shutting_down = False
+    with patch.object(mu.pub, "subscribe") as subscribe:
+        ensure_meshtastic_callbacks_subscribed()
+    assert subscribe.call_count == 2
+    subscribe.assert_any_call(mu.on_meshtastic_message, "meshtastic.receive")
+    subscribe.assert_any_call(
+        mu.on_lost_meshtastic_connection, "meshtastic.connection.lost"
+    )
+    assert mu.subscribed_to_messages
+    assert mu.subscribed_to_connection_lost

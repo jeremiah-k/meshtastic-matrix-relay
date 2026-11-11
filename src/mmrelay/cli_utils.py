@@ -364,11 +364,18 @@ def msg_regenerate_credentials() -> str:
 
 def _create_ssl_context() -> ssl.SSLContext | None:
     """
-    Create an SSLContext for Matrix client connections, preferring certifi's CA bundle when available.
+    Create a Matrix TLS context honoring explicit OpenSSL trust settings.
 
     Returns:
         An `ssl.SSLContext` that uses certifi's CA bundle when available or the system default; `None` if context creation fails.
     """
+    # OAuth's HTTP transport follows OpenSSL's explicit trust settings. The SDK
+    # must use the same authority: certifi must not override an operator's CA.
+    # Keep this outside fallback handling so invalid explicit trust fails closed.
+    ca_file = os.environ.get("SSL_CERT_FILE") or None
+    ca_directory = os.environ.get("SSL_CERT_DIR") or None
+    if ca_file or ca_directory:
+        return ssl.create_default_context(cafile=ca_file, capath=ca_directory)
     try:
         if certifi:
             return ssl.create_default_context(cafile=certifi.where())

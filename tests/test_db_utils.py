@@ -1037,6 +1037,9 @@ class TestDbUtils(unittest.TestCase):
     def test_update_names_preserve_zero_id_for_stale_tracking(self):
         """
         Test that numeric zero IDs are treated as valid IDs, not skipped as missing.
+
+        Rows are stored under the canonical ``!hex`` key, matching the atomic
+        node-name snapshot and the packet sender cache.
         """
         initialize_database()
 
@@ -1055,10 +1058,10 @@ class TestDbUtils(unittest.TestCase):
         update_longnames(updated_nodes)
         update_shortnames(updated_nodes)
 
-        self.assertEqual(get_longname("0"), "Zero Updated")
-        self.assertEqual(get_shortname("0"), "Z0")
-        self.assertIsNone(get_longname("1"))
-        self.assertIsNone(get_shortname("1"))
+        self.assertEqual(get_longname("!00000000"), "Zero Updated")
+        self.assertEqual(get_shortname("!00000000"), "Z0")
+        self.assertIsNone(get_longname("!00000001"))
+        self.assertIsNone(get_shortname("!00000001"))
 
     def test_update_names_clear_rows_when_name_is_missing(self):
         """

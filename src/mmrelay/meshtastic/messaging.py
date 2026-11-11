@@ -1,6 +1,7 @@
 from typing import Any, cast
 
 import mmrelay.meshtastic_utils as facade
+from mmrelay.meshtastic.node_identity import normalize_node_id
 from mmrelay.meshtastic.packet_routing import _get_portnum_name
 
 __all__ = [
@@ -115,18 +116,19 @@ def _get_node_display_name(
     Returns:
         str: Node display name or node ID if no name available
     """
-    from_id_str = str(from_id)
+    from_id_str = str(normalize_node_id(from_id))
 
     if interface and hasattr(interface, "nodes"):
         nodes = interface.nodes
         if nodes and isinstance(nodes, dict):
-            if from_id_str in nodes:
-                node = nodes[from_id_str]
-                if isinstance(node, dict):
-                    user = node.get("user")
-                    if user and isinstance(user, dict):
-                        if short_name := user.get("shortName"):
-                            return cast(str, short_name)
+            node = nodes.get(from_id_str)
+            if not node and from_id != from_id_str:
+                node = nodes.get(from_id)
+            if isinstance(node, dict):
+                user = node.get("user")
+                if user and isinstance(user, dict):
+                    if short_name := user.get("shortName"):
+                        return cast(str, short_name)
 
     from mmrelay.db_utils import get_longname, get_shortname
 

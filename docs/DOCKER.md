@@ -306,6 +306,13 @@ meshtastic:
   serial_port: /dev/ttyUSB0 # Your serial device path
 ```
 
+Stable Linux paths such as `/dev/serial/by-id/usb-…` and
+`/dev/serial/by-path/pci-…` are supported. Map the configured path into the
+container and grant its user the device's group permissions. Explicit character
+devices remain usable even when pyserial's enumeration cannot list them, as can
+happen with container device mappings. Opening the device remains the authority
+for access and connection failures.
+
 For serial connections, add device mapping to docker-compose.yaml:
 
 ```yaml

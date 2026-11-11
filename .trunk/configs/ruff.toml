@@ -1,4 +1,4 @@
-target-version = "py311"
+target-version = "py312"
 
 # Generic, formatter-friendly config.
 select = ["B", "D3", "E", "F"]

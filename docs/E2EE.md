@@ -13,7 +13,7 @@ Encryption (E2EE).
 
 MMRelay uses [**mindroom-nio**](https://github.com/mindroom-ai/mindroom-nio) as
 its Matrix SDK with **vodozemac** (a Rust cryptographic library) for E2EE. Vodozemac is the successor to the deprecated
-libolm and is distributed as precompiled wheels for Linux and macOS — no
+libolm and is distributed as precompiled wheels for Linux, macOS, and supported Windows Python versions — no
 additional system libraries are needed on supported platforms.
 
 The legacy `matrix-nio` provider (with `python-olm`) is still technically
@@ -174,7 +174,7 @@ identity without first logging out or deleting the working device session.
 
 ## Requirements and platform support
 
-- **Python 3.11 or higher** (Windows: 3.11–3.14, see below)
+- **Python 3.12 or higher** (Windows E2EE: Python 3.12–3.14, see below)
 - **Linux, macOS, or Windows**
 - **MMRelay v1.2+** with E2EE support:
 
@@ -187,9 +187,9 @@ The `mmrelay[e2e]` extra installs **mindroom-nio[e2e]** which includes the
 for Linux, macOS, and Windows — no additional system libraries needed on
 supported platforms).
 
-On Windows, prebuilt vodozemac wheels cover Python 3.11–3.14. A Python 3.15
-Windows wheel has not been published yet, so install E2EE support on Windows
-with Python 3.11–3.14.
+On Windows, use Python 3.12–3.14 for MMRelay 1.5 E2EE support. A Python
+3.15 Windows vodozemac wheel is not yet qualified here, so do not use
+Python 3.15 for Windows E2EE until the wheel and installer are verified.
 
 ## Quick start
 

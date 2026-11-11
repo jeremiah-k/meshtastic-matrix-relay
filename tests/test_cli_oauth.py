@@ -10,9 +10,7 @@ import pytest
 
 from mmrelay.cli import handle_auth_login, handle_auth_logout, parse_arguments
 from mmrelay.matrix.oauth import JsonResponse, OAuthClient, OAuthError
-from mmrelay.matrix.oauth_cli import (
-    credential_store,
-)
+from mmrelay.matrix.oauth_cli import credential_store
 from mmrelay.matrix.oauth_cli import handle_login as handle_oauth_login
 from mmrelay.matrix.oauth_cli import handle_logout as handle_oauth_logout
 from mmrelay.matrix.oauth_cli import login, logout
@@ -470,3 +468,41 @@ def test_auth_method_switch_preserves_the_local_signing_sidecar(tmp_path: Path) 
             assert handle_auth_logout(args) == 0
     assert not store.path.exists()
     assert signing.read_text() == "test-private-signing-keys"
+
+
+@pytest.mark.parametrize("certificate_error", [False, True])
+async def test_signing_tls_failure_reports_trust_without_exposing_secrets(
+    tmp_path, capsys, certificate_error
+):
+    import ssl
+
+    from aiohttp import ClientConnectorCertificateError
+
+    from mmrelay.matrix.oauth_cli import _login_and_self_sign
+
+    active = session()
+    store = OAuthStore(tmp_path / "credentials.json")
+    store.path.write_text(json.dumps(active.credentials()))
+    original = store.path.read_bytes()
+    failure = ssl.SSLError("test-access-secret")
+    if certificate_error:
+        failure = ClientConnectorCertificateError(Mock(), failure)
+    with (
+        patch("mmrelay.config.is_e2ee_enabled", return_value=True),
+        patch("mmrelay.matrix.oauth_cli.self_sign_device", side_effect=failure),
+    ):
+        result = await _login_and_self_sign(
+            active.homeserver,
+            store,
+            {},
+            expected_user_id=active.user_id,
+            saved_session=active,
+            reset_cross_signing=False,
+        )
+    assert result == 1
+    assert store.path.read_bytes() == original
+    output = capsys.readouterr().out
+    assert "TLS verification failed" in output
+    assert "SSL_CERT_FILE/SSL_CERT_DIR" in output
+    assert "test-access-secret" not in output
+    assert "test-refresh-secret" not in output

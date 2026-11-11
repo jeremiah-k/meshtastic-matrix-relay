@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from concurrent.futures import Future
 from typing import Any, Callable
 from unittest.mock import ANY, MagicMock, patch
@@ -49,7 +50,12 @@ class TestSerialPortExists:
     def test_non_existing_port(self):
         from mmrelay.meshtastic.connection import serial_port_exists
 
-        with patch.object(mu.serial.tools.list_ports, "comports", return_value=[]):
+        with (
+            patch(
+                "mmrelay.meshtastic.connection.Path.is_char_device", return_value=False
+            ),
+            patch.object(mu.serial.tools.list_ports, "comports", return_value=[]),
+        ):
             assert serial_port_exists("/dev/ttyUSB0") is False
 
 
@@ -1768,3 +1774,115 @@ class TestBleTeardownBarrier:
         assert disconnected_iface.connect.call_count == 0
         assert mu.meshtastic_iface is None
         assert mu.meshtastic_client is None
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX character devices")
+def test_serial_alias_to_character_device_does_not_require_enumeration(tmp_path):
+    from mmrelay.meshtastic.connection import serial_port_exists
+
+    master, slave = os.openpty()
+    try:
+        alias = tmp_path / "stable-radio"
+        alias.symlink_to(os.ttyname(slave))
+        with patch.object(
+            mu.serial.tools.list_ports,
+            "comports",
+            side_effect=OSError("enumeration unavailable"),
+        ) as enumerate_ports:
+            assert serial_port_exists(str(alias))
+            enumerate_ports.assert_not_called()
+    finally:
+        os.close(slave)
+        os.close(master)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX serial paths")
+def test_regular_file_and_dangling_serial_alias_are_not_devices(tmp_path):
+    from mmrelay.meshtastic.connection import serial_port_exists
+
+    regular = tmp_path / "not-a-radio"
+    regular.write_text("ordinary file")
+    dangling = tmp_path / "missing-radio"
+    dangling.symlink_to(tmp_path / "absent")
+    with patch.object(mu.serial.tools.list_ports, "comports", return_value=[]):
+        assert not serial_port_exists(str(regular))
+        assert not serial_port_exists(str(dangling))
+
+
+def test_serial_port_exists_rejects_nul_without_probing_filesystem():
+    from mmrelay.meshtastic.connection import serial_port_exists
+
+    with patch("mmrelay.meshtastic.connection.Path.is_char_device") as probe:
+        assert not serial_port_exists("/dev/ttyUSB0\x00bad")
+        probe.assert_not_called()
+
+
+def test_serial_port_exists_handles_invalid_path(tmp_path):
+    from mmrelay.meshtastic.connection import serial_port_exists
+
+    with (
+        patch(
+            "mmrelay.meshtastic.connection.Path.is_char_device", side_effect=ValueError
+        ),
+        patch.object(mu.serial.tools.list_ports, "comports", return_value=[]),
+    ):
+        assert not serial_port_exists("/dev/radio-custom")
+
+
+def test_probe_timer_start_failure_releases_owner(reset_meshtastic_globals):
+    from mmrelay.meshtastic.connection import _schedule_connect_time_calibration_probe
+
+    client = MagicMock()
+
+    class FailingTimer:
+        def __init__(self, _delay, _callback):
+            pass
+
+        def start(self):
+            raise RuntimeError("no threads available")
+
+        def cancel(self):
+            pass
+
+    with (
+        patch.object(mu, "_get_connect_time_probe_settings", return_value=(True, 3.0)),
+        patch(
+            "mmrelay.meshtastic.connection._get_connect_probe_stabilization_deadline",
+            return_value=(1000000000.0, "startup drain"),
+        ),
+        patch("mmrelay.meshtastic.connection.threading.Timer", FailingTimer),
+    ):
+        _schedule_connect_time_calibration_probe(
+            client, connection_type="serial", active_config={}
+        )
+    assert mu._pending_connect_time_probe_timer is None
+
+
+def test_probe_timer_unexpected_error_releases_owner_and_propagates(
+    reset_meshtastic_globals,
+):
+    from mmrelay.meshtastic.connection import _schedule_connect_time_calibration_probe
+
+    class BrokenTimer:
+        def __init__(self, _delay, _callback):
+            pass
+
+        def start(self):
+            raise ValueError("bad timer")
+
+        def cancel(self):
+            pass
+
+    with (
+        patch.object(mu, "_get_connect_time_probe_settings", return_value=(True, 3.0)),
+        patch(
+            "mmrelay.meshtastic.connection._get_connect_probe_stabilization_deadline",
+            return_value=(1000000000.0, "startup drain"),
+        ),
+        patch("mmrelay.meshtastic.connection.threading.Timer", BrokenTimer),
+        pytest.raises(ValueError, match="bad timer"),
+    ):
+        _schedule_connect_time_calibration_probe(
+            MagicMock(), connection_type="serial", active_config={}
+        )
+    assert mu._pending_connect_time_probe_timer is None
