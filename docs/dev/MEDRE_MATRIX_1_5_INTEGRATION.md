@@ -31,6 +31,12 @@ Runtime qualification and final package publication remain required before taggi
   forks, and editable checkouts supported for development. Official channel and
   saved custom-source selection is a package-management implementation task.
 
+`native_facts` is a **wire field name**, not a trust verdict. Its values are
+bounded, adapter-reported claims about a native transport. A recipient may
+use them only after verifying the observed sender against the exact MXID
+allowlist and validating the canonical envelope and source context; this
+never proves cryptographic authorship of a radio packet.
+
 The coordinated MEDRE and Matrix schemas exclude `interop.mmrelay` from
 Matrix-native metadata. Runtime tests validate source-fact delivery and inbound
 authorization against the proposed source trees; live shared-room, E2EE, hardware,

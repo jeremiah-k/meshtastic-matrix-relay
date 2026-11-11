@@ -1,5 +1,11 @@
 # Helm Chart Deployment Guide
 
+> **Unreleased 1.5.0 instructions (staged on `docs/release-1.5`).** For a
+> running 1.4.1 deployment, use the
+> [published documentation](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/main/docs/HELM.md)
+> or its tagged version. The `1.5.0` image and tag examples below are for
+> after the corresponding artifacts have been published and verified.
+
 This guide covers deploying MMRelay using the Helm chart in `deploy/helm/mmrelay/`.
 
 > **Note**: The Helm chart is a thin renderer of the static manifests in `deploy/k8s/`. It does **not** change the runtime model. Both use MMRELAY_HOME=/data, a single persistent root at `/data`, config mounted at `/data/config.yaml`, and the same probes/lifecycle behavior.
@@ -23,12 +29,15 @@ New installations can proceed with the Quick Start below.
 ```bash
 git clone https://github.com/jeremiah-k/meshtastic-matrix-relay.git mmrelay
 cd mmrelay
+# Only after the 1.5.0 release tag is published:
+git checkout 1.5.0
 ```
 
 ### 2. Create config.yaml
 
 ```bash
-curl -Lo config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
+# Keep the sample configuration aligned with the checked-out release.
+cp src/mmrelay/tools/sample_config.yaml config.yaml
 # Edit config.yaml with your settings
 ${EDITOR:-vi} config.yaml
 ```
@@ -54,10 +63,10 @@ helm install mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
   --create-namespace
 
-# Optional but recommended: pin image tag explicitly for repeatable runs
-helm upgrade --install mmrelay ./deploy/helm/mmrelay \
-  --namespace mmrelay \
-  --set image.tag=1.5.0
+# Alternatively, on a FIRST installation, explicitly select the image tag:
+# helm install mmrelay ./deploy/helm/mmrelay --namespace mmrelay \
+#   --create-namespace --set image.tag=1.5.0
+# For existing installations, use the upgrade commands below to retain values.
 ```
 
 ### 6. Verify Deployment
@@ -84,21 +93,24 @@ image:
   pullSecrets: []
 ```
 
-**Pin by tag:**
+**Pin by tag (existing installation; retain values and clear any stale digest):**
 
 ```bash
 helm upgrade mmrelay ./deploy/helm/mmrelay \
+  --namespace mmrelay \
+  --reuse-values \
   --set image.tag=1.5.0 \
-  --namespace mmrelay
+  --set image.digest=""
 ```
 
-**Pin by digest (recommended for production):**
+**Pin by digest (existing installation; retain values; use a real verified digest):**
 
 ```bash
 helm upgrade mmrelay ./deploy/helm/mmrelay \
+  --namespace mmrelay \
+  --reuse-values \
   --set image.digest=sha256:abc123... \
-  --set image.tag= \
-  --namespace mmrelay
+  --set image.tag=""
 ```
 
 > **Note**: Tags can be mutable. For production, pin a specific tag or digest.
