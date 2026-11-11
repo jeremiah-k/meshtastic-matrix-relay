@@ -60,6 +60,17 @@ The chart version, Helm default image tag, and Kustomize image tag track the
 1.5.0 release branch. Do not deploy these tags until a matching image exists.
 For production, prefer immutable image digests.
 
+## Candidate interoperability evidence (November 11, 2026)
+
+The reviewed three-mesh normal-topology laboratory campaign reported six
+passing scenarios, including shared-room fanout, channel parity, replies,
+untrusted claims, and LXMF loopback. This supports the configured topology,
+not arbitrary overlapping bridges on one radio medium. It does **not**
+qualify native emoji-flagged radio tapbacks, the LXMF reply-origin counterpart,
+a deployed XMPP/Prosody leg, device recovery, or final release artifacts.
+Candidate Git pins, hosted CI, hardware tests, and release signing must be
+requalified after their final merges; these results are not a freeze or a tag.
+
 ## Release validation gates
 
 Before publishing: finish the three MEDRE schema freezes and compatibility
