@@ -27,6 +27,7 @@ operator guidance**. Broader conceptual and community documentation lives in the
 
 ## Upgrade and release notes
 
+- **[What's New in 1.5.0 (release candidate)](WHATS_NEW_1.5.md)** — MEDRE Matrix integration, Python floor, packaging and privacy considerations
 - **[What's New in 1.4.0](WHATS_NEW_1.4.md)** — 1.4 release summary and upgrade guidance
 - **[What's New in 1.3.0](WHATS_NEW_1.3.md)** — historical 1.3 release summary
 - **[What's New in 1.2](WHATS_NEW_1.2.md)** — historical 1.2 release notes
@@ -52,6 +53,7 @@ container mounts are used. The deployment guides document those cases.
 - **[Windows Installer Build Guide](dev/INNO_SETUP_GUIDE.md)** — installer maintenance
 - **[BLE Compatibility Notes](dev/BLE_DUAL_LIBRARY_COMPATIBILITY.md)** — BLE library compatibility design
 - **[Matrix Compatibility Plan](dev/MATRIX_DUAL_LIBRARY_COMPATIBILITY_PLAN.md)** — Matrix-provider compatibility design
+- **[MEDRE Matrix ingress](dev/MEDRE_MATRIX_1_5_INTEGRATION.md)** — 1.5 canonical Matrix event boundary and Git dependency pins
 - **[mindroom-nio 1.x compatibility](dev/MINDROOM_NIO_UPGRADE.md)** — single provider pin, ordinary-client contracts, and live-validation requirements
 - **[Historical v1.3 migration guide](MIGRATION_1.3.md)** — reference for older data layouts, not required for new installs
 - **[Archived implementation notes](dev/archive/)** — historical design and migration material
