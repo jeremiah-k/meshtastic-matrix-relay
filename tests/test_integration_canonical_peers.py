@@ -15,7 +15,7 @@ SCRIPT = (
 def test_injected_peer_fixture_uses_real_renderer_and_keeps_packet_zero(
     monkeypatch, tmp_path
 ):
-    script = SCRIPT.read_text()
+    script = SCRIPT.read_text(encoding="utf-8")
     start = script.index("matrix_send_mesh_origin_message() {")
     begin = script.index("<<'PY'\n", start) + len("<<'PY'\n")
     end = script.index("\nPY\n}", begin)
@@ -42,7 +42,7 @@ def test_injected_peer_fixture_uses_real_renderer_and_keeps_packet_zero(
         ],
     )
     probe = tmp_path / "canonical_peer_fixture.py"
-    probe.write_text(script[begin:end])
+    probe.write_text(script[begin:end], encoding="utf-8")
     runpy.run_path(str(probe), run_name="__main__")
     content = put.call_args.kwargs["json"]
     source = content["medre"]["metadata"]["bridge_context"]["source"]

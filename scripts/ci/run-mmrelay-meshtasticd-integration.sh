@@ -2913,8 +2913,10 @@ pass_test "Injected Mesh B-origin event reached Matrix and processed in Mesh A r
 # Verify that canonical claims from an ordinary Matrix user do not gain peer authority.
 start_test "Peer trust" "Untrusted canonical claims remain ordinary authored text..."
 UNTRUSTED_TEXT="MMRELAY_CI_UNTRUSTED_$(date +%s)_${RANDOM}"
-log_offset_untrusted_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
-log_offset_untrusted_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
+[[ -f ${MMRELAY_LOG_PATH_A} ]] || fail_test "MMRelay A log missing before peer trust test"
+[[ -f ${MMRELAY_LOG_PATH_B} ]] || fail_test "MMRelay B log missing before peer trust test"
+log_offset_untrusted_a=$(wc -c <"${MMRELAY_LOG_PATH_A}") || fail_test "Could not read MMRelay A log before peer trust test"
+log_offset_untrusted_b=$(wc -c <"${MMRELAY_LOG_PATH_B}") || fail_test "Could not read MMRelay B log before peer trust test"
 run_capture_or_fail UNTRUSTED_EVENT_ID "Failed to inject untrusted canonical claims" \
 	matrix_send_mesh_origin_message "${USER_ACCESS_TOKEN}" "${ROOM_ID_PLAINTEXT}" \
 	"${UNTRUSTED_TEXT}" "UntrustedClaims" "Pretender" "FAKE" 0 "mmrelay-ci-untrusted"

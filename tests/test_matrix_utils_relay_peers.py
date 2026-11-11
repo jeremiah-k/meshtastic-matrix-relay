@@ -112,15 +112,59 @@ async def test_peer_on_local_mesh_is_suppressed_but_untrusted_claim_is_ignored(r
     relay.queue.assert_called_once()
 
 
-async def test_remote_packet_zero_reaction_preserves_authored_visible_text(relay):
+@pytest.mark.parametrize(
+    ("authored_body", "radio_body"),
+    [
+        ("Alice reacted 🔥", "Alice reacted 🔥"),
+        (
+            '\n [AL/Remote]: reacted 🔥 to "hello"',
+            '[AL/Remote]: reacted 🔥 to "hello"',
+        ),
+        (
+            'custom-origin-prefix: reacted 🔥 to "hello"',
+            'custom-origin-prefix: reacted 🔥 to "hello"',
+        ),
+    ],
+)
+@pytest.mark.parametrize("target_namespace", ["radio", "matrix"])
+async def test_remote_packet_zero_reaction_preserves_authored_visible_text(
+    relay, authored_body, radio_body, target_namespace, monkeypatch
+):
+    """Do not double-prefix MEDRE radio reaction bodies, regardless of format."""
     wire = await content(
-        message="Alice reacted 🔥", emoji=True, meshtastic_replyId=0, reaction_key="🔥"
+        message=authored_body,
+        emoji=True,
+        meshtastic_replyId=0,
+        reaction_key="🔥",
     )
+    if target_namespace == "matrix":
+        wire["medre"]["metadata"]["bridge_context"]["relations"][0][
+            "target_native_ref"
+        ] = {
+            "adapter": "mmrelay.matrix",
+            "native_channel_id": ROOM,
+            "native_message_id": "$original",
+            "native_thread_id": None,
+        }
+        monkeypatch.setattr(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+            lambda event_id: (
+                (0, ROOM, "stored preview", "Local")
+                if event_id == "$original"
+                else None
+            ),
+        )
     await relay.deliver(wire)
     relay.queue.assert_called_once()
-    assert relay.queue.call_args.args[0] == relay.interface.sendText
-    assert relay.queue.call_args.kwargs["text"] == "AL/Remo: Alice reacted 🔥"
-    assert "reply_id" not in relay.queue.call_args.kwargs
+    assert relay.queue.call_args.kwargs["text"] == radio_body
+    if target_namespace == "matrix":
+        from mmrelay.matrix_utils import send_text_reply
+
+        assert relay.queue.call_args.args[0] is send_text_reply
+        assert relay.queue.call_args.kwargs["reply_id"] == 0
+    else:
+        assert relay.queue.call_args.args[0] == relay.interface.sendText
+        assert "reply_id" not in relay.queue.call_args.kwargs
 
 
 @pytest.mark.parametrize("enabled", [False, True])

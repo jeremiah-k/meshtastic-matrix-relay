@@ -475,15 +475,13 @@ async def on_room_message(
                     required=False,
                 )
             ):
-                prefix = facade.get_matrix_prefix(
-                    facade.config,
-                    longname or event.sender,
-                    shortname or longname or event.sender,
-                    (meshnet_name or "")[: facade.MESHNET_NAME_ABBREVIATION_LENGTH],
-                )
+                # Peer reaction bodies are already authored for radio display.
+                # Do not prepend a locally inferred prefix: the originating
+                # relay may use a different prefix format, and the body may
+                # deliberately be unprefixed.
                 facade.queue_message(
                     interface.sendText,
-                    text=facade.truncate_message(prefix + text),
+                    text=facade.truncate_message(text),
                     channelIndex=channel,
                     description=f"Remote reaction from {meshnet_name}",
                 )
@@ -513,10 +511,10 @@ async def on_room_message(
 
             prefix = facade.get_meshtastic_prefix(facade.config, full_display_name)
 
-            abbreviated_text = reaction_preview(meshtastic_text_db)
+            abbreviated_text = reaction_preview(meshtastic_text_db or "")
 
             reaction_message = (
-                f"{prefix}{text}"
+                text
                 if peer_reaction
                 else f'{prefix}reacted {reaction_emoji} to "{abbreviated_text}"'
             )

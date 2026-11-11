@@ -21,7 +21,13 @@ def test_deployment_defaults_match_project_version():
     assert chart["version"] == version
     assert chart["appVersion"] == version
     assert values["image"]["tag"] == version
-    assert any(item.get("newTag") == version for item in kustomize["images"])
+    mmrelay_images = [
+        item
+        for item in kustomize["images"]
+        if item.get("name") == "ghcr.io/jeremiah-k/mmrelay"
+    ]
+    assert len(mmrelay_images) == 1
+    assert mmrelay_images[0].get("newTag") == version
     helm_examples = (ROOT / "docs/HELM.md").read_text(encoding="utf-8")
     example_tags = set(re.findall(r"--set image\.tag=(\S+)", helm_examples))
     assert example_tags == {version}
