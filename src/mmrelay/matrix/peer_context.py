@@ -101,9 +101,20 @@ def trusted_peer_metadata(
     if not isinstance(envelope, Mapping) or not isinstance(context, Mapping):
         return None
     # Canonical metadata is deeply frozen; JSON restores the actual wire shape.
-    context = normalize_bridge_context(
-        msgspec.json.decode(msgspec.json.encode(context))
-    )
+    # Malformed remote Unicode or non-JSON values must not escape into the
+    # Matrix event handler and prevent ordinary authored text from relaying.
+    try:
+        context = normalize_bridge_context(
+            msgspec.json.decode(msgspec.json.encode(context))
+        )
+    except (
+        msgspec.EncodeError,
+        msgspec.DecodeError,
+        UnicodeError,
+        ValueError,
+        TypeError,
+    ):
+        return None
     if context is None:
         return None
     source = context["source"]

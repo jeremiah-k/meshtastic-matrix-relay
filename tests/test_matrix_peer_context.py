@@ -92,10 +92,12 @@ def test_radio_packet_ids_are_exact_unsigned_integers(value, expected):
 async def test_only_exact_authorized_matrix_sender_can_supply_peer_metadata(
     peer_content,
 ):
-    event = canonical(peer_content)
     peers = load_peer_relays({"matrix": {"trusted_relays": [PEER]}})
-    assert trusted_peer_metadata(event, "@human:example.org", SELF, peers) is None
-    assert trusted_peer_metadata(event, PEER.upper(), SELF, peers) is None
+    for sender in ["@human:example.org", PEER.upper()]:
+        assert (
+            trusted_peer_metadata(canonical(peer_content, sender), sender, SELF, peers)
+            is None
+        )
     for sender in [PEER, SELF]:
         metadata = trusted_peer_metadata(
             canonical(peer_content, sender), sender, SELF, peers
@@ -177,3 +179,29 @@ def test_startup_rejects_invalid_peers_before_mutating_matrix_module_state():
         set_config(module, {"matrix": {"trusted_relays": ["*"]}, "matrix_rooms": []})
     assert module.config == {"original": True}
     assert module.matrix_rooms == ["original"]
+
+
+async def test_malformed_peer_claim_text_cannot_abort_matrix_relay(peer_content):
+    """Reject unencodable claims without treating them as authenticated metadata."""
+    import msgspec
+    from msgspec.structs import replace
+    from medre.core.events import NativeMetadata
+
+    event = canonical(peer_content)
+    native = msgspec.json.decode(msgspec.json.encode(event.metadata.native.data))
+    native["matrix"]["relay"]["bridge_context"]["source"][
+        "sender_name"
+    ] = "bad\ud800name"
+    malformed = replace(
+        event,
+        metadata=replace(event.metadata, native=NativeMetadata(data=native)),
+    )
+    assert (
+        trusted_peer_metadata(
+            malformed,
+            PEER,
+            SELF,
+            load_peer_relays({"matrix": {"trusted_relays": [PEER]}}),
+        )
+        is None
+    )
