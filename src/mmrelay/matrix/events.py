@@ -382,7 +382,7 @@ async def on_room_message(
     body = getattr(event, "body", None)
     text = body if isinstance(body, str) else content.get("body", "")
     text = text if isinstance(text, str) else ""
-    if native_relation is not None and native_relation.kind in {"reply", "thread"}:
+    if native_relation is not None and native_relation.has_reply_fallback:
         text = strip_reply_fallback_body(text)
     if canonical_event is not None:
         canonical_body = canonical_event.payload.get("body")
@@ -413,10 +413,12 @@ async def on_room_message(
             is_reaction = True
             reaction_emoji = native_relation.key
             original_matrix_event_id = native_relation.target_event_id
-        elif native_relation.kind == "reply":
-            is_reply = True
-            reply_to_event_id = native_relation.target_event_id
-    if peer is not None and peer.relation is not None:
+        else:
+            reply_to_event_id = native_relation.explicit_reply_target
+            is_reply = reply_to_event_id is not None
+    # Peer hints supplement missing native relations; they cannot replace a
+    # Matrix user's explicit reply, annotation, or thread fallback semantics.
+    if peer is not None and peer.relation is not None and native_relation is None:
         relation = peer.relation
         target = relation.target_native_ref
         if target is None:
@@ -431,11 +433,6 @@ async def on_room_message(
         matrix_native_target = (
             target.native_channel_id == room.room_id
             and target.native_message_id.startswith("$")
-        )
-        matrix_target = (
-            canonical_event is not None
-            and target.adapter == canonical_event.source_adapter
-            and matrix_native_target
         )
         radio_target = (
             target.adapter == peer.source_adapter
@@ -457,7 +454,7 @@ async def on_room_message(
                     target.native_message_id if matrix_native_target else None
                 )
                 radio_reply_id = candidate
-        elif relation.relation_type == "reply" and matrix_target:
+        elif relation.relation_type == "reply" and matrix_native_target:
             is_reply = True
             reply_to_event_id = target.native_message_id
     if is_reaction and (

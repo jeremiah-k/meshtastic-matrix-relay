@@ -438,3 +438,105 @@ async def test_peer_reaction_truncates_unicode_before_radio_queue(
         assert queued.kwargs["reply_id"] == 0
     else:
         assert queued.args[0] is relay.interface.sendText
+
+
+@pytest.mark.parametrize("codec_fails", [False, True])
+async def test_thread_without_reply_marker_preserves_authored_quote(
+    relay, monkeypatch, codec_fails
+):
+    if codec_fails:
+        monkeypatch.setattr(
+            "mmrelay.matrix.events.canonicalize_matrix_event",
+            MagicMock(side_effect=ValueError("codec failure")),
+        )
+    await relay.deliver(
+        {
+            "msgtype": "m.text",
+            "body": "> authored quote",
+            "m.relates_to": {"rel_type": "m.thread", "event_id": "$root"},
+        }
+    )
+    relay.queue.assert_called_once()
+    assert relay.queue.call_args.kwargs["text"].endswith("> authored quote")
+    assert "reply_id" not in relay.queue.call_args.kwargs
+
+
+@pytest.mark.parametrize("codec_fails", [False, True])
+@pytest.mark.parametrize("fallback", [False, True, None])
+async def test_thread_explicit_reply_retains_target_but_fallback_does_not(
+    relay, monkeypatch, fallback, codec_fails
+):
+    handler = AsyncMock(return_value=True)
+    monkeypatch.setattr("mmrelay.matrix_utils.handle_matrix_reply", handler)
+    if codec_fails:
+        monkeypatch.setattr(
+            "mmrelay.matrix.events.canonicalize_matrix_event",
+            MagicMock(side_effect=ValueError("codec failure")),
+        )
+    relation = {
+        "rel_type": "m.thread",
+        "event_id": "$root",
+        "m.in_reply_to": {"event_id": "$explicit"},
+    }
+    if fallback is not None:
+        relation["is_falling_back"] = fallback
+    await relay.deliver(
+        {
+            "msgtype": "m.text",
+            "body": "> <@bob:example.org> preview\n\n> authored quote\nanswer",
+            "m.relates_to": relation,
+        }
+    )
+    if fallback is True:
+        handler.assert_not_awaited()
+        relay.queue.assert_called_once()
+    else:
+        handler.assert_awaited_once()
+        assert handler.call_args.args[2:4] == ("$explicit", "> authored quote\nanswer")
+        relay.queue.assert_not_called()
+
+
+@pytest.mark.parametrize("native_reply", [False, True])
+async def test_peer_namespaced_reply_hint_uses_local_scope_without_overriding_native_reply(
+    relay, monkeypatch, native_reply
+):
+    wire = await content(message="answer", meshtastic_replyId=0)
+    wire["medre"]["metadata"]["bridge_context"]["relations"][0]["target_native_ref"] = {
+        "adapter": "medre",
+        "native_channel_id": ROOM,
+        "native_message_id": "$hint",
+        "native_thread_id": None,
+    }
+    if native_reply:
+        wire["m.relates_to"] = {"m.in_reply_to": {"event_id": "$native"}}
+    handler = AsyncMock(return_value=True)
+    monkeypatch.setattr("mmrelay.matrix_utils.handle_matrix_reply", handler)
+    await relay.deliver(wire)
+    handler.assert_awaited_once()
+    assert handler.call_args.args[2] == ("$native" if native_reply else "$hint")
+    relay.queue.assert_not_called()
+
+
+async def test_native_reaction_keeps_target_and_key_over_peer_hint(relay, monkeypatch):
+    wire = await content(
+        message="Peer presentation", emoji=True, meshtastic_replyId=0, reaction_key="🔥"
+    )
+    wire["m.relates_to"] = {
+        "rel_type": "m.annotation",
+        "event_id": "$native",
+        "key": "🐈",
+    }
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+        lambda event_id: (
+            10 if event_id == "$native" else 20,
+            ROOM,
+            "preview",
+            "Local",
+        ),
+    )
+    await relay.deliver(wire, reaction=True)
+    relay.queue.assert_called_once()
+    assert relay.queue.call_args.kwargs["reply_id"] == 10
+    assert "🐈" in relay.queue.call_args.kwargs["text"]
+    assert "🔥" not in relay.queue.call_args.kwargs["text"]

@@ -89,7 +89,10 @@ lossless metadata exchange unless they explicitly support an embedding path.
 - The visible canonical `payload["body"]` is authoritative. Flat
   `meshtastic_*` fields never supply names, routing, relation targets, or a
   hidden body override. Native Matrix reply fallback quoting is stripped once;
-  authored quote lines remain. Thread fallback relations are not exact replies.
+  authored quote lines remain. A thread without a reply marker cannot strip
+  authored quotes. Explicit replies within threads retain their target; a
+  compatibility parent marked `is_falling_back: true` is not an exact reply.
+  Native Matrix relations take precedence over optional peer relation hints.
   Plugins receive the original nio event and the canonical text.
 - A codec failure logs the exception and falls back to the native Matrix body
   and native relation parser, retaining the same prohibition on flat peer fields.
