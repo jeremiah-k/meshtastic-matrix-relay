@@ -861,6 +861,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     # use Matrix interaction relay.
     if (
         action == PacketAction.RELAY
+        and not is_direct_message
         and _is_text_message_portnum(decoded.get("portnum"))
         and replyId is not None
         and emoji_flag
@@ -930,6 +931,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     # Only for RELAY-classified TEXT_MESSAGE_APP packets.
     if (
         action == PacketAction.RELAY
+        and not is_direct_message
         and _is_text_message_portnum(decoded.get("portnum"))
         and replyId is not None
         and not emoji_flag

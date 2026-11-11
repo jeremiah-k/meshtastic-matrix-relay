@@ -1668,3 +1668,29 @@ def test_blank_radio_reply_reaches_plugins_without_matrix_send():
     assert relay is not None
     relay.assert_not_called()
     plugin.handle_meshtastic_message.assert_called_once()
+
+
+@pytest.mark.parametrize("reply_id", [0, 77])
+@pytest.mark.parametrize("reaction", [False, True])
+def test_direct_message_interactions_never_reach_matrix(reply_id, reaction):
+    config = _base_config()
+    _set_globals(config)
+    packet = _base_packet()
+    packet["to"] = 999
+    packet["decoded"].update(text="Private message", replyId=reply_id)
+    if reaction:
+        packet["decoded"]["emoji"] = EMOJI_FLAG_VALUE
+    with (
+        _patch_message_deps(
+            interaction_settings={"reactions": True, "replies": True},
+            message_map=("$original", "!room:test", "preview", "TestNet"),
+        ) as (_, relay),
+        patch(
+            "mmrelay.meshtastic_utils._run_meshtastic_plugins",
+            wraps=mu._run_meshtastic_plugins,
+        ) as plugins,
+    ):
+        on_meshtastic_message(packet, _make_interface())
+    relay.assert_not_called()
+    plugins.assert_called_once()
+    assert plugins.call_args.kwargs["packet"] is packet

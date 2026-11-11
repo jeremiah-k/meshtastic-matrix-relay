@@ -137,6 +137,9 @@ lossless metadata exchange unless they explicitly support an embedding path.
 
 ## Trust and provenance boundaries
 
+- Radio direct messages, including replies and reactions to mapped public
+  messages, stay out of Matrix room delivery. Plugin handling remains available.
+
 - Matrix members can provide arbitrary peer claims. Only exact globally
   allowlisted observed MXIDs may supply source names and public routing facts.
   Native Matrix relations remain native user actions. Replies and reactions
