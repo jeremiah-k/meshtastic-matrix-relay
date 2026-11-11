@@ -57,7 +57,7 @@ helm install mmrelay ./deploy/helm/mmrelay \
 # Optional but recommended: pin image tag explicitly for repeatable runs
 helm upgrade --install mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
-  --set image.tag=1.4.0
+  --set image.tag=1.5.0
 ```
 
 ### 6. Verify Deployment
@@ -76,7 +76,7 @@ The Helm chart is highly configurable. Key options include:
 ```yaml
 image:
   repository: ghcr.io/jeremiah-k/mmrelay
-  tag: 1.4.0
+  tag: 1.5.0
   pullPolicy: IfNotPresent
   # Pin by digest for production (immutable)
   digest: ""
@@ -88,7 +88,7 @@ image:
 
 ```bash
 helm upgrade mmrelay ./deploy/helm/mmrelay \
-  --set image.tag=1.4.0 \
+  --set image.tag=1.5.0 \
   --namespace mmrelay
 ```
 
@@ -508,14 +508,23 @@ Expected output:
 
 ## Upgrading
 
-### Upgrade to 1.3.x
+### Upgrade to 1.5.0
 
 If upgrading from 1.2.x or earlier, follow `docs/MIGRATION_1.3.md` first.
+Back up existing Helm values and the PVC first. `--reuse-values` preserves
+previously configured settings (including `persistence.existingClaim` and
+secrets) instead of silently replacing them with chart defaults. The command
+below also clears a previously pinned `image.digest` so the new tag takes
+effect. If you intend to pin a new digest, supply that verified digest instead.
+If changing the values structure, supply an audited migration values file rather
+than relying on an unexamined merge of old values with new chart defaults.
 
 ```bash
 helm upgrade mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
-  --set image.tag=1.4.0
+  --reuse-values \
+  --set image.tag=1.5.0 \
+  --set image.digest=""
 ```
 
 ### Rolling Restart
