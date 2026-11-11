@@ -175,8 +175,8 @@ lossless metadata exchange unless they explicitly support an embedding path.
 
 The candidate `pyproject.toml` and `uv.lock` pin the coordinated test pair:
 
-- MEDRE core at `054d5dc7337c7970ed64064c944d93ab4d7446e2`.
-- Matrix adapter at `75d961d85f31b26a32f4d929badb1dede57ef310`.
+- MEDRE core at `a289675a51760c69e95466ce6fc8b5475f52bfa2`.
+- Matrix adapter at `0b93dec40954f0253d2107ff6f7c9f7c932c7880`.
 
 These immutable Git commits include bounded source facts, generic attribution,
 and explicit canonical reaction keys. Repin to the final merged release pair
