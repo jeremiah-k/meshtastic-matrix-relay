@@ -106,7 +106,7 @@ lossless metadata exchange unless they explicitly support an embedding path.
   no Matrix `m.reaction` annotation or cross-room identity is invented. Normal
   radio replies carry a Matrix-native target scoped to the destination room;
   unmapped radio replies retain their radio-native target in the generic context
-  without inventing a native Matrix relation. A missing historical quote preview
+  when reply interactions are enabled, without inventing a native Matrix relation. A missing historical quote preview
   never changes the authored body.
   Radio reply packet ID `0` is a valid target for both replies and reactions,
   including classification in the radio ingress handler.

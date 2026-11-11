@@ -1157,6 +1157,17 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
 
         facade.logger.info(f"Relaying Meshtastic message from {longname} to Matrix")
 
+        # A missing local mapping prevents a Matrix-native reply, not a
+        # scoped radio target hint. Disabled replies and tapbacks stay plain.
+        reply_metadata: dict[str, Any] = {}
+        if (
+            replyId is not None
+            and not emoji_flag
+            and interactions["replies"]
+            and _is_text_message_portnum(decoded.get("portnum"))
+        ):
+            reply_metadata["meshtastic_replyId"] = replyId
+
         iterable_rooms = _get_iterable_matrix_rooms()
         for room in iterable_rooms:
             if not isinstance(room, dict):
@@ -1180,6 +1191,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                             meshtastic_text=text,
                             source_node_id=sender,
                             source_channel_id=_radio_source_channel(packet),
+                            **reply_metadata,
                         ),
                         loop=loop,
                     )

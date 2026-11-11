@@ -1694,3 +1694,23 @@ def test_direct_message_interactions_never_reach_matrix(reply_id, reaction):
     relay.assert_not_called()
     plugins.assert_called_once()
     assert plugins.call_args.kwargs["packet"] is packet
+
+
+@pytest.mark.parametrize("reply_id", [0, 77])
+@pytest.mark.parametrize("enabled", [False, True])
+def test_unmapped_radio_reply_retains_only_enabled_reply_hint(reply_id, enabled):
+    config = _base_config()
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"]["replyId"] = reply_id
+    with _patch_message_deps(
+        interaction_settings={"reactions": True, "replies": enabled},
+        message_map=None,
+    ) as (_, relay):
+        on_meshtastic_message(packet, _make_interface())
+    relay.assert_called_once()
+    if enabled:
+        assert relay.call_args.kwargs["meshtastic_replyId"] == reply_id
+    else:
+        assert "meshtastic_replyId" not in relay.call_args.kwargs
+    assert "reply_to_event_id" not in relay.call_args.kwargs
