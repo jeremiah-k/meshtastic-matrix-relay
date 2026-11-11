@@ -450,3 +450,12 @@ async def test_missing_radio_channel_uses_numeric_primary_not_meshnet_label():
     assert envelope["source_native_ref"]["native_channel_id"] == "0"
     assert context["relations"][0]["target_native_ref"]["native_channel_id"] == "0"
     assert context["source"]["native_facts"]["fields"]["meshnet_label"] == "LocalMesh"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_channel", ["", "LocalMesh", 0, "00", "01", "١", "²", "-1", "+1", "1\n"]
+)
+async def test_non_numeric_radio_channel_fails_closed(bad_channel):
+    with pytest.raises(ValueError, match="numeric radio channel"):
+        await render(source_channel_id=bad_channel)

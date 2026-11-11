@@ -158,6 +158,14 @@ async def render_matrix_relay_content(
         if source_channel_id is not None
         else str(DEFAULT_CHANNEL_VALUE)
     )
+    if (
+        not isinstance(source_channel, str)
+        or re.fullmatch(r"0|[1-9][0-9]*", source_channel) is None
+    ):
+        raise ValueError(
+            "source_channel_id must be the numeric radio channel id; "
+            "a meshnet label never substitutes for it"
+        )
     public_facts: dict[str, object] = {"portnum": portnum}
     if len(meshnet_name) <= 256:
         public_facts["meshnet_label"] = meshnet_name

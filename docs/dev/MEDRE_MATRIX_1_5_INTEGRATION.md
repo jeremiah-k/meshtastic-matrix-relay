@@ -250,5 +250,7 @@ canonical relation key independently of its human-readable preview.
 The radio packet's logical channel travels as canonical source_channel_id and
 scopes both the source packet reference and radio reply/reaction targets.
 The meshnet display label remains a separate public fact and origin label.
-Callers without radio channel observations retain the instance mesh label as
-the fallback source scope; they do not assert a fabricated numeric channel.
+Callers without radio channel observations use the numeric primary channel
+(`"0"`) as the source scope. A meshnet label never substitutes for a numeric
+channel ID. Numeric IDs use ASCII decimal digits without leading zeros, so
+references cannot split across alternative spellings of the same channel.
