@@ -1,6 +1,7 @@
 matrix:
   # Exact peer bot MXIDs whose canonical source metadata may be used in any
-  # mapped room. Ordinary users' text relays without trusting their metadata.
+  # mapped room. Messages from other senders still relay, but their metadata
+  # is not trusted.
   trusted_relays: []
   # Matrix authentication:
   # Run `mmrelay auth login` before starting MMRelay.

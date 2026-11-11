@@ -23,15 +23,25 @@ invalid outbound renderer operations fail closed instead of being sent.
   it accepts no wildcards, implicit room trust, or trust-on-first-use.
   Ordinary human text remains eligible. Flat `meshtastic_*` wire fields are
   ignored, including hidden `meshtastic_text` body overrides.
+  **Same-mesh relay deployment warning:** If multiple relays bridge the same
+  radio mesh into the same Matrix room, configure all participating 1.5 bot
+  MXIDs as trusted peers and validate loop suppression before enabling radio
+  broadcasts. An untrusted peer or pre-1.5 relay is treated as ordinary Matrix
+  text, including when it claims the local meshnet; that claim never grants
+  suppression or authority. Do not co-deploy those configurations until an
+  independent loop-prevention plan is qualified. Same-mesh multi-relay loop
+  hardening remains outside this PR.
 - Longnames and shortnames travel through generic sender attribution; explicitly
   public source facts carry portnum and meshnet label through Matrix, LXMF, and
   XMPP. Reactions require an exact nonempty key; packet ID zero remains valid.
 - New outbound `medre.envelope.source_transport_id` carries the native
   Meshtastic node ID when available, letting Matrix-side consumers relate
   events before a long name is known. On Meshtastic firmware 2.8 and newer,
-  node IDs are advertised openly on the mesh and are regenerated together
-  with the node's keys, so they are neither private nor a stable identity;
-  on older firmware they remain stable identifiers.
+  node IDs are advertised openly on the mesh and derive from the node's public
+  key. They remain linkable identifiers until that key changes. Exposing them in
+  Matrix rooms (including public or unencrypted rooms) can correlate activity
+  across transports even though the ID is also broadcast on the mesh. The same
+  privacy consideration applies to older firmware's stable identifiers.
 - Canonical envelope metadata is descriptive provenance, not proof of
   authenticated Meshtastic radio authorship, Matrix-room authorization,
   successful delivery, or user identity.

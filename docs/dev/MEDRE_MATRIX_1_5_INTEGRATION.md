@@ -143,12 +143,22 @@ lossless metadata exchange unless they explicitly support an embedding path.
   require message mappings in the actual room; peer hints must also match the
   adapter and channel of the target namespace. Remote radio reaction IDs are
   never rebound to unrelated local packet IDs.
+- `source.native_facts` are bounded, adapter-selected **claims**, not
+  independently verified truth. Structural validation cannot authenticate
+  their contents. Only a trusted observed MXID may supply peer metadata, and
+  even trusted claims do not replace local relation-binding evidence.
+- Same-mesh multi-relay deployments require verified peer allowlists and
+  deployment-level loop qualification. An untrusted or pre-1.5 peer's meshnet
+  claim (including legacy flat keys) never authorizes either forwarding or
+  suppression. Do not assume this release prevents loops among untrusted
+  relays on the same radio mesh.
 - When a Meshtastic node ID is supplied to the outbound renderer,
   `medre.envelope.source_transport_id` embeds it in Matrix content. On
   Meshtastic firmware 2.8 and newer, node IDs are advertised openly on the
-  mesh and are regenerated together with the node's keys, so they are
-  neither private nor a stable identity; on older firmware they remain
-  stable identifiers. Never treat radio node IDs or wire-envelope
+  mesh and derive from the node's public key. They remain linkable until the
+  key changes; publishing them to Matrix rooms can correlate activity across
+  transports, including in public rooms. Older firmware's identifiers also
+  have this privacy consideration. Never treat radio node IDs or wire-envelope
   provenance as cryptographic proof of authorship.
 - A Matrix emote with a radio packet ID but no eligible radio/Matrix
   reaction target is a normal authored message, not an empty reaction.
