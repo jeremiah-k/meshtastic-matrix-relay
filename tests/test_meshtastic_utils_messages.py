@@ -533,11 +533,11 @@ class TestMeshtasticUtils(unittest.TestCase):
 
     def test_on_meshtastic_message_reaction_relay(self):
         """
-        Ensure reaction packets are relayed to Matrix when reactions are enabled.
+        Ensure broadcast reaction packets relay to Matrix when reactions are enabled.
         """
         reaction_packet = {
             "fromId": "!node",
-            "to": 999,
+            "to": BROADCAST_NUM,
             "decoded": {
                 "text": ":)",
                 "portnum": TEXT_MESSAGE_APP,
@@ -600,14 +600,18 @@ class TestMeshtasticUtils(unittest.TestCase):
             mock_submit_coro.assert_called_once()
             # Ensure we scheduled the matrix relay coroutine
             self.assertTrue(mock_matrix_relay.called)
+            self.assertEqual(mock_matrix_relay.call_args.kwargs["reaction_key"], ":)")
+            self.assertEqual(
+                mock_matrix_relay.call_args.kwargs["meshtastic_replyId"], 42
+            )
 
     def test_on_meshtastic_message_reply_relay(self):
         """
-        Verify that non-emoji reply packets are relayed to Matrix when reply handling is enabled.
+        Verify that broadcast replies relay to Matrix when reply handling is enabled.
         """
         reply_packet = {
             "fromId": "!node",
-            "to": 999,
+            "to": BROADCAST_NUM,
             "decoded": {
                 "text": "Reply message",
                 "portnum": TEXT_MESSAGE_APP,
@@ -667,6 +671,12 @@ class TestMeshtasticUtils(unittest.TestCase):
 
             mock_submit_coro.assert_called_once()
             self.assertTrue(mock_matrix_relay.called)
+            self.assertEqual(
+                mock_matrix_relay.call_args.kwargs["reply_to_event_id"], "evt1"
+            )
+            self.assertEqual(
+                mock_matrix_relay.call_args.kwargs["meshtastic_replyId"], 77
+            )
 
     def test_on_meshtastic_message_event_loop_missing(self):
         """
