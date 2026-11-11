@@ -542,7 +542,7 @@ async def on_room_message(
                 success = facade.queue_message(
                     facade.send_text_reply,
                     interface=meshtastic_interface,
-                    text=reaction_message,
+                    text=facade.truncate_message(reaction_message),
                     reply_id=meshtastic_reply_id,
                     channelIndex=meshtastic_channel,
                     description=f"Local reaction from {full_display_name} (reply to {meshtastic_reply_id})",

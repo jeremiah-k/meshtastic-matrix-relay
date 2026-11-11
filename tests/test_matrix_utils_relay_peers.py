@@ -265,3 +265,45 @@ async def test_native_reaction_requires_mapping_in_actual_room_and_retains_zero(
 async def test_self_echo_is_not_sent_to_radio(relay):
     await relay.deliver(await content(), sender="@relay:example.org")
     relay.queue.assert_not_called()
+
+
+@pytest.mark.parametrize("target_namespace", ["radio", "matrix"])
+async def test_peer_reaction_truncates_unicode_before_radio_queue(
+    relay, monkeypatch, target_namespace
+):
+    """Both structured replies and plain radio sends respect the byte budget."""
+    from mmrelay.matrix_utils import send_text_reply, truncate_message
+
+    authored_body = "🔥" * 180
+    wire = await content(
+        message=authored_body, emoji=True, meshtastic_replyId=0, reaction_key="🔥"
+    )
+    if target_namespace == "matrix":
+        wire["medre"]["metadata"]["bridge_context"]["relations"][0][
+            "target_native_ref"
+        ] = {
+            "adapter": "mmrelay.matrix",
+            "native_channel_id": ROOM,
+            "native_message_id": "$original",
+            "native_thread_id": None,
+        }
+        monkeypatch.setattr(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+            lambda event_id: (
+                (0, ROOM, "stored preview", "Local")
+                if event_id == "$original"
+                else None
+            ),
+        )
+    await relay.deliver(wire)
+    relay.queue.assert_called_once()
+    queued = relay.queue.call_args
+    assert queued.kwargs["text"] == truncate_message(authored_body)
+    from mmrelay.matrix_utils import DEFAULT_MESSAGE_TRUNCATE_BYTES
+
+    assert len(queued.kwargs["text"].encode("utf-8")) <= DEFAULT_MESSAGE_TRUNCATE_BYTES
+    if target_namespace == "matrix":
+        assert queued.args[0] is send_text_reply
+        assert queued.kwargs["reply_id"] == 0
+    else:
+        assert queued.args[0] is relay.interface.sendText
