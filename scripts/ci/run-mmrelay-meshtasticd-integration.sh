@@ -2938,7 +2938,9 @@ for relay_side in A B; do
 	run_or_fail "Untrusted authored event ${UNTRUSTED_EVENT_ID} did not relay on ${relay_side}" \
 		wait_for_message_map_meshtastic_id "${peer_db}" "${UNTRUSTED_EVENT_ID}" \
 		"${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS}" >/dev/null
-	if tail -c +$((peer_offset + 1)) "${peer_log}" | grep -Fq "Processing message from remote meshnet: UntrustedClaims"; then
+	untrusted_peer_hits=$(count_pattern_in_file_since "${peer_log}" \
+		"Processing message from remote meshnet: UntrustedClaims" "${peer_offset}")
+	if ((untrusted_peer_hits > 0)); then
 		fail_test "Untrusted canonical claims gained peer authority on ${relay_side}"
 	fi
 done
