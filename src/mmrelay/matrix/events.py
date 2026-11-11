@@ -422,11 +422,20 @@ async def on_room_message(
         if target is None:
             facade.logger.debug("Ignoring peer relation without a native target")
             return
+        # A Matrix-native hint target ($-prefixed event id in this room) is
+        # recognized regardless of the adapter id the peer namespaced it
+        # under: trusted relays emit their own adapter id (e.g. MEDRE's
+        # "medre"), so adapter equality cannot be required. Resolution still
+        # happens below against THIS relay's message map, so a foreign event
+        # id simply never matches.
+        matrix_native_target = (
+            target.native_channel_id == room.room_id
+            and target.native_message_id.startswith("$")
+        )
         matrix_target = (
             canonical_event is not None
             and target.adapter == canonical_event.source_adapter
-            and target.native_channel_id == room.room_id
-            and target.native_message_id.startswith("$")
+            and matrix_native_target
         )
         radio_target = (
             target.adapter == peer.source_adapter
@@ -434,16 +443,18 @@ async def on_room_message(
             and meshnet_name
             and meshnet_name != local_meshnet_name
         )
-        if relation.relation_type == "reaction" and (matrix_target or radio_target):
+        if relation.relation_type == "reaction" and (
+            matrix_native_target or radio_target
+        ):
             candidate = (
                 radio_packet_id(target.native_message_id) if radio_target else None
             )
-            if matrix_target or candidate is not None:
+            if matrix_native_target or candidate is not None:
                 is_reaction = True
                 peer_reaction = True
                 reaction_emoji = relation.key
                 original_matrix_event_id = (
-                    target.native_message_id if matrix_target else None
+                    target.native_message_id if matrix_native_target else None
                 )
                 radio_reply_id = candidate
         elif relation.relation_type == "reply" and matrix_target:

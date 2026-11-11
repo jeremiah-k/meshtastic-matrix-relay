@@ -167,6 +167,137 @@ async def test_remote_packet_zero_reaction_preserves_authored_visible_text(
         assert "reply_id" not in relay.queue.call_args.kwargs
 
 
+@pytest.mark.parametrize("hint_adapter", ["medre", "other.bridge.example"])
+async def test_peer_reaction_matrix_native_target_from_peer_adapter_resolves_through_message_map(
+    relay, monkeypatch, hint_adapter
+):
+    """A peer-namespaced Matrix-native reaction target resolves via the local map.
+
+    Trusted peers hint relation targets under their own adapter id (MEDRE
+    emits ``adapter: "medre"`` with the tapped packet resolved to its
+    canonical Matrix event). Recognition is by the "$"-prefixed event id in
+    the current room, resolved against this relay's own message map: the
+    authored body is relayed verbatim as a structured radio reply to the
+    original packet, with no locally inferred prefix.
+    """
+    from mmrelay.matrix_utils import send_text_reply
+
+    # Bracketed prefix format like the default radio prefix the live MEDRE
+    # body was authored with ([meshnet label]: ...).
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_matrix_prefix",
+        lambda _cfg, _long, short, mesh: f"[{short}/{mesh}]: ",
+        raising=False,
+    )
+    # The live MEDRE reacted fallback body renders with a leading newline and
+    # the authored radio prefix.
+    authored_body = '\n [AL/Remote]: reacted 🦄 to ""'
+    wire = await content(
+        message=authored_body,
+        emoji=True,
+        meshtastic_replyId=0,
+        reaction_key="🦄",
+    )
+    wire["medre"]["metadata"]["bridge_context"]["relations"][0]["target_native_ref"] = {
+        "adapter": hint_adapter,
+        "native_channel_id": ROOM,
+        "native_message_id": "$original",
+        "native_thread_id": None,
+    }
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+        lambda event_id: (
+            # 1448844033 is the relay-side packet id observed in the live
+            # interop evidence for this reaction shape.
+            (1448844033, ROOM, "stored preview", "Local")
+            if event_id == "$original"
+            else None
+        ),
+    )
+    await relay.deliver(wire)
+    relay.queue.assert_called_once()
+    assert relay.queue.call_args.args[0] is send_text_reply
+    assert relay.queue.call_args.kwargs["reply_id"] == 1448844033
+    assert relay.queue.call_args.kwargs["text"] == '[AL/Remote]: reacted 🦄 to ""'
+
+
+async def test_unmapped_matrix_native_peer_reaction_does_not_reprefix_or_relay(
+    relay, monkeypatch
+):
+    """An unresolvable Matrix-native peer reaction target must not re-prefix.
+
+    When the hinted "$" event id has no row in this relay's message map the
+    reaction follows the existing unmapped-target behavior: it is dropped,
+    never silently re-prefixed through the plain remote-meshnet path.
+    """
+    logger = MagicMock()
+    monkeypatch.setattr("mmrelay.matrix_utils.logger", logger, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_matrix_prefix",
+        lambda _cfg, _long, short, mesh: f"[{short}/{mesh}]: ",
+        raising=False,
+    )
+    authored_body = '\n [AL/Remote]: reacted 🦄 to ""'
+    wire = await content(
+        message=authored_body,
+        emoji=True,
+        meshtastic_replyId=0,
+        reaction_key="🦄",
+    )
+    wire["medre"]["metadata"]["bridge_context"]["relations"][0]["target_native_ref"] = {
+        "adapter": "medre",
+        "native_channel_id": ROOM,
+        "native_message_id": "$unmapped",
+        "native_thread_id": None,
+    }
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+        lambda _event_id: None,
+    )
+    await relay.deliver(wire)
+    relay.queue.assert_not_called()
+    assert any(
+        "Reaction target is not mapped" in call.args[0]
+        for call in logger.debug.call_args_list
+    )
+
+
+async def test_peer_reaction_target_outside_room_keeps_plain_prefixed_remote_relay(
+    relay,
+    monkeypatch,
+):
+    """A Matrix-native hint outside this room stays an unrecognized reaction.
+
+    Documented existing behavior: a reaction target the relay cannot bind
+    (here a "$" event id scoped to a different room) falls through to the
+    ordinary remote-meshnet path, which strips the authored prefix and
+    re-prefixes with the local abbreviated meshnet label.
+    """
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_matrix_prefix",
+        lambda _cfg, _long, short, mesh: f"[{short}/{mesh}]: ",
+        raising=False,
+    )
+    authored_body = '\n [AL/Remote]: reacted 🦄 to ""'
+    wire = await content(
+        message=authored_body,
+        emoji=True,
+        meshtastic_replyId=0,
+        reaction_key="🦄",
+    )
+    wire["medre"]["metadata"]["bridge_context"]["relations"][0]["target_native_ref"] = {
+        "adapter": "medre",
+        "native_channel_id": "!elsewhere:example.org",
+        "native_message_id": "$original",
+        "native_thread_id": None,
+    }
+    await relay.deliver(wire)
+    relay.queue.assert_called_once()
+    assert relay.queue.call_args.args[0] == relay.interface.sendText
+    assert "reply_id" not in relay.queue.call_args.kwargs
+    assert relay.queue.call_args.kwargs["text"] == '[AL/Remo]: reacted 🦄 to ""'
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 async def test_untargeted_emote_keeps_body_with_reactions_enabled_or_disabled(
     relay, enabled, monkeypatch
