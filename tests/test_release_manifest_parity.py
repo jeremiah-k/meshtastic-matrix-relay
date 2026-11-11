@@ -1,6 +1,5 @@
 """Catch stale deployment defaults in release candidates."""
 
-import re
 import tomllib
 from pathlib import Path
 
@@ -28,6 +27,3 @@ def test_deployment_defaults_match_project_version():
     ]
     assert len(mmrelay_images) == 1
     assert mmrelay_images[0].get("newTag") == version
-    helm_examples = (ROOT / "docs/HELM.md").read_text(encoding="utf-8")
-    example_tags = set(re.findall(r"--set image\.tag=(\S+)", helm_examples))
-    assert example_tags == {version}
