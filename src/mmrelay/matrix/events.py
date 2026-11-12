@@ -6,7 +6,6 @@ on_room_member, and on_invite.
 
 import asyncio
 import inspect
-import re
 import time
 from typing import Any, cast
 
@@ -27,10 +26,21 @@ try:
 except ImportError:
     from nio.events.invite_events import InviteMemberEvent
 
+from medre.adapters.matrix.relations import (
+    extract_matrix_relation,
+    strip_reply_fallback_body,
+)
 from nio.events.room_events import RoomMemberEvent
 
 import mmrelay.matrix_utils as facade
 from mmrelay.constants.formats import MATRIX_SUPPRESS_KEY
+from mmrelay.matrix.canonical_ingress import canonicalize_matrix_event
+from mmrelay.matrix.peer_context import (
+    load_peer_relays,
+    radio_packet_id,
+    trusted_peer_metadata,
+)
+from mmrelay.meshtastic.reaction_preview import reaction_preview
 
 __all__ = [
     "on_decryption_failure",
@@ -341,126 +351,184 @@ async def on_room_message(
         await _dispatch_unmapped_room_message(room, event)
         return
 
-    relates_to = event.source["content"].get("m.relates_to")
-
-    if not facade.config:
-        facade.logger.error("No configuration available for Matrix message processing.")
-
-    is_reaction = False
-    reaction_emoji = None
-    original_matrix_event_id = None
-
     if facade.config is None:
-        facade.logger.error(
-            "No configuration available. Cannot process Matrix message."
-        )
+        facade.logger.error("No configuration available for Matrix message processing.")
         return
-
+    try:
+        peers = load_peer_relays(facade.config)
+    except ValueError as exc:
+        facade.logger.error("Invalid peer relay configuration: %s", exc)
+        return
     interactions = facade.get_interaction_settings(facade.config)
     storage_enabled = facade.message_storage_enabled(interactions)
-
-    if isinstance(event, ReactionEvent):
-        is_reaction = True
-        facade.logger.debug(f"Processing Matrix reaction event: {event.source}")
-        if relates_to and "event_id" in relates_to and "key" in relates_to:
-            reaction_emoji = relates_to["key"]
-            original_matrix_event_id = relates_to["event_id"]
-            facade.logger.debug(
-                f"Original matrix event ID: {original_matrix_event_id}, Reaction emoji: {reaction_emoji}"
-            )
-
-    if isinstance(event, RoomMessageEmote):
-        facade.logger.debug(f"Processing Matrix emote event: {event.source}")
-        content = event.source.get("content", {})
-        reaction_body = content.get("body", "")
-        meshtastic_replyId = content.get("meshtastic_replyId")
-        emote_relates_to = content.get("m.relates_to") or {}
-
-        is_reaction = bool(
-            meshtastic_replyId or emote_relates_to.get("rel_type") == "m.annotation"
-        )
-
-        if is_reaction:
-            reaction_match = re.search(r"reacted (.+?) to", reaction_body)
-            reaction_emoji = reaction_match.group(1).strip() if reaction_match else "?"
-            if emote_relates_to and "event_id" in emote_relates_to:
-                original_matrix_event_id = emote_relates_to["event_id"]
-
-    mesh_text_override = event.source["content"].get("meshtastic_text")
-    if isinstance(mesh_text_override, str):
-        mesh_text_override = mesh_text_override.strip()
-        if not mesh_text_override:
-            mesh_text_override = None
-    else:
-        mesh_text_override = None
-
-    longname = event.source["content"].get("meshtastic_longname")
-    shortname = event.source["content"].get("meshtastic_shortname", None)
-    meshnet_name = event.source["content"].get("meshtastic_meshnet")
-    meshtastic_replyId = event.source["content"].get("meshtastic_replyId")
-    suppress = event.source["content"].get(MATRIX_SUPPRESS_KEY)
-
-    text = ""
-
-    if not is_reaction or mesh_text_override:
-        body_text = getattr(event, "body", "")
-        content_body = event.source["content"].get("body", "")
-        text = mesh_text_override or body_text or content_body or ""
-        text = text.strip()
-
-    if suppress:
+    content = event.source.get("content", {})
+    if content.get(MATRIX_SUPPRESS_KEY):
         return
-
-    if is_reaction and not interactions["reactions"]:
-        facade.logger.debug(
-            "Reaction event encountered but reactions are disabled. Doing nothing."
-        )
-        return
-
     local_meshnet_name = facade.get_meshtastic_config_value(
         facade.config, "meshnet_name", ""
     )
+    canonical_event = None
+    try:
+        canonical_event = canonicalize_matrix_event(
+            room, event, reaction=isinstance(event, ReactionEvent)
+        )
+    except Exception:  # noqa: BLE001 - preserve authored messages on codec failure
+        facade.logger.exception(
+            "Failed to canonicalize Matrix event; using native text"
+        )
 
+    # The native parser is also the failure path: flat peer fields are never read.
+    native_relation = extract_matrix_relation(event.source)
+    body = getattr(event, "body", None)
+    text = body if isinstance(body, str) else content.get("body", "")
+    text = text if isinstance(text, str) else ""
+    if native_relation is not None and native_relation.has_reply_fallback:
+        text = strip_reply_fallback_body(text)
+    if canonical_event is not None:
+        canonical_body = canonical_event.payload.get("body")
+        if isinstance(canonical_body, str):
+            text = canonical_body
+    text = text.strip()
+    peer = (
+        trusted_peer_metadata(canonical_event, event.sender, facade.bot_user_id, peers)
+        if canonical_event is not None
+        else None
+    )
+    longname = (peer.longname or peer.shortname or peer.sender_id) if peer else None
+    shortname = peer.shortname if peer else None
+    meshnet_name = peer.meshnet if peer else None
+    portnum = peer.portnum if peer else None
+    if peer is not None and meshnet_name and meshnet_name == local_meshnet_name:
+        return
+
+    is_reaction = isinstance(event, ReactionEvent)
+    reaction_emoji = None
+    original_matrix_event_id = None
     is_reply = False
     reply_to_event_id = None
-    if not is_reaction and relates_to and "m.in_reply_to" in relates_to:
-        reply_to_event_id = relates_to["m.in_reply_to"].get("event_id")
-        if reply_to_event_id:
-            is_reply = True
-            facade.logger.debug(
-                f"Processing Matrix reply to event: {reply_to_event_id}"
+    radio_reply_id = None
+    peer_reaction = False
+    if native_relation is not None:
+        if native_relation.kind == "reaction":
+            is_reaction = True
+            reaction_emoji = native_relation.key
+            original_matrix_event_id = native_relation.target_event_id
+        else:
+            reply_to_event_id = native_relation.explicit_reply_target
+            is_reply = reply_to_event_id is not None
+    # Peer hints supplement missing native relations; they cannot replace a
+    # Matrix user's explicit reply, annotation, or thread fallback semantics.
+    if peer is not None and peer.relation is not None and native_relation is None:
+        relation = peer.relation
+        target = relation.target_native_ref
+        if target is None:
+            facade.logger.debug("Ignoring peer relation without a native target")
+            return
+        # A Matrix-native hint target ($-prefixed event id in this room) is
+        # recognized regardless of the adapter id the peer namespaced it
+        # under: trusted relays emit their own adapter id (e.g. MEDRE's
+        # "medre"), so adapter equality cannot be required. Resolution still
+        # happens below against THIS relay's message map, so a foreign event
+        # id simply never matches.
+        matrix_native_target = (
+            target.native_channel_id == room.room_id
+            and target.native_message_id.startswith("$")
+        )
+        radio_target = (
+            target.adapter == peer.source_adapter
+            and target.native_channel_id == peer.source_channel
+            and meshnet_name
+            and meshnet_name != local_meshnet_name
+        )
+        if relation.relation_type == "reaction" and (
+            matrix_native_target or radio_target
+        ):
+            candidate = (
+                radio_packet_id(target.native_message_id) if radio_target else None
             )
+            if matrix_native_target or candidate is not None:
+                is_reaction = True
+                peer_reaction = True
+                reaction_emoji = relation.key
+                original_matrix_event_id = (
+                    target.native_message_id if matrix_native_target else None
+                )
+                radio_reply_id = candidate
+        elif relation.relation_type == "reply" and matrix_native_target:
+            is_reply = True
+            reply_to_event_id = target.native_message_id
+    if is_reaction and (
+        not isinstance(reaction_emoji, str) or not reaction_emoji.strip()
+    ):
+        return
+    if is_reaction and not interactions["reactions"]:
+        return
+    if peer_reaction and not text:
+        facade.logger.debug("Ignoring peer reaction without authored text")
+        return
+    if not is_reaction and not text:
+        return
 
     if is_reaction and interactions["reactions"]:
-        if (
-            meshnet_name
-            and meshnet_name != local_meshnet_name
-            and meshtastic_replyId
-            and isinstance(event, RoomMessageEmote)
-        ):
-            facade.logger.info(f"Relaying reaction from remote meshnet: {meshnet_name}")
-
-            short_meshnet_name = meshnet_name[: facade.MESHNET_NAME_ABBREVIATION_LENGTH]
-
-            if not shortname:
-                shortname = (
-                    longname[: facade.SHORTNAME_FALLBACK_LENGTH] if longname else "???"
+        if peer_reaction and radio_reply_id is not None:
+            # The target belongs to the remote radio namespace. Never bind it to
+            # an unrelated local packet ID; retain the visible authored message.
+            interface, channel = await facade._get_meshtastic_interface_and_channel(
+                room_config, "relay reaction"
+            )
+            if (
+                interface
+                and text
+                and facade.get_meshtastic_config_value(
+                    facade.config,
+                    "broadcast_enabled",
+                    facade.DEFAULT_BROADCAST_ENABLED,
+                    required=False,
                 )
+            ):
+                # Peer reaction bodies are already authored for radio display.
+                # Do not prepend a locally inferred prefix: the originating
+                # relay may use a different prefix format, and the body may
+                # deliberately be unprefixed.
+                facade.queue_message(
+                    interface.sendText,
+                    text=facade.truncate_message(text),
+                    channelIndex=channel,
+                    description=f"Remote reaction from {meshnet_name}",
+                )
+            return
 
-            meshtastic_text_db = event.source["content"].get("meshtastic_text", "")
-            meshtastic_text_db = facade.strip_quoted_lines(meshtastic_text_db)
-            meshtastic_text_db = meshtastic_text_db.replace("\n", " ").replace(
-                "\r", " "
+        if original_matrix_event_id:
+            orig = await asyncio.to_thread(
+                facade.get_message_map_by_matrix_event_id, original_matrix_event_id
             )
+            if not orig or orig[1] != room.room_id:
+                facade.logger.debug("Reaction target is not mapped in this Matrix room")
+                return
 
-            abbreviated_text = (
-                meshtastic_text_db[: facade.MESSAGE_PREVIEW_LENGTH] + "..."
-                if len(meshtastic_text_db) > facade.MESSAGE_PREVIEW_LENGTH
-                else meshtastic_text_db
+            (
+                meshtastic_id_raw,
+                _matrix_room_id,
+                meshtastic_text_db,
+                _meshtastic_meshnet_db,
+            ) = orig
+
+            meshtastic_reply_id = radio_packet_id(meshtastic_id_raw)
+            if meshtastic_reply_id is None:
+                facade.logger.debug("Ignoring reaction with an invalid radio target")
+                return
+
+            full_display_name = await facade.get_user_display_name(room, event)
+
+            prefix = facade.get_meshtastic_prefix(facade.config, full_display_name)
+
+            abbreviated_text = reaction_preview(meshtastic_text_db or "")
+
+            reaction_message = (
+                text
+                if peer_reaction
+                else f'{prefix}reacted {reaction_emoji} to "{abbreviated_text}"'
             )
-
-            reaction_message = f'{shortname}/{short_meshnet_name} reacted {reaction_emoji} to "{abbreviated_text}"'
-
             (
                 meshtastic_interface,
                 meshtastic_channel,
@@ -477,122 +545,19 @@ async def on_room_message(
                 required=False,
             ):
                 meshtastic_logger.info(
-                    f"Relaying reaction from remote meshnet {meshnet_name} to radio broadcast"
+                    f"Relaying reaction from {full_display_name} to radio broadcast as reply"
                 )
                 facade.logger.debug(
-                    f"Sending reaction to Meshtastic with meshnet={local_meshnet_name}: {reaction_message}"
+                    f"Sending reaction reply to Meshtastic message {meshtastic_reply_id}: {reaction_message}"
                 )
                 success = facade.queue_message(
-                    meshtastic_interface.sendText,
-                    text=reaction_message,
+                    facade.send_text_reply,
+                    interface=meshtastic_interface,
+                    text=facade.truncate_message(reaction_message),
+                    reply_id=meshtastic_reply_id,
                     channelIndex=meshtastic_channel,
-                    description=f"Remote reaction from {meshnet_name}",
+                    description=f"Local reaction from {full_display_name} (reply to {meshtastic_reply_id})",
                 )
-
-                if success:
-                    facade.logger.debug(
-                        f"Queued remote reaction to Meshtastic: {reaction_message}"
-                    )
-                else:
-                    facade.logger.error("Failed to relay remote reaction to Meshtastic")
-                    return
-            return
-
-        if original_matrix_event_id:
-            orig = await asyncio.to_thread(
-                facade.get_message_map_by_matrix_event_id, original_matrix_event_id
-            )
-            if not orig:
-                facade.logger.debug(
-                    "Original message for reaction not found in DB. Possibly a reaction-to-reaction scenario. Not forwarding."
-                )
-                return
-
-            (
-                meshtastic_id_raw,
-                _matrix_room_id,
-                meshtastic_text_db,
-                _meshtastic_meshnet_db,
-            ) = orig
-
-            if isinstance(meshtastic_id_raw, int):
-                meshtastic_reply_id = meshtastic_id_raw
-            elif isinstance(meshtastic_id_raw, str) and meshtastic_id_raw.isdigit():
-                meshtastic_reply_id = int(meshtastic_id_raw)
-            elif isinstance(meshtastic_id_raw, str):
-                facade.logger.warning(
-                    "Message map meshtastic_id %r is not numeric; sending reaction as regular message",
-                    meshtastic_id_raw,
-                )
-                meshtastic_reply_id = None
-            else:
-                facade.logger.warning(
-                    "Message map meshtastic_id has unexpected type %s; sending reaction as regular message",
-                    type(meshtastic_id_raw).__name__,
-                )
-                meshtastic_reply_id = None
-
-            full_display_name = await facade.get_user_display_name(room, event)
-
-            prefix = facade.get_meshtastic_prefix(facade.config, full_display_name)
-
-            meshtastic_text_db = facade.strip_quoted_lines(meshtastic_text_db)
-            meshtastic_text_db = meshtastic_text_db.replace("\n", " ").replace(
-                "\r", " "
-            )
-
-            abbreviated_text = (
-                meshtastic_text_db[: facade.MESSAGE_PREVIEW_LENGTH] + "..."
-                if len(meshtastic_text_db) > facade.MESSAGE_PREVIEW_LENGTH
-                else meshtastic_text_db
-            )
-
-            reaction_message = (
-                f'{prefix}reacted {reaction_emoji} to "{abbreviated_text}"'
-            )
-            (
-                meshtastic_interface,
-                meshtastic_channel,
-            ) = await facade._get_meshtastic_interface_and_channel(
-                room_config, "relay reaction"
-            )
-            if not meshtastic_interface:
-                return
-
-            if facade.get_meshtastic_config_value(
-                facade.config,
-                "broadcast_enabled",
-                facade.DEFAULT_BROADCAST_ENABLED,
-                required=False,
-            ):
-                if meshtastic_reply_id is not None:
-                    meshtastic_logger.info(
-                        f"Relaying reaction from {full_display_name} to radio broadcast as reply"
-                    )
-                    facade.logger.debug(
-                        f"Sending reaction reply to Meshtastic message {meshtastic_reply_id}: {reaction_message}"
-                    )
-                    success = facade.queue_message(
-                        facade.send_text_reply,
-                        interface=meshtastic_interface,
-                        text=reaction_message,
-                        reply_id=meshtastic_reply_id,
-                        channelIndex=meshtastic_channel,
-                        description=f"Local reaction from {full_display_name} (reply to {meshtastic_reply_id})",
-                    )
-                else:
-                    meshtastic_logger.info(
-                        f"Relaying reaction from {full_display_name} to radio broadcast"
-                    )
-                    facade.logger.debug(
-                        f"Sending reaction to Meshtastic with meshnet={local_meshnet_name}: {reaction_message}"
-                    )
-                    success = facade.queue_message(
-                        meshtastic_interface.sendText,
-                        text=reaction_message,
-                        channelIndex=meshtastic_channel,
-                        description=f"Local reaction from {full_display_name}",
-                    )
 
                 if success:
                     facade.logger.debug(
@@ -602,6 +567,11 @@ async def on_room_message(
                     facade.logger.error("Failed to relay local reaction to Meshtastic")
                     return
             return
+
+        # A native annotation without an eligible target must never fall
+        # through to the ordinary message path with an empty body.
+        facade.logger.debug("Ignoring Matrix reaction without a resolved target")
+        return
 
     if is_reply and reply_to_event_id and interactions["replies"]:
         reply_handled = await facade.handle_matrix_reply(
@@ -613,10 +583,10 @@ async def on_room_message(
             storage_enabled,
             local_meshnet_name,
             facade.config,
-            mesh_text_override=mesh_text_override,
             longname=longname,
             shortname=shortname,
             meshnet_name=meshnet_name,
+            text_is_canonical=True,
         )
         if reply_handled:
             return
@@ -633,8 +603,6 @@ async def on_room_message(
                 shortname = (
                     longname[: facade.SHORTNAME_FALLBACK_LENGTH] if longname else "???"
                 )
-            if mesh_text_override:
-                text = mesh_text_override
             original_prefix = facade.get_matrix_prefix(
                 facade.config, longname, shortname, meshnet_name
             )
@@ -643,8 +611,6 @@ async def on_room_message(
                 facade.logger.debug(
                     f"Removed original prefix '{original_prefix}' from remote meshnet message"
                 )
-            if not text and mesh_text_override:
-                text = mesh_text_override
             text = facade.truncate_message(text)
             prefix = facade.get_matrix_prefix(
                 facade.config, longname, shortname, short_meshnet_name
@@ -668,16 +634,6 @@ async def on_room_message(
         )
         full_message = f"{prefix}{text}"
         full_message = facade.truncate_message(full_message)
-
-    portnum = event.source["content"].get("meshtastic_portnum")
-    if isinstance(portnum, str):
-        if portnum.isdigit():
-            try:
-                portnum = int(portnum)
-            except ValueError:
-                pass
-        elif portnum == facade.DETECTION_SENSOR_APP:
-            portnum = facade.PORTNUM_DETECTION_SENSOR_APP
 
     from mmrelay.plugin_loader import load_plugins
 
@@ -781,6 +737,7 @@ async def on_room_message(
                     text,
                     local_meshnet_name,
                     msgs_to_keep,
+                    text_is_canonical=True,
                 )
 
             success = facade.queue_message(

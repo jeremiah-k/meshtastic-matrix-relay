@@ -1,0 +1,461 @@
+"""MMRelay 1.5 radio-to-Matrix sends use MEDRE's closed native rendering contract."""
+
+from __future__ import annotations
+
+import importlib
+import sys
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from medre.adapters.matrix.codec import MatrixCodec
+from medre.adapters.matrix.outbound import MatrixOutboundOperation
+from medre.config.adapters.matrix import MatrixConfig
+
+from mmrelay.matrix.canonical_outbound import render_matrix_relay_content
+
+ROOM = "!mesh:example.org"
+BOT = "@relay:example.org"
+
+
+@pytest.fixture
+def real_markdown():
+    """Restore the real markdown module that tests/mocks.py replaces with a MagicMock.
+
+    The global test mocks stub ``markdown`` in ``sys.modules`` before any
+    application import, so the presentation path exercised by this contract
+    test would otherwise sanitize a MagicMock instead of real rendered HTML.
+    """
+    mocked = sys.modules.get("markdown")
+    sys.modules.pop("markdown", None)
+    try:
+        yield importlib.import_module("markdown")
+    finally:
+        if mocked is not None:
+            sys.modules["markdown"] = mocked
+        else:
+            sys.modules.pop("markdown", None)
+
+
+async def render(**kwargs):
+    arguments = {
+        "room_id": ROOM,
+        "message": "Radio text 🦉",
+        "longname": "Radio Alice",
+        "shortname": "RA",
+        "meshnet_name": "LocalMesh",
+        "portnum": 1,
+        "meshtastic_id": 123,
+        "meshtastic_replyId": 4,
+        "meshtastic_text": "original radio text",
+        "bot_user_id": BOT,
+    }
+    arguments.update(kwargs)
+    return await render_matrix_relay_content(**arguments)
+
+
+@pytest.mark.asyncio
+async def test_outbound_medre_envelope_is_only_metadata_surface():
+    content = await render()
+    envelope = content["medre"]["envelope"]
+    assert envelope["schema_version"] == 1
+    assert envelope["event_kind"] == "message.created"
+    assert envelope["source_adapter"] == "mmrelay.meshtastic"
+    assert envelope["source_channel"] == "0"
+    assert envelope["canonical_event_id"]
+    assert content["msgtype"] == "m.text"
+    assert content["body"] == "Radio text 🦉"
+    assert not any(name.startswith("meshtastic_") for name in content)
+    assert envelope["source_native_ref"]["native_message_id"] == "123"
+    source = content["medre"]["metadata"]["bridge_context"]["source"]
+    assert source["sender_name"] == "Radio Alice"
+    assert source["sender_short_name"] == "RA"
+    assert source["native_facts"] == {
+        "namespace": "meshtastic",
+        "fields": {"portnum": 1, "meshnet_label": "LocalMesh"},
+    }
+    assert "_matrix_operation" not in content
+    assert "m.relates_to" not in content
+
+
+@pytest.mark.asyncio
+async def test_outbound_matrix_codec_roundtrip_preserves_authored_body_and_native_reply(
+    real_markdown,
+):
+    content = await render(
+        message="Answer <b>& 🦉",
+        reply_to_event_id="$original",
+        reply_preview=("Old <script>\n\nsecond line", "RemoteMesh"),
+    )
+    assert content["m.relates_to"] == {"m.in_reply_to": {"event_id": "$original"}}
+    assert "<script>" not in content["formatted_body"]
+    assert "&lt;script&gt;" in content["formatted_body"]
+    assert content["body"].startswith("> <@relay:example.org> [RemoteMesh]: Old")
+    assert "\n> \n> second line\n\nAnswer <b>& 🦉" in content["body"]
+    codec = MatrixCodec(
+        "matrix-room",
+        MatrixConfig(adapter_id="matrix-room", homeserver="", user_id=""),
+    )
+    decoded = codec.decode(
+        {
+            "room_id": ROOM,
+            "event_id": "$sent:example.org",
+            "sender": BOT,
+            "source": {
+                "type": "m.room.message",
+                "event_id": "$sent:example.org",
+                "sender": BOT,
+                "content": content,
+            },
+        },
+        room_id=ROOM,
+    )
+    assert decoded.payload["body"] == "Answer <b>& 🦉"
+    assert decoded.relations[0].relation_type == "reply"
+    assert decoded.relations[0].target_native_ref.native_message_id == "$original"
+    assert decoded.relations[0].target_native_ref.native_channel_id == ROOM
+
+
+@pytest.mark.asyncio
+async def test_outbound_emote_emoji_and_zero_packet_ids_are_not_lost():
+    content = await render(
+        message="waves",
+        emote=True,
+        emoji=True,
+        meshtastic_id=0,
+        meshtastic_replyId=0,
+        meshtastic_text="",
+        reaction_key="👍",
+    )
+    assert content["msgtype"] == "m.emote"
+    assert content["body"] == "waves"
+    assert not any(name.startswith("meshtastic_") for name in content)
+    assert content["medre"]["envelope"]["source_native_ref"]["native_message_id"] == "0"
+    relation = content["medre"]["metadata"]["bridge_context"]["relations"][0]
+    assert relation["key"] == "👍"
+    assert relation["target_native_ref"]["native_message_id"] == "0"
+    assert content["medre"]["envelope"]["event_kind"] == "message.reacted"
+    assert content["medre"]["envelope"]["source_adapter"] == "mmrelay.meshtastic"
+
+
+@pytest.mark.asyncio
+async def test_radio_reaction_uses_native_ref_without_legacy_relation_metadata():
+    """The generic native relation is sufficient; no private MMRelay keys."""
+    with patch(
+        "mmrelay.matrix.canonical_outbound._RENDERER.render",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("capture"),
+    ) as render_mock:
+        with pytest.raises(RuntimeError, match="capture"):
+            await render(
+                emoji=True, reaction_key="👍", meshtastic_replyId=0, meshtastic_id=0
+            )
+    event = render_mock.await_args.args[0]
+    assert event.relations[0].target_native_ref.native_message_id == "0"
+    assert event.relations[0].key == "👍"
+    assert not event.relations[0].metadata
+
+
+@pytest.mark.asyncio
+async def test_outbound_reply_without_mapping_keeps_native_relation_without_fabricating_quote():
+    content = await render(reply_to_event_id="$unmapped")
+    assert content["m.relates_to"] == {"m.in_reply_to": {"event_id": "$unmapped"}}
+    assert content["body"] == "Radio text 🦉"
+    assert "<mx-reply>" not in content["formatted_body"]
+
+
+@pytest.mark.asyncio
+async def test_outbound_reply_quote_skips_invalid_bot_identity_but_keeps_relation():
+    content = await render(
+        bot_user_id=None,
+        reply_to_event_id="$original",
+        reply_preview=("old text", "LocalMesh"),
+    )
+    assert content["body"] == "Radio text 🦉"
+    assert content["m.relates_to"]["m.in_reply_to"]["event_id"] == "$original"
+
+
+@pytest.mark.asyncio
+async def test_outbound_renderer_refuses_wrong_operation_and_body_mutation():
+    fake_result = SimpleNamespace(
+        payload=MatrixOutboundOperation.redact("$target").to_payload()
+    )
+    with patch(
+        "mmrelay.matrix.canonical_outbound._RENDERER.render",
+        new_callable=AsyncMock,
+        return_value=fake_result,
+    ):
+        with pytest.raises(ValueError, match="non-message Matrix operation"):
+            await render()
+
+    wrong_body = MatrixOutboundOperation.send_event(
+        "m.room.message", {"msgtype": "m.text", "body": "mutated"}
+    )
+    with patch(
+        "mmrelay.matrix.canonical_outbound._RENDERER.render",
+        new_callable=AsyncMock,
+        return_value=SimpleNamespace(payload=wrong_body.to_payload()),
+    ):
+        with pytest.raises(ValueError, match="changed the authored message body"):
+            await render(meshtastic_replyId=None)
+
+
+@pytest.mark.asyncio
+async def test_outbound_renderer_refuses_wrong_event_type_and_provenance():
+    annotation = MatrixOutboundOperation.send_event(
+        "m.reaction", {"m.relates_to": {"rel_type": "m.annotation", "key": "🔒"}}
+    )
+    with patch(
+        "mmrelay.matrix.canonical_outbound._RENDERER.render",
+        new_callable=AsyncMock,
+        return_value=SimpleNamespace(payload=annotation.to_payload()),
+    ):
+        with pytest.raises(ValueError, match="non-message Matrix operation"):
+            await render()
+
+    wrong_origin = MatrixOutboundOperation.send_event(
+        "m.room.message",
+        {
+            "msgtype": "m.text",
+            "body": "Radio text 🦉",
+            "medre": {
+                "envelope": {
+                    "schema_version": 1,
+                    "canonical_event_id": "$unrelated",
+                    "source_adapter": "mmrelay.meshtastic",
+                }
+            },
+        },
+    )
+    with patch(
+        "mmrelay.matrix.canonical_outbound._RENDERER.render",
+        new_callable=AsyncMock,
+        return_value=SimpleNamespace(payload=wrong_origin.to_payload()),
+    ):
+        with pytest.raises(ValueError, match="lost canonical v1 provenance"):
+            await render()
+
+
+@pytest.mark.asyncio
+async def test_outbound_renderer_refuses_missing_native_reply_relation():
+    missing_relation = MatrixOutboundOperation.send_event(
+        "m.room.message", {"msgtype": "m.text", "body": "Radio text 🦉"}
+    )
+    with patch(
+        "mmrelay.matrix.canonical_outbound._RENDERER.render",
+        new_callable=AsyncMock,
+        return_value=SimpleNamespace(payload=missing_relation.to_payload()),
+    ):
+        with pytest.raises(ValueError, match="lost the native reply relation"):
+            await render(reply_to_event_id="$target")
+
+
+@pytest.mark.asyncio
+async def test_outbound_reaction_requires_structured_symbol_and_codec_recovers_it():
+    with pytest.raises(ValueError, match="explicit reaction_key"):
+        await render(emote=True, emoji=True, meshtastic_replyId=4)
+
+    content = await render(
+        message='\n [Alice/LocalMesh]: reacted 🎉 to "hello"',
+        emote=True,
+        emoji=True,
+        reaction_key="🎉",
+        meshtastic_replyId=4,
+    )
+    assert "m.relates_to" not in content
+    codec = MatrixCodec(
+        "matrix-room",
+        MatrixConfig(adapter_id="matrix-room", homeserver="", user_id=""),
+    )
+    decoded = codec.decode(
+        {
+            "room_id": ROOM,
+            "event_id": "$reaction",
+            "sender": BOT,
+            "source": {
+                "type": "m.room.message",
+                "event_id": "$reaction",
+                "sender": BOT,
+                "content": content,
+            },
+        },
+        room_id=ROOM,
+    )
+    # A native Matrix emote is an ordinary Matrix message until an allowlisted
+    # peer has authorized use of the *embedded* canonical reaction claim.
+    assert decoded.event_kind == "message.created"
+    claim = decoded.metadata.native.data["matrix"]["relay"]["bridge_context"]
+    assert claim["relations"][0]["relation_type"] == "reaction"
+    assert claim["relations"][0]["key"] == "🎉"
+
+
+@pytest.mark.asyncio
+async def test_multiline_reply_meshnet_label_cannot_escape_fallback_quote():
+    content = await render(
+        reply_to_event_id="$original",
+        reply_preview=("old text", "Remote\n\nMesh"),
+    )
+    codec = MatrixCodec(
+        "matrix-room",
+        MatrixConfig(adapter_id="matrix-room", homeserver="", user_id=""),
+    )
+    decoded = codec.decode(
+        {
+            "room_id": ROOM,
+            "event_id": "$reply",
+            "sender": BOT,
+            "source": {"type": "m.room.message", "content": content},
+        },
+        room_id=ROOM,
+    )
+    assert decoded.payload["body"] == "Radio text 🦉"
+
+
+@pytest.mark.asyncio
+async def test_cr_and_crlf_cannot_escape_optional_matrix_reply_fallback():
+    """The fallback quotes each physical line; canonical authored text is intact."""
+    content = await render(
+        reply_to_event_id="$original",
+        reply_preview=("old\r\nsecond\rthird", "Remote\rMesh"),
+    )
+    assert content["body"].startswith(
+        "> <@relay:example.org> [Remote\n> Mesh]: old\n> second\n> third\n\n"
+    )
+    assert content["body"].endswith("Radio text 🦉")
+    assert "[Remote<br/>Mesh]: old<br/>second<br/>third" in content["formatted_body"]
+    codec = MatrixCodec(
+        "matrix-room",
+        MatrixConfig(adapter_id="matrix-room", homeserver="", user_id=""),
+    )
+    decoded = codec.decode(
+        {
+            "room_id": ROOM,
+            "event_id": "$reply",
+            "sender": BOT,
+            "source": {"type": "m.room.message", "content": content},
+        },
+        room_id=ROOM,
+    )
+    assert decoded.payload["body"] == "Radio text 🦉"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("schema_version", True),
+        ("event_kind", "message.deleted"),
+        ("source_channel", "OtherMesh"),
+        ("relation_info", "reaction"),
+        ("source_transport_id", "!ffffffff"),
+        ("source_native_ref", None),
+    ],
+)
+async def test_outbound_renderer_rejects_inconsistent_provenance(field, value):
+    from mmrelay.matrix.canonical_outbound import _RENDERER
+
+    real_render = _RENDERER.render
+
+    async def inconsistent_render(event, context):
+        result = await real_render(event, context)
+        result.payload["_matrix_operation"]["content"]["medre"]["envelope"][
+            field
+        ] = value
+        return result
+
+    with patch.object(_RENDERER, "render", side_effect=inconsistent_render):
+        with pytest.raises(ValueError, match="canonical v1 provenance"):
+            await render()
+
+
+@pytest.mark.asyncio
+async def test_outbound_provenance_identifies_actual_node_not_display_shortname():
+    """Canonical transport identity stays stable when the radio UI name changes."""
+    content = await render(source_node_id="!0000007b", shortname="A")
+    envelope = content["medre"]["envelope"]
+    assert envelope["source_transport_id"] == "!0000007b"
+    assert (
+        content["medre"]["metadata"]["bridge_context"]["source"]["sender_short_name"]
+        == "A"
+    )
+    fallback = await render(shortname="A")
+    assert fallback["medre"]["envelope"]["source_transport_id"] == "A"
+    malformed = await render(source_node_id=123, shortname="A")
+    assert malformed["medre"]["envelope"]["source_transport_id"] == "A"
+
+
+@pytest.mark.asyncio
+async def test_outbound_renderer_rejects_invented_native_relation():
+    """Do not let a renderer attach an unauthorized Matrix reply target."""
+    from mmrelay.matrix import canonical_outbound
+
+    original_render = canonical_outbound._RENDERER.render
+
+    async def forged_relation(event, context):
+        rendered = await original_render(event, context)
+        operation = MatrixOutboundOperation.from_payload(rendered.payload)
+        assert operation is not None
+        content = dict(operation.content)
+        content["m.relates_to"] = {"m.in_reply_to": {"event_id": "$forged"}}
+        return SimpleNamespace(
+            payload=MatrixOutboundOperation.send_event(
+                "m.room.message", content
+            ).to_payload()
+        )
+
+    with patch.object(
+        canonical_outbound._RENDERER, "render", side_effect=forged_relation
+    ):
+        with pytest.raises(ValueError, match="invented a native relation"):
+            await render(reply_to_event_id=None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("packet_id", [0, 4])
+async def test_unbound_radio_reply_keeps_generic_reference_and_authored_body(packet_id):
+    content = await render(meshtastic_replyId=packet_id)
+    assert content["body"] == "Radio text 🦉"
+    assert "m.relates_to" not in content
+    relation = content["medre"]["metadata"]["bridge_context"]["relations"][0]
+    assert relation["relation_type"] == "reply"
+    assert relation["target_native_ref"]["native_message_id"] == str(packet_id)
+    assert relation["target_native_ref"]["adapter"] == "mmrelay.meshtastic"
+    assert relation["target_native_ref"]["native_channel_id"] == "0"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reaction", [False, True])
+async def test_radio_channel_is_independent_of_meshnet_label(reaction):
+    content = await render(
+        source_channel_id="0",
+        meshtastic_replyId=0,
+        emoji=reaction,
+        reaction_key="❤️" if reaction else None,
+    )
+    envelope = content["medre"]["envelope"]
+    context = content["medre"]["metadata"]["bridge_context"]
+    assert envelope["source_channel"] == "0"
+    assert envelope["source_native_ref"]["native_channel_id"] == "0"
+    assert context["relations"][0]["target_native_ref"]["native_channel_id"] == "0"
+    assert context["source"]["native_facts"]["fields"]["meshnet_label"] == "LocalMesh"
+    assert content["body"] == "Radio text 🦉"
+
+
+@pytest.mark.asyncio
+async def test_missing_radio_channel_uses_numeric_primary_not_meshnet_label():
+    content = await render(meshtastic_replyId=0, source_channel_id=None)
+    envelope = content["medre"]["envelope"]
+    context = content["medre"]["metadata"]["bridge_context"]
+    assert envelope["source_channel"] == "0"
+    assert envelope["source_native_ref"]["native_channel_id"] == "0"
+    assert context["relations"][0]["target_native_ref"]["native_channel_id"] == "0"
+    assert context["source"]["native_facts"]["fields"]["meshnet_label"] == "LocalMesh"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_channel", ["", "LocalMesh", 0, "00", "01", "١", "²", "-1", "+1", "1\n"]
+)
+async def test_non_numeric_radio_channel_fails_closed(bad_channel):
+    with pytest.raises(ValueError, match="numeric radio channel"):
+        await render(source_channel_id=bad_channel)

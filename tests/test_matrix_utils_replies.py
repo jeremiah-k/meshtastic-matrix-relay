@@ -27,7 +27,7 @@ class DummyLoop:
 
 @pytest.mark.asyncio
 async def test_handle_matrix_reply_returns_false_on_send_failure():
-    mock_room = MagicMock()
+    mock_room = MagicMock(room_id="!room123")
     mock_event = MagicMock()
     mock_event.sender = "@user:matrix.org"
     mock_room_config = {"meshtastic_channel": 0}
@@ -41,7 +41,7 @@ async def test_handle_matrix_reply_returns_false_on_send_failure():
         ),
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
-            return_value=(123, "!room", "text", "local"),
+            return_value=(123, "!room123", "text", "local"),
         ),
         patch(
             "mmrelay.matrix_utils.send_reply_to_meshtastic",
@@ -88,7 +88,7 @@ def test_format_reply_message_user_placeholder_resolves():
 async def test_handle_matrix_reply_success():
     """Test handle_matrix_reply processes reply successfully."""
 
-    mock_room = MagicMock()
+    mock_room = MagicMock(room_id="!room123")
     mock_event = MagicMock()
     mock_room_config = {"meshtastic_channel": 0}
     mock_config = {"matrix_rooms": []}
@@ -141,7 +141,7 @@ async def test_handle_matrix_reply_success():
 @pytest.mark.asyncio
 async def test_handle_matrix_reply_numeric_string_reply_id():
     """Numeric string meshtastic_id should be treated as a reply_id."""
-    mock_room = MagicMock()
+    mock_room = MagicMock(room_id="!room123")
     mock_event = MagicMock()
     mock_room_config = {"meshtastic_channel": 0}
     mock_config = {"matrix_rooms": []}
@@ -187,7 +187,7 @@ async def test_handle_matrix_reply_numeric_string_reply_id():
 @pytest.mark.asyncio
 async def test_handle_matrix_reply_unexpected_id_type_broadcasts():
     """Unexpected meshtastic_id types should fall back to broadcast replies."""
-    mock_room = MagicMock()
+    mock_room = MagicMock(room_id="!room123")
     mock_event = MagicMock()
     mock_room_config = {"meshtastic_channel": 0}
     mock_config = {"matrix_rooms": []}
@@ -235,7 +235,7 @@ async def test_handle_matrix_reply_unexpected_id_type_broadcasts():
 @pytest.mark.asyncio
 async def test_handle_matrix_reply_integer_id():
     """Integer meshtastic_id should be used directly as reply_id."""
-    mock_room = MagicMock()
+    mock_room = MagicMock(room_id="!room123")
     mock_event = MagicMock()
     mock_room_config = {"meshtastic_channel": 0}
     mock_config = {"matrix_rooms": []}
@@ -279,10 +279,44 @@ async def test_handle_matrix_reply_integer_id():
 
 
 @pytest.mark.asyncio
+async def test_handle_matrix_reply_rejects_mapping_from_another_room():
+    """An existing event mapping must not authorize cross-room radio replies."""
+    room = MagicMock(room_id="!room123")
+    event = MagicMock(sender="@user:example.org")
+    config = {"matrix_rooms": []}
+    loop = asyncio.get_running_loop()
+    with (
+        patch(
+            "mmrelay.matrix_utils.asyncio.get_running_loop",
+            return_value=InlineExecutorLoop(loop),
+        ),
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+            return_value=(123, "!other:example.org", "original", "remote"),
+        ),
+        patch(
+            "mmrelay.matrix_utils.send_reply_to_meshtastic", new_callable=AsyncMock
+        ) as send,
+    ):
+        result = await handle_matrix_reply(
+            room,
+            event,
+            "$original",
+            "reply text",
+            {"meshtastic_channel": 0},
+            True,
+            "LocalMesh",
+            config,
+        )
+    assert result is False
+    send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_handle_matrix_reply_original_not_found():
     """Test handle_matrix_reply when original message is not found."""
 
-    mock_room = MagicMock()
+    mock_room = MagicMock(room_id="!room123")
     mock_event = MagicMock()
     mock_room_config = {"meshtastic_channel": 0}
     mock_config = {"matrix_rooms": []}
@@ -318,7 +352,7 @@ async def test_handle_matrix_reply_original_not_found():
 async def test_send_reply_to_meshtastic_with_reply_id():
     """Test sending a reply to Meshtastic with reply_id."""
     mock_room_config = {"meshtastic_channel": 0}
-    mock_room = MagicMock()
+    mock_room = MagicMock(room_id="!room123")
     mock_event = MagicMock()
 
     real_loop = asyncio.get_running_loop()
@@ -355,7 +389,7 @@ async def test_send_reply_to_meshtastic_with_reply_id():
 async def test_send_reply_to_meshtastic_no_reply_id():
     """Test sending a reply to Meshtastic without reply_id."""
     mock_room_config = {"meshtastic_channel": 0}
-    mock_room = MagicMock()
+    mock_room = MagicMock(room_id="!room123")
     mock_event = MagicMock()
 
     real_loop = asyncio.get_running_loop()
@@ -619,7 +653,7 @@ async def test_send_reply_to_meshtastic_defaults_config_when_missing():
 async def test_handle_matrix_reply_local_user_not_treated_as_remote():
     """A local Matrix user replying to a remote-mesh message should NOT inherit
     the original message's meshnet name."""
-    mock_room = MagicMock()
+    mock_room = MagicMock(room_id="!room123")
     mock_event = MagicMock()
     mock_event.sender = "@localuser:matrix.org"
     mock_room_config = {"meshtastic_channel": 0}
@@ -646,7 +680,7 @@ async def test_handle_matrix_reply_local_user_not_treated_as_remote():
             return_value="Local User",
         ),
     ):
-        mock_db_lookup.return_value = (123, "!room", "text", "RemoteMesh")
+        mock_db_lookup.return_value = (123, "!room123", "text", "RemoteMesh")
         mock_format_reply.return_value = "formatted reply"
 
         await handle_matrix_reply(
@@ -675,7 +709,6 @@ def test_format_reply_message_remote_prefix_disabled():
         shortname="LR",
         meshnet_name="Mt.P",
         local_meshnet_name="Forx",
-        mesh_text_override="Hello",
     )
 
     assert result.startswith("LR/Mt.P:")
@@ -693,7 +726,6 @@ def test_format_reply_message_remote_custom_prefix():
         shortname="LN",
         meshnet_name="RemoteMesh",
         local_meshnet_name="LocalMesh",
-        mesh_text_override="Hello",
     )
 
     assert result.startswith("<LN/Remo>")
@@ -711,7 +743,26 @@ def test_format_reply_message_remote_fallback_when_prefix_empty():
         shortname="Trak",
         meshnet_name="Mt.Peaks",
         local_meshnet_name="Forx",
-        mesh_text_override="Test",
     )
 
     assert result == "Trak/Mt.P: Test"
+
+
+def test_format_reply_message_remote_canonical_keeps_authored_quote(monkeypatch):
+    """A canonical authored quote is not treated as a Matrix reply fallback."""
+    config = {}
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_matrix_prefix", lambda *_args, **_kwargs: "PREFIX"
+    )
+    result = format_reply_message(
+        config,
+        "Alice",
+        "> authored quote\n\nActual answer",
+        longname="Alice",
+        shortname="Al",
+        meshnet_name="RemoteMesh",
+        local_meshnet_name="LocalMesh",
+        text_is_canonical=True,
+    )
+    assert "> authored quote" in result
+    assert "Actual answer" in result

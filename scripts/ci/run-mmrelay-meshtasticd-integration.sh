@@ -1042,15 +1042,14 @@ url = (
     f"{base_url}/_matrix/client/v3/rooms/{quoted_room_id}/"
     f"send/m.room.message/{quoted_txn_id}"
 )
-content = {
-    "msgtype": "m.text",
-    "body": message_text,
-    "meshtastic_text": message_text,
-    "meshtastic_meshnet": meshnet_name,
-    "meshtastic_longname": longname,
-    "meshtastic_shortname": shortname,
-    "meshtastic_id": meshtastic_id,
-}
+from mmrelay.matrix.canonical_outbound import render_matrix_relay_content
+import asyncio
+
+content = asyncio.run(render_matrix_relay_content(
+    room_id=room_id, message=message_text, meshnet_name=meshnet_name,
+    longname=longname, shortname=shortname, portnum=1,
+    meshtastic_id=meshtastic_id, source_channel_id="0",
+))
 response = requests.put(
     url,
     headers={"Authorization": f"Bearer {access_token}"},
@@ -1487,8 +1486,14 @@ def _matches(event: dict) -> bool:
             return False
 
     if meshtastic_reply_id:
-        reply_id = content.get("meshtastic_replyId")
-        if str(reply_id) != meshtastic_reply_id:
+        context = content.get("medre", {}).get("metadata", {}).get("bridge_context", {})
+        hints = context.get("relations", [])
+        if not any(
+            hint.get("relation_type") in {"reply", "reaction"}
+            and isinstance(hint.get("target_native_ref"), dict)
+            and hint["target_native_ref"].get("native_message_id") == meshtastic_reply_id
+            for hint in hints if isinstance(hint, dict)
+        ):
             return False
 
     return True
@@ -2588,6 +2593,7 @@ cat >"${MMRELAY_CONFIG_PATH_A}" <<EOF_CONFIG
 matrix:
   homeserver: "${MATRIX_BASE_URL}"
   bot_user_id: "${BOT_A_USER_ID}"
+  trusted_relays: ["${BOT_B_USER_ID}"]
   e2ee:
     enabled: true
     store_path: "${MMRELAY_HOME_DIR_A}/matrix/store"
@@ -2629,6 +2635,7 @@ cat >"${MMRELAY_CONFIG_PATH_B}" <<EOF_CONFIG
 matrix:
   homeserver: "${MATRIX_BASE_URL}"
   bot_user_id: "${BOT_B_USER_ID}"
+  trusted_relays: ["${BOT_A_USER_ID}"]
   e2ee:
     enabled: true
     store_path: "${MMRELAY_HOME_DIR_B}/matrix/store"
@@ -2902,6 +2909,42 @@ run_or_fail "MMRelay A did not process injected remote mesh event from ${MESHNET
 	"${log_offset_before_b2m_a}" \
 	60
 pass_test "Injected Mesh B-origin event reached Matrix and processed in Mesh A relay"
+
+# Verify that canonical claims from an ordinary Matrix user do not gain peer authority.
+start_test "Peer trust" "Untrusted canonical claims remain ordinary authored text..."
+UNTRUSTED_TEXT="MMRELAY_CI_UNTRUSTED_$(date +%s)_${RANDOM}"
+[[ -f ${MMRELAY_LOG_PATH_A} ]] || fail_test "MMRelay A log missing before peer trust test"
+[[ -f ${MMRELAY_LOG_PATH_B} ]] || fail_test "MMRelay B log missing before peer trust test"
+log_offset_untrusted_a=$(wc -c <"${MMRELAY_LOG_PATH_A}") || fail_test "Could not read MMRelay A log before peer trust test"
+log_offset_untrusted_b=$(wc -c <"${MMRELAY_LOG_PATH_B}") || fail_test "Could not read MMRelay B log before peer trust test"
+run_capture_or_fail UNTRUSTED_EVENT_ID "Failed to inject untrusted canonical claims" \
+	matrix_send_mesh_origin_message "${USER_ACCESS_TOKEN}" "${ROOM_ID_PLAINTEXT}" \
+	"${UNTRUSTED_TEXT}" "UntrustedClaims" "Pretender" "FAKE" 0 "mmrelay-ci-untrusted"
+for relay_side in A B; do
+	if [[ ${relay_side} == A ]]; then
+		peer_log=${MMRELAY_LOG_PATH_A}
+		peer_offset=${log_offset_untrusted_a}
+	else
+		peer_log=${MMRELAY_LOG_PATH_B}
+		peer_offset=${log_offset_untrusted_b}
+	fi
+	if [[ ${relay_side} == A ]]; then
+		peer_db=${MMRELAY_DB_PATH_A}
+	else
+		peer_db=${MMRELAY_DB_PATH_B}
+	fi
+	# Generic log entries can be caused by unrelated post-offset traffic.
+	# The unique Matrix event mapping proves *this* authored event relayed.
+	run_or_fail "Untrusted authored event ${UNTRUSTED_EVENT_ID} did not relay on ${relay_side}" \
+		wait_for_message_map_meshtastic_id "${peer_db}" "${UNTRUSTED_EVENT_ID}" \
+		"${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS}" >/dev/null
+	untrusted_peer_hits=$(count_pattern_in_file_since "${peer_log}" \
+		"Processing message from remote meshnet: UntrustedClaims" "${peer_offset}")
+	if ((untrusted_peer_hits > 0)); then
+		fail_test "Untrusted canonical claims gained peer authority on ${relay_side}"
+	fi
+done
+pass_test "Untrusted source claims ignored while authored text relayed"
 
 # Test 4: Encrypted-room Matrix user message → Mesh A + Mesh B
 MATRIX_USER2_TEXT="MMRELAY_CI_U2_MSG_$(date +%s)_${RANDOM}"

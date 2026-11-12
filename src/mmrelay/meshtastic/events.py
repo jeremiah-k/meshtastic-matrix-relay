@@ -23,6 +23,7 @@ from mmrelay.meshtastic.packet_routing import (
     _is_text_message_portnum,
     classify_packet,
 )
+from mmrelay.meshtastic.reaction_preview import reaction_preview
 
 __all__ = [
     "_schedule_startup_drain_deadline_cleanup",
@@ -32,12 +33,43 @@ __all__ = [
 ]
 
 
+def _radio_source_channel(packet: dict[str, Any]) -> str:
+    """Normalize a radio channel index for canonical source/target references.
+
+    The primary channel is omitted by some Meshtastic packet sources. Native
+    references must use the same numeric channel for text, replies and reactions.
+    """
+    channel = packet.get("channel")
+    if channel is None:
+        return str(DEFAULT_CHANNEL_VALUE)
+    try:
+        return str(int(channel))
+    except (TypeError, ValueError):
+        return str(DEFAULT_CHANNEL_VALUE)
+
+
 def _get_iterable_matrix_rooms() -> Iterable[Any]:
     return (
         facade.matrix_rooms.values()
         if isinstance(facade.matrix_rooms, dict)
         else (facade.matrix_rooms or ())
     )
+
+
+def _mapped_room_matches_radio_channel(room_id: str, packet: dict[str, Any]) -> bool:
+    """Bind a stored reply target to the packet's configured radio channel.
+
+    Message-map rows are indexed by packet ID alone, so the matching ID may
+    belong to a different channel. Only a configured room on this packet's
+    channel can authorize a Matrix-native reply or reaction target.
+    """
+    packet_channel = int(_radio_source_channel(packet))
+    for room in _get_iterable_matrix_rooms():
+        if not isinstance(room, dict) or room.get("id") != room_id:
+            continue
+        if facade._normalize_room_channel(room) == packet_channel:
+            return True
+    return False
 
 
 def _signal_startup_drain_complete() -> None:
@@ -845,50 +877,63 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     # use Matrix interaction relay.
     if (
         action == PacketAction.RELAY
+        and not is_direct_message
         and _is_text_message_portnum(decoded.get("portnum"))
-        and replyId
+        and replyId is not None
         and emoji_flag
         and interactions["reactions"]
     ):
+        if not isinstance(text, str) or not text.strip():
+            facade.logger.debug("Ignoring radio reaction without an explicit key")
+            return
         longname = facade._get_name_safely(facade.get_longname, sender)
         shortname = facade._get_name_safely(facade.get_shortname, sender)
         orig = facade.get_message_map_by_meshtastic_id(replyId)
+        if orig and not _mapped_room_matches_radio_channel(orig[1], packet):
+            facade.logger.warning(
+                "Ignoring mapped radio interaction target %s in room %s: "
+                "room channel differs from packet channel %s",
+                replyId,
+                orig[1],
+                _radio_source_channel(packet),
+            )
+            orig = None
         if orig:
             # orig = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
             matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet = orig
-            abbreviated_text = (
-                meshtastic_text[:40] + "..."
-                if len(meshtastic_text) > 40
-                else meshtastic_text
-            )
+            # Canonical mapping retains authored quotes and whitespace. Flatten
+            # only this human-readable preview; keep the original stored text
+            # unchanged for replies, correlation, and MEDRE provenance.
+            abbreviated_text = reaction_preview(meshtastic_text or "")
 
             # Import the matrix prefix function
             from mmrelay.matrix_utils import get_matrix_prefix
 
             # Get the formatted prefix for the reaction
-            prefix = get_matrix_prefix(
-                facade.config, longname, shortname, meshtastic_meshnet or meshnet_name
-            )
+            prefix = get_matrix_prefix(facade.config, longname, shortname, meshnet_name)
 
-            reaction_symbol = text.strip() if (text and text.strip()) else "⚠️"
+            reaction_symbol = text
             reaction_message = (
                 f'\n {prefix}reacted {reaction_symbol} to "{abbreviated_text}"'
             )
 
-            # Relay the reaction as emote to Matrix, preserving the original meshnet name
+            # Attribute the current radio sender to this mesh, not the target message's mesh.
             facade._fire_and_forget(
                 matrix_relay(
                     matrix_room_id,
                     reaction_message,
                     longname,
                     shortname,
-                    meshtastic_meshnet or meshnet_name,
+                    meshnet_name,
                     decoded.get("portnum", 0),
                     meshtastic_id=packet.get("id"),
                     meshtastic_replyId=replyId,
                     meshtastic_text=meshtastic_text,
                     emote=True,
                     emoji=True,
+                    reaction_key=reaction_symbol,
+                    source_node_id=sender,
+                    source_channel_id=_radio_source_channel(packet),
                 ),
                 loop=loop,
             )
@@ -909,14 +954,26 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     # Only for RELAY-classified TEXT_MESSAGE_APP packets.
     if (
         action == PacketAction.RELAY
+        and not is_direct_message
         and _is_text_message_portnum(decoded.get("portnum"))
-        and replyId
+        and replyId is not None
         and not emoji_flag
         and interactions["replies"]
+        and isinstance(text, str)
+        and bool(text.strip())
     ):
         longname = facade._get_name_safely(facade.get_longname, sender)
         shortname = facade._get_name_safely(facade.get_shortname, sender)
         orig = facade.get_message_map_by_meshtastic_id(replyId)
+        if orig and not _mapped_room_matches_radio_channel(orig[1], packet):
+            facade.logger.warning(
+                "Ignoring mapped radio interaction target %s in room %s: "
+                "room channel differs from packet channel %s",
+                replyId,
+                orig[1],
+                _radio_source_channel(packet),
+            )
+            orig = None
         if orig:
             # orig = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
             matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet = orig
@@ -925,9 +982,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             from mmrelay.matrix_utils import get_matrix_prefix
 
             # Get the formatted prefix for the reply
-            prefix = get_matrix_prefix(
-                facade.config, longname, shortname, meshtastic_meshnet or meshnet_name
-            )
+            prefix = get_matrix_prefix(facade.config, longname, shortname, meshnet_name)
             formatted_message = f"{prefix}{text}"
 
             facade.logger.info(f"Relaying Meshtastic reply from {longname} to Matrix")
@@ -939,12 +994,14 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                     formatted_message,
                     longname,
                     shortname,
-                    meshtastic_meshnet or meshnet_name,
+                    meshnet_name,
                     decoded.get("portnum", 0),
                     meshtastic_id=packet.get("id"),
                     meshtastic_replyId=replyId,
                     meshtastic_text=text,
                     reply_to_event_id=matrix_event_id,
+                    source_node_id=sender,
+                    source_channel_id=_radio_source_channel(packet),
                 ),
                 loop=loop,
             )
@@ -1101,6 +1158,9 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         if action == PacketAction.PLUGIN_ONLY:
             return
 
+        if not text.strip():
+            return
+
         if skip_matrix_relay:
             return
 
@@ -1130,6 +1190,17 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
 
         facade.logger.info(f"Relaying Meshtastic message from {longname} to Matrix")
 
+        # A missing local mapping prevents a Matrix-native reply, not a
+        # scoped radio target hint. Disabled replies and tapbacks stay plain.
+        reply_metadata: dict[str, Any] = {}
+        if (
+            replyId is not None
+            and not emoji_flag
+            and interactions["replies"]
+            and _is_text_message_portnum(decoded.get("portnum"))
+        ):
+            reply_metadata["meshtastic_replyId"] = replyId
+
         iterable_rooms = _get_iterable_matrix_rooms()
         for room in iterable_rooms:
             if not isinstance(room, dict):
@@ -1151,6 +1222,9 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                             decoded.get("portnum", 0),
                             meshtastic_id=packet.get("id"),
                             meshtastic_text=text,
+                            source_node_id=sender,
+                            source_channel_id=_radio_source_channel(packet),
+                            **reply_metadata,
                         ),
                         loop=loop,
                     )

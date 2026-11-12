@@ -486,7 +486,6 @@ def test_format_reply_message_remote_mesh_prefix():
         shortname="Trak",
         meshnet_name="Mt.P",
         local_meshnet_name="Forx",
-        mesh_text_override="Test",
     )
 
     assert result == "[LoRa/Mt.P]:  Test"
@@ -504,14 +503,13 @@ def test_format_reply_message_remote_without_longname():
         shortname="Tr",
         meshnet_name="Mt.Peak",
         local_meshnet_name="Forx",
-        mesh_text_override="Hi",
     )
 
     assert result == "[MtP Relay/Mt.P]:  Hi"
 
 
-def test_format_reply_message_remote_strips_prefix_and_uses_override(monkeypatch):
-    """Remote replies strip matching prefixes before rebuilding the reply text."""
+def test_format_reply_message_remote_legacy_rebuilds_display_prefix(monkeypatch):
+    """The legacy formatting path rebuilds the reply with its display prefix."""
     config = {}
     monkeypatch.setattr(
         "mmrelay.matrix_utils.get_matrix_prefix", lambda *_args, **_kwargs: "PREFIX"
@@ -525,11 +523,10 @@ def test_format_reply_message_remote_strips_prefix_and_uses_override(monkeypatch
         shortname="Al",
         meshnet_name="RemoteMesh",
         local_meshnet_name="LocalMesh",
-        mesh_text_override="PREFIX",
     )
 
     assert result.startswith("PREFIX")
-    assert result == "PREFIX PREFIX"
+    assert result == "PREFIX Ignored"
 
 
 # Utils Tests

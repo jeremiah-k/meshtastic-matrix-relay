@@ -5,15 +5,13 @@ exponential backoff.
 """
 
 import asyncio
-import html
-import re
 import secrets
 from typing import Any, cast
-from urllib.parse import quote, urlencode
 
 from nio import RoomSendError
 
 import mmrelay.matrix_utils as facade
+from mmrelay.matrix.canonical_outbound import render_matrix_relay_content
 
 __all__ = [
     "_get_e2ee_error_message",
@@ -192,6 +190,9 @@ async def matrix_relay(
     emote: bool = False,
     emoji: bool = False,
     reply_to_event_id: str | None = None,
+    reaction_key: str | None = None,
+    source_node_id: str | None = None,
+    source_channel_id: str | None = None,
 ) -> None:
     """
     Relay a Meshtastic-originated message into a Matrix room and optionally persist a Meshtastic↔Matrix mapping.
@@ -210,6 +211,8 @@ async def matrix_relay(
         meshtastic_text (str | None): Optional Meshtastic-origin text to store with the mapping; if omitted the relayed `message` is used.
         emote (bool): If True, send as `m.emote` instead of `m.text`.
         emoji (bool): If True, include an emoji flag in the outbound metadata for downstream handling.
+        reaction_key (str | None): Exact emoji for Meshtastic reactions; never inferred from the display message.
+        source_node_id (str | None): Native Meshtastic sender node ID for canonical provenance. Optional for existing callers without a packet context.
         reply_to_event_id (str | None): Optional Matrix event_id to reply to; if provided and the original mapping is resolvable, the outgoing event includes an `m.in_reply_to` relation and a quoted formatted body.
     """
     facade.logger.debug(
@@ -288,120 +291,49 @@ async def matrix_relay(
             facade.config, "meshnet_name", ""
         )
 
-        has_html = bool(re.search(r"</?[a-zA-Z][^>]*>", message))
-        safe_message, has_prefix = facade._escape_leading_prefix_for_markdown(message)
-        has_markdown = bool(re.search(r"[*_`~]", message)) or has_prefix
-
-        if has_markdown or has_html:
-            try:
-                import markdown
-                import nh3
-
-                raw_html = markdown.markdown(safe_message)
-                formatted_body = nh3.clean(
-                    raw_html,
-                    tags={
-                        "b",
-                        "strong",
-                        "i",
-                        "em",
-                        "code",
-                        "pre",
-                        "br",
-                        "blockquote",
-                        "a",
-                        "ul",
-                        "ol",
-                        "li",
-                        "p",
-                    },
-                    attributes={"a": {"href"}},
-                )
-                plain_body = message
-            except ImportError:
-                formatted_body = html.escape(message).replace("\n", "<br/>")
-                plain_body = message
-        else:
-            formatted_body = html.escape(message).replace("\n", "<br/>")
-            plain_body = message
-
-        content = {
-            "msgtype": "m.text" if not emote else "m.emote",
-            "body": plain_body,
-            "meshtastic_longname": longname,
-            "meshtastic_shortname": shortname,
-            "meshtastic_meshnet": relay_meshnet_name,
-            "meshtastic_portnum": portnum,
-        }
-
-        content["format"] = "org.matrix.custom.html"
-        content["formatted_body"] = formatted_body
-        if meshtastic_id is not None:
-            content["meshtastic_id"] = meshtastic_id
-        if meshtastic_replyId is not None:
-            content["meshtastic_replyId"] = meshtastic_replyId
-        if meshtastic_text is not None:
-            content["meshtastic_text"] = meshtastic_text
-        if emoji:
-            content["meshtastic_emoji"] = 1
-
+        reply_preview: tuple[str, str | None] | None = None
         if reply_to_event_id:
-            content["m.relates_to"] = {"m.in_reply_to": {"event_id": reply_to_event_id}}
             try:
                 orig = await asyncio.to_thread(
                     facade.get_message_map_by_matrix_event_id, reply_to_event_id
                 )
                 if orig:
-                    _, _, original_text, original_meshnet = orig
-
-                    bot_user_id = (
-                        getattr(matrix_client, "user_id", None)
-                        if matrix_client
-                        else None
-                    )
-                    meshnet_label = original_meshnet or "Mesh"
-
-                    safe_original = html.escape(original_text or "")
-                    quoted_text = (
-                        f"> <{bot_user_id}> [{meshnet_label}]: {original_text or ''}"
-                    )
-                    content["body"] = f"{quoted_text}\n\n{plain_body}"
-
-                    content["format"] = "org.matrix.custom.html"
-                    # Room IDs carry no routing (v12+ rooms have no server
-                    # part at all), so the permalink needs via parameters;
-                    # the relay's own server is in every room it joined.
-                    via_server = (
-                        bot_user_id.partition(":")[2]
-                        if isinstance(bot_user_id, str) and ":" in bot_user_id
-                        else None
-                    )
-                    via_suffix = (
-                        f"?{urlencode({'via': via_server})}" if via_server else ""
-                    )
-                    reply_link = (
-                        "https://matrix.to/#/"
-                        f"{quote(room_id, safe='!:@')}/"
-                        f"{quote(reply_to_event_id, safe='$:@')}{via_suffix}"
-                    )
-                    bot_link = (
-                        "https://matrix.to/#/" f"{quote(str(bot_user_id), safe='@:.')}"
-                    )
-                    blockquote_content = (
-                        f'<a href="{html.escape(reply_link, quote=True)}">In reply to</a> '
-                        f'<a href="{html.escape(bot_link, quote=True)}">'
-                        f"{html.escape(str(bot_user_id))}</a><br>"
-                        f"[{html.escape(meshnet_label)}]: {safe_original}"
-                    )
-                    content["formatted_body"] = (
-                        f"<mx-reply><blockquote>{blockquote_content}</blockquote></mx-reply>{formatted_body}"
-                    )
+                    _, mapped_room_id, original_text, original_meshnet = orig
+                    if mapped_room_id != room_id:
+                        facade.logger.warning(
+                            "Ignoring Matrix reply target %s mapped to a different room",
+                            reply_to_event_id,
+                        )
+                        reply_to_event_id = None
+                    else:
+                        reply_preview = (original_text or "", original_meshnet)
                 else:
                     facade.logger.warning(
-                        f"Could not find original message for reply_to_event_id: {reply_to_event_id}"
+                        "Could not find original message for reply_to_event_id: %s",
+                        reply_to_event_id,
                     )
-            except Exception as e:
-                facade.logger.error(f"Error formatting Matrix reply: {e}")
+            except Exception:  # noqa: BLE001 - reply context is best-effort
+                facade.logger.exception("Error looking up Matrix reply context")
+
+        content = await render_matrix_relay_content(
+            room_id=room_id,
+            message=message,
+            longname=longname,
+            shortname=shortname,
+            meshnet_name=relay_meshnet_name,
+            portnum=portnum,
+            meshtastic_id=meshtastic_id,
+            meshtastic_replyId=meshtastic_replyId,
+            meshtastic_text=meshtastic_text,
+            emote=emote,
+            emoji=emoji,
+            reaction_key=reaction_key,
+            source_node_id=source_node_id,
+            source_channel_id=source_channel_id,
+            reply_to_event_id=reply_to_event_id,
+            reply_preview=reply_preview,
+            bot_user_id=getattr(matrix_client, "user_id", None),
+        )
 
         try:
             room = (

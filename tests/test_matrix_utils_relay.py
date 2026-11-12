@@ -1,16 +1,12 @@
 import asyncio
 import contextlib
-from collections.abc import Callable, Coroutine
-from concurrent.futures import Executor
 from types import SimpleNamespace
-from typing import TypeVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import nio
 import pytest
 
 from mmrelay.constants.formats import (
-    DETECTION_SENSOR_APP,
     MATRIX_SUPPRESS_KEY,
     TEXT_MESSAGE_APP,
 )
@@ -23,20 +19,19 @@ from mmrelay.constants.network import (
 from mmrelay.matrix_utils import (
     NioLocalTransportError,
     _send_matrix_message_with_retry,
-    bot_command,
     matrix_relay,
     on_room_message,
-    send_text_reply,
 )
 from tests.constants import (
     TEST_BOT_USER_ID,
     TEST_ROOM_ID,
-    TEST_USER_ID,
 )
+from tests.matrix_peer_fixtures import set_peer_content
 
-T = TypeVar("T")
-
-pytestmark = pytest.mark.asyncio
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.usefixtures("reset_matrix_utils_globals"),
+]
 
 RoomSendError = nio.RoomSendError
 
@@ -186,8 +181,10 @@ async def test_matrix_relay_simple_message(
     assert content["msgtype"] == "m.text"
     assert content["body"] == "Hello Matrix"
     assert content["formatted_body"] == "Hello Matrix"
-    assert content["meshtastic_meshnet"] == "TestMesh"
-    assert content["meshtastic_portnum"] == 1
+    assert content["medre"]["metadata"]["bridge_context"]["source"]["native_facts"] == {
+        "namespace": "meshtastic",
+        "fields": {"portnum": 1, "meshnet_label": "TestMesh"},
+    }
 
 
 @patch("mmrelay.matrix_utils.config", {"meshtastic": {"meshnet_name": "TestMesh"}})
@@ -478,6 +475,53 @@ async def test_matrix_relay_reply_formatting(
         "https://matrix.to/#/!room:matrix.org/$orig?via=matrix.org"
         in content["formatted_body"]
     )
+
+
+@patch("mmrelay.matrix_utils.connect_matrix")
+@patch("mmrelay.matrix_utils.get_interaction_settings")
+@patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False)
+async def test_matrix_relay_never_quotes_reply_mapping_from_another_room(
+    _mock_storage_enabled, mock_get_interactions, mock_connect_matrix
+):
+    """A stored mapping from another room must not leak its text or become a reply."""
+    mock_get_interactions.return_value = {"reactions": False, "replies": False}
+    mock_room = MagicMock(encrypted=False)
+    mock_client = MagicMock()
+    mock_client.user_id = "@bot:matrix.org"
+    mock_client.rooms = {"!public:matrix.org": mock_room}
+    mock_client.room_send = AsyncMock(return_value=MagicMock(event_id="$sent"))
+    mock_connect_matrix.return_value = mock_client
+    config = {
+        "meshtastic": {"meshnet_name": "PublicMesh"},
+        "matrix_rooms": [{"id": "!public:matrix.org", "meshtastic_channel": 0}],
+    }
+    with (
+        patch("mmrelay.matrix_utils.config", config),
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+            return_value=(
+                42,
+                "!private:matrix.org",
+                "private reply text",
+                "PrivateMesh",
+            ),
+        ),
+    ):
+        await matrix_relay(
+            room_id="!public:matrix.org",
+            message="Public radio message",
+            longname="Alice",
+            shortname="A",
+            meshnet_name="PublicMesh",
+            portnum=1,
+            reply_to_event_id="$private",
+        )
+
+    content = mock_client.room_send.call_args.kwargs["content"]
+    assert content["body"] == "Public radio message"
+    assert "m.relates_to" not in content
+    assert "private reply text" not in str(content)
+    assert "PrivateMesh" not in str(content)
 
 
 @patch("mmrelay.matrix_utils.connect_matrix")
@@ -1048,12 +1092,12 @@ async def test_on_room_message_simple_text(
         assert "Hello, world!" in queued_kwargs["text"]
 
 
-async def test_on_room_message_remote_prefers_meshtastic_text(
+async def test_on_room_message_never_relays_hidden_legacy_body(
     mock_room,
     mock_event,
     test_config,
 ):
-    """Ensure remote mesh messages fall back to raw meshtastic_text when body is empty."""
+    """Hidden flat metadata must never replace an empty canonical authored body."""
     mock_event.body = ""
     mock_event.source = {
         "content": {
@@ -1136,9 +1180,7 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
     ):
         await on_room_message(mock_room, mock_event)
 
-        mock_queue_message.assert_called_once()
-        queued_kwargs = mock_queue_message.call_args.kwargs
-        assert "Hello from remote mesh" in queued_kwargs["text"]
+        mock_queue_message.assert_not_called()
 
 
 async def test_on_room_message_dict_keyed_matrix_rooms_uses_direct_room_lookup(
@@ -1254,9 +1296,11 @@ async def test_on_room_message_reply_disabled(
     test_config,
 ):
     """
-    Test that reply messages are relayed with full content when reply interactions are disabled.
+    Test that reply messages use the canonical body when reply interactions are disabled.
 
-    Ensures that when reply interactions are disabled in the configuration, the entire event body—including quoted original messages—is queued for Meshtastic relay without stripping quoted lines.
+    The Matrix reply fallback quote is presentation metadata; the MEDRE canonical
+    body carries the authored reply text. The reply relationship is not applied
+    when reply interactions are disabled.
     """
 
     # Create a proper async mock function
@@ -1293,416 +1337,12 @@ async def test_on_room_message_reply_disabled(
             # Run the function
             await on_room_message(mock_room, mock_event)
 
-            # Assert that the message was queued
+            # Assert that the message was queued with the canonical authored body,
+            # without the Matrix reply fallback quote.
             mock_queue_message.assert_called_once()
             call_args = mock_queue_message.call_args[1]
-            assert mock_event.body in call_args["text"]
-
-
-async def test_on_room_message_reaction_enabled(mock_room, test_config):
-    # This is a reaction event
-    """
-    Verify that a Matrix reaction event is converted into a Meshtastic relay message and queued when reaction interactions are enabled.
-
-    Asserts that a reaction produces a queued relay entry with a description indicating a local reaction and text that denotes a reacted state.
-    """
-    from nio import ReactionEvent
-
-    class MockReactionEvent(ReactionEvent):
-        def __init__(self, source: dict, sender: str, server_timestamp: int) -> None:
-            self.source = source
-            self.sender = sender
-            self.server_timestamp = server_timestamp
-
-    mock_event = MockReactionEvent(
-        source={
-            "content": {
-                "m.relates_to": {
-                    "event_id": "original_event_id",
-                    "key": "👍",
-                    "rel_type": "m.annotation",
-                }
-            }
-        },
-        sender="@user:matrix.org",
-        server_timestamp=1234567890,
-    )
-
-    test_config["meshtastic"]["message_interactions"]["reactions"] = True
-
-    real_loop = asyncio.get_running_loop()
-
-    class DummyLoop:
-        def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
-            self._loop = loop
-
-        def is_running(self) -> bool:
-            return True
-
-        def create_task(
-            self, coro: Coroutine[object, object, object]
-        ) -> asyncio.Task[object]:
-            return self._loop.create_task(coro)
-
-        async def run_in_executor(
-            self, _executor: Executor | None, func: Callable[..., T], *args: object
-        ) -> T:
-            return func(*args)
-
-    dummy_queue = MagicMock()
-    dummy_queue.get_queue_size.return_value = 0
-
-    with (
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
-        patch("mmrelay.matrix_utils.get_user_display_name", return_value="MockUser"),
-        patch(
-            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
-            return_value=(
-                "12345",
-                TEST_ROOM_ID,
-                "original_text",
-                "test_mesh",
-            ),
-        ),
-        patch(
-            "mmrelay.matrix_utils.asyncio.get_running_loop",
-            return_value=DummyLoop(real_loop),
-        ),
-        patch("mmrelay.matrix_utils.get_message_queue", return_value=dummy_queue),
-        patch(
-            "mmrelay.matrix_utils.queue_message", return_value=True
-        ) as mock_queue_message,
-        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
-        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
-        patch("mmrelay.matrix_utils.config", test_config),
-        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
-        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
-    ):
-        await on_room_message(mock_room, mock_event)
-
-        mock_queue_message.assert_called_once()
-        queued_args = mock_queue_message.call_args.args
-        queued_kwargs = mock_queue_message.call_args.kwargs
-        assert queued_kwargs["description"].startswith("Local reaction")
-        assert queued_kwargs["reply_id"] == 12345
-        assert "reacted" in queued_kwargs["text"]
-        assert queued_args[0] is send_text_reply
-
-
-async def test_on_room_message_reaction_non_numeric_meshtastic_id(
-    mock_room, test_config
-):
-    """Non-numeric mapped meshtastic_id should send as normal message, not reply."""
-    from nio import ReactionEvent
-
-    class MockReactionEvent(ReactionEvent):
-        def __init__(self, source: dict, sender: str, server_timestamp: int) -> None:
-            self.source = source
-            self.sender = sender
-            self.server_timestamp = server_timestamp
-
-    mock_event = MockReactionEvent(
-        source={
-            "content": {
-                "m.relates_to": {
-                    "event_id": "original_event_id",
-                    "key": "👍",
-                    "rel_type": "m.annotation",
-                }
-            }
-        },
-        sender="@user:matrix.org",
-        server_timestamp=1234567890,
-    )
-
-    test_config["meshtastic"]["message_interactions"]["reactions"] = True
-
-    real_loop = asyncio.get_running_loop()
-
-    class DummyLoop:
-        def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
-            self._loop = loop
-
-        def is_running(self) -> bool:
-            return True
-
-        def create_task(
-            self, coro: Coroutine[object, object, object]
-        ) -> asyncio.Task[object]:
-            return self._loop.create_task(coro)
-
-        async def run_in_executor(
-            self, _executor: Executor | None, func: Callable[..., T], *args: object
-        ) -> T:
-            return func(*args)
-
-    dummy_queue = MagicMock()
-    dummy_queue.get_queue_size.return_value = 0
-    mock_meshtastic = MagicMock()
-
-    with (
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
-        patch("mmrelay.matrix_utils.get_user_display_name", return_value="MockUser"),
-        patch(
-            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
-            return_value=(
-                "mesh_id",
-                TEST_ROOM_ID,
-                "original_text",
-                "test_mesh",
-            ),
-        ),
-        patch(
-            "mmrelay.matrix_utils.asyncio.get_running_loop",
-            return_value=DummyLoop(real_loop),
-        ),
-        patch("mmrelay.matrix_utils.get_message_queue", return_value=dummy_queue),
-        patch(
-            "mmrelay.matrix_utils.queue_message", return_value=True
-        ) as mock_queue_message,
-        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=mock_meshtastic),
-        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
-        patch("mmrelay.matrix_utils.config", test_config),
-        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
-        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
-        patch("mmrelay.matrix_utils.logger") as mock_logger,
-    ):
-        await on_room_message(mock_room, mock_event)
-
-        mock_queue_message.assert_called_once()
-        queued_args = mock_queue_message.call_args.args
-        queued_kwargs = mock_queue_message.call_args.kwargs
-        assert "reacted" in queued_kwargs["text"]
-        assert "reply_id" not in queued_kwargs
-        assert queued_args[0] is mock_meshtastic.sendText
-    assert any(
-        "is not numeric" in call.args[0] for call in mock_logger.warning.call_args_list
-    )
-
-
-async def test_on_room_message_reaction_mapped_int_id(mock_room, test_config):
-    """An int meshtastic_id from the DB should be accepted as a valid reply ID."""
-    from nio import ReactionEvent
-
-    class MockReactionEvent(ReactionEvent):
-        def __init__(self, source: dict, sender: str, server_timestamp: int) -> None:
-            self.source = source
-            self.sender = sender
-            self.server_timestamp = server_timestamp
-
-    mock_event = MockReactionEvent(
-        source={
-            "content": {
-                "m.relates_to": {
-                    "event_id": "original_event_id",
-                    "key": "👍",
-                    "rel_type": "m.annotation",
-                }
-            }
-        },
-        sender="@user:matrix.org",
-        server_timestamp=1234567890,
-    )
-
-    test_config["meshtastic"]["message_interactions"]["reactions"] = True
-    real_loop = asyncio.get_running_loop()
-
-    class DummyLoop:
-        def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
-            self._loop = loop
-
-        def is_running(self) -> bool:
-            return True
-
-        def create_task(
-            self, coro: Coroutine[object, object, object]
-        ) -> asyncio.Task[object]:
-            return self._loop.create_task(coro)
-
-        async def run_in_executor(
-            self, _executor: Executor | None, func: Callable[..., T], *args: object
-        ) -> T:
-            return func(*args)
-
-    dummy_queue = MagicMock()
-    dummy_queue.get_queue_size.return_value = 0
-
-    with (
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
-        patch("mmrelay.matrix_utils.get_user_display_name", return_value="MockUser"),
-        patch(
-            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
-            return_value=(12345, TEST_ROOM_ID, "original_text", "test_mesh"),
-        ),
-        patch(
-            "mmrelay.matrix_utils.asyncio.get_running_loop",
-            return_value=DummyLoop(real_loop),
-        ),
-        patch("mmrelay.matrix_utils.get_message_queue", return_value=dummy_queue),
-        patch(
-            "mmrelay.matrix_utils.queue_message", return_value=True
-        ) as mock_queue_message,
-        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
-        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
-        patch("mmrelay.matrix_utils.config", test_config),
-        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
-        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
-    ):
-        await on_room_message(mock_room, mock_event)
-
-        mock_queue_message.assert_called_once()
-        queued_args = mock_queue_message.call_args.args
-        queued_kwargs = mock_queue_message.call_args.kwargs
-        assert queued_kwargs["description"].startswith("Local reaction")
-        assert queued_kwargs["reply_id"] == 12345
-        assert "reacted" in queued_kwargs["text"]
-        assert queued_args[0] is send_text_reply
-
-
-async def test_on_room_message_reaction_unexpected_type_logs_warning(
-    mock_room, test_config
-):
-    """A non-int, non-str meshtastic_id should log a type warning and fall back to sendText."""
-    from nio import ReactionEvent
-
-    class MockReactionEvent(ReactionEvent):
-        def __init__(self, source: dict, sender: str, server_timestamp: int) -> None:
-            self.source = source
-            self.sender = sender
-            self.server_timestamp = server_timestamp
-
-    mock_event = MockReactionEvent(
-        source={
-            "content": {
-                "m.relates_to": {
-                    "event_id": "original_event_id",
-                    "key": "👍",
-                    "rel_type": "m.annotation",
-                }
-            }
-        },
-        sender="@user:matrix.org",
-        server_timestamp=1234567890,
-    )
-
-    test_config["meshtastic"]["message_interactions"]["reactions"] = True
-    real_loop = asyncio.get_running_loop()
-
-    class DummyLoop:
-        def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
-            self._loop = loop
-
-        def is_running(self) -> bool:
-            return True
-
-        def create_task(
-            self, coro: Coroutine[object, object, object]
-        ) -> asyncio.Task[object]:
-            return self._loop.create_task(coro)
-
-        async def run_in_executor(
-            self, _executor: Executor | None, func: Callable[..., T], *args: object
-        ) -> T:
-            return func(*args)
-
-    dummy_queue = MagicMock()
-    dummy_queue.get_queue_size.return_value = 0
-    mock_meshtastic = MagicMock()
-
-    with (
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
-        patch("mmrelay.matrix_utils.get_user_display_name", return_value="MockUser"),
-        patch(
-            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
-            return_value=(12.5, TEST_ROOM_ID, "original_text", "test_mesh"),
-        ),
-        patch(
-            "mmrelay.matrix_utils.asyncio.get_running_loop",
-            return_value=DummyLoop(real_loop),
-        ),
-        patch("mmrelay.matrix_utils.get_message_queue", return_value=dummy_queue),
-        patch(
-            "mmrelay.matrix_utils.queue_message", return_value=True
-        ) as mock_queue_message,
-        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=mock_meshtastic),
-        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
-        patch("mmrelay.matrix_utils.config", test_config),
-        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
-        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
-        patch("mmrelay.matrix_utils.logger") as mock_logger,
-    ):
-        await on_room_message(mock_room, mock_event)
-
-        mock_queue_message.assert_called_once()
-        queued_args = mock_queue_message.call_args.args
-        queued_kwargs = mock_queue_message.call_args.kwargs
-        assert "reacted" in queued_kwargs["text"]
-        assert "reply_id" not in queued_kwargs
-        assert queued_args[0] is mock_meshtastic.sendText
-    assert any(
-        "has unexpected type" in call.args[0]
-        for call in mock_logger.warning.call_args_list
-    )
-
-
-@patch("mmrelay.matrix_utils.connect_meshtastic")
-@patch("mmrelay.matrix_utils.queue_message")
-@patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
-async def test_on_room_message_reaction_disabled(
-    mock_queue_message,
-    _mock_connect_meshtastic,
-    mock_room,
-    test_config,
-):
-    # This is a reaction event
-    """
-    Test that reaction events are not queued when reaction interactions are disabled in the configuration.
-    """
-    from nio import ReactionEvent
-
-    class MockReactionEvent(ReactionEvent):
-        def __init__(self, source, sender, server_timestamp):
-            """
-            Create a wrapper for a Matrix event that stores its raw payload, sender MXID, and server timestamp.
-
-            Parameters:
-                source (dict): Raw Matrix event JSON payload as received from the client/server.
-                sender (str): Sender Matrix user ID (MXID), e.g. "@alice:example.org".
-                server_timestamp (int | float): Server timestamp in milliseconds since the UNIX epoch.
-            """
-            self.source = source
-            self.sender = sender
-            self.server_timestamp = server_timestamp
-
-    mock_event = MockReactionEvent(
-        source={
-            "content": {
-                "m.relates_to": {
-                    "event_id": "original_event_id",
-                    "key": "👍",
-                    "rel_type": "m.annotation",
-                }
-            }
-        },
-        sender=TEST_USER_ID,
-        server_timestamp=1234567890,
-    )
-
-    test_config["meshtastic"]["message_interactions"]["reactions"] = False
-
-    with (
-        patch("mmrelay.matrix_utils.config", test_config),
-        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
-        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
-    ):
-        # Mock the matrix client - use MagicMock to prevent coroutine warnings
-        mock_matrix_client = MagicMock()
-        with patch("mmrelay.matrix_utils.matrix_client", mock_matrix_client):
-            # Run the function
-            await on_room_message(mock_room, mock_event)
-
-            # Assert that the message was not queued
-            mock_queue_message.assert_not_called()
+            assert "This is a reply" in call_args["text"]
+            assert "original message" not in call_args["text"]
 
 
 @patch("mmrelay.matrix_utils.connect_meshtastic")
@@ -1730,200 +1370,6 @@ async def test_on_room_message_unsupported_room(
 
             # Assert that the message was not queued
             mock_queue_message.assert_not_called()
-
-
-async def test_on_room_message_detection_sensor_enabled(
-    mock_room, mock_event, test_config
-):
-    """
-    Test that a detection sensor message is processed and queued with the correct port number when detection_sensor is enabled.
-
-    This test specifically covers the code path where meshtastic.protobuf.portnums_pb2
-    is imported locally to delay logger creation for component logging timing.
-    """
-    # Arrange - Set up event as detection sensor message
-    mock_event.body = "Detection data"
-    mock_event.source = {
-        "content": {
-            "body": "Detection data",
-            "meshtastic_portnum": DETECTION_SENSOR_APP,
-        }
-    }
-
-    # Enable detection sensor and broadcast in config
-    test_config["meshtastic"]["detection_sensor"] = True
-    test_config["meshtastic"]["broadcast_enabled"] = True
-
-    real_loop = asyncio.get_running_loop()
-
-    class DummyLoop:
-        def __init__(self, loop):
-            """
-            Create an instance bound to the given asyncio event loop.
-
-            Parameters:
-                loop (asyncio.AbstractEventLoop): Event loop used to schedule and run the instance's asynchronous tasks.
-            """
-            self._loop = loop
-
-        def is_running(self):
-            """
-            Indicates whether the component is running.
-
-            Returns:
-                `True` since this implementation always reports the component as running.
-            """
-            return True
-
-        def create_task(self, coro):
-            """
-            Schedule an awaitable on this instance's event loop and return the created Task.
-
-            Parameters:
-                coro: An awaitable or coroutine to schedule on this object's event loop.
-
-            Returns:
-                asyncio.Task: The Task object wrapping the scheduled coroutine.
-            """
-            return self._loop.create_task(coro)
-
-        async def run_in_executor(self, _executor, func, *args):
-            """
-            Invoke a callable synchronously and return its result.
-
-            _executor is accepted for API compatibility but ignored.
-            func is the callable to invoke; any positional args are forwarded to it.
-
-            Returns:
-                The value returned by `func(*args)`.
-            """
-            return func(*args)
-
-    # Act - Process the detection sensor message
-    with (
-        patch(
-            "mmrelay.matrix_utils.queue_message", return_value=True
-        ) as mock_queue_message,
-        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
-        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
-        patch("mmrelay.matrix_utils.config", test_config),
-        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
-        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
-        patch(
-            "mmrelay.matrix_utils.asyncio.get_running_loop",
-            return_value=DummyLoop(real_loop),
-        ),
-    ):
-        # Mock the room.user_name method to return our test display name
-        mock_room.user_name.return_value = "TestUser"
-        await on_room_message(mock_room, mock_event)
-
-    # Assert - Verify the message was queued with correct detection sensor parameters
-    mock_queue_message.assert_called_once()
-    call_args = mock_queue_message.call_args
-
-    # Verify the port number is set to DETECTION_SENSOR_APP (it will be a Mock object due to import)
-    assert "portNum" in call_args.kwargs
-    # The portNum should be the DETECTION_SENSOR_APP enum value from protobuf
-    assert call_args.kwargs["description"] == "Detection sensor data from TestUser"
-    # The data should be raw text without prefix for detection sensor packets
-    assert call_args.kwargs["data"] == b"Detection data"
-
-
-async def test_on_room_message_detection_sensor_disabled(
-    mock_room, mock_event, test_config
-):
-    """
-    Test that a detection sensor message is ignored when detection_sensor is disabled in config.
-    """
-    # Arrange - Set up event as detection sensor message but disable detection sensor
-    mock_event.source = {
-        "content": {
-            "body": "Detection data",
-            "meshtastic_portnum": DETECTION_SENSOR_APP,
-        }
-    }
-
-    # Disable detection sensor in config
-    test_config["meshtastic"]["detection_sensor"] = False
-    test_config["meshtastic"]["broadcast_enabled"] = True
-
-    # Act - Process the detection sensor message
-    with (
-        patch(
-            "mmrelay.matrix_utils.queue_message", return_value=True
-        ) as mock_queue_message,
-        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
-        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
-        patch("mmrelay.matrix_utils.config", test_config),
-        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
-        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
-    ):
-        await on_room_message(mock_room, mock_event)
-
-    # Assert - Verify the message was not queued since detection sensor is disabled
-    mock_queue_message.assert_not_called()
-
-
-async def test_on_room_message_detection_sensor_broadcast_disabled(
-    mock_room, mock_event, test_config
-):
-    """
-    Detection sensor packets should not connect or queue when broadcast is disabled.
-    """
-    mock_event.source = {
-        "content": {
-            "body": "Detection data",
-            "meshtastic_portnum": DETECTION_SENSOR_APP,
-        }
-    }
-    test_config["meshtastic"]["detection_sensor"] = True
-    test_config["meshtastic"]["broadcast_enabled"] = False
-
-    with (
-        patch(
-            "mmrelay.matrix_utils.queue_message", return_value=True
-        ) as mock_queue_message,
-        patch(
-            "mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()
-        ) as mock_connect,
-        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
-        patch("mmrelay.matrix_utils.config", test_config),
-        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
-        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
-    ):
-        await on_room_message(mock_room, mock_event)
-
-    mock_queue_message.assert_not_called()
-    mock_connect.assert_not_called()
-
-
-async def test_on_room_message_detection_sensor_connect_failure(
-    mock_room, mock_event, test_config
-):
-    """When detection sensor is enabled but connection fails, nothing should be queued."""
-    mock_event.source = {
-        "content": {
-            "body": "Detection data",
-            "meshtastic_portnum": DETECTION_SENSOR_APP,
-        }
-    }
-    test_config["meshtastic"]["detection_sensor"] = True
-    test_config["meshtastic"]["broadcast_enabled"] = True
-
-    with (
-        patch(
-            "mmrelay.matrix_utils.queue_message", return_value=True
-        ) as mock_queue_message,
-        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=None),
-        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
-        patch("mmrelay.matrix_utils.config", test_config),
-        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
-        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
-    ):
-        await on_room_message(mock_room, mock_event)
-
-    mock_queue_message.assert_not_called()
 
 
 async def test_on_room_message_does_not_drop_old_timestamp_messages(
@@ -2039,9 +1485,6 @@ async def test_on_room_message_config_none_logs_and_returns(
     mock_logger.error.assert_any_call(
         "No configuration available for Matrix message processing."
     )
-    mock_logger.error.assert_any_call(
-        "No configuration available. Cannot process Matrix message."
-    )
     mock_queue_message.assert_not_called()
 
 
@@ -2063,189 +1506,6 @@ async def test_on_room_message_suppressed_message_returns(
         await on_room_message(mock_room, mock_event)
 
     mock_queue_message.assert_not_called()
-
-
-async def test_on_room_message_remote_reaction_relay_success(monkeypatch, mock_room):
-    """Remote meshnet reactions should be relayed to the local mesh when enabled."""
-    from mmrelay.matrix_utils import RoomMessageEmote
-
-    class MockEmote(RoomMessageEmote):  # type: ignore[misc]
-        def __init__(self):
-            self.source = {
-                "content": {
-                    "body": 'reacted :) to "hello"',
-                    "meshtastic_replyId": 123,
-                    "meshtastic_longname": "RemoteUser",
-                    "meshtastic_meshnet": "remote_mesh",
-                    "meshtastic_text": "Original text from mesh",
-                }
-            }
-            self.sender = "@user:remote"
-            self.server_timestamp = 1
-
-    mock_event = MockEmote()
-
-    config = {
-        "meshtastic": {
-            "meshnet_name": "local_mesh",
-            "broadcast_enabled": True,
-            "message_interactions": {"reactions": True, "replies": False},
-        },
-        "matrix_rooms": [{"id": mock_room.room_id, "meshtastic_channel": 0}],
-        "matrix": {"bot_user_id": "@bot:matrix.org"},
-    }
-
-    class DummyInterface:
-        def __init__(self):
-            self.sendText = MagicMock()
-
-    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
-    monkeypatch.setattr("mmrelay.matrix_utils.config", config, raising=False)
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.matrix_rooms", config["matrix_rooms"], raising=False
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.bot_user_id",
-        config["matrix"]["bot_user_id"],
-        raising=False,
-    )
-
-    with (
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
-        patch(
-            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
-            AsyncMock(return_value=(DummyInterface(), 0)),
-        ),
-        patch("mmrelay.matrix_utils.queue_message", return_value=True) as mock_queue,
-    ):
-        await on_room_message(mock_room, mock_event)
-
-    mock_queue.assert_called_once()
-    queued_kwargs = mock_queue.call_args.kwargs
-    assert "reacted" in queued_kwargs["text"]
-    assert queued_kwargs["description"] == "Remote reaction from remote_mesh"
-
-
-async def test_on_room_message_reaction_missing_mapping_logs_debug(
-    monkeypatch, mock_room
-):
-    """Reactions without a message mapping should not be relayed."""
-    from nio import ReactionEvent
-
-    class MockReactionEvent(ReactionEvent):
-        def __init__(self, source, sender, server_timestamp):
-            self.source = source
-            self.sender = sender
-            self.server_timestamp = server_timestamp
-
-    mock_event = MockReactionEvent(
-        source={"content": {"m.relates_to": {"event_id": "missing", "key": "x"}}},
-        sender=TEST_USER_ID,
-        server_timestamp=1,
-    )
-
-    config = {
-        "meshtastic": {
-            "meshnet_name": "local_mesh",
-            "message_interactions": {"reactions": True, "replies": False},
-        },
-        "matrix_rooms": [{"id": mock_room.room_id, "meshtastic_channel": 0}],
-        "matrix": {"bot_user_id": TEST_BOT_USER_ID},
-    }
-
-    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
-    monkeypatch.setattr("mmrelay.matrix_utils.config", config, raising=False)
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.matrix_rooms", config["matrix_rooms"], raising=False
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.bot_user_id",
-        config["matrix"]["bot_user_id"],
-        raising=False,
-    )
-
-    with (
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
-        patch(
-            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
-            return_value=None,
-        ),
-        patch("mmrelay.matrix_utils.logger") as mock_logger,
-        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
-    ):
-        await on_room_message(mock_room, mock_event)
-
-    mock_queue_message.assert_not_called()
-    assert any(
-        "Original message for reaction not found" in call.args[0]
-        for call in mock_logger.debug.call_args_list
-    )
-
-
-async def test_on_room_message_local_reaction_queue_failure_logs(
-    monkeypatch, mock_room
-):
-    """Local reaction failures should log an error."""
-    from nio import ReactionEvent
-
-    class MockReactionEvent(ReactionEvent):
-        def __init__(self, source, sender, server_timestamp):
-            self.source = source
-            self.sender = sender
-            self.server_timestamp = server_timestamp
-
-    mock_event = MockReactionEvent(
-        source={"content": {"m.relates_to": {"event_id": "orig", "key": "x"}}},
-        sender=TEST_USER_ID,
-        server_timestamp=1,
-    )
-
-    config = {
-        "meshtastic": {
-            "meshnet_name": "local_mesh",
-            "broadcast_enabled": True,
-            "message_interactions": {"reactions": True, "replies": False},
-        },
-        "matrix_rooms": [{"id": mock_room.room_id, "meshtastic_channel": 0}],
-        "matrix": {"bot_user_id": TEST_BOT_USER_ID},
-    }
-
-    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
-    monkeypatch.setattr("mmrelay.matrix_utils.config", config, raising=False)
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.matrix_rooms", config["matrix_rooms"], raising=False
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.bot_user_id",
-        config["matrix"]["bot_user_id"],
-        raising=False,
-    )
-
-    class DummyInterface:
-        def __init__(self):
-            self.sendText = MagicMock()
-
-    with (
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
-        patch(
-            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
-            return_value=("12345", mock_room.room_id, "text", "meshnet"),
-        ),
-        patch(
-            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
-            AsyncMock(return_value=(DummyInterface(), 0)),
-        ),
-        patch(
-            "mmrelay.matrix_utils.get_user_display_name",
-            AsyncMock(return_value="User"),
-        ),
-        patch("mmrelay.matrix_utils.queue_message", return_value=False) as mock_queue,
-        patch("mmrelay.matrix_utils.logger") as mock_logger,
-    ):
-        await on_room_message(mock_room, mock_event)
-
-    mock_queue.assert_called_once()
-    mock_logger.error.assert_any_call("Failed to relay local reaction to Meshtastic")
 
 
 async def test_on_room_message_reply_handled_short_circuits(
@@ -2320,6 +1580,16 @@ async def test_on_room_message_remote_meshnet_empty_after_prefix_skips(
         raising=False,
     )
 
+    await set_peer_content(
+        mock_event,
+        mock_room,
+        config,
+        message=prefix,
+        longname="RemoteUser",
+        shortname="RU",
+        meshnet_name="remote",
+        portnum=1,
+    )
     with (
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
         patch("mmrelay.matrix_utils.get_matrix_prefix", return_value=prefix),
@@ -2378,137 +1648,6 @@ async def test_on_room_message_portnum_string_digits(
         await on_room_message(mock_room, mock_event)
 
     mock_queue.assert_called_once()
-
-
-async def test_on_room_message_plugin_handle_exception_logs_and_continues(
-    monkeypatch, mock_room, mock_event, test_config
-):
-    """Plugin handler exceptions should be logged and not stop relaying."""
-
-    class ExplodingPlugin:
-        plugin_name = "boom"
-
-        async def handle_room_message(self, _room, _event, _text):
-            raise RuntimeError("boom")
-
-    class DummyInterface:
-        def __init__(self):
-            self.sendText = MagicMock()
-
-    class DummyQueue:
-        def get_queue_size(self):
-            return 1
-
-    test_config["meshtastic"]["broadcast_enabled"] = True
-
-    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
-    monkeypatch.setattr("mmrelay.matrix_utils.config", test_config, raising=False)
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"], raising=False
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.bot_user_id",
-        test_config["matrix"]["bot_user_id"],
-        raising=False,
-    )
-
-    with (
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[ExplodingPlugin()]),
-        patch(
-            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
-            AsyncMock(return_value=(DummyInterface(), 0)),
-        ),
-        patch("mmrelay.matrix_utils.get_message_queue", return_value=DummyQueue()),
-        patch("mmrelay.matrix_utils.queue_message", return_value=True) as mock_queue,
-        patch("mmrelay.matrix_utils.logger") as mock_logger,
-        patch(
-            "mmrelay.matrix_utils.get_user_display_name",
-            AsyncMock(return_value="User"),
-        ),
-    ):
-        await on_room_message(mock_room, mock_event)
-
-    mock_queue.assert_called_once()
-    mock_logger.error.assert_any_call(
-        "Error processing message with plugin %s: %s", "boom", "RuntimeError"
-    )
-    mock_logger.exception.assert_any_call(
-        "Error processing message with plugin %s", "boom"
-    )
-
-
-async def test_on_room_message_plugin_match_exception_does_not_block(
-    monkeypatch, mock_room, mock_event, test_config
-):
-    """Plugin match errors should be logged and ignored."""
-
-    class MatchExplodingPlugin:
-        plugin_name = "matcher"
-
-        async def handle_room_message(self, _room, _event, _text):
-            return False
-
-        def matches(self, _event):
-            raise RuntimeError("boom")
-
-    class CommandExplodingPlugin:
-        plugin_name = "commands"
-
-        async def handle_room_message(self, _room, _event, _text):
-            return False
-
-        def get_matrix_commands(self):
-            raise RuntimeError("boom")
-
-    class DummyInterface:
-        def __init__(self):
-            self.sendText = MagicMock()
-
-    class DummyQueue:
-        def get_queue_size(self):
-            return 1
-
-    test_config["meshtastic"]["broadcast_enabled"] = True
-
-    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
-    monkeypatch.setattr("mmrelay.matrix_utils.config", test_config, raising=False)
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"], raising=False
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.bot_user_id",
-        test_config["matrix"]["bot_user_id"],
-        raising=False,
-    )
-
-    with (
-        patch(
-            "mmrelay.plugin_loader.load_plugins",
-            return_value=[MatchExplodingPlugin(), CommandExplodingPlugin()],
-        ),
-        patch(
-            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
-            AsyncMock(return_value=(DummyInterface(), 0)),
-        ),
-        patch("mmrelay.matrix_utils.get_message_queue", return_value=DummyQueue()),
-        patch("mmrelay.matrix_utils.queue_message", return_value=True) as mock_queue,
-        patch("mmrelay.matrix_utils.logger") as mock_logger,
-        patch(
-            "mmrelay.matrix_utils.get_user_display_name",
-            AsyncMock(return_value="User"),
-        ),
-    ):
-        await on_room_message(mock_room, mock_event)
-
-    mock_queue.assert_called_once()
-    assert any(
-        "Error checking plugin match" in call.args[0]
-        for call in mock_logger.exception.call_args_list
-    )
-    assert any(
-        "Error checking plugin commands" in call.args[0]
-        for call in mock_logger.exception.call_args_list
-    )
 
 
 async def test_on_room_message_no_meshtastic_interface_returns(
@@ -2626,232 +1765,6 @@ async def test_on_room_message_queue_failure_logs_error(
     mock_meshtastic_logger.error.assert_any_call(
         "Failed to relay message to Meshtastic"
     )
-
-
-async def test_on_room_message_emote_reaction_uses_original_event_id(monkeypatch):
-    """Emote reactions with m.relates_to should populate original_matrix_event_id for reaction handling."""
-    from mmrelay.matrix_utils import RoomMessageEmote
-
-    room_id = "!room:example"
-    sender_id = "@user:example"
-
-    # Minimal RoomMessageEmote-like object
-    class MockEmote(RoomMessageEmote):  # type: ignore[misc]
-        def __init__(self):
-            self.source = {
-                "content": {
-                    "body": 'reacted 👍 to "something"',
-                    "m.relates_to": {
-                        "event_id": "orig_evt",
-                        "key": "👍",
-                        "rel_type": "m.annotation",
-                    },
-                }
-            }
-            self.sender = sender_id
-            self.server_timestamp = 1
-
-    mock_event = MockEmote()
-    mock_room = MagicMock()
-    mock_room.room_id = room_id
-    mock_room.display_name = "Test Room"
-    mock_room.encrypted = False
-
-    # Patch globals/config for the handler
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.bot_user_id", "@bot:example", raising=False
-    )
-    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.config",
-        {
-            "meshtastic": {
-                "meshnet_name": "local",
-                "message_interactions": {"reactions": True},
-            },
-            "matrix_rooms": [{"id": room_id, "meshtastic_channel": 0}],
-        },
-        raising=False,
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.matrix_rooms",
-        [{"id": room_id, "meshtastic_channel": 0}],
-        raising=False,
-    )
-
-    # Stub dependencies
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.get_meshtastic_prefix",
-        lambda *_args, **_kwargs: "prefix ",
-        raising=False,
-    )
-
-    mapping = ("mesh_id", room_id, "text", "meshnet")
-    get_map_mock = MagicMock(return_value=mapping)
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
-        get_map_mock,
-        raising=False,
-    )
-
-    class DummyQueue:
-        def get_queue_size(self):
-            return 1
-
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.get_message_queue", lambda: DummyQueue(), raising=False
-    )
-
-    queue_mock = MagicMock(return_value=True)
-    monkeypatch.setattr("mmrelay.matrix_utils.queue_message", queue_mock, raising=False)
-
-    class DummyInterface:
-        def __init__(self):
-            self.sendText = MagicMock()
-
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils._connect_meshtastic",
-        AsyncMock(return_value=DummyInterface()),
-        raising=False,
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.get_user_display_name",
-        AsyncMock(return_value="User"),
-        raising=False,
-    )
-
-    await on_room_message(mock_room, mock_event)
-
-    get_map_mock.assert_called_once_with("orig_evt")
-    queue_mock.assert_called()
-
-
-async def test_on_room_message_command_short_circuits(
-    monkeypatch, mock_room, mock_event, test_config
-):
-    """Commands should not be relayed to Meshtastic."""
-    test_config["meshtastic"]["broadcast_enabled"] = True
-    monkeypatch.setattr("mmrelay.matrix_utils.config", test_config, raising=False)
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"], raising=False
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org", raising=False
-    )
-    mock_event.body = "!ping"
-
-    class DummyPlugin:
-        plugin_name = "dummy"
-
-        async def handle_room_message(self, *_args, **_kwargs):
-            """
-            Handle an incoming Matrix room message and indicate whether it was processed.
-
-            This implementation does not process messages and always reports the message as not handled.
-
-            Returns:
-                handled (bool): `False` indicating the message was not handled.
-            """
-            return False
-
-        def get_matrix_commands(self):
-            """
-            Return the list of Matrix commands supported by this handler.
-
-            Returns:
-                list[str]: A list of command names; currently contains `"ping"`.
-            """
-            return ["ping"]
-
-        def matches(self, event):
-            """Use bot_command to detect this plugin's commands."""
-
-            return any(
-                bot_command(cmd, event, require_mention=False)
-                for cmd in self.get_matrix_commands()
-            )
-
-    with (
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[DummyPlugin()]),
-        patch("mmrelay.matrix_utils.bot_command", return_value=True),
-        patch("mmrelay.matrix_utils.queue_message") as mock_queue,
-        patch("mmrelay.matrix_utils.connect_meshtastic") as mock_connect,
-        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
-    ):
-        await on_room_message(mock_room, mock_event)
-
-    mock_queue.assert_not_called()
-    mock_connect.assert_not_called()
-
-
-async def test_on_room_message_requires_mention_before_filtering_command(
-    monkeypatch, mock_room, mock_event, test_config
-):
-    """Plugins that require mentions should not block relaying unmentioned commands."""
-    test_config["meshtastic"]["broadcast_enabled"] = True
-    monkeypatch.setattr("mmrelay.matrix_utils.config", test_config, raising=False)
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.matrix_rooms",
-        test_config["matrix_rooms"],
-        raising=False,
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org", raising=False
-    )
-    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
-    mock_event.body = "!ping"
-    mock_event.source["content"]["body"] = "!ping"
-
-    class MentionedPlugin:
-        plugin_name = "ping"
-
-        async def handle_room_message(self, *_args, **_kwargs):
-            """
-            Handle an incoming room message event and indicate that it was not processed.
-
-            This method accepts arbitrary positional and keyword arguments from the message dispatcher (for example, room and event) but intentionally does not process them; it always signals that the message was not handled.
-
-            Returns:
-                False (bool): Indicates the message was not handled.
-            """
-            return False
-
-        def get_matrix_commands(self):
-            """
-            Return the list of Matrix command keywords supported by this handler.
-
-            Returns:
-                list[str]: Supported command strings, for example `["ping"]`.
-            """
-            return ["ping"]
-
-        def get_require_bot_mention(self):
-            """
-            Indicates whether commands require an explicit bot mention.
-
-            Returns:
-                bool: `True` if the bot must be explicitly mentioned to accept commands, `False` otherwise.
-            """
-            return True
-
-    mock_interface = MagicMock()
-
-    with (
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[MentionedPlugin()]),
-        patch(
-            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
-            AsyncMock(return_value=(mock_interface, 0)),
-        ),
-        patch(
-            "mmrelay.matrix_utils.get_user_display_name",
-            AsyncMock(return_value="User"),
-        ),
-        patch("mmrelay.matrix_utils.queue_message") as mock_queue,
-    ):
-        mock_queue.return_value = True
-        await on_room_message(mock_room, mock_event)
-
-    mock_queue.assert_called_once()
 
 
 async def test_on_room_message_creates_mapping_info():

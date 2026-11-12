@@ -2,8 +2,8 @@ apiVersion: v2
 name: mmrelay
 description: A Helm chart for MMRelay - Meshtastic to Matrix relay
 type: application
-version: 1.4.0
-appVersion: 1.4.0
+version: 1.4.1
+appVersion: 1.4.1
 keywords:
   - meshtastic
   - matrix
