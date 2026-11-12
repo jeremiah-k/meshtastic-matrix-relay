@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "ci" / "check_pypi_requirements.py"
@@ -119,10 +120,18 @@ def test_gate_fails_closed_on_malformed_requirement_declarations(
 
 
 def test_workflow_upload_is_gated_and_preflight_matches_current_manifest(tmp_path):
-    workflow = (ROOT / ".github/workflows/pypi-publish.yml").read_text()
+    workflow = (ROOT / ".github/workflows/pypi-publish.yml").read_text(encoding="utf-8")
     assert "scripts/ci/check_pypi_requirements.py" in workflow
-    assert "steps.pypi_requirements.outputs.eligible == 'true'" in workflow
-    assert "steps.pypi_wheel.outputs.eligible == 'true'" in workflow
+    steps = yaml.safe_load(workflow)["jobs"]["build-and-publish"]["steps"]
+    upload = next(step for step in steps if step.get("name") == "Publish to PyPI")
+    resolver = next(step for step in steps if step.get("id") == "pypi_dependencies")
+    for step in (upload, resolver):
+        assert "steps.pypi_requirements.outputs.eligible == 'true'" in step["if"]
+        assert "steps.pypi_wheel.outputs.eligible == 'true'" in step["if"]
+    assert "steps.pypi_dependencies.outcome == 'success'" in upload["if"]
+    assert steps.index(resolver) < steps.index(upload)
+    assert "pip --isolated install --dry-run --ignore-installed" in resolver["run"]
+    assert "--index-url https://pypi.org/simple dist/*.whl" in resolver["run"]
     assert "--wheel dist/*.whl" in workflow
     assert workflow.index("Install build dependencies") < workflow.index(
         "Check distribution requirements for PyPI"
@@ -206,7 +215,8 @@ def test_gate_summary_reports_publish_decision_without_urls(
         assert "git+https" not in text
         assert "medre[dev]" not in text
     else:
-        assert "PyPI upload eligible" in text
+        assert "PyPI metadata eligible" in text
+        assert "index resolution is still required" in text
 
 
 @pytest.mark.parametrize(

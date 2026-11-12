@@ -55,6 +55,11 @@ jobs:
         id: pypi_wheel
         run: python scripts/ci/check_pypi_requirements.py --wheel dist/*.whl --github-output "$GITHUB_OUTPUT" --github-summary "$GITHUB_STEP_SUMMARY"
 
-      - name: Publish to PyPI
+      - name: Resolve built wheel dependencies from PyPI
+        id: pypi_dependencies
         if: ${{ steps.pypi_requirements.outputs.eligible == 'true' && steps.pypi_wheel.outputs.eligible == 'true' }}
+        run: python -m pip --isolated install --dry-run --ignore-installed --index-url https://pypi.org/simple dist/*.whl
+
+      - name: Publish to PyPI
+        if: ${{ steps.pypi_requirements.outputs.eligible == 'true' && steps.pypi_wheel.outputs.eligible == 'true' && steps.pypi_dependencies.outcome == 'success' }}
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Gate PyPI uploads on index-resolvable distribution requirements.
+"""Gate PyPI uploads on direct-reference-compatible distribution requirements.
 
 GitHub/source releases may retain pinned VCS dependencies. PyPI rejects
 artifacts whose Requires-Dist metadata includes direct URLs, even when those
 URLs are immutable commit references. This gate must run on the tagged tree
-before the upload action, not on the mutable default branch.
+before the upload action, not on the mutable default branch. Index availability
+is checked separately by resolving the built wheel before upload.
 """
 
 from __future__ import annotations
@@ -96,7 +97,9 @@ def main() -> int:
             "or replace with indexed requirements first."
         )
     else:
-        print("No direct-URL requirements declared; PyPI upload permitted.")
+        print(
+            "No direct-URL requirements declared; index resolution is still required."
+        )
     if args.github_summary:
         with args.github_summary.open("a", encoding="utf-8") as summary:
             if direct:
@@ -108,8 +111,8 @@ def main() -> int:
                 )
             else:
                 summary.write(
-                    "### PyPI upload eligible\n\n"
-                    "No direct-URL requirements declared.\n"
+                    "### PyPI metadata eligible\n\n"
+                    "No direct-URL requirements declared; index resolution is still required.\n"
                 )
     return 0
 
