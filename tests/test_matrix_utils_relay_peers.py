@@ -115,6 +115,20 @@ async def test_only_allowlisted_peers_supply_names_and_routing(relay, sender, tr
     assert "HIDDEN" not in text and "Spoof" not in text
 
 
+@pytest.mark.parametrize("character", ["A", "🔥"])
+async def test_remote_peer_prefix_fits_radio_byte_budget(relay, character):
+    """Truncate the prefixed radio payload, not only the authored peer body."""
+    from mmrelay.matrix_utils import DEFAULT_MESSAGE_TRUNCATE_BYTES
+
+    wire = await content(message=character * 400)
+    await relay.deliver(wire)
+
+    relay.queue.assert_called_once()
+    queued = relay.queue.call_args.kwargs["text"]
+    assert queued.startswith("AL/Remo: ")
+    assert len(queued.encode("utf-8")) <= DEFAULT_MESSAGE_TRUNCATE_BYTES
+
+
 async def test_peer_on_local_mesh_is_suppressed_but_untrusted_claim_is_ignored(relay):
     wire = await content(meshnet_name="Local")
     await relay.deliver(wire)
