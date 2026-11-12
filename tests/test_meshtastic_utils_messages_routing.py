@@ -1817,3 +1817,20 @@ def test_mapped_interaction_accepts_later_matching_room_channel(reaction, as_map
         assert relay.call_args.kwargs["reaction_key"] == "👍"
     else:
         assert relay.call_args.kwargs["reply_to_event_id"] == "$original"
+
+
+@pytest.mark.parametrize("reaction", [False, True])
+def test_cross_mesh_interaction_attributes_the_current_radio_sender(reaction):
+    _set_globals(_base_config())
+    packet = _base_packet()
+    packet["decoded"].update(text="👍" if reaction else "answer", replyId=0)
+    if reaction:
+        packet["decoded"]["emoji"] = EMOJI_FLAG_VALUE
+    with _patch_message_deps(
+        interaction_settings={"reactions": True, "replies": True},
+        message_map=("$original", "!room:test", "foreign preview", "ForeignMesh"),
+    ) as (_, relay):
+        on_meshtastic_message(packet, _make_interface())
+    relay.assert_called_once()
+    assert relay.call_args.args[4] == "TestNet"
+    assert relay.call_args.kwargs["source_node_id"] == "!0000007b"

@@ -910,23 +910,21 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             from mmrelay.matrix_utils import get_matrix_prefix
 
             # Get the formatted prefix for the reaction
-            prefix = get_matrix_prefix(
-                facade.config, longname, shortname, meshtastic_meshnet or meshnet_name
-            )
+            prefix = get_matrix_prefix(facade.config, longname, shortname, meshnet_name)
 
             reaction_symbol = text
             reaction_message = (
                 f'\n {prefix}reacted {reaction_symbol} to "{abbreviated_text}"'
             )
 
-            # Relay the reaction as emote to Matrix, preserving the original meshnet name
+            # Attribute the current radio sender to this mesh, not the target message's mesh.
             facade._fire_and_forget(
                 matrix_relay(
                     matrix_room_id,
                     reaction_message,
                     longname,
                     shortname,
-                    meshtastic_meshnet or meshnet_name,
+                    meshnet_name,
                     decoded.get("portnum", 0),
                     meshtastic_id=packet.get("id"),
                     meshtastic_replyId=replyId,
@@ -984,9 +982,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             from mmrelay.matrix_utils import get_matrix_prefix
 
             # Get the formatted prefix for the reply
-            prefix = get_matrix_prefix(
-                facade.config, longname, shortname, meshtastic_meshnet or meshnet_name
-            )
+            prefix = get_matrix_prefix(facade.config, longname, shortname, meshnet_name)
             formatted_message = f"{prefix}{text}"
 
             facade.logger.info(f"Relaying Meshtastic reply from {longname} to Matrix")
@@ -998,7 +994,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                     formatted_message,
                     longname,
                     shortname,
-                    meshtastic_meshnet or meshnet_name,
+                    meshnet_name,
                     decoded.get("portnum", 0),
                     meshtastic_id=packet.get("id"),
                     meshtastic_replyId=replyId,
