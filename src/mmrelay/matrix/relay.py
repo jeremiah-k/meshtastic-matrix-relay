@@ -298,8 +298,15 @@ async def matrix_relay(
                     facade.get_message_map_by_matrix_event_id, reply_to_event_id
                 )
                 if orig:
-                    _, _, original_text, original_meshnet = orig
-                    reply_preview = (original_text or "", original_meshnet)
+                    _, mapped_room_id, original_text, original_meshnet = orig
+                    if mapped_room_id != room_id:
+                        facade.logger.warning(
+                            "Ignoring Matrix reply target %s mapped to a different room",
+                            reply_to_event_id,
+                        )
+                        reply_to_event_id = None
+                    else:
+                        reply_preview = (original_text or "", original_meshnet)
                 else:
                     facade.logger.warning(
                         "Could not find original message for reply_to_event_id: %s",

@@ -480,6 +480,53 @@ async def test_matrix_relay_reply_formatting(
 @patch("mmrelay.matrix_utils.connect_matrix")
 @patch("mmrelay.matrix_utils.get_interaction_settings")
 @patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False)
+async def test_matrix_relay_never_quotes_reply_mapping_from_another_room(
+    _mock_storage_enabled, mock_get_interactions, mock_connect_matrix
+):
+    """A stored mapping from another room must not leak its text or become a reply."""
+    mock_get_interactions.return_value = {"reactions": False, "replies": False}
+    mock_room = MagicMock(encrypted=False)
+    mock_client = MagicMock()
+    mock_client.user_id = "@bot:matrix.org"
+    mock_client.rooms = {"!public:matrix.org": mock_room}
+    mock_client.room_send = AsyncMock(return_value=MagicMock(event_id="$sent"))
+    mock_connect_matrix.return_value = mock_client
+    config = {
+        "meshtastic": {"meshnet_name": "PublicMesh"},
+        "matrix_rooms": [{"id": "!public:matrix.org", "meshtastic_channel": 0}],
+    }
+    with (
+        patch("mmrelay.matrix_utils.config", config),
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+            return_value=(
+                42,
+                "!private:matrix.org",
+                "private reply text",
+                "PrivateMesh",
+            ),
+        ),
+    ):
+        await matrix_relay(
+            room_id="!public:matrix.org",
+            message="Public radio message",
+            longname="Alice",
+            shortname="A",
+            meshnet_name="PublicMesh",
+            portnum=1,
+            reply_to_event_id="$private",
+        )
+
+    content = mock_client.room_send.call_args.kwargs["content"]
+    assert content["body"] == "Public radio message"
+    assert "m.relates_to" not in content
+    assert "private reply text" not in str(content)
+    assert "PrivateMesh" not in str(content)
+
+
+@patch("mmrelay.matrix_utils.connect_matrix")
+@patch("mmrelay.matrix_utils.get_interaction_settings")
+@patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False)
 async def test_matrix_relay_reply_permalink_routes_domain_less_rooms(
     _mock_storage_enabled, mock_get_interactions, mock_connect_matrix
 ):
