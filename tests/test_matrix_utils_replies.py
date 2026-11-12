@@ -746,3 +746,23 @@ def test_format_reply_message_remote_fallback_when_prefix_empty():
     )
 
     assert result == "Trak/Mt.P: Test"
+
+
+def test_format_reply_message_remote_canonical_keeps_authored_quote(monkeypatch):
+    """A canonical authored quote is not treated as a Matrix reply fallback."""
+    config = {}
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_matrix_prefix", lambda *_args, **_kwargs: "PREFIX"
+    )
+    result = format_reply_message(
+        config,
+        "Alice",
+        "> authored quote\n\nActual answer",
+        longname="Alice",
+        shortname="Al",
+        meshnet_name="RemoteMesh",
+        local_meshnet_name="LocalMesh",
+        text_is_canonical=True,
+    )
+    assert "> authored quote" in result
+    assert "Actual answer" in result
