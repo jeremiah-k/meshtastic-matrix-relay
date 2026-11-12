@@ -1725,11 +1725,12 @@ def test_radio_normal_message_channel_matches_native_reply_refs(
     assert relay.call_args.kwargs["source_channel_id"] == expected_channel
 
 
-def test_blank_radio_reply_reaches_plugins_without_matrix_send():
+@pytest.mark.parametrize("text", ["", " \t ", "\n"])
+def test_blank_radio_reply_reaches_plugins_without_matrix_send(text):
     """A blank reply is not a Matrix message but remains observable by plugins."""
     _set_globals(_base_config())
     packet = _base_packet()
-    packet["decoded"].update({"text": "", "replyId": 123})
+    packet["decoded"].update({"text": text, "replyId": 123})
     plugin = MagicMock()
     plugin.plugin_name = "observer"
     plugin.handle_meshtastic_message.return_value = False

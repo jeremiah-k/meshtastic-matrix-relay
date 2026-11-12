@@ -1158,6 +1158,9 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         if action == PacketAction.PLUGIN_ONLY:
             return
 
+        if not text.strip():
+            return
+
         if skip_matrix_relay:
             return
 
