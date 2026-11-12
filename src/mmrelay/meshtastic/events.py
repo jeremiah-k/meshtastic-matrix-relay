@@ -56,6 +56,22 @@ def _get_iterable_matrix_rooms() -> Iterable[Any]:
     )
 
 
+def _mapped_room_matches_radio_channel(room_id: str, packet: dict[str, Any]) -> bool:
+    """Bind a stored reply target to the packet's configured radio channel.
+
+    Message-map rows are indexed by packet ID alone, so the matching ID may
+    belong to a different channel. Only a configured room on this packet's
+    channel can authorize a Matrix-native reply or reaction target.
+    """
+    packet_channel = int(_radio_source_channel(packet))
+    for room in _get_iterable_matrix_rooms():
+        if not isinstance(room, dict) or room.get("id") != room_id:
+            continue
+        if facade._normalize_room_channel(room) == packet_channel:
+            return True
+    return False
+
+
 def _signal_startup_drain_complete() -> None:
     startup_drain_complete_event = facade.get_startup_drain_complete_event()
     if startup_drain_complete_event is not None:
@@ -873,6 +889,15 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         longname = facade._get_name_safely(facade.get_longname, sender)
         shortname = facade._get_name_safely(facade.get_shortname, sender)
         orig = facade.get_message_map_by_meshtastic_id(replyId)
+        if orig and not _mapped_room_matches_radio_channel(orig[1], packet):
+            facade.logger.warning(
+                "Ignoring mapped radio interaction target %s in room %s: "
+                "room channel differs from packet channel %s",
+                replyId,
+                orig[1],
+                _radio_source_channel(packet),
+            )
+            orig = None
         if orig:
             # orig = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
             matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet = orig
@@ -942,6 +967,15 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         longname = facade._get_name_safely(facade.get_longname, sender)
         shortname = facade._get_name_safely(facade.get_shortname, sender)
         orig = facade.get_message_map_by_meshtastic_id(replyId)
+        if orig and not _mapped_room_matches_radio_channel(orig[1], packet):
+            facade.logger.warning(
+                "Ignoring mapped radio interaction target %s in room %s: "
+                "room channel differs from packet channel %s",
+                replyId,
+                orig[1],
+                _radio_source_channel(packet),
+            )
+            orig = None
         if orig:
             # orig = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
             matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet = orig

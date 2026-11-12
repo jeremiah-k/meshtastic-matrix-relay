@@ -390,7 +390,9 @@ def test_on_meshtastic_message_does_not_filter_plain_emoji_message_when_reaction
 def test_on_meshtastic_message_zero_reply_id_preserves_interaction(
     reaction, channel, expected_channel
 ):
-    _set_globals(_base_config())
+    config = _base_config()
+    config["matrix_rooms"][0]["meshtastic_channel"] = int(expected_channel)
+    _set_globals(config)
     packet = _base_packet()
     if channel is None:
         packet.pop("channel")
@@ -418,6 +420,44 @@ def test_on_meshtastic_message_zero_reply_id_preserves_interaction(
         assert relay.call_args.kwargs["emoji"] is True
     else:
         assert relay.call_args.kwargs["reply_to_event_id"] == "$original"
+
+
+@pytest.mark.parametrize("reaction", [False, True])
+@pytest.mark.parametrize("reply_id", [0, 42])
+def test_radio_interaction_cannot_cross_mapped_room_channel(reaction, reply_id):
+    """A packet-ID collision must not leak a reply into another radio channel's room."""
+    config = _base_config()
+    config["matrix_rooms"].append({"id": "!room:channel2", "meshtastic_channel": 2})
+    _set_globals(config)
+    packet = _base_packet()
+    packet["channel"] = 2
+    packet["decoded"].update({"text": "💬", "replyId": reply_id})
+    if reaction:
+        packet["decoded"]["emoji"] = EMOJI_FLAG_VALUE
+
+    with _patch_message_deps(
+        interaction_settings={"reactions": True, "replies": True},
+        message_map=(
+            "$from-channel-0",
+            "!room:test",
+            "private channel zero",
+            "TestNet",
+        ),
+    ) as (_, relay):
+        on_meshtastic_message(packet, _make_interface())
+        mu.get_message_map_by_meshtastic_id.assert_called_once_with(reply_id)
+
+    assert relay is not None
+    relay.assert_awaited_once()
+    assert relay.call_args.args[0] == "!room:channel2"
+    assert relay.call_args.kwargs["source_channel_id"] == "2"
+    assert "reply_to_event_id" not in relay.call_args.kwargs
+    assert "emoji" not in relay.call_args.kwargs
+    assert "reaction_key" not in relay.call_args.kwargs
+    if reaction:
+        assert "meshtastic_replyId" not in relay.call_args.kwargs
+    else:
+        assert relay.call_args.kwargs["meshtastic_replyId"] == reply_id
 
 
 @pytest.mark.parametrize(
@@ -1714,3 +1754,32 @@ def test_unmapped_radio_reply_retains_only_enabled_reply_hint(reply_id, enabled)
     else:
         assert "meshtastic_replyId" not in relay.call_args.kwargs
     assert "reply_to_event_id" not in relay.call_args.kwargs
+
+
+@pytest.mark.parametrize("reaction", [False, True])
+@pytest.mark.parametrize("as_mapping", [False, True])
+def test_mapped_interaction_accepts_later_matching_room_channel(reaction, as_mapping):
+    config = _base_config()
+    config["matrix_rooms"].append({"id": "!room:test", "meshtastic_channel": 2})
+    _set_globals(config)
+    if as_mapping:
+        mu.matrix_rooms = {
+            "first": config["matrix_rooms"][0],
+            "second": config["matrix_rooms"][1],
+        }
+    packet = _base_packet()
+    packet["channel"] = 2
+    packet["decoded"].update(text="👍" if reaction else "answer", replyId=0)
+    if reaction:
+        packet["decoded"]["emoji"] = EMOJI_FLAG_VALUE
+    with _patch_message_deps(
+        interaction_settings={"reactions": True, "replies": True},
+        message_map=("$original", "!room:test", "original", "TestNet"),
+    ) as (_, relay):
+        on_meshtastic_message(packet, _make_interface())
+    relay.assert_called_once()
+    assert relay.call_args.kwargs["source_channel_id"] == "2"
+    if reaction:
+        assert relay.call_args.kwargs["reaction_key"] == "👍"
+    else:
+        assert relay.call_args.kwargs["reply_to_event_id"] == "$original"
