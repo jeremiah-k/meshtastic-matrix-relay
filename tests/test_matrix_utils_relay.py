@@ -28,7 +28,10 @@ from tests.constants import (
 )
 from tests.matrix_peer_fixtures import set_peer_content
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.usefixtures("reset_matrix_utils_globals"),
+]
 
 RoomSendError = nio.RoomSendError
 

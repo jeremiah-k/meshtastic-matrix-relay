@@ -5,11 +5,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mmrelay.constants.formats import DETECTION_SENSOR_APP
 from mmrelay.matrix_utils import on_room_message
 from tests.matrix_peer_fixtures import set_peer_content
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.usefixtures("reset_matrix_utils_globals"),
+]
 
 
 async def test_on_room_message_detection_sensor_enabled(
@@ -18,17 +20,10 @@ async def test_on_room_message_detection_sensor_enabled(
     """
     Test that a detection sensor message is processed and queued with the correct port number when detection_sensor is enabled.
 
-    This test specifically covers the code path where meshtastic.protobuf.portnums_pb2
-    is imported locally to delay logger creation for component logging timing.
+    The canonical peer portnum must be queued using the numeric protobuf port.
     """
     # Arrange - Set up event as detection sensor message
     mock_event.body = "Detection data"
-    mock_event.source = {
-        "content": {
-            "body": "Detection data",
-            "meshtastic_portnum": DETECTION_SENSOR_APP,
-        }
-    }
 
     # Enable detection sensor and broadcast in config
     test_config["meshtastic"]["detection_sensor"] = True
@@ -104,9 +99,7 @@ async def test_on_room_message_detection_sensor_enabled(
     mock_queue_message.assert_called_once()
     call_args = mock_queue_message.call_args
 
-    # Verify the port number is set to DETECTION_SENSOR_APP (it will be a Mock object due to import)
-    assert "portNum" in call_args.kwargs
-    # The portNum should be the DETECTION_SENSOR_APP enum value from protobuf
+    assert call_args.kwargs["portNum"] == 10
     assert (
         call_args.kwargs["description"] == "Detection sensor data from TestUser/Remote"
     )
@@ -121,12 +114,6 @@ async def test_on_room_message_detection_sensor_disabled(
     Test that a detection sensor message is ignored when detection_sensor is disabled in config.
     """
     # Arrange - Set up event as detection sensor message but disable detection sensor
-    mock_event.source = {
-        "content": {
-            "body": "Detection data",
-            "meshtastic_portnum": DETECTION_SENSOR_APP,
-        }
-    }
 
     # Disable detection sensor in config
     test_config["meshtastic"]["detection_sensor"] = False
@@ -157,12 +144,6 @@ async def test_on_room_message_detection_sensor_broadcast_disabled(
     """
     Detection sensor packets should not connect or queue when broadcast is disabled.
     """
-    mock_event.source = {
-        "content": {
-            "body": "Detection data",
-            "meshtastic_portnum": DETECTION_SENSOR_APP,
-        }
-    }
     test_config["meshtastic"]["detection_sensor"] = True
     test_config["meshtastic"]["broadcast_enabled"] = False
 
@@ -190,12 +171,6 @@ async def test_on_room_message_detection_sensor_connect_failure(
     mock_room, mock_event, test_config
 ):
     """When detection sensor is enabled but connection fails, nothing should be queued."""
-    mock_event.source = {
-        "content": {
-            "body": "Detection data",
-            "meshtastic_portnum": DETECTION_SENSOR_APP,
-        }
-    }
     test_config["meshtastic"]["detection_sensor"] = True
     test_config["meshtastic"]["broadcast_enabled"] = True
 

@@ -53,12 +53,23 @@ def relay(monkeypatch):
             event_id="$incoming",
             server_timestamp=1700000000000,
             body=content.get("body", ""),
-            source={"type": "m.room.message", "content": content},
+            source={
+                "type": "m.reaction" if reaction else "m.room.message",
+                "content": content,
+                "sender": sender,
+                "event_id": "$incoming",
+                "origin_server_ts": 1700000000000,
+            },
         )
         if reaction:
             from nio import ReactionEvent
 
-            native_event = ReactionEvent()
+            relation = content.get("m.relates_to", {})
+            native_event = ReactionEvent(
+                source=event.source,
+                reacts_to=relation.get("event_id", "$target"),
+                key=relation.get("key", ""),
+            )
             vars(native_event).update(vars(event))
             native_event.source["type"] = "m.reaction"
             event = native_event

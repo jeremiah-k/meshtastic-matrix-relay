@@ -6,7 +6,10 @@ import pytest
 
 from mmrelay.matrix_utils import bot_command, on_room_message
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.usefixtures("reset_matrix_utils_globals"),
+]
 
 
 async def test_on_room_message_plugin_handle_exception_logs_and_continues(

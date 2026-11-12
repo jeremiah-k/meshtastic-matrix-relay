@@ -34,7 +34,7 @@ sys.modules["meshtastic.protobuf"] = meshtastic_protobuf
 meshtastic_mock.protobuf = meshtastic_protobuf  # type: ignore[attr-defined]
 sys.modules["meshtastic.protobuf.portnums_pb2"] = MagicMock()
 sys.modules["meshtastic.protobuf.portnums_pb2"].PortNum = MagicMock()  # type: ignore[attr-defined]
-sys.modules["meshtastic.protobuf.portnums_pb2"].PortNum.DETECTION_SENSOR_APP = 1
+sys.modules["meshtastic.protobuf.portnums_pb2"].PortNum.DETECTION_SENSOR_APP = 10
 meshtastic_protobuf.portnums_pb2 = sys.modules["meshtastic.protobuf.portnums_pb2"]
 sys.modules["meshtastic.protobuf.mesh_pb2"] = MagicMock()
 meshtastic_protobuf.mesh_pb2 = sys.modules["meshtastic.protobuf.mesh_pb2"]
@@ -164,7 +164,10 @@ class MockMatrixRoom:
 
 
 class MockReactionEvent:
-    pass
+    def __init__(self, source: dict, reacts_to: str, key: str) -> None:
+        self.source = source
+        self.reacts_to = reacts_to
+        self.key = key
 
 
 class MockRoomMessageEmote:

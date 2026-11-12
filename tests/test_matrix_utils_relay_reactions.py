@@ -13,7 +13,10 @@ from tests.constants import TEST_BOT_USER_ID, TEST_ROOM_ID, TEST_USER_ID
 from tests.matrix_peer_fixtures import set_peer_content
 
 T = TypeVar("T")
-pytestmark = pytest.mark.asyncio
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.usefixtures("reset_matrix_utils_globals"),
+]
 
 
 @pytest.mark.parametrize("mapped_text", ["original_text", None])
@@ -731,4 +734,5 @@ async def test_on_room_message_emote_reaction_uses_original_event_id(monkeypatch
     await on_room_message(mock_room, mock_event)
 
     get_map_mock.assert_called_once_with("orig_evt")
-    queue_mock.assert_called()
+    queue_mock.assert_called_once()
+    assert queue_mock.call_args.kwargs["reply_id"] == 0

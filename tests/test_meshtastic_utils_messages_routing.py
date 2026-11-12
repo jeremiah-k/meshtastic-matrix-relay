@@ -35,6 +35,8 @@ from mmrelay.meshtastic.packet_routing import (
 )
 from mmrelay.meshtastic_utils import on_meshtastic_message
 
+pytestmark = pytest.mark.usefixtures("reset_meshtastic_globals")
+
 # ---------------------------------------------------------------------------
 # Test helpers (functionally identical to those in
 # test_meshtastic_utils_messages.py to keep each file self-contained)
@@ -417,6 +419,38 @@ def test_on_meshtastic_message_zero_reply_id_preserves_interaction(
     assert relay.call_args.kwargs["source_channel_id"] == expected_channel
     if reaction:
         assert relay.call_args.kwargs["reaction_key"] == "👍"
+        assert relay.call_args.kwargs["emoji"] is True
+    else:
+        assert relay.call_args.kwargs["reply_to_event_id"] == "$original"
+
+
+@pytest.mark.parametrize(
+    ("reaction", "reply_id", "message"),
+    [(True, 42, ":)"), (False, 77, "Reply message")],
+)
+def test_mapped_radio_interaction_broadcasts_to_matrix(reaction, reply_id, message):
+    """Legacy mapped reaction/reply behavior is covered in pure pytest style."""
+    config = _base_config()
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"].update({"text": message, "replyId": reply_id})
+    if reaction:
+        packet["decoded"]["emoji"] = EMOJI_FLAG_VALUE
+    with _patch_message_deps(
+        interaction_settings={"reactions": True, "replies": True},
+        message_map=("$original", "!room:test", "orig text", "TestNet"),
+        longname="Long Name",
+        shortname="LN",
+        matrix_prefix="[prefix] ",
+    ) as (_, relay):
+        on_meshtastic_message(packet, _make_interface())
+        mu.get_message_map_by_meshtastic_id.assert_called_once_with(reply_id)
+    assert relay is not None
+    relay.assert_awaited_once()
+    assert relay.call_args.args[0] == "!room:test"
+    assert relay.call_args.kwargs["meshtastic_replyId"] == reply_id
+    if reaction:
+        assert relay.call_args.kwargs["reaction_key"] == message
         assert relay.call_args.kwargs["emoji"] is True
     else:
         assert relay.call_args.kwargs["reply_to_event_id"] == "$original"

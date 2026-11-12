@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -9,6 +10,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from mmrelay.matrix.canonical_ingress import canonicalize_matrix_event
+from tests.helpers import InlineExecutorLoop
+
+pytestmark = pytest.mark.usefixtures("reset_matrix_utils_globals")
+
+
+@pytest.fixture(autouse=True)
+async def inline_mapping_executor(monkeypatch):
+    """Run mocked database lookups inline; these tests cover reply semantics."""
+    loop = asyncio.get_running_loop()
+    monkeypatch.setattr(
+        loop, "run_in_executor", InlineExecutorLoop(loop).run_in_executor
+    )
 
 
 @contextlib.contextmanager
