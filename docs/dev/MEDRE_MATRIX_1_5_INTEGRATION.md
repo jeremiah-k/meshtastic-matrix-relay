@@ -179,13 +179,13 @@ lossless metadata exchange unless they explicitly support an embedding path.
 
 ## Git-install pins and distribution caveat
 
-The candidate `pyproject.toml` and `uv.lock` pin the coordinated test pair:
+The `pyproject.toml` and `uv.lock` pin the landed main revisions:
 
-- MEDRE core at `a289675a51760c69e95466ce6fc8b5475f52bfa2`.
-- Matrix adapter at `0b93dec40954f0253d2107ff6f7c9f7c932c7880`.
+- MEDRE core at `21111445f3e4096efa956a5e14af7481061b0c7a`.
+- Matrix adapter at `2602f88956bdff8ba7ae98fa43ea0e1bdb232e19`.
 
 These immutable Git commits include bounded source facts, generic attribution,
-and explicit canonical reaction keys. Repin to the final merged release pair
+and explicit canonical reaction keys. Repin to the frozen release pair
 and repeat qualification before tagging; a development pin is not a release
 signoff.
 
