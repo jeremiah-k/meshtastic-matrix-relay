@@ -1,6 +1,6 @@
 {
   "venvPath": ".",
-  "venv": "venv",
+  "venv": ".venv",
   "include": ["src", "scripts"],
   "exclude": ["tests"],
   "pythonVersion": "3.12"
