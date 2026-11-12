@@ -615,7 +615,7 @@ async def on_room_message(
             prefix = facade.get_matrix_prefix(
                 facade.config, longname, shortname, short_meshnet_name
             )
-            full_message = f"{prefix}{text}"
+            full_message = facade.truncate_message(f"{prefix}{text}")
             if not text:
                 facade.logger.warning(
                     "Remote meshnet message from %s had empty text after formatting; skipping relay",
