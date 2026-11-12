@@ -463,6 +463,9 @@ async def on_room_message(
         return
     if is_reaction and not interactions["reactions"]:
         return
+    if peer_reaction and not text:
+        facade.logger.debug("Ignoring peer reaction without authored text")
+        return
     if not is_reaction and not text:
         return
 

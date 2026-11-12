@@ -298,6 +298,36 @@ async def test_peer_reaction_target_outside_room_keeps_plain_prefixed_remote_rel
     assert relay.queue.call_args.kwargs["text"] == '[AL/Remo]: reacted 🦄 to ""'
 
 
+@pytest.mark.parametrize("body", ["", " \t ", "\n"])
+@pytest.mark.parametrize("matrix_target", [False, True])
+async def test_empty_peer_reaction_never_sends_radio_reply(
+    relay, monkeypatch, body, matrix_target
+):
+    """A trusted reaction key does not authorize an empty radio payload."""
+    wire = await content(
+        message="   ", emoji=True, meshtastic_replyId=0, reaction_key="👍"
+    )
+    wire["body"] = body
+    wire.pop("formatted_body", None)
+    wire.pop("format", None)
+    if matrix_target:
+        wire["medre"]["metadata"]["bridge_context"]["relations"][0][
+            "target_native_ref"
+        ] = {
+            "adapter": "mmrelay.matrix",
+            "native_channel_id": ROOM,
+            "native_message_id": "$original",
+            "native_thread_id": None,
+        }
+    lookup = MagicMock(return_value=(0, ROOM, "stored preview", "Local"))
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_message_map_by_matrix_event_id", lookup
+    )
+    await relay.deliver(wire)
+    lookup.assert_not_called()
+    relay.queue.assert_not_called()
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 async def test_untargeted_emote_keeps_body_with_reactions_enabled_or_disabled(
     relay, enabled, monkeypatch
