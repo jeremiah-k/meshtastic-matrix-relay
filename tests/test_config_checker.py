@@ -129,6 +129,59 @@ class TestConfigChecker(unittest.TestCase):
         mock_validate_credentials.assert_called_once()
         mock_get_e2ee_status.assert_called_once()
 
+    @patch("mmrelay.cli._validate_credentials_json")
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.cli._print_unified_e2ee_analysis")
+    @patch("mmrelay.e2ee_utils.get_e2ee_status")
+    @patch("builtins.print")
+    def test_check_config_warns_on_unsupported_e2ee_environment(
+        self,
+        mock_print,
+        mock_get_e2ee_status,
+        mock_print_unified_e2ee,
+        mock_validate_yaml,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+        mock_validate_credentials,
+    ):
+        """
+        Test that check_config warns when the E2EE environment is unsupported.
+
+        Simulates a valid configuration on a POSIX-emulation environment by
+        mocking the unified E2EE status to report platform_supported=False
+        (as get_e2ee_status does under MSYS/Cygwin). Asserts the check still
+        succeeds and the unsupported-environment warning is printed.
+        """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
+
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, self.valid_config)
+        mock_get_e2ee_status.return_value = {
+            "overall_status": "unavailable",
+            "enabled": True,
+            "available": False,
+            "configured": True,
+            "platform_supported": False,
+            "issues": ["E2EE is not supported in MSYS/Cygwin environments"],
+        }
+        mock_validate_credentials.return_value = True
+
+        with patch("builtins.open", mock_open(read_data="test")):
+            result = check_config()
+
+        self.assertTrue(result)
+        mock_print.assert_any_call(
+            "\n⚠️  Warning: E2EE is not supported in this environment"
+        )
+        mock_print.assert_any_call("   Messages to encrypted rooms will be blocked")
+
     def test_get_config_paths(self):
         """
         Verify get_config_paths() returns a list of candidate configuration file paths.

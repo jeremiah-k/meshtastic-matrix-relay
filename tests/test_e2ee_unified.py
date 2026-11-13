@@ -22,10 +22,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from mmrelay.constants.app import CONFIG_FILENAME
 from mmrelay.constants.messages import (
+    MSG_E2EE_DEPS_NOT_INSTALLED_SHORT,
     MSG_E2EE_DISABLED,
+    MSG_E2EE_ENV_UNSUPPORTED,
+    MSG_E2EE_ENV_UNSUPPORTED_DETAIL,
     MSG_E2EE_NO_AUTH,
-    MSG_E2EE_WINDOWS_UNSUPPORTED,
-    MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL,
+    MSG_E2EE_STORE_UNOPENABLE_SHORT,
 )
 from mmrelay.matrix.compat import MatrixLibraryCapabilities
 
@@ -56,6 +58,7 @@ def _make_capabilities(**overrides: object) -> MatrixLibraryCapabilities:
         encryption_available=True,
         store_available=True,
         sqlite_store_available=True,
+        sqlite_store_openable=True,
         olm_available=False,
         vodozemac_available=True,
         nio_crypto_available=True,
@@ -144,13 +147,54 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
             self.assertEqual(len(status["issues"]), 0)
 
     @patch("sys.platform", "win32")
-    def test_e2ee_unavailable_windows(self):
-        """Test E2EE unavailable status on Windows"""
-        status = get_e2ee_status(self.base_config, self.config_path)
+    @patch("mmrelay.e2ee_utils.os.path.exists")
+    def test_e2ee_ready_on_windows(self, mock_exists):
+        """Windows is supported: ready when dependencies are installed and configured"""
+        mock_exists.return_value = True
+        caps = _make_capabilities(encryption_available=True)
+        with patch("mmrelay.e2ee_utils.get_matrix_capabilities", return_value=caps):
+            status = get_e2ee_status(self.base_config, self.config_path)
 
-        self.assertEqual(status["overall_status"], "unavailable")
-        self.assertFalse(status["platform_supported"])
-        self.assertIn(MSG_E2EE_WINDOWS_UNSUPPORTED, status["issues"])
+            self.assertEqual(status["overall_status"], "ready")
+            self.assertTrue(status["platform_supported"])
+            self.assertTrue(status["available"])
+            self.assertEqual(len(status["issues"]), 0)
+
+    @patch("sys.platform", "win32")
+    @patch("mmrelay.e2ee_utils.os.path.exists")
+    def test_e2ee_windows_missing_deps_reports_dependencies(self, mock_exists):
+        """On Windows, missing crypto dependencies produce capability messaging, not platform messaging"""
+        mock_exists.return_value = True
+        caps = _make_capabilities(encryption_available=False)
+        with patch("mmrelay.e2ee_utils.get_matrix_capabilities", return_value=caps):
+            status = get_e2ee_status(self.base_config, self.config_path)
+
+            self.assertEqual(status["overall_status"], "incomplete")
+            self.assertTrue(status["platform_supported"])
+            self.assertFalse(status["dependencies_installed"])
+            self.assertTrue(
+                any(
+                    "E2EE dependencies not installed" in issue
+                    for issue in status["issues"]
+                )
+            )
+            self.assertFalse(any("Windows" in issue for issue in status["issues"]))
+
+    @patch("sys.platform", "msys")
+    @patch("mmrelay.e2ee_utils.os.path.exists")
+    def test_e2ee_unsupported_environment_status(self, mock_exists):
+        """POSIX-emulation environments are unsupported even with dependencies installed"""
+        mock_exists.return_value = True
+        caps = _make_capabilities(encryption_available=True)
+        with patch("mmrelay.e2ee_utils.get_matrix_capabilities", return_value=caps):
+            status = get_e2ee_status(self.base_config, self.config_path)
+
+            self.assertFalse(status["platform_supported"])
+            self.assertFalse(status["dependencies_installed"])
+            self.assertFalse(status["available"])
+            self.assertEqual(status["overall_status"], "unavailable")
+            self.assertIn(MSG_E2EE_ENV_UNSUPPORTED, status["issues"])
+            self.assertFalse(any("Windows" in issue for issue in status["issues"]))
 
     @patch("sys.platform", "linux")
     def test_e2ee_disabled_status(self):
@@ -326,7 +370,7 @@ class TestRoomListFormatting(unittest.TestCase):
         self.assertIn("   ✅ Plaintext Room", room_lines)
 
     def test_room_list_e2ee_unavailable(self):
-        """Test room list formatting when E2EE is unavailable (Windows)"""
+        """Test room list formatting when E2EE is unavailable (dependencies missing)"""
         rooms = {
             "!encrypted:test.org": MockRoom(
                 "!encrypted:test.org", "Encrypted Room", encrypted=True
@@ -338,7 +382,7 @@ class TestRoomListFormatting(unittest.TestCase):
         room_lines = format_room_list(rooms, e2ee_status)
 
         self.assertIn(
-            "   ⚠️ Encrypted Room - Encrypted (E2EE not supported on Windows - messages will be blocked)",
+            f"   ⚠️ Encrypted Room - Encrypted ({MSG_E2EE_DEPS_NOT_INSTALLED_SHORT} - messages will be blocked)",
             room_lines,
         )
 
@@ -428,13 +472,27 @@ class TestE2EEErrorMessages(unittest.TestCase):
         if not IMPORTS_AVAILABLE:
             self.skipTest("Required imports not available")
 
-    def test_error_message_unavailable(self):
-        """Test error message for unavailable E2EE"""
+    def test_error_message_unsupported_environment(self):
+        """Unsupported environments report the environment constraint, not Windows"""
         e2ee_status = {"overall_status": "unavailable", "platform_supported": False}
 
         message = get_e2ee_error_message(e2ee_status)
 
-        self.assertIn(MSG_E2EE_WINDOWS_UNSUPPORTED, message)
+        self.assertIn(MSG_E2EE_ENV_UNSUPPORTED, message)
+
+    def test_error_message_deps_not_installed(self):
+        """The unavailable status maps to dependency guidance on supported platforms"""
+        e2ee_status = {
+            "overall_status": "unavailable",
+            "platform_supported": True,
+            "enabled": True,
+            "dependencies_installed": False,
+            "credentials_available": True,
+        }
+
+        message = get_e2ee_error_message(e2ee_status)
+
+        self.assertIn(MSG_E2EE_DEPS_NOT_INSTALLED_SHORT, message)
 
     def test_error_message_disabled(self):
         """Test error message for disabled E2EE"""
@@ -467,8 +525,8 @@ class TestE2EEErrorMessages(unittest.TestCase):
         self.assertIn("Enable E2EE in configuration", instruction_text)
         self.assertIn("Verify configuration", instruction_text)
 
-    def test_fix_instructions_windows_unsupported_short_circuit(self):
-        """Unsupported platforms should return the two Windows guidance lines."""
+    def test_fix_instructions_unsupported_environment_short_circuit(self):
+        """Unsupported environments return the two environment guidance lines."""
         e2ee_status = {
             "overall_status": "unavailable",
             "platform_supported": False,
@@ -480,8 +538,26 @@ class TestE2EEErrorMessages(unittest.TestCase):
         instructions = get_e2ee_fix_instructions(e2ee_status)
 
         self.assertEqual(len(instructions), 2)
-        self.assertEqual(instructions[0], MSG_E2EE_WINDOWS_UNSUPPORTED)
-        self.assertEqual(instructions[1], MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL)
+        self.assertEqual(instructions[0], MSG_E2EE_ENV_UNSUPPORTED)
+        self.assertEqual(instructions[1], MSG_E2EE_ENV_UNSUPPORTED_DETAIL)
+
+    @patch("sys.platform", "win32")
+    def test_fix_instructions_windows_supported_follows_capabilities(self):
+        """Windows no longer short-circuits: guidance follows capability state."""
+        e2ee_status = {
+            "overall_status": "incomplete",
+            "platform_supported": True,
+            "dependencies_installed": False,
+            "credentials_available": False,
+            "enabled": True,
+        }
+
+        instructions = get_e2ee_fix_instructions(e2ee_status)
+
+        self.assertTrue(
+            any("Install E2EE dependencies" in line for line in instructions)
+        )
+        self.assertFalse(any("Windows" in line for line in instructions))
 
     @patch("mmrelay.e2ee_utils.get_matrix_capabilities")
     def test_get_e2ee_warning_messages(self, mock_get_caps):
@@ -495,6 +571,7 @@ class TestE2EEErrorMessages(unittest.TestCase):
         # Verify all expected keys are present and no extra keys exist
         expected_keys = {
             "unavailable",
+            "unsupported_env",
             "disabled",
             "incomplete",
             "missing_deps",
@@ -510,12 +587,24 @@ class TestE2EEErrorMessages(unittest.TestCase):
             )
 
         # Verify specific message content
-        self.assertIn("Windows", warnings["unavailable"])
+        self.assertIn(MSG_E2EE_DEPS_NOT_INSTALLED_SHORT, warnings["unavailable"])
+        self.assertIn(MSG_E2EE_ENV_UNSUPPORTED, warnings["unsupported_env"])
         self.assertIn("disabled", warnings["disabled"])
         self.assertIn("incomplete", warnings["incomplete"])
         self.assertIn("dependencies", warnings["missing_deps"])
         self.assertIn("authentication", warnings["missing_auth"])
         self.assertIn("configuration", warnings["missing_config"])
+
+    @patch("mmrelay.e2ee_utils.get_matrix_capabilities")
+    def test_get_e2ee_warning_messages_store_failure_names_store(self, mock_get_caps):
+        """A diagnosed store failure must not be reported as missing dependencies."""
+        mock_get_caps.return_value = _make_capabilities(
+            encryption_available=False, store_failure="fcntl"
+        )
+        warnings = get_e2ee_warning_messages()
+
+        self.assertIn(MSG_E2EE_STORE_UNOPENABLE_SHORT, warnings["unavailable"])
+        self.assertNotIn(MSG_E2EE_DEPS_NOT_INSTALLED_SHORT, warnings["unavailable"])
 
 
 class TestActualEncryptionVerification(unittest.TestCase):
