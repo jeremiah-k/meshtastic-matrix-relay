@@ -1,6 +1,5 @@
 """The manifest selects one provider pin for base and encryption-extra installs."""
 
-import re
 import tomllib
 from pathlib import Path
 
@@ -35,17 +34,15 @@ def test_manifest_selects_one_provider_pin_for_base_and_encryption_extra() -> No
 
 
 def test_medre_dependencies_are_pinned_without_a_competing_radio_adapter() -> None:
-    """Accept reviewed source commits or exact indexed releases at the boundary.
-
-    Re-pinning is allowed after review and a fresh compatibility qualification;
-    reproducibility and exclusion of the competing Meshtastic adapter remain
-    enforceable across future versions.
-    """
+    """Require indexed releases without replacing MMRelay's radio SDK."""
     project = tomllib.loads(
         (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )["project"]
     assert project["requires-python"] == ">=3.12"
     dependencies = [Requirement(dep) for dep in project["dependencies"]]
+    lock = tomllib.loads(
+        (Path(__file__).parents[1] / "uv.lock").read_text(encoding="utf-8")
+    )
     for package in ("medre", "medre-adapter-matrix"):
         selected = [
             dep for dep in dependencies if canonicalize_name(dep.name) == package
@@ -53,15 +50,19 @@ def test_medre_dependencies_are_pinned_without_a_competing_radio_adapter() -> No
         assert len(selected) == 1
         (requirement,) = selected
         assert requirement.marker is None
-        if requirement.url is not None:
-            assert re.fullmatch(
-                rf"git\+https://github\.com/jeremiah-k/{package}\.git@[0-9a-f]{{40}}",
-                requirement.url,
-            )
-        else:
-            pins = list(requirement.specifier)
-            assert len(pins) == 1 and pins[0].operator == "=="
-            Version(pins[0].version)  # Reject wildcard and arbitrary equality pins.
+        assert requirement.url is None
+        pins = list(requirement.specifier)
+        assert len(pins) == 1 and pins[0].operator == "=="
+        Version(pins[0].version)  # Reject wildcard and arbitrary equality pins.
+
+        locked = [entry for entry in lock["package"] if entry["name"] == package]
+        assert len(locked) == 1
+        entry = locked[0]
+        assert entry["version"] == pins[0].version
+        assert entry["source"] == {"registry": "https://pypi.org/simple"}
+        assert entry["sdist"]["hash"].startswith("sha256:")
+        assert entry["wheels"]
+        assert all(wheel["hash"].startswith("sha256:") for wheel in entry["wheels"])
     assert "medre-adapter-meshtastic" not in {
         canonicalize_name(dep.name) for dep in dependencies
     }
