@@ -150,9 +150,9 @@ def test_workflow_upload_is_gated_and_preflight_matches_current_manifest(tmp_pat
         ],
         check=True,
     )
-    # The coordinated pre-release manifest contains direct Git dependencies.
-    # This independent expectation must change when indexed pins replace them.
-    assert output.read_text() == "eligible=false\n"
+    # The published MEDRE pins are indexed requirements, so metadata preflight
+    # allows them; wheel validation and real index resolution remain required.
+    assert output.read_text() == "eligible=true\n"
 
 
 @pytest.mark.parametrize(

@@ -1287,20 +1287,28 @@ wheels = [
 [[package]]
 name = "medre"
 version = "0.1.0"
-source = { git = "https://github.com/jeremiah-k/medre.git?rev=5e8043afe2634ec8cf539d5f87867109a911e68d#5e8043afe2634ec8cf539d5f87867109a911e68d" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "msgspec" },
     { name = "pyyaml" },
     { name = "termaid" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/50/5a/a7b6521ddf87ee849b5cf172781d5076d61a4f92db8f963a343a2299fcc9/medre-0.1.0.tar.gz", hash = "sha256:d9769a92ef511c924587a326bfc1e3a92e9d132944b6737dd7112e40d2335af9", size = 3270876, upload-time = "2026-11-14T23:40:49.525Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/02/97/2cca235b5a8bc4335b4e6352043d248cc7d0bb46d4f957277511aa520e62/medre-0.1.0-py3-none-any.whl", hash = "sha256:4dc5657eb221eb4e9acd887b16fcb5f8df809b23585afb032e06b672624ff294", size = 1137014, upload-time = "2026-11-14T23:40:47.586Z" },
+]
 
 [[package]]
 name = "medre-adapter-matrix"
 version = "0.1.0"
-source = { git = "https://github.com/jeremiah-k/medre-adapter-matrix.git?rev=1f88cbff25912cd75810189cebd22f270c6cd350#1f88cbff25912cd75810189cebd22f270c6cd350" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "medre" },
     { name = "mindroom-nio", extra = ["e2e"] },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ef/2c/0bf6eb6c07b91b934b60dc6e07b599c5fbfc7fec2e77effe20afb47c0184/medre_adapter_matrix-0.1.0.tar.gz", hash = "sha256:136c631769e6465ecb3603d80ae3cb6fed790bcdd54789dc657ab19877656c00", size = 431501, upload-time = "2026-11-14T23:47:33.654Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/61/fa16295ade333a6480291f011a6d41fc6a640655eab2fa1cfd270da551cc/medre_adapter_matrix-0.1.0-py3-none-any.whl", hash = "sha256:5e1e73b80941a8a23e6a0a70f8b2bf00fdaca79cadb13dadbeadd095fff37f43", size = 184419, upload-time = "2026-11-14T23:47:32.059Z" },
 ]
 
 [[package]]
@@ -1380,8 +1388,8 @@ requires-dist = [
     { name = "haversine", specifier = "==2.9.0" },
     { name = "markdown", specifier = "==3.11.3" },
     { name = "matplotlib", specifier = "==3.11.2" },
-    { name = "medre", git = "https://github.com/jeremiah-k/medre.git?rev=5e8043afe2634ec8cf539d5f87867109a911e68d" },
-    { name = "medre-adapter-matrix", git = "https://github.com/jeremiah-k/medre-adapter-matrix.git?rev=1f88cbff25912cd75810189cebd22f270c6cd350" },
+    { name = "medre", specifier = "==0.1.0" },
+    { name = "medre-adapter-matrix", specifier = "==0.1.0" },
     { name = "mindroom-nio", specifier = "==1.3.0" },
     { name = "mindroom-nio", extras = ["e2e"], marker = "extra == 'e2e'", specifier = "==1.3.0" },
     { name = "mtjk", specifier = "==2.7.11.post14" },
