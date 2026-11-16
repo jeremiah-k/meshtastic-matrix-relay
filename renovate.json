@@ -11,8 +11,10 @@
   ],
   "timezone": "America/Chicago",
   "updateNotScheduled": true,
-  "dependencyDashboard": true,
-  "dependencyDashboardTitle": "Dependency Updates (mmrelay)",
+  "dependencyDashboard": {
+    "enabled": true,
+    "title": "Dependency Updates (mmrelay)"
+  },
   "automerge": false,
   "automergeType": "pr",
   "platformAutomerge": false,
