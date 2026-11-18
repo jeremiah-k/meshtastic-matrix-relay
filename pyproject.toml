@@ -48,7 +48,7 @@ test = [
   "pytest==9.2.0",
   "pytest-cov==7.1.0",
   "pytest-asyncio==1.5.0",
-  "pytest-env==1.8.5",
+  "pytest-env==1.8.6",
   "pytest-timeout==2.4.0",
 ]
 dev = [
