@@ -1286,16 +1286,16 @@ wheels = [
 
 [[package]]
 name = "medre"
-version = "0.1.0"
+version = "0.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "msgspec" },
     { name = "pyyaml" },
     { name = "termaid" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/50/5a/a7b6521ddf87ee849b5cf172781d5076d61a4f92db8f963a343a2299fcc9/medre-0.1.0.tar.gz", hash = "sha256:d9769a92ef511c924587a326bfc1e3a92e9d132944b6737dd7112e40d2335af9", size = 3270876, upload-time = "2026-11-14T23:40:49.525Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e3/3d/547d48b0548d9f5efa0c416992cd5486ff63c30aa37d84d91ae71723a2f2/medre-0.1.1.tar.gz", hash = "sha256:82650e1671adc97a50952130ac74226b2a7fb6dabd574ce70698d8f5a82118dc", size = 3308402, upload-time = "2026-11-17T01:33:30.342Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/02/97/2cca235b5a8bc4335b4e6352043d248cc7d0bb46d4f957277511aa520e62/medre-0.1.0-py3-none-any.whl", hash = "sha256:4dc5657eb221eb4e9acd887b16fcb5f8df809b23585afb032e06b672624ff294", size = 1137014, upload-time = "2026-11-14T23:40:47.586Z" },
+    { url = "https://files.pythonhosted.org/packages/73/b8/9163006a14141b54eb23763d9ec4519068e54c1b1e9793565b38410b77f6/medre-0.1.1-py3-none-any.whl", hash = "sha256:a82ba78ccfd9884a3a0bec806730f5e4fa9b5a21d08b1f5f1e963e194f7844be", size = 1154522, upload-time = "2026-11-17T01:33:27.911Z" },
 ]
 
 [[package]]
@@ -1388,7 +1388,7 @@ requires-dist = [
     { name = "haversine", specifier = "==2.9.0" },
     { name = "markdown", specifier = "==3.11.3" },
     { name = "matplotlib", specifier = "==3.11.2" },
-    { name = "medre", specifier = "==0.1.0" },
+    { name = "medre", specifier = "==0.1.1" },
     { name = "medre-adapter-matrix", specifier = "==0.1.0" },
     { name = "mindroom-nio", specifier = "==1.3.0" },
     { name = "mindroom-nio", extras = ["e2e"], marker = "extra == 'e2e'", specifier = "==1.3.0" },
