@@ -53,15 +53,20 @@ from mmrelay.log_utils import get_logger
 
 
 class E2EENotSupportedError(RuntimeError):
-    """E2EE not supported on Windows."""
+    """
+    Raised when the E2EE store directory cannot be provided on this platform.
+
+    Retained as public API for callers that handle unsupported store locations.
+    MMRelay supports E2EE on Windows via the vodozemac backend, so this error is
+    no longer raised for Windows; it remains available for defensive handling of
+    store-path overrides.
+    """
 
     def __init__(self) -> None:
         """
-        Initialize the exception indicating E2EE is unsupported on Windows.
-
-        The exception message is set to "E2EE not supported on Windows".
+        Initialize the exception indicating the E2EE store is unsupported here.
         """
-        super().__init__("E2EE not supported on Windows")
+        super().__init__("E2EE store directory is not supported on this platform")
 
 
 class UnknownPluginTypeError(ValueError):
@@ -574,17 +579,12 @@ def get_e2ee_store_dir() -> Path:
     """
     Directory for storing end-to-end encryption (E2EE) keys.
 
-    Only available on Unix-like platforms; calling this on Windows raises an error.
+    Available on all supported platforms, including Windows (via the vodozemac
+    backend).
 
     Returns:
         Path: Path to E2EE key store directory.
-
-    Raises:
-        E2EENotSupportedError: If invoked on Windows (E2EE is not supported on Windows).
     """
-    if sys.platform == WINDOWS_PLATFORM:
-        raise E2EENotSupportedError()
-
     return get_matrix_dir() / STORE_DIRNAME
 
 
@@ -763,25 +763,22 @@ def ensure_directories(*, create_missing: bool = True) -> None:
     """
     Ensure MMRelay's required filesystem directories exist.
 
-    When `create_missing` is True, missing directories are created (with parents). When False, directories are not modified and any missing paths are reported via warnings. The set of checked directories excludes the E2EE store on Windows.
+    When `create_missing` is True, missing directories are created (with parents). When False, directories are not modified and any missing paths are reported via warnings. The E2EE store directory is included on every platform.
     Parameters:
         create_missing (bool): If True, create any missing directories; if False, only report missing ones.
     """
 
-    raw_dirs = [
+    dirs_to_ensure: list[Path] = [
         get_home_dir(),
         get_matrix_dir(),
         get_database_dir(),
         get_logs_dir(),
-        get_e2ee_store_dir() if sys.platform != WINDOWS_PLATFORM else None,
+        get_e2ee_store_dir(),
         get_plugins_dir(),
         get_custom_plugins_dir(),
         get_community_plugins_dir(),
         get_core_plugins_dir(),
     ]
-
-    # Filter out None values to prevent crashes on Windows
-    dirs_to_ensure: list[Path] = [d for d in raw_dirs if d is not None]
 
     for dir_path in dirs_to_ensure:
         if create_missing:
@@ -944,7 +941,7 @@ def resolve_all_paths() -> dict[str, Any]:
     - legacy_sources: list of detected legacy MMRelay directories (excluded if equal to home)
     - credentials_path: path to credentials.json
     - database_dir: database directory
-    - store_dir: E2EE store directory or "N/A (Windows)"
+    - store_dir: E2EE store directory
     - logs_dir: logs directory
     - log_file: active log file (honors MMRELAY_LOG_PATH)
     - plugins_dir: plugins root directory
@@ -998,11 +995,7 @@ def resolve_all_paths() -> dict[str, Any]:
         "legacy_sources": [str(d) for d in legacy_dirs],
         "credentials_path": str(get_credentials_path()),
         "database_dir": str(get_database_dir()),
-        "store_dir": (
-            str(get_e2ee_store_dir())
-            if sys.platform != WINDOWS_PLATFORM
-            else "N/A (Windows)"
-        ),
+        "store_dir": str(get_e2ee_store_dir()),
         "logs_dir": str(get_logs_dir()),
         "log_file": str(get_log_file()),
         "plugins_dir": str(get_plugins_dir()),

@@ -178,11 +178,7 @@ def test_verify_migration_plugins_outside_home(tmp_path, monkeypatch):
         "legacy_sources": [],
         "credentials_path": str(home / "matrix" / CREDENTIALS_FILENAME),
         "database_dir": str(home / "database"),
-        "store_dir": (
-            "N/A (Windows)"
-            if sys.platform == "win32"
-            else str(home / "matrix" / "store")
-        ),
+        "store_dir": str(home / "matrix" / "store"),
         "logs_dir": str(home / "logs"),
         "plugins_dir": str(outside_plugins),
     }
