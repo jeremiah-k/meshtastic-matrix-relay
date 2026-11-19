@@ -1300,20 +1300,20 @@ wheels = [
 
 [[package]]
 name = "medre-adapter-matrix"
-version = "0.1.0"
+version = "0.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "medre" },
     { name = "mindroom-nio", extra = ["e2e"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ef/2c/0bf6eb6c07b91b934b60dc6e07b599c5fbfc7fec2e77effe20afb47c0184/medre_adapter_matrix-0.1.0.tar.gz", hash = "sha256:136c631769e6465ecb3603d80ae3cb6fed790bcdd54789dc657ab19877656c00", size = 431501, upload-time = "2026-11-14T23:47:33.654Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b0/35/b8bcbeb21cfdbaa9475ad548963a6a62e584f8a70315b4b6fa3ca49dad14/medre_adapter_matrix-0.1.2.tar.gz", hash = "sha256:93944155aadaf2318e4eab78a79cc570efd52ca1c8cf2c6431ed773c49cdf06e", size = 448903, upload-time = "2026-11-19T18:13:46.41Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/81/61/fa16295ade333a6480291f011a6d41fc6a640655eab2fa1cfd270da551cc/medre_adapter_matrix-0.1.0-py3-none-any.whl", hash = "sha256:5e1e73b80941a8a23e6a0a70f8b2bf00fdaca79cadb13dadbeadd095fff37f43", size = 184419, upload-time = "2026-11-14T23:47:32.059Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/ee/7df28cabed96dd44faea48a6a17eb855ba545d35df6055bb5fd8193124ba/medre_adapter_matrix-0.1.2-py3-none-any.whl", hash = "sha256:091439fc3cdc6c1b6689a754a8cba9b4f8fdf908bcb54b0c5072f0057e478e63", size = 184708, upload-time = "2026-11-19T18:13:44.782Z" },
 ]
 
 [[package]]
 name = "mindroom-nio"
-version = "1.3.0"
+version = "1.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -1325,9 +1325,9 @@ dependencies = [
     { name = "pycryptodome" },
     { name = "unpaddedbase64" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c0/7f/333c85639d67fa666e4f2b4622307fc260208f8f79c5430106f11a7b21f8/mindroom_nio-1.3.0.tar.gz", hash = "sha256:4840d972a5c60e85107d37b0148059b5d2db60b6ff5ae7ba83716ba8f18700b3", size = 221031, upload-time = "2026-10-31T19:25:35.262Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3d/f8/18f94a0e68cc0a3007f3a019df0c525ffeee0cb18cd66f619584238eb99d/mindroom_nio-1.4.2.tar.gz", hash = "sha256:cd180ba2484ca5922bba18b2608a0b2fa51f612da42a7b0253ee3ce09454dda7", size = 221861, upload-time = "2026-11-19T03:12:16.058Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bb/77/61fe7df2242b5aaf71072287e13c1b5dfb090523c800007d6ca2032e0776/mindroom_nio-1.3.0-py3-none-any.whl", hash = "sha256:4f807ac93044df43c1f38f5312307b2b4c986a9df34286203a6e9ce6103e7b03", size = 257171, upload-time = "2026-10-31T19:25:33.572Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/01/be2211558626e40ac2e8f5564d052cd533788da43ed2c927924d9c81d1bd/mindroom_nio-1.4.2-py3-none-any.whl", hash = "sha256:bf5262b3c2a2bb256ed5212581efe5418711c9884b5409ef213e0bd8cdab6c13", size = 258080, upload-time = "2026-11-19T03:12:14.714Z" },
 ]
 
 [package.optional-dependencies]
@@ -1389,9 +1389,9 @@ requires-dist = [
     { name = "markdown", specifier = "==3.11.3" },
     { name = "matplotlib", specifier = "==3.11.2" },
     { name = "medre", specifier = "==0.1.2" },
-    { name = "medre-adapter-matrix", specifier = "==0.1.0" },
-    { name = "mindroom-nio", specifier = "==1.3.0" },
-    { name = "mindroom-nio", extras = ["e2e"], marker = "extra == 'e2e'", specifier = "==1.3.0" },
+    { name = "medre-adapter-matrix", specifier = "==0.1.2" },
+    { name = "mindroom-nio", specifier = "==1.4.2" },
+    { name = "mindroom-nio", extras = ["e2e"], marker = "extra == 'e2e'", specifier = "==1.4.2" },
     { name = "mtjk", specifier = "==2.7.11.post14" },
     { name = "mypy", marker = "extra == 'dev'", specifier = "==2.4.1" },
     { name = "nh3", specifier = "==0.3.8" },
