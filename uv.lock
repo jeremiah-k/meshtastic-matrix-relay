@@ -1286,29 +1286,29 @@ wheels = [
 
 [[package]]
 name = "medre"
-version = "0.1.2"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "msgspec" },
     { name = "pyyaml" },
     { name = "termaid" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9b/21/1b0063143c0c24cd7d6cc19b615658c9f99a2856c1a698b652007646cf35/medre-0.1.2.tar.gz", hash = "sha256:5d4db7c72eb6526fd437a3c858e46953d61a7b6fc5de7dc6d1436ad02eff730c", size = 3361478, upload-time = "2026-11-19T00:25:28.491Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/52/a1/c7872b30d305e0d5e21c714a08d3f4d27b666fec3ee169dc47894af70247/medre-0.2.0.tar.gz", hash = "sha256:3638db7bf4fb652d63595efd7e470d73636dc1c213f870b5c4dec6a51796343b", size = 3392414, upload-time = "2026-11-19T21:53:03.069Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/19/09/28ca74596a90b28f8602a38eef95c5d8ecba37a4865ac0573d2ea197fde0/medre-0.1.2-py3-none-any.whl", hash = "sha256:bd9987ad7624d1aae211fe444774abe3a8749a6a536fcbad699cbad2ea3de00a", size = 1170258, upload-time = "2026-11-19T00:25:26.441Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/ea/489b4136962aefb88510545fdf426cf8c9768931cdd275d5a0747667e559/medre-0.2.0-py3-none-any.whl", hash = "sha256:d578c075ee0472ac7eba1bc4b762cee8e184599596fa83524230dc4ff9868549", size = 1186405, upload-time = "2026-11-19T21:53:01.208Z" },
 ]
 
 [[package]]
 name = "medre-adapter-matrix"
-version = "0.1.2"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "medre" },
     { name = "mindroom-nio", extra = ["e2e"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b0/35/b8bcbeb21cfdbaa9475ad548963a6a62e584f8a70315b4b6fa3ca49dad14/medre_adapter_matrix-0.1.2.tar.gz", hash = "sha256:93944155aadaf2318e4eab78a79cc570efd52ca1c8cf2c6431ed773c49cdf06e", size = 448903, upload-time = "2026-11-19T18:13:46.41Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/99/c3/a85f7c425d34e3bea95ac91482412e0a481f6b87c7c158eb977a3e440679/medre_adapter_matrix-0.2.0.tar.gz", hash = "sha256:435ff3a3bf598d7f5350c885c9912b25713efcaf1dfecfa5a6fa7b3123ff8264", size = 453315, upload-time = "2026-11-19T21:57:54.024Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2a/ee/7df28cabed96dd44faea48a6a17eb855ba545d35df6055bb5fd8193124ba/medre_adapter_matrix-0.1.2-py3-none-any.whl", hash = "sha256:091439fc3cdc6c1b6689a754a8cba9b4f8fdf908bcb54b0c5072f0057e478e63", size = 184708, upload-time = "2026-11-19T18:13:44.782Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/d3/34e69dc7b9e1dc318117ee263a5735dca59d0a60a71856ee317c9448ff9a/medre_adapter_matrix-0.2.0-py3-none-any.whl", hash = "sha256:822814e66c1397b9a012692fa1a2ed49c99bca1a535c97a0fb1931a9628222f9", size = 186001, upload-time = "2026-11-19T21:57:52.771Z" },
 ]
 
 [[package]]
@@ -1388,8 +1388,8 @@ requires-dist = [
     { name = "haversine", specifier = "==2.9.0" },
     { name = "markdown", specifier = "==3.11.3" },
     { name = "matplotlib", specifier = "==3.11.2" },
-    { name = "medre", specifier = "==0.1.2" },
-    { name = "medre-adapter-matrix", specifier = "==0.1.2" },
+    { name = "medre", specifier = "==0.2.0" },
+    { name = "medre-adapter-matrix", specifier = "==0.2.0" },
     { name = "mindroom-nio", specifier = "==1.4.2" },
     { name = "mindroom-nio", extras = ["e2e"], marker = "extra == 'e2e'", specifier = "==1.4.2" },
     { name = "mtjk", specifier = "==2.7.11.post14" },
@@ -2665,11 +2665,11 @@ wheels = [
 
 [[package]]
 name = "termaid"
-version = "0.12.1"
+version = "0.13.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/2c/fe/dd5d89c1d5ac2795e8f82fe0686dcadd370dacb6020f6b45c51ea547c0ab/termaid-0.12.1.tar.gz", hash = "sha256:4bbdac66ba795c26fe1d4028d65bea77beca41daebe4095f706ebd0ecf6b0482", size = 590626, upload-time = "2026-11-17T23:47:05.26Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a0/f5/1c20309f634783e53d3d23fd5dcd7a794304120aaa7cc2b7fd26ff2fe4f3/termaid-0.13.0.tar.gz", hash = "sha256:fed44511be753ccf569099c57ddd0c70c06f54649405f15c3ecec33f7bb3b94c", size = 609296, upload-time = "2026-11-18T18:16:20.445Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c2/b4/11bc66300719e79c8d4d4411b28eda32e25cca1a7464775199e064e76047/termaid-0.12.1-py3-none-any.whl", hash = "sha256:749485a785cb93b61f964b63a9038e10661091e0a2f2f4cfe2f7701e82014180", size = 201736, upload-time = "2026-11-17T23:47:03.783Z" },
+    { url = "https://files.pythonhosted.org/packages/4b/22/5bf0efff3ba5c6fa382b9d3a881935f2dc0a9e6fa33c15791b5f9085f81a/termaid-0.13.0-py3-none-any.whl", hash = "sha256:20ebe45ddc631855e5501b06efe1e6bc6e38213e1e8579df178382214d572f6d", size = 207906, upload-time = "2026-11-18T18:16:18.683Z" },
 ]
 
 [[package]]
