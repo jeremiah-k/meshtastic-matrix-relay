@@ -1,6 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:best-practices"],
+  "extends": [
+    "config:best-practices"
+  ],
   "forkProcessing": "enabled",
   "mode": "full",
   "enabledManagers": [
@@ -37,17 +39,35 @@
     },
     {
       "description": "Automerge mtjk updates when new releases are detected",
-      "matchManagers": ["pep621"],
-      "matchPackageNames": ["mtjk"],
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchPackageNames": [
+        "mtjk"
+      ],
       "automerge": true,
       "minimumReleaseAge": "12 hours"
     },
     {
       "description": "Hold the Windows packaging runner's python-version pin until winrt cp315 wheels ship; bump it manually with the comment in package-windows.yml",
-      "matchManagers": ["github-actions"],
-      "matchPackageNames": ["python"],
-      "matchFileNames": [".github/workflows/package-windows.yml"],
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchPackageNames": [
+        "python"
+      ],
+      "matchFileNames": [
+        ".github/workflows/package-windows.yml"
+      ],
       "enabled": false
+    },
+    {
+      "description": "medre core and adapters release in lockstep \u2014 adapters floor and ceiling the core version, so neither pin can move alone; update them as one unit with a single lockfile resolution",
+      "matchPackageNames": [
+        "medre",
+        "medre-adapter-*"
+      ],
+      "groupName": "medre family"
     }
   ],
   "rebaseWhen": "behind-base-branch"
