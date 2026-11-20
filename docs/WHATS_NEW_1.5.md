@@ -6,8 +6,9 @@ upgrading. MMRelay 1.4.1 remains the last release supporting Python 3.11.
 
 ## Matrix interoperability
 
-The core relay adopts MEDRE 0.1 canonical Matrix ingress and outbound rendering,
-while retaining its current nio/E2EE session, plugins, storage, Matrix reply
+The core relay adopts MEDRE canonical Matrix ingress and outbound rendering
+(the published 0.2.0 packages; see Distribution), while retaining its current
+nio/E2EE session, plugins, storage, Matrix reply
 fallback, and Meshtastic transport. It does not start a second Matrix or
 Meshtastic client. Plugin-authored messages and media uploads retain their
 existing direct-send paths. A failed ingress codec falls back to native Matrix text and relation parsing;
@@ -48,17 +49,16 @@ invalid outbound renderer operations fail closed instead of being sent.
 
 ## Distribution and deployment
 
-The release-candidate source manifest currently pins unpublished MEDRE core
-and the Matrix adapter to immutable Git commits, for coordinated testing. **These must be repinned to the merged freeze commits and the lock
-regenerated before tagging**. A wheel with direct-URL `Requires-Dist` cannot
-be uploaded to PyPI; the publishing workflow skips such uploads. Choose
-between GitHub/source distribution with exact Git pins and a public indexed
-release with versioned MEDRE packages. Test installs from the intended
-channel, not from an editable developer checkout.
+The source manifest pins the published MEDRE packages from PyPI:
+`medre==0.2.0` and `medre-adapter-matrix==0.2.0`. Installs resolve through
+the public index with ordinary versioned wheels; the release-candidate Git
+pins and the direct-URL wheel restriction they carried are gone. Test
+installs from the intended channel, not from an editable developer checkout.
 
-The chart version, Helm default image tag, and Kustomize image tag track the
-1.5.0 release branch. Do not deploy these tags until a matching image exists.
-For production, prefer immutable image digests.
+The chart version, Helm default image tag, and Kustomize image tag still
+carry the 1.4.1 values until the 1.5.0 metadata commit lands; do not deploy
+release tags until a matching image exists. For production, prefer immutable
+image digests.
 
 ## Candidate interoperability evidence (November 11, 2026)
 
@@ -68,12 +68,19 @@ untrusted claims, and LXMF loopback. This supports the configured topology,
 not arbitrary overlapping bridges on one radio medium. It does **not**
 qualify native emoji-flagged radio tapbacks, the LXMF reply-origin counterpart,
 a deployed XMPP/Prosody leg, device recovery, or final release artifacts.
-Candidate Git pins, hosted CI, hardware tests, and release signing must be
-requalified after their final merges; these results are not a freeze or a tag.
+The candidate Git pins have since been replaced by the published 0.2.0
+packages, and hosted CI is green at the landed pins. These laboratory
+results still do not substitute for qualification of the exact published
+pair, the final release artifacts, and release signing.
 
 ## Release validation gates
 
-Before publishing: finish the three MEDRE schema freezes and compatibility
-manifest; qualify the exact dependency pair and final release artifacts; rerun full Python 3.12–3.15 CI, Windows installation, live
+Before publishing: qualify the exact published dependency pair
+(`medre==0.2.0`, `medre-adapter-matrix==0.2.0`) and the final release
+artifacts; rerun full Python 3.12–3.15 CI, Windows installation, live
 Matrix/E2EE, reply/emote/reaction and multi-meshnet round trips, plugin
 interference, radio reconnects, and clean install/upgrade/rollback drills.
+The MEDRE schema freezes and compatibility manifest completed with the
+upstream 0.2.0 release train; medre 0.2.1 (radio delivery fixes) is
+published beyond this pin, and absorbing it before the tag is a release
+decision that repeats the pair qualification.
