@@ -6,7 +6,7 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
-- [Upgrading from Older Layouts](#upgrading-from-older-layouts)
+- [Upgrading](#upgrading)
 - [Deployment Methods](#deployment-methods)
   - [Prebuilt Images with Make](#prebuilt-images-with-make)
   - [Portainer/GUI Tools](#portainergui-tools)
@@ -66,9 +66,13 @@ docker compose logs -f
 
 > **Production deployment**: The `:latest` tag is mutable and may change. For production deployments, pin a specific version tag or digest to ensure reproducible deployments. See the [Kubernetes Guide](KUBERNETES.md#pinning-digests-for-production) for digest pinning examples.
 
-## Upgrading from Older Layouts
+## Upgrading
 
-If you're upgrading an existing deployment from older MMRelay directory layouts, follow the [Migration Guide for v1.3](MIGRATION_1.3.md).
+For **1.4.1 → 1.5.0**, follow the [1.5 upgrade checklist](UPGRADING_1.5.md)
+before pulling a new image. Protect the entire persistent `/data` mount and
+the Matrix E2EE store, verify the new image tag exists, and keep a tested
+rollback path. For older directory layouts, also follow the
+[Migration Guide for v1.3](MIGRATION_1.3.md).
 
 ## Deployment Methods
 

@@ -21,7 +21,8 @@ mmrelay
 ```
 
 To upgrade, use `pipx upgrade mmrelay` or `uv tool upgrade mmrelay`, matching
-your installer. For direct device access, configure the serial, TCP, or BLE
+your installer, **after** backing up the selected data home as described in the
+[1.5 upgrade checklist](UPGRADING_1.5.md). For direct device access, configure the serial, TCP, or BLE
 connection in `config.yaml`. Matrix E2EE is not supported by the native Windows
 build; see the [E2EE Guide](E2EE.md) for supported platforms.
 
