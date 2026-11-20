@@ -2,8 +2,8 @@
 
 > **Unreleased 1.5.0 instructions (staged on `docs/release-1.5`).** For a
 > running 1.4.1 deployment, use the
-> [published documentation](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/main/docs/HELM.md)
-> or its tagged version. The `1.5.0` image and tag examples below are for
+> [1.4.1 documentation](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/1.4.1/docs/HELM.md)
+> or its installed release tag. The `1.5.0` image and tag examples below are for
 > after the corresponding artifacts have been published and verified.
 
 This guide covers deploying MMRelay using the Helm chart in `deploy/helm/mmrelay/`.
@@ -16,11 +16,12 @@ This guide covers deploying MMRelay using the Helm chart in `deploy/helm/mmrelay
 - Helm 3.x
 - `kubectl` configured for your cluster
 
-## Upgrading to 1.3
+## Before upgrading
 
-If you are upgrading from 1.2.x or earlier, read and follow
-`docs/MIGRATION_1.3.md` before deploying or upgrading the Helm release.
-New installations can proceed with the Quick Start below.
+For an upgrade from 1.4.1, follow the [1.5 upgrade checklist](UPGRADING_1.5.md)
+and the [backup guidance](#backup-before-upgrade) below. Deploy the 1.5 image
+only after it is published. For installations from 1.2.x or earlier, first complete the
+[1.3 data migration](MIGRATION_1.3.md) on a supported 1.4.1 install.
 
 ## Quick Start
 
@@ -61,12 +62,12 @@ kubectl create secret generic mmrelay-config \
 ```bash
 helm install mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
-  --create-namespace
+  --create-namespace \
+  --set image.tag=1.5.0 \
+  --set image.digest=""
 
-# Alternatively, on a FIRST installation, explicitly select the image tag:
-# helm install mmrelay ./deploy/helm/mmrelay --namespace mmrelay \
-#   --create-namespace --set image.tag=1.5.0
-# For existing installations, use the upgrade commands below to retain values.
+# The chart defaults still select 1.4.1 until the 1.5 image is released.
+# Never use this install command before the 1.5.0 image exists.
 ```
 
 ### 6. Verify Deployment
@@ -522,8 +523,9 @@ Expected output:
 
 ### Upgrade to 1.5.0
 
-If upgrading from 1.2.x or earlier, follow `docs/MIGRATION_1.3.md` first.
-Back up existing Helm values and the PVC first. `--reuse-values` preserves
+If upgrading from 1.2.x or earlier, follow [the 1.3 migration guide](MIGRATION_1.3.md)
+first. Review the [1.5 upgrade checklist](UPGRADING_1.5.md).
+Back up existing Helm values and the PVC first: `--reuse-values` preserves
 previously configured settings (including `persistence.existingClaim` and
 secrets) instead of silently replacing them with chart defaults. The command
 below also clears a previously pinned `image.digest` so the new tag takes
@@ -532,6 +534,11 @@ If changing the values structure, supply an audited migration values file rather
 than relying on an unexamined merge of old values with new chart defaults.
 
 ```bash
+# May contain secrets if you placed credentials in Helm values: store securely.
+helm get values mmrelay --namespace mmrelay -o yaml > mmrelay-values-before-1.5.yaml
+chmod 600 mmrelay-values-before-1.5.yaml
+
+# After the image and matching chart have been released:
 helm upgrade mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
   --reuse-values \
