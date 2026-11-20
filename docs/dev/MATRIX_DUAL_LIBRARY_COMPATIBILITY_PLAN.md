@@ -1,5 +1,12 @@
 # Matrix Dual-Library Compatibility
 
+> **Historical design document, not an MMRelay 1.5 installation guide.**
+> The manual `matrix-nio` replacement procedures below describe earlier
+> compatibility exploration and are **not supported** by the current 1.5
+> indexed dependency graph, which requires `mindroom-nio`. Follow the
+> [current E2EE guide](../E2EE.md) and
+> [current SDK compatibility notes](MINDROOM_NIO_UPGRADE.md) instead.
+
 ## Default Provider: mindroom-nio
 
 **mindroom-nio is now the default Matrix provider.** It replaces upstream

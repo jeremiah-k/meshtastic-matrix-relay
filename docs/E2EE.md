@@ -16,30 +16,24 @@ its Matrix SDK with **vodozemac** (a Rust cryptographic library) for E2EE. Vodoz
 libolm and is distributed as precompiled wheels for Linux and macOS — no
 additional system libraries are needed on supported platforms.
 
-The legacy `matrix-nio` provider (with `python-olm`) is still technically
-usable if you manually replace mindroom-nio, but upstream matrix-nio is mostly
-inactive and mindroom-nio is recommended for all deployments.
+MMRelay 1.5 declares `mindroom-nio` as a runtime dependency, and the MEDRE
+Matrix adapter uses the same provider. Do not replace it with `matrix-nio`:
+manual namespace substitution is not a supported 1.5 installation path.
 
 For encrypted sessions, MMRelay also enables mindroom-nio's rotated-device-key
 recovery policy. MMRelay uses trust on first use and never grants interactive
 verification trust to peer devices, so a valid peer identity rotation can
 replace stale Olm keys without preserving trust that the old keys earned.
 
-### Legacy matrix-nio provider
+### Supported provider
 
-mindroom-nio is the default and recommended provider. Legacy matrix-nio
-remains supported only by manually replacing mindroom-nio.
-
-**Do not install both providers in the same Python environment.** They both
-provide the `nio` namespace and will conflict. Do not use `mmrelay[e2e]` for
-legacy matrix-nio, because the `e2e` extra always installs mindroom-nio.
-
-To switch to the legacy provider:
-
-```bash
-pip uninstall mindroom-nio
-pip install 'matrix-nio[e2e]==0.25.2'
-```
+Use the declared `mindroom-nio` dependency. The optional `mmrelay[e2e]`
+extra installs its E2EE dependencies on supported platforms; the MEDRE
+Matrix adapter also depends on `mindroom-nio[e2e]`. **Do not install both
+`mindroom-nio` and `matrix-nio`** in the same environment: each owns the
+`nio` import namespace. Existing installations with both should be repaired
+using a clean environment and a backup of the Matrix store, not by changing
+the provider under a running relay.
 
 ## Index
 
@@ -53,7 +47,7 @@ pip install 'matrix-nio[e2e]==0.25.2'
 - [File locations](#file-locations)
 - [Device verification status](#device-verification-status)
 - [Troubleshooting](#troubleshooting)
-- [Backward compatibility](#backward-compatibility)
+- [Upgrading existing E2EE stores](#upgrading-existing-e2ee-stores)
 - [Technical details](#technical-details)
 
 ## What E2EE means in MMRelay
@@ -517,23 +511,25 @@ INFO Matrix: Performing initial sync to initialize rooms...
 INFO Matrix: Initial sync completed. Found X rooms.
 ```
 
-## Backward compatibility
+## Upgrading existing E2EE stores
 
-E2EE support is backward compatible:
+Preserve the Matrix credentials and **entire** E2EE store when upgrading from
+1.4.1. Stop the old process before copying or restoring that data, and do not
+reset the Matrix device just to resolve an SDK upgrade failure. Mixed encrypted
+and unencrypted rooms remain supported; E2EE is optional via
+`matrix.e2ee.enabled: false`.
 
-- Existing setups generally continue to work. Manual cleanup is only expected if an in-place Python environment still has both matrix-nio and mindroom-nio installed
-- Mixed encrypted/unencrypted room setups are supported
-- E2EE remains optional via `e2ee.enabled: false`
+Follow the [1.5 upgrade checklist](UPGRADING_1.5.md) for backup and rollback
+instructions. Store migration is not a guarantee that a downgraded SDK can
+read a store touched by a newer version.
 
 ## Technical details
 
 ### Implementation
 
-- Uses **mindroom-nio** with the **vodozemac** crypto backend (the legacy
-  matrix-nio / python-olm stack is also technically supported, but upstream
-  matrix-nio is mostly inactive).
-- Both providers implement the same Matrix **Olm/Megolm** encryption protocols;
-  they differ only in the underlying cryptographic library.
+- Uses **mindroom-nio** with the **vodozemac** crypto backend.
+- Preserves the Matrix **Olm/Megolm** protocols; cryptographic provider
+  selection and device/store recovery remain SDK-dependent.
 - Loads E2EE store before sync operations
 - Uses automatic key management with `ignore_unverified_devices=True`
 - Uses mindroom-nio's bot-scoped `ensure_cross_signing()` producer flow
