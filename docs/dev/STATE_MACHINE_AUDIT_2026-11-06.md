@@ -1,5 +1,11 @@
 # MMRelay implicit-state-machine audit — November 6, 2026
 
+> **Historical audit snapshot:** Version and SDK pins below describe the
+> November 6 development baseline, **not** the MMRelay 1.5 release manifest.
+> For the current 1.5 dependency versions, see
+> [What’s new in 1.5](../WHATS_NEW_1.5.md) and
+> [mindroom-nio compatibility](MINDROOM_NIO_UPGRADE.md).
+
 **Repository:** `meshtastic-matrix-relay` (`mmrelay`), updated November 6
 `main` at `0357ee5344fb6a84aa2821cfbece1c5c668e99c7` (v1.4.1).
 The companion PR heads (#827–#829) are checked independently against this base;
