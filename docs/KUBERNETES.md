@@ -1,5 +1,9 @@
 # Kubernetes Deployment Guide
 
+> **Staged 1.5 instructions.** The versioned manifest URLs and 1.5.0 image
+> examples below require a published 1.5.0 release. For 1.4.1, use the
+> [1.4.1 Kubernetes guide](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/1.4.1/docs/KUBERNETES.md).
+
 > **Note**: Kubernetes deployment is currently in testing and development. We welcome feedback to help improve the manifests and deployment experience.
 
 This guide uses the static manifests in `deploy/k8s/`. Download them, create a Secret with your `config.yaml`, then apply.
@@ -71,8 +75,8 @@ Tags and digests are listed on the GitHub Packages page:
 mkdir -p mmrelay
 cd mmrelay
 
-# Download manifests from the main branch
-BASE_URL="https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s"
+# Download manifests from the same released tag as the target image.
+BASE_URL="https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/1.5.0/deploy/k8s"
 mkdir -p ./deploy/k8s/overlays/digest
 curl -fLo ./deploy/k8s/pvc.yaml "${BASE_URL}/pvc.yaml"
 curl -fLo ./deploy/k8s/networkpolicy.yaml "${BASE_URL}/networkpolicy.yaml"
@@ -89,7 +93,7 @@ ${EDITOR:-vi} ./deploy/k8s/kustomization.yaml
 kubectl create namespace mmrelay --dry-run=client -o yaml | kubectl apply -f -
 
 # Create config.yaml from the project sample
-curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
+curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/1.5.0/src/mmrelay/tools/sample_config.yaml
 ${EDITOR:-vi} ./config.yaml
 
 # The default manifest sets MMRELAY_HOME=/data, so credentials,

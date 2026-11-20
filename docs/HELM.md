@@ -535,6 +535,7 @@ than relying on an unexamined merge of old values with new chart defaults.
 
 ```bash
 # May contain secrets if you placed credentials in Helm values: store securely.
+umask 077
 helm get values mmrelay --namespace mmrelay -o yaml > mmrelay-values-before-1.5.yaml
 chmod 600 mmrelay-values-before-1.5.yaml
 
