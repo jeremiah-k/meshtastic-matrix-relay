@@ -7,10 +7,11 @@ MEDRE's standardized event contract for those shared rooms instead of its
 legacy hand-rolled body and reply parsing. MMRelay keeps its own Matrix
 session and transport; the shared room is the interoperability surface.
 
-## Approved release completion requirements
+## Release contract and remaining qualification
 
 The implementation follows the approved canonical-only contract below.
-Runtime qualification and final package publication remain required before tagging:
+The core and adapter 0.2.0 packages are published; final MMRelay 1.5 runtime
+qualification and release artifacts remain pre-tag requirements:
 
 - Emit and consume canonical MEDRE peer metadata without flat `meshtastic_*`
   content fields or a legacy compatibility mode.
@@ -39,8 +40,8 @@ never proves cryptographic authorship of a radio packet.
 
 The coordinated MEDRE and Matrix schemas exclude `interop.mmrelay` from
 Matrix-native metadata. Runtime tests validate source-fact delivery and inbound
-authorization against the proposed source trees; live shared-room, E2EE, hardware,
-and release artifact qualification remain release gates.
+authorization against the selected published packages; live shared-room, E2EE,
+hardware, and final MMRelay artifact qualification remain release gates.
 
 ## Canonical outbound source facts (implementation slice)
 
@@ -220,8 +221,8 @@ requirements.
    mixed meshnet and plugin dispatch. Specifically verify Medre decodes the
    emitted `medre.envelope` and structured radio reaction key, while MMRelay's
    message-map writes still happen only after confirmed SDK sends.
-4. Validate `pip install .` from a clean Python 3.12 environment, including
-   its VCS-auth/network prerequisites, and validate package metadata with
+4. Validate `pip install .` from a clean Python 3.12 environment using the
+   published index-resolvable dependency versions; validate package metadata with
    `python -m build` and `twine check`.
 5. Execute the approved hybrid distribution policy before a tag: stable PyPI
    artifacts use index-resolvable requirements, with Git/fork/local source
