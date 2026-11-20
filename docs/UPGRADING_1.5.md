@@ -58,6 +58,7 @@ For a native Linux/macOS instance using the default home, after stopping it:
 
 ```bash
 # Backup is stored OUTSIDE the data home. Verify its contents before upgrading.
+umask 077
 tar -C "$HOME" -czf "mmrelay-1.4.1-backup-$(date +%Y%m%d).tar.gz" .mmrelay
 ```
 
@@ -116,6 +117,7 @@ Before upgrading, save the current Helm values securely; they may contain
 credentials. Check and back up the PVC and the config Secret/ConfigMap.
 
 ```bash
+umask 077
 helm get values mmrelay -n mmrelay -o yaml > mmrelay-values-before-1.5.yaml
 chmod 600 mmrelay-values-before-1.5.yaml
 
