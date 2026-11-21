@@ -3,6 +3,10 @@
 MMRelay runs on Linux, macOS, and Windows. Native installs require Python
 3.12+; Docker installs run MMRelay and the one-time Matrix login in containers.
 
+Before upgrading an existing 1.4.1 installation, follow the
+[1.5 upgrade checklist](UPGRADING_1.5.md). A 1.5 native install requires
+Python 3.12 or newer; Windows still supports only unencrypted Matrix rooms.
+
 ## Choose an installation method
 
 Choose Docker for an always-on relay, or install the native application with

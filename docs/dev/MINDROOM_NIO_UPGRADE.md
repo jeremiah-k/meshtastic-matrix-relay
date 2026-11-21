@@ -1,6 +1,6 @@
 # mindroom-nio 1.x compatibility
 
-MMRelay uses mindroom-nio 1.3.0 on Python 3.12+. Both the base requirement and
+MMRelay 1.5 pins mindroom-nio 1.4.2 on Python 3.12+. Both the base requirement and
 the E2EE extra select the same provider. No environment should install multiple
 packages that own the `nio` import namespace.
 
@@ -11,8 +11,8 @@ target for MMRelay.
 
 ## Compatibility boundary
 
-The [upstream changelog](https://github.com/mindroom-ai/mindroom-nio/blob/1.3.0/CHANGELOG.md)
-describes a breaking durability cutover and a Python 3.12 minimum. MMRelay uses
+The [1.3.0 upstream changelog](https://github.com/mindroom-ai/mindroom-nio/blob/1.3.0/CHANGELOG.md)
+describes the earlier 1.x durability cutover and a Python 3.12 minimum. MMRelay uses
 ordinary AsyncClient callbacks and Classic sync; it does not enable the 0.40
 recovery/admission APIs removed by the 1.x cutover. The 0.40 limited-timeline
 recovery options are absent from the 1.x client configuration.
@@ -26,7 +26,7 @@ exactly-once relaying or lossless downtime recovery.
 
 | Boundary                        | Treatment                                                                                                                |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Python and package installation | Select mindroom-nio 1.3.0 for Python 3.12+; keep base and E2EE constraints aligned.                                      |
+| Python and package installation | Select mindroom-nio 1.4.2 for Python 3.12+; keep base and E2EE constraints aligned.                                      |
 | Matrix login and transport      | Keep ordinary restore_login and HTTP request APIs; exercise the real installed provider.                                 |
 | Sync and event callbacks        | Keep Classic sync and async callback ordering; do not mix durable and ordinary transports.                               |
 | Crypto and identity             | Reopen ordinary stores with the same account/device, trusted peers, sync cursor, and cross-signing public keys.          |
@@ -45,10 +45,10 @@ restored-session request headers, plaintext message responses, ordered async
 callbacks, cursor handling, and preservation of ordinary crypto identities and
 device trust across restart.
 They also decrypt pending Olm and Megolm messages with sessions saved before
-restart, including the 0.40.0-to-1.3.0 store upgrade.
+restart, including opening a store produced by 0.40.0 with the currently pinned 1.4.2 provider.
 
 The Python 3.12 CI lane also creates a separate 0.40.0 interpreter. A disposable
-store created there is reopened by 1.3.0 and checked for identity/trust/cursor
+store created there is reopened by the selected pinned 1.4.2 provider and checked for identity/trust/cursor
 preservation. Locally, point `MMRELAY_PREVIOUS_SDK_PYTHON` at a 0.40.0 environment
 to run this contract. Its interpreter entry-point path must be preserved rather
 than resolving the virtualenv's symlink to system Python.

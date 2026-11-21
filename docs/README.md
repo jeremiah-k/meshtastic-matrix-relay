@@ -1,5 +1,11 @@
 # MMRelay Documentation
 
+> **Release-documentation staging branch:** These pages include **unreleased
+> MMRelay 1.5.0** guidance. For a currently published **1.4.1** installation,
+> use the [1.4.1 documentation](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/1.4.1/docs/README.md)
+> or the documentation in your installed release tag. The 1.5.0 configuration,
+> dependencies, and image tags must not be assumed available until release.
+
 The repository documentation is for **versioned setup, deployment, upgrade, and
 operator guidance**. Broader conceptual and community documentation lives in the
 [MMRelay wiki](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki).
@@ -27,6 +33,8 @@ operator guidance**. Broader conceptual and community documentation lives in the
 
 ## Upgrade and release notes
 
+- **[What's New in 1.5.0 (release candidate)](WHATS_NEW_1.5.md)** — interoperability, reliability, and compatibility changes
+- **[Upgrading from 1.4.1 to 1.5.0](UPGRADING_1.5.md)** — backups, supported platforms, installation methods, validation and rollback
 - **[What's New in 1.4.0](WHATS_NEW_1.4.md)** — 1.4 release summary and upgrade guidance
 - **[What's New in 1.3.0](WHATS_NEW_1.3.md)** — historical 1.3 release summary
 - **[What's New in 1.2](WHATS_NEW_1.2.md)** — historical 1.2 release notes
@@ -51,8 +59,9 @@ container mounts are used. The deployment guides document those cases.
 - **[Testing Guide](dev/TESTING_GUIDE.md)** — project testing patterns and ownership
 - **[Windows Installer Build Guide](dev/INNO_SETUP_GUIDE.md)** — installer maintenance
 - **[BLE Compatibility Notes](dev/BLE_DUAL_LIBRARY_COMPATIBILITY.md)** — BLE library compatibility design
-- **[Matrix Compatibility Plan](dev/MATRIX_DUAL_LIBRARY_COMPATIBILITY_PLAN.md)** — Matrix-provider compatibility design
-- **[mindroom-nio 1.x compatibility](dev/MINDROOM_NIO_UPGRADE.md)** — single provider pin, ordinary-client contracts, and live-validation requirements
+- **[Historical Matrix Compatibility Plan](dev/MATRIX_DUAL_LIBRARY_COMPATIBILITY_PLAN.md)** — prior dual-provider design (not a 1.5 installation procedure)
+- **[MEDRE Matrix ingress](dev/MEDRE_MATRIX_1_5_INTEGRATION.md)** — 1.5 canonical Matrix event boundary and published package pins
+- **[mindroom-nio compatibility](dev/MINDROOM_NIO_UPGRADE.md)** — supported SDK pin, ordinary-client contracts, and live-validation requirements
 - **[Historical v1.3 migration guide](MIGRATION_1.3.md)** — reference for older data layouts, not required for new installs
 - **[Archived implementation notes](dev/archive/)** — historical design and migration material
 

@@ -1,5 +1,9 @@
 # Kubernetes Deployment Guide
 
+> **Staged 1.5 instructions.** For a currently published 1.4.1 deployment,
+> use the
+> [1.4.1 Kubernetes guide](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/1.4.1/docs/KUBERNETES.md).
+
 > **Note**: Kubernetes deployment is currently in testing and development. We welcome feedback to help improve the manifests and deployment experience.
 
 This guide uses the static manifests in `deploy/k8s/`. Download them, create a Secret with your `config.yaml`, then apply.
@@ -9,15 +13,18 @@ This guide uses the static manifests in `deploy/k8s/`. Download them, create a S
 - Kubernetes cluster (v1.20+)
 - `kubectl` (includes kustomize support for `kubectl apply -k`)
 
-## Upgrading to 1.3
+## Upgrading
 
-If you are upgrading from 1.2.x or earlier, read and follow
-`docs/MIGRATION_1.3.md` before applying the manifests. New installations can
-proceed with the Quick Start below.
+For **1.4.1 → 1.5.0**, follow the [1.5 upgrade checklist](UPGRADING_1.5.md).
+Back up your PVC, Secret and deployment manifest before changing the image;
+verify the 1.5.0 image exists first. If upgrading from 1.2.x or earlier,
+complete the [1.3 migration](MIGRATION_1.3.md) on 1.4.1 before moving to 1.5.
 
 ## Image Selection
 
-The base Kubernetes manifest uses `kustomize` images transform to set the container image tag. The default `kustomization.yaml` pins to a specific stable release tag (e.g., `1.3.3`). Edit `kustomization.yaml` to change the tag for your target release.
+The base Kubernetes manifest uses a Kustomize image transform. The checked-in
+default tracks the current stable release. Set your chosen release image tag
+explicitly before applying the manifests.
 
 ### Setting a specific image tag
 
@@ -26,7 +33,7 @@ Edit `deploy/k8s/kustomization.yaml` to set a specific tag:
 ```yaml
 images:
   - name: ghcr.io/jeremiah-k/mmrelay
-    newTag: 1.3.3 # Change to your desired version
+    newTag: 1.4.1 # change to your verified target release tag
 ```
 
 Alternatively, use `kustomize edit` from the command line:
@@ -79,7 +86,7 @@ curl -fLo ./deploy/k8s/overlays/digest/kustomization.yaml "${BASE_URL}/overlays/
 
 # Set a specific image tag (recommended; avoid floating latest in production/tests)
 ${EDITOR:-vi} ./deploy/k8s/kustomization.yaml
-# Set newTag to 1.3.3 (or your target release tag)
+# Set newTag to the verified published release tag
 # If you change the namespace, update the --namespace/-n flags below
 
 # Ensure the namespace exists

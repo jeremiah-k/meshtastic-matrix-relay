@@ -1,12 +1,16 @@
 # Docker Deployment
 
+> **Staged 1.5 instructions.** For a currently published 1.4.1 deployment,
+> use the
+> [1.4.1 Docker guide](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/1.4.1/docs/DOCKER.md).
+
 MMRelay supports Docker deployment with two image options and multiple deployment methods.
 
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
-- [Upgrading from Older Layouts](#upgrading-from-older-layouts)
+- [Upgrading](#upgrading)
 - [Deployment Methods](#deployment-methods)
   - [Prebuilt Images with Make](#prebuilt-images-with-make)
   - [Portainer/GUI Tools](#portainergui-tools)
@@ -49,6 +53,10 @@ grep -q '^UID=' .env 2>/dev/null || echo "UID=$(id -u)" >> .env
 grep -q '^GID=' .env 2>/dev/null || echo "GID=$(id -g)" >> .env
 curl -o docker-compose.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml
 
+# Before pulling, edit the Compose image to a verified published release tag
+# or digest. The sample may still use the mutable :latest tag.
+${EDITOR:-vi} docker-compose.yaml
+
 # Download the image and authenticate with the relay bot account
 # Creates credentials and encryption data in the mounted ~/.mmrelay/matrix/
 docker compose pull mmrelay
@@ -66,9 +74,13 @@ docker compose logs -f
 
 > **Production deployment**: The `:latest` tag is mutable and may change. For production deployments, pin a specific version tag or digest to ensure reproducible deployments. See the [Kubernetes Guide](KUBERNETES.md#pinning-digests-for-production) for digest pinning examples.
 
-## Upgrading from Older Layouts
+## Upgrading
 
-If you're upgrading an existing deployment from older MMRelay directory layouts, follow the [Migration Guide for v1.3](MIGRATION_1.3.md).
+For **1.4.1 → 1.5.0**, follow the [1.5 upgrade checklist](UPGRADING_1.5.md)
+before pulling a new image. Protect the entire persistent `/data` mount and
+the Matrix E2EE store, verify the new image tag exists, and keep a tested
+rollback path. For older directory layouts, also follow the
+[Migration Guide for v1.3](MIGRATION_1.3.md).
 
 ## Deployment Methods
 
