@@ -26,6 +26,14 @@ Do not run two MMRelay processes against the same radio connection or data home.
    the [loop-risk warning](WHATS_NEW_1.5.md#trusted-relay-metadata-is-explicit).
    Avoid overlapping relays on the same radio mesh without a separately
    tested loop-prevention plan. Never treat a claimed meshnet as proof.
+   **New fail-closed behavior:** An unlisted sender carrying `medre` relay
+   content is now **dropped** rather than silently forwarded as ordinary
+   text. A separate warning identifies malformed relay claims from an
+   allowlisted sender. Check the receiving relay's logs for the observed MXID
+   and `matrix.trusted_relays`; verify the peer bot account before adding it.
+   Ordinary Matrix users without `medre` content remain unaffected. If a
+   pre-1.5 relay sends no envelope, it remains indistinguishable from ordinary
+   Matrix text, so the topology warning still applies.
 5. Record the installed version, effective data home and **active config file**.
    Run `mmrelay --version`, `mmrelay paths`, and `mmrelay config check` as the
    **same OS user, with the same environment, working directory, and global

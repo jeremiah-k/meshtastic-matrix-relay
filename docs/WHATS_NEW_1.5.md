@@ -62,18 +62,32 @@ matrix:
 ```
 
 The default is an empty allowlist. No wildcards, case folding, room-power
-shortcuts, or trust-on-first-use rules are accepted. Claims from other senders
-cannot replace observed Matrix identity, local reply mappings, or the authored
-visible message body. Old flat `meshtastic_*` message-content fields, including
-`meshtastic_text` overrides, are deliberately **not** interpreted as peer
-metadata in 1.5; mixed 1.4/1.5 peers do not have metadata compatibility.
+shortcuts, or trust-on-first-use rules are accepted. A message containing the
+reserved `medre` Matrix-content namespace is a **relay claim**, even when its
+envelope is malformed or incomplete:
+
+- **Unlisted Matrix sender:** drop the message before plugins or radio delivery.
+  A WARNING names the observed MXID and `matrix.trusted_relays`. Verify the
+  account is an actual peer relay **before** trusting it; this is equally
+  consistent with a missing allowlist entry or a forgery attempt.
+- **Allowlisted sender, invalid/incoherent envelope:** drop with a separate
+  WARNING. Check peer versions and provenance rather than adding a bypass.
+- **No `medre` namespace:** ordinary Matrix messages, including human messages,
+  retain normal behavior. A pre-1.5 bot that sends no canonical envelope cannot
+  be identified as a peer by this gate. Old flat `meshtastic_*` keys remain
+  inert and never grant provenance or override the visible authored body.
+
+Warnings repeat at most once per sender and failure reason every five minutes
+(per running process); repeated drops are recorded at DEBUG. Rejected messages
+are _always_ dropped. The logs do not expose message bodies or raw envelopes. Authenticated Matrix sender identity
+does not authenticate the claimed radio-origin identity.
 
 **Avoid radio echo loops:** Do not connect multiple relays to the same radio
 mesh and Matrix room until the topology has a separately qualified
-loop-prevention plan. Trusted bot configuration is necessary for interpreting
-peer metadata but is **not** a general-purpose same-mesh loop guarantee.
-An untrusted or pre-1.5 relay is treated like an ordinary Matrix sender,
-even if it claims to originate on the local meshnet.
+loop-prevention plan. Dropping untrusted MEDRE claims prevents that traffic
+from reaching the radio, but it cannot recognize non-envelope traffic from an
+older relay, or protect against all misconfigured trusted peers. The allowlist
+is **not** a general-purpose same-mesh loop guarantee.
 
 ### Source attribution, replies and reactions
 

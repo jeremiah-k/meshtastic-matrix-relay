@@ -16,8 +16,10 @@ qualification and release artifacts remain pre-tag requirements:
 - Emit and consume canonical MEDRE peer metadata without flat `meshtastic_*`
   content fields or a legacy compatibility mode.
 - Accept peer metadata assertions only from the relay itself or exact bot MXIDs
-  in a global allowlist. Ordinary human text still relays; untrusted metadata
-  cannot supply source identity, routing, body overrides, or relation targets.
+  in a global allowlist. Ordinary human text without `medre` content still
+  relays. Untrusted **envelope-bearing** traffic and malformed relay claims are
+  dropped, not downgraded to text; no untrusted metadata can supply source
+  identity, routing, body overrides, or relation targets.
   No wildcard, trust-on-first-use, or room power-level rule substitutes for the
   allowlist. Signed-event support is designed in MEDRE first for a later version.
 - Deliver the authored visible/canonical body to the radio. Remove the
@@ -67,8 +69,17 @@ matrix:
 
 The codec-normalized envelope and bridge context must agree on version, event
 identity, source adapter, sender, channel, native reference, and relation types.
-Invalid or unauthorized peer claims are ignored; ordinary authored text still
-relays. No room power level or trust-on-first-use rule grants metadata authority.
+Any Matrix-content `medre` key triggers fail-closed policy _before_ codec
+normalization, even if the envelope is malformed or absent. If the observed
+sender is absent from `matrix.trusted_relays`, drop and log an actionable
+warning with the MXID. If the sender is allowlisted but canonicalization or
+provenance validation fails, drop and log an invalid-claim warning instead of
+silently forwarding the authored text. Do not grant claims authority by room
+power level, trust-on-first-use, or a compatibility toggle. Human/user events
+with no `medre` content retain the ordinary relay path. Neither of these
+warnings proves intent; a missing allowlist entry and an attempted forgery
+can look identical. Warnings are limited per sender and reason to one every
+five minutes; repeated drops are DEBUG-logged and every failed event is dropped.
 
 The same bounded v1 `source.native_facts` context is supported by the LXMF
 fields and XMPP stanza extension; other adapters do not automatically promise
@@ -156,10 +167,11 @@ lossless metadata exchange unless they explicitly support an embedding path.
   their contents. Only a trusted observed MXID may supply peer metadata, and
   even trusted claims do not replace local relation-binding evidence.
 - Same-mesh multi-relay deployments require verified peer allowlists and
-  deployment-level loop qualification. An untrusted or pre-1.5 peer's meshnet
-  claim (including legacy flat keys) never authorizes either forwarding or
-  suppression. Do not assume this release prevents loops among untrusted
-  relays on the same radio mesh.
+  deployment-level loop qualification. Untrusted MEDRE-envelope traffic is
+  dropped, independent of any claimed meshnet. Old flat keys cannot grant
+  identity or loop-suppression authority, and non-envelope messages from older
+  relays remain indistinguishable from normal Matrix messages. Do not assume
+  this change closes every multi-relay loop or authenticates radio authorship.
 - When a Meshtastic node ID is supplied to the outbound renderer,
   `medre.envelope.source_transport_id` embeds it in Matrix content. On
   Meshtastic firmware 2.8 and newer, node IDs are advertised openly on the
