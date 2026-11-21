@@ -409,6 +409,8 @@ from mmrelay.matrix.media import (
     send_room_image,
     upload_image,
 )
+from mmrelay.matrix.canonical_ingress import canonicalize_matrix_event as canonicalize_matrix_event
+from mmrelay.matrix.peer_context import trusted_peer_metadata as trusted_peer_metadata
 from mmrelay.matrix.events import (
     _dispatch_unmapped_room_message,
     _plugins_owning_room,

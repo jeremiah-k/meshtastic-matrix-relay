@@ -8,6 +8,8 @@ import pytest
 from mmrelay.matrix.canonical_ingress import canonicalize_matrix_event
 from mmrelay.matrix.canonical_outbound import render_matrix_relay_content
 from mmrelay.matrix.peer_context import (
+    PeerClaimWarningLimiter,
+    carries_medre_relay_claim,
     load_peer_relays,
     radio_packet_id,
     trusted_peer_metadata,
@@ -184,8 +186,8 @@ def test_startup_rejects_invalid_peers_before_mutating_matrix_module_state():
 async def test_malformed_peer_claim_text_cannot_abort_matrix_relay(peer_content):
     """Reject unencodable claims without treating them as authenticated metadata."""
     import msgspec
-    from msgspec.structs import replace
     from medre.core.events import NativeMetadata
+    from msgspec.structs import replace
 
     event = canonical(peer_content)
     native = msgspec.json.decode(msgspec.json.encode(event.metadata.native.data))
@@ -205,3 +207,35 @@ async def test_malformed_peer_claim_text_cannot_abort_matrix_relay(peer_content)
         )
         is None
     )
+
+
+@pytest.mark.parametrize(
+    "wire",
+    [
+        {},
+        {"m.relates_to": {"rel_type": "m.annotation"}},
+        {"meshtastic_text": "legacy flat key"},
+    ],
+)
+def test_plain_matrix_content_has_no_medre_relay_claim(wire):
+    assert carries_medre_relay_claim(wire) is False
+
+
+@pytest.mark.parametrize(
+    "medre", [None, False, "broken", {}, {"envelope": None}, {"envelope": {}}]
+)
+def test_reserved_medre_namespace_is_detected_even_when_malformed(medre):
+    assert carries_medre_relay_claim({"medre": medre}) is True
+
+
+def test_rejected_claim_warning_throttle_is_time_and_sender_scoped():
+    limiter = PeerClaimWarningLimiter(interval_seconds=300, max_entries=2)
+    assert limiter.should_warn("@a:example.org", "untrusted", 0)
+    assert not limiter.should_warn("@a:example.org", "untrusted", 10)
+    assert not limiter.should_warn("@a:example.org", "untrusted", 299)
+    assert limiter.should_warn("@a:example.org", "untrusted", 300)
+    assert limiter.should_warn("@a:example.org", "invalid", 301)
+    assert limiter.should_warn("@b:example.org", "untrusted", 302)
+    assert len(limiter._last) == 2
+    assert limiter.should_warn("@a:example.org", "untrusted", 303)
+    assert limiter.should_warn("@a:example.org", "untrusted", 200)
