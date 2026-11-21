@@ -1,9 +1,5 @@
 # Docker Deployment
 
-> **Staged 1.5 instructions.** For a currently published 1.4.1 deployment,
-> use the
-> [1.4.1 Docker guide](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/1.4.1/docs/DOCKER.md).
-
 MMRelay supports Docker deployment with two image options and multiple deployment methods.
 
 ## Table of Contents

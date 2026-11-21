@@ -1,9 +1,5 @@
 # Kubernetes Deployment Guide
 
-> **Staged 1.5 instructions.** For a currently published 1.4.1 deployment,
-> use the
-> [1.4.1 Kubernetes guide](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/1.4.1/docs/KUBERNETES.md).
-
 > **Note**: Kubernetes deployment is currently in testing and development. We welcome feedback to help improve the manifests and deployment experience.
 
 This guide uses the static manifests in `deploy/k8s/`. Download them, create a Secret with your `config.yaml`, then apply.

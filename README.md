@@ -27,8 +27,8 @@ boundary—see **[How MMRelay Works](https://github.com/jeremiah-k/meshtastic-ma
 - **[Getting started with Matrix](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Getting-Started-With-Matrix-&-MM-Relay)** — Matrix basics and account setup
 - **[E2EE setup](docs/E2EE.md)** — encrypted Matrix rooms and bot-device identity
 - **[Docker](docs/DOCKER.md)** · **[Helm](docs/HELM.md)** · **[Kubernetes](docs/KUBERNETES.md)** — deployment options
-- **[What's new in 1.5 (release candidate)](docs/WHATS_NEW_1.5.md)** — release changes, support boundaries, and upgrade guidance
-- **[1.4.1 → 1.5.0 upgrade checklist](docs/UPGRADING_1.5.md)** — backup and validation steps (use after release)
+- **[What's new in 1.5](docs/WHATS_NEW_1.5.md)** — release changes, support boundaries, and upgrade guidance
+- **[1.4.1 → 1.5.0 upgrade checklist](docs/UPGRADING_1.5.md)** — backup and validation steps
 - **[Documentation index](docs/README.md)** — all versioned project documentation
 
 ## Highlights

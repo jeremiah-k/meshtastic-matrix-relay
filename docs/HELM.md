@@ -1,10 +1,5 @@
 # Helm Chart Deployment Guide
 
-> **Unreleased 1.5.0 instructions (staged on `docs/release-1.5`).** For a
-> running 1.4.1 deployment, use the
-> [1.4.1 documentation](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/1.4.1/docs/HELM.md)
-> or its installed release tag.
-
 This guide covers deploying MMRelay using the Helm chart in `deploy/helm/mmrelay/`.
 
 > **Note**: The Helm chart is a thin renderer of the static manifests in `deploy/k8s/`. It does **not** change the runtime model. Both use MMRELAY_HOME=/data, a single persistent root at `/data`, config mounted at `/data/config.yaml`, and the same probes/lifecycle behavior.
@@ -57,13 +52,11 @@ kubectl create secret generic mmrelay-config \
 ### 5. Install Chart
 
 ```bash
-# Install only after the 1.5.0 image is published; the chart's staged
-# default remains 1.4.1 until release metadata is promoted.
+# The chart's default image tag advances with each release; pin an exact
+# tag or verified digest for repeatable installs.
 helm install mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
-  --create-namespace \
-  --set image.tag="1.5.0" \
-  --set image.digest=""
+  --create-namespace
 
 # For an immutable image, use the verified tag-and-digest pair below.
 ```
