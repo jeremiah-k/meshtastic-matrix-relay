@@ -12,9 +12,11 @@ Encryption (E2EE).
 ## E2EE provider
 
 MMRelay uses [**mindroom-nio**](https://github.com/mindroom-ai/mindroom-nio) as
-its Matrix SDK with **vodozemac** (a Rust cryptographic library) for E2EE. Vodozemac is the successor to the deprecated
-libolm and is distributed as precompiled wheels for Linux and macOS — no
-additional system libraries are needed on supported platforms.
+its Matrix SDK with **vodozemac** (a Rust cryptographic library) for E2EE.
+Vodozemac succeeds the deprecated libolm and provides precompiled wheels for
+many Linux/macOS Python versions. Wheel availability depends on the interpreter
+and architecture; source builds may require a Rust toolchain (notably macOS
+Python 3.15 with the locked vodozemac 0.10.0).
 
 MMRelay 1.5 declares `mindroom-nio` as a runtime dependency, and the MEDRE
 Matrix adapter uses the same provider. Do not replace it with `matrix-nio`:
@@ -178,9 +180,11 @@ pipx install 'mmrelay[e2e]'
 ```
 
 The `mmrelay[e2e]` extra installs **mindroom-nio[e2e]** which includes the
-**vodozemac** crypto backend (Rust-based, distributed as precompiled wheels
-for Linux and macOS — no additional system libraries needed on supported
-platforms).
+**vodozemac** crypto backend. Precompiled wheels are available for many
+Linux/macOS Python versions, but not every version/architecture: for example,
+the locked vodozemac 0.10.0 has **no macOS Python 3.15 wheel**. A source build
+requires a working Rust toolchain. Use Python 3.12–3.14 with a compatible
+wheel if you need a no-build macOS E2EE installation.
 
 ### Windows limitation
 
@@ -402,8 +406,10 @@ pipx install 'mmrelay[e2e]'
 pip install 'mmrelay[e2e]'
 ```
 
-This installs mindroom-nio with the vodozemac crypto backend. Vodozemac is
-distributed as precompiled Rust wheels requiring no extra system libraries.
+This installs mindroom-nio with the vodozemac crypto backend. A compatible
+precompiled wheel avoids native build tooling; otherwise, installing
+vodozemac from source requires Rust. See
+[Requirements and platform support](#requirements-and-platform-support).
 
 If running from a local checkout:
 
@@ -516,8 +522,10 @@ INFO Matrix: Initial sync completed. Found X rooms.
 Preserve the Matrix credentials and **entire** E2EE store when upgrading from
 1.4.1. Stop the old process before copying or restoring that data, and do not
 reset the Matrix device just to resolve an SDK upgrade failure. Mixed encrypted
-and unencrypted rooms remain supported; E2EE is optional via
-`matrix.e2ee.enabled: false`.
+and unencrypted rooms remain supported. On Linux/macOS, E2EE is disabled only
+when **both** `matrix.e2ee.enabled` and `matrix.encryption.enabled` are
+`false` or absent; either switch being `true` enables it. Check both settings
+before intentionally disabling encrypted-room support.
 
 Follow the [1.5 upgrade checklist](UPGRADING_1.5.md) for backup and rollback
 instructions. Store migration is not a guarantee that a downgraded SDK can

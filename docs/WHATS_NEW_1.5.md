@@ -35,7 +35,11 @@ see [Upgrading from 1.4.1 to 1.5.0](UPGRADING_1.5.md).
 ### Python, SDKs and encrypted rooms
 
 - **Python 3.11 is no longer supported.** MMRelay 1.4.1 is the last released
-  version supporting it. Use Python 3.12–3.15 for a 1.5 native installation.
+  version supporting it. The 1.5 native package requires Python 3.12 or later.
+  For encrypted Matrix rooms on **macOS Python 3.15**, the locked vodozemac
+  0.10.0 has no prebuilt macOS 3.15 wheel and may need a Rust source build.
+  Prefer a Python version with an available wheel if native build tooling is
+  not installed; see the [E2EE guide](E2EE.md#requirements-and-platform-support).
 - MMRelay now uses a single `mindroom-nio` 1.x dependency path. Do not install
   `matrix-nio` into the same environment or manually replace the selected SDK.
 - **Windows Matrix E2EE is not supported in 1.5.0.** Native Windows and the

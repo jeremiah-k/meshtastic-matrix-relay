@@ -20,11 +20,25 @@ mmrelay auth login
 mmrelay
 ```
 
-To upgrade, use `pipx upgrade mmrelay` or `uv tool upgrade mmrelay`, matching
-your installer, **after** backing up the selected data home as described in the
-[1.5 upgrade checklist](UPGRADING_1.5.md). For direct device access, configure the serial, TCP, or BLE
-connection in `config.yaml`. Matrix E2EE is not supported by the native Windows
-build; see the [E2EE Guide](E2EE.md) for supported platforms.
+Before upgrading, back up the **actual service data home and active config**
+as described in the [1.5 upgrade checklist](UPGRADING_1.5.md). Use
+`pipx upgrade mmrelay` or `uv tool upgrade mmrelay` only if the existing tool
+environment already uses **Python 3.12 or later**. An environment created under
+Python 3.11 can retain that interpreter and fail to upgrade to MMRelay 1.5.
+After installing Python 3.12, recreate the environment with the tool you use:
+
+```powershell
+# For an existing pipx installation:
+pipx reinstall --python 3.12 mmrelay
+# OR for an existing uv tool installation:
+uv tool install --reinstall --python 3.12 mmrelay
+
+mmrelay --version # Verify that 1.5.0 was installed before restarting.
+```
+
+For direct device access, configure the serial, TCP, or BLE connection in
+`config.yaml`. Matrix E2EE is not supported by the native Windows build; see
+the [E2EE Guide](E2EE.md) for supported platforms.
 
 The optional packaged Windows installer provides `mmrelay.exe` and Start-menu
 shortcuts without requiring a separate Python installation. Its default install
