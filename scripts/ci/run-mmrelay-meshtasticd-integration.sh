@@ -37,6 +37,7 @@ set -euo pipefail
 #   NODEDB_REFRESH_INTERVAL_SECONDS: Node-name refresh cadence in MMRelay config
 #   NAME_PRUNE_WAIT_TIMEOUT_SECONDS: Timeout for stale-name prune assertions
 #   MMRELAY_ALLOW_TAGGED_IMAGE_CACHE: Reuse local tag-based images instead of forcing pull
+#   MMRELAY_CI_TRUST_MODE: mutual (default), oneway (A trusts B), or none
 # =============================================================================
 
 # Meshtasticd Configuration
@@ -75,6 +76,25 @@ SYNAPSE_READY_TIMEOUT_SECONDS="${SYNAPSE_READY_TIMEOUT_SECONDS:-180}"
 # MMRelay Configuration
 MMRELAY_READY_TIMEOUT_SECONDS="${MMRELAY_READY_TIMEOUT_SECONDS:-120}"
 MMRELAY_LOG_ON_SUCCESS="${MMRELAY_LOG_ON_SUCCESS:-false}"
+MMRELAY_CI_TRUST_MODE="${MMRELAY_CI_TRUST_MODE:-mutual}"
+case ${MMRELAY_CI_TRUST_MODE} in
+mutual)
+	TRUSTED_BY_A=true
+	TRUSTED_BY_B=true
+	;;
+oneway)
+	TRUSTED_BY_A=true
+	TRUSTED_BY_B=false
+	;;
+none)
+	TRUSTED_BY_A=false
+	TRUSTED_BY_B=false
+	;;
+*)
+	echo "Invalid MMRELAY_CI_TRUST_MODE: ${MMRELAY_CI_TRUST_MODE} (expected mutual, oneway, none)" >&2
+	exit 2
+	;;
+esac
 MESHNET_NAME_A="${MESHNET_NAME_A:-Mesh A}"
 MESHNET_NAME_B="${MESHNET_NAME_B:-Mesh B}"
 MATRIX_EVENT_TIMEOUT_SECONDS="${MATRIX_EVENT_TIMEOUT_SECONDS:-60}"
@@ -833,6 +853,49 @@ wait_for_log_pattern_since() {
 	return 1
 }
 
+# Match the exact event and rejection reason in the relay's DEBUG log.
+# Warnings are rate-limited and subsequent drops can appear only at DEBUG.
+wait_for_claim_rejection() {
+	local log_file=$1
+	local event_id=$2
+	local start_byte=$3
+	local timeout_seconds=$4
+	local reason=$5
+	local deadline=$((SECONDS + timeout_seconds))
+	local warning_prefix failure="Timed out waiting for"
+	case "${reason}" in
+	untrusted) warning_prefix="Dropping MEDRE relay claim from untrusted Matrix sender " ;;
+	invalid) warning_prefix="Dropping invalid/incoherent MEDRE relay claim from trusted Matrix " ;;
+	*)
+		echo "Unsupported MEDRE rejection reason: ${reason}" >&2
+		return 1
+		;;
+	esac
+
+	while ((SECONDS < deadline)); do
+		if [[ -f ${log_file} ]] &&
+			tail -c +$((start_byte + 1)) "${log_file}" |
+			grep -F -e "${warning_prefix}" -e "Dropped repeated ${reason} MEDRE relay claim " |
+				grep -F -- "event '${event_id}'" >/dev/null; then
+			return 0
+		fi
+		if [[ -n ${MMRELAY_PID_A} ]] && ! kill -0 "${MMRELAY_PID_A}" >/dev/null 2>&1; then
+			failure="MMRelay A exited while waiting for"
+			break
+		fi
+		if [[ -n ${MMRELAY_PID_B} ]] && ! kill -0 "${MMRELAY_PID_B}" >/dev/null 2>&1; then
+			failure="MMRelay B exited while waiting for"
+			break
+		fi
+		sleep 1
+	done
+	echo "${failure} MEDRE rejection (${reason}) of event ${event_id}" >&2
+	if [[ -f ${log_file} ]]; then
+		tail -n 20 -- "${log_file}" >&2 || true
+	fi
+	return 1
+}
+
 # load_json_file_value reads one top-level value from a JSON file.
 load_json_file_value() {
 	local json_path=$1
@@ -1008,6 +1071,7 @@ PY
 }
 
 # matrix_send_mesh_origin_message sends an event to a Matrix room that represents a Meshtastic-origin message and prints the created event_id.
+# Optional ninth argument deliberately corrupts one envelope identity for the forgery test.
 matrix_send_mesh_origin_message() {
 	local access_token=$1
 	local room_id=$2
@@ -1017,7 +1081,8 @@ matrix_send_mesh_origin_message() {
 	local shortname=$6
 	local meshtastic_id=$7
 	local txn_prefix=$8
-	"${PYTHON_BIN}" - "${MATRIX_BASE_URL}" "${access_token}" "${room_id}" "${message_text}" "${meshnet_name}" "${longname}" "${shortname}" "${meshtastic_id}" "${txn_prefix}" <<'PY'
+	local tamper="${9-}"
+	"${PYTHON_BIN}" - "${MATRIX_BASE_URL}" "${access_token}" "${room_id}" "${message_text}" "${meshnet_name}" "${longname}" "${shortname}" "${meshtastic_id}" "${txn_prefix}" "${tamper}" <<'PY'
 import os
 import sys
 import time
@@ -1034,6 +1099,9 @@ longname = sys.argv[6]
 shortname = sys.argv[7]
 meshtastic_id = int(sys.argv[8])
 txn_prefix = sys.argv[9]
+tamper = sys.argv[10]
+if tamper not in {"", "source-id"}:
+    raise ValueError("Unsupported integration-test tamper mode")
 
 txn_id = f"{txn_prefix}-{int(time.time() * 1000)}-{os.getpid()}"
 quoted_room_id = urllib.parse.quote(room_id, safe="")
@@ -1050,6 +1118,8 @@ content = asyncio.run(render_matrix_relay_content(
     longname=longname, shortname=shortname, portnum=1,
     meshtastic_id=meshtastic_id, source_channel_id="0",
 ))
+if tamper == "source-id":
+    content["medre"]["envelope"]["source_transport_id"] = "@forged:example.org"
 response = requests.put(
     url,
     headers={"Authorization": f"Bearer {access_token}"},
@@ -1676,6 +1746,29 @@ print(
     file=sys.stderr,
 )
 raise SystemExit(1)
+PY
+}
+
+# assert_message_map_event_absent checks the event did not enqueue a radio send.
+# Only call it after the event's drop log has been observed on this relay.
+assert_message_map_event_absent() {
+	local db_path=$1
+	local matrix_event_id=$2
+	"${PYTHON_BIN}" - "${db_path}" "${matrix_event_id}" <<'PY'
+import pathlib
+import sqlite3
+import sys
+
+path = pathlib.Path(sys.argv[1])
+if not path.is_file():
+    raise SystemExit(f"Expected radio message-map database is missing: {path}")
+with sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=5) as db:
+    row = db.execute(
+        "SELECT 1 FROM message_map WHERE matrix_event_id=? LIMIT 1",
+        (sys.argv[2],),
+    ).fetchone()
+if row is not None:
+    raise SystemExit(f"Rejected Matrix event was mapped to radio: {sys.argv[2]}")
 PY
 }
 
@@ -2586,14 +2679,22 @@ write_matrix_credentials_json \
 # =============================================================================
 
 echo ""
-echo "Creating MMRelay configurations..."
+echo "Creating MMRelay configurations (trust mode: ${MMRELAY_CI_TRUST_MODE})..."
+TRUSTED_PEERS_A='[]'
+TRUSTED_PEERS_B='[]'
+if [[ ${TRUSTED_BY_A} == true ]]; then
+	TRUSTED_PEERS_A="[\"${BOT_B_USER_ID}\"]"
+fi
+if [[ ${TRUSTED_BY_B} == true ]]; then
+	TRUSTED_PEERS_B="[\"${BOT_A_USER_ID}\"]"
+fi
 
 # MMRelay A - Connects to Mesh A
 cat >"${MMRELAY_CONFIG_PATH_A}" <<EOF_CONFIG
 matrix:
   homeserver: "${MATRIX_BASE_URL}"
   bot_user_id: "${BOT_A_USER_ID}"
-  trusted_relays: ["${BOT_B_USER_ID}"]
+  trusted_relays: ${TRUSTED_PEERS_A}
   e2ee:
     enabled: true
     store_path: "${MMRELAY_HOME_DIR_A}/matrix/store"
@@ -2635,7 +2736,7 @@ cat >"${MMRELAY_CONFIG_PATH_B}" <<EOF_CONFIG
 matrix:
   homeserver: "${MATRIX_BASE_URL}"
   bot_user_id: "${BOT_B_USER_ID}"
-  trusted_relays: ["${BOT_A_USER_ID}"]
+  trusted_relays: ${TRUSTED_PEERS_B}
   e2ee:
     enabled: true
     store_path: "${MMRELAY_HOME_DIR_B}/matrix/store"
@@ -2855,13 +2956,18 @@ run_capture_or_fail \
 	json_extract \
 	"${mesh_a_event_json}" \
 	"next_batch"
-run_or_fail "MMRelay B did not process injected remote mesh event from ${MESHNET_NAME_A}" \
-	wait_for_log_pattern_since \
-	"${MMRELAY_LOG_PATH_B}" \
-	"Processing message from remote meshnet:" \
-	"${log_offset_before_a2m_b}" \
-	60
-pass_test "Injected Mesh A-origin event reached Matrix and processed in Mesh B relay"
+if [[ ${TRUSTED_BY_B} == true ]]; then
+	run_or_fail "MMRelay B did not process trusted mesh event from ${MESHNET_NAME_A}" \
+		wait_for_log_pattern_since "${MMRELAY_LOG_PATH_B}" \
+		"Processing message from remote meshnet:" "${log_offset_before_a2m_b}" 60
+else
+	run_or_fail "MMRelay B did not reject untrusted mesh event from ${BOT_A_USER_ID}" \
+		wait_for_claim_rejection "${MMRELAY_LOG_PATH_B}" \
+		"${MESH_A_MATRIX_EVENT_ID}" "${log_offset_before_a2m_b}" 60 untrusted
+	run_or_fail "Rejected Mesh A event reached B's radio map" \
+		assert_message_map_event_absent "${MMRELAY_DB_PATH_B}" "${MESH_A_MATRIX_EVENT_ID}"
+fi
+pass_test "Mesh A event obeyed MMRelay B's explicit peer trust policy"
 
 # Test 3: Injected Mesh B-origin event in plaintext room → remote meshnet processing in MMRelay A
 MESH_B_TO_MATRIX_TEXT="MMRELAY_CI_B2M_$(date +%s)_${RANDOM}"
@@ -2902,16 +3008,21 @@ run_capture_or_fail \
 	json_extract \
 	"${mesh_b_event_json}" \
 	"next_batch"
-run_or_fail "MMRelay A did not process injected remote mesh event from ${MESHNET_NAME_B}" \
-	wait_for_log_pattern_since \
-	"${MMRELAY_LOG_PATH_A}" \
-	"Processing message from remote meshnet:" \
-	"${log_offset_before_b2m_a}" \
-	60
-pass_test "Injected Mesh B-origin event reached Matrix and processed in Mesh A relay"
+if [[ ${TRUSTED_BY_A} == true ]]; then
+	run_or_fail "MMRelay A did not process trusted mesh event from ${MESHNET_NAME_B}" \
+		wait_for_log_pattern_since "${MMRELAY_LOG_PATH_A}" \
+		"Processing message from remote meshnet:" "${log_offset_before_b2m_a}" 60
+else
+	run_or_fail "MMRelay A did not reject untrusted mesh event from ${BOT_B_USER_ID}" \
+		wait_for_claim_rejection "${MMRELAY_LOG_PATH_A}" \
+		"${MESH_B_MATRIX_EVENT_ID}" "${log_offset_before_b2m_a}" 60 untrusted
+	run_or_fail "Rejected Mesh B event reached A's radio map" \
+		assert_message_map_event_absent "${MMRELAY_DB_PATH_A}" "${MESH_B_MATRIX_EVENT_ID}"
+fi
+pass_test "Mesh B event obeyed MMRelay A's explicit peer trust policy"
 
 # Verify that canonical claims from an ordinary Matrix user do not gain peer authority.
-start_test "Peer trust" "Untrusted canonical claims remain ordinary authored text..."
+start_test "Peer trust" "Untrusted canonical claims are dropped and logged..."
 UNTRUSTED_TEXT="MMRELAY_CI_UNTRUSTED_$(date +%s)_${RANDOM}"
 [[ -f ${MMRELAY_LOG_PATH_A} ]] || fail_test "MMRelay A log missing before peer trust test"
 [[ -f ${MMRELAY_LOG_PATH_B} ]] || fail_test "MMRelay B log missing before peer trust test"
@@ -2933,18 +3044,38 @@ for relay_side in A B; do
 	else
 		peer_db=${MMRELAY_DB_PATH_B}
 	fi
-	# Generic log entries can be caused by unrelated post-offset traffic.
-	# The unique Matrix event mapping proves *this* authored event relayed.
-	run_or_fail "Untrusted authored event ${UNTRUSTED_EVENT_ID} did not relay on ${relay_side}" \
-		wait_for_message_map_meshtastic_id "${peer_db}" "${UNTRUSTED_EVENT_ID}" \
-		"${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS}" >/dev/null
+	run_or_fail "MMRelay ${relay_side} did not reject the untrusted MEDRE event" \
+		wait_for_claim_rejection "${peer_log}" \
+		"${UNTRUSTED_EVENT_ID}" "${peer_offset}" 60 untrusted
+	run_or_fail "Untrusted canonical event reached radio mapping on ${relay_side}" \
+		assert_message_map_event_absent "${peer_db}" "${UNTRUSTED_EVENT_ID}"
 	untrusted_peer_hits=$(count_pattern_in_file_since "${peer_log}" \
 		"Processing message from remote meshnet: UntrustedClaims" "${peer_offset}")
 	if ((untrusted_peer_hits > 0)); then
 		fail_test "Untrusted canonical claims gained peer authority on ${relay_side}"
 	fi
 done
-pass_test "Untrusted source claims ignored while authored text relayed"
+pass_test "Untrusted canonical source claims were rejected before radio relay"
+
+# Inject inconsistent source provenance under an observed peer bot MXID.
+# A trusted Matrix identity does not make an internally contradictory claim valid.
+start_test "Forged claim" "Incoherent relay envelope never reaches a radio..."
+FORGED_TEXT="MMRELAY_CI_FORGED_$(date +%s)_${RANDOM}"
+log_offset_forged_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
+run_capture_or_fail FORGED_EVENT_ID "Failed to inject contradictory relay envelope" \
+	matrix_send_mesh_origin_message "${BOT_A_ACCESS_TOKEN}" "${ROOM_ID_PLAINTEXT}" \
+	"${FORGED_TEXT}" "${MESHNET_NAME_A}" "CI Field Node A" "CFA" \
+	2000000001 "mmrelay-ci-forged" "source-id"
+forged_rejection=untrusted
+if [[ ${TRUSTED_BY_B} == true ]]; then
+	forged_rejection=invalid
+fi
+run_or_fail "MMRelay B did not reject contradictory relay envelope" \
+	wait_for_claim_rejection "${MMRELAY_LOG_PATH_B}" \
+	"${FORGED_EVENT_ID}" "${log_offset_forged_b}" 60 "${forged_rejection}"
+run_or_fail "Incoherent relay envelope reached B's radio map" \
+	assert_message_map_event_absent "${MMRELAY_DB_PATH_B}" "${FORGED_EVENT_ID}"
+pass_test "Incoherent peer metadata is dropped regardless of trust mode"
 
 # Test 4: Encrypted-room Matrix user message → Mesh A + Mesh B
 MATRIX_USER2_TEXT="MMRELAY_CI_U2_MSG_$(date +%s)_${RANDOM}"

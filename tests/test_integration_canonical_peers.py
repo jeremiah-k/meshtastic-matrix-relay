@@ -6,14 +6,17 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
 SCRIPT = (
     Path(__file__).resolve().parents[1]
     / "scripts/ci/run-mmrelay-meshtasticd-integration.sh"
 )
 
 
+@pytest.mark.parametrize("tamper", ["", "source-id"])
 def test_injected_peer_fixture_uses_real_renderer_and_keeps_packet_zero(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, tamper
 ):
     script = SCRIPT.read_text(encoding="utf-8")
     start = script.index("matrix_send_mesh_origin_message() {")
@@ -24,7 +27,7 @@ def test_injected_peer_fixture_uses_real_renderer_and_keeps_packet_zero(
             status_code=200, json=lambda: {"event_id": "$injected"}
         )
     )
-    monkeypatch.setattr("requests.put", put)
+    monkeypatch.setitem(sys.modules, "requests", SimpleNamespace(put=put))
     monkeypatch.setattr(
         sys,
         "argv",
@@ -39,6 +42,7 @@ def test_injected_peer_fixture_uses_real_renderer_and_keeps_packet_zero(
             "AL",
             "0",
             "fixture",
+            tamper,
         ],
     )
     probe = tmp_path / "canonical_peer_fixture.py"
@@ -50,4 +54,6 @@ def test_injected_peer_fixture_uses_real_renderer_and_keeps_packet_zero(
     assert source["sender_name"] == "Alice" and source["sender_short_name"] == "AL"
     assert source["channel"] == "0" and source["native_ref"]["native_message_id"] == "0"
     assert source["native_facts"]["fields"]["portnum"] == 1
+    envelope_sender = content["medre"]["envelope"]["source_transport_id"]
+    assert envelope_sender == ("@forged:example.org" if tamper else source["sender_id"])
     assert not any(key.startswith("meshtastic_") for key in content)

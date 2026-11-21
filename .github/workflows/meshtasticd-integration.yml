@@ -20,6 +20,10 @@ jobs:
   meshtasticd-integration:
     runs-on: ubuntu-26.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        trust-mode: [mutual, none]
 
     # Docker Hub login for higher rate limits (200 vs 100 pulls/6 hours)
     # Create a free Docker Hub account and add these secrets:
@@ -32,6 +36,7 @@ jobs:
       SYNAPSE_IMAGE: matrixdotorg/synapse@sha256:f223f5fc532600801284fededefca82288fb71551bf4fcc89cd0b3363a3461cc # v1.149.0
       CI_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/meshtasticd-integration
       MMRELAY_LOG_ON_SUCCESS: "true"
+      MMRELAY_CI_TRUST_MODE: ${{ matrix.trust-mode }}
       MESHNET_NAME_A: Backcountry Alpha
       MESHNET_NAME_B: Backcountry Bravo
       MATRIX_EVENT_TIMEOUT_SECONDS: "75"
@@ -226,7 +231,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: meshtasticd-integration-logs
+          name: meshtasticd-integration-${{ matrix.trust-mode }}-logs
           path: |
             ${{ env.CI_ARTIFACT_DIR }}/instance-a/logs/**
             ${{ env.CI_ARTIFACT_DIR }}/instance-b/logs/**
