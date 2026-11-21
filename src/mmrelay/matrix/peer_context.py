@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections import OrderedDict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -42,6 +43,37 @@ def load_peer_relays(config: Mapping[str, Any]) -> dict[str, PeerIdentity]:
             "matrix.trusted_relays must be a list of exact Matrix user IDs"
         )
     return {mxid: PeerIdentity(mxid) for mxid in entries}
+
+
+def carries_medre_relay_claim(content: Mapping[str, Any]) -> bool:
+    """Recognize the reserved MEDRE wire namespace, even if it is malformed.
+
+    Trust is decided from the original Matrix event, not codec output: a
+    broken envelope must not bypass the gate by failing canonicalization.
+    Ordinary Matrix messages without this namespace are unaffected.
+    """
+    return "medre" in content
+
+
+class PeerClaimWarningLimiter:
+    """Bounded, monotonic per-sender/reason warning throttle for rejected claims."""
+
+    def __init__(self, interval_seconds: float = 300, max_entries: int = 256):
+        self.interval_seconds = interval_seconds
+        self.max_entries = max_entries
+        self._last: OrderedDict[tuple[str, str], float] = OrderedDict()
+
+    def should_warn(self, sender: str, reason: str, now: float) -> bool:
+        """Return whether the caller should warn, at most once per interval."""
+        key = (sender, reason)
+        last = self._last.get(key)
+        warn = last is None or now < last or now - last >= self.interval_seconds
+        if warn:
+            self._last[key] = now
+        self._last.move_to_end(key)
+        if len(self._last) > self.max_entries:
+            self._last.popitem(last=False)
+        return warn
 
 
 def radio_packet_id(value: object) -> int | None:
@@ -118,6 +150,7 @@ def trusted_peer_metadata(
     if context is None:
         return None
     source = context["source"]
+    event_kind = envelope.get("event_kind")
     if (
         type(envelope.get("schema_version")) is not int
         or envelope["schema_version"] != 1
@@ -126,7 +159,7 @@ def trusted_peer_metadata(
         or envelope.get("source_transport_id") != source["sender_id"]
         or (envelope.get("source_channel") or None) != source["channel"]
         or envelope.get("source_native_ref") != source["native_ref"]
-        or envelope.get("event_kind") not in {"message.created", "message.reacted"}
+        or event_kind not in ("message.created", "message.reacted")
     ):
         return None
     reference = source["native_ref"]
@@ -160,16 +193,20 @@ def trusted_peer_metadata(
         return None
     if len(relations) > 1:
         return None
+    is_reaction = event_kind == "message.reacted"
+    has_reaction_hint = bool(relations and relations[0]["relation_type"] == "reaction")
+    if is_reaction != has_reaction_hint:
+        return None
     relation = None
     if relations:
         hint = relations[0]
         kind, key = hint["relation_type"], hint["key"]
-        if (kind == "reaction") != (envelope["event_kind"] == "message.reacted"):
-            return None
         target = _reference(hint["target_native_ref"])
-        if target is not None and (
-            kind != "reaction" or isinstance(key, str) and key.strip()
+        if is_reaction and (
+            target is None or not isinstance(key, str) or not key.strip()
         ):
+            return None
+        if target is not None:
             relation = EventRelation(
                 relation_type=kind,
                 target_event_id=None,

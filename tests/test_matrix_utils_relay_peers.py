@@ -20,6 +20,12 @@ pytestmark = [
 @pytest.fixture
 def relay(monkeypatch):
     import mmrelay.matrix_utils as facade
+    from mmrelay.matrix.peer_context import PeerClaimWarningLimiter
+
+    # Rejections are rate-limited per process; isolate warning windows per test.
+    monkeypatch.setattr(
+        "mmrelay.matrix.events._peer_claim_warnings", PeerClaimWarningLimiter()
+    )
 
     interface = MagicMock()
     queue = MagicMock(return_value=True)
@@ -107,11 +113,12 @@ async def test_only_allowlisted_peers_supply_names_and_routing(relay, sender, tr
         meshtastic_meshnet="Local",
     )
     await relay.deliver(wire, sender)
+    if not trusted:
+        relay.queue.assert_not_called()
+        return
     relay.queue.assert_called_once()
     text = relay.queue.call_args.kwargs["text"]
-    assert text == (
-        "AL/Remo: Visible radio text" if trusted else "Human: Visible radio text"
-    )
+    assert text == "AL/Remo: Visible radio text"
     assert "HIDDEN" not in text and "Spoof" not in text
 
 
@@ -129,12 +136,12 @@ async def test_remote_peer_prefix_fits_radio_byte_budget(relay, character):
     assert len(queued.encode("utf-8")) <= DEFAULT_MESSAGE_TRUNCATE_BYTES
 
 
-async def test_peer_on_local_mesh_is_suppressed_but_untrusted_claim_is_ignored(relay):
+async def test_peer_on_local_mesh_and_untrusted_claim_are_both_suppressed(relay):
     wire = await content(meshnet_name="Local")
     await relay.deliver(wire)
     relay.queue.assert_not_called()
     await relay.deliver(wire, "@human:example.org")
-    relay.queue.assert_called_once()
+    relay.queue.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -371,10 +378,10 @@ async def test_conflicting_envelope_cannot_supply_authoritative_names(relay):
     wire = await content()
     wire["medre"]["envelope"]["source_transport_id"] = "forged"
     await relay.deliver(wire)
-    assert relay.queue.call_args.kwargs["text"] == "Human: Visible radio text"
+    relay.queue.assert_not_called()
 
 
-async def test_untrusted_detection_claim_stays_ordinary_text(relay, monkeypatch):
+async def test_untrusted_detection_claim_is_dropped(relay, monkeypatch):
     detect = AsyncMock()
     monkeypatch.setattr("mmrelay.matrix_utils._handle_detection_sensor_packet", detect)
     wire = await content(portnum=10)
@@ -382,6 +389,163 @@ async def test_untrusted_detection_claim_stays_ordinary_text(relay, monkeypatch)
     detect.assert_not_awaited()
     await relay.deliver(wire)
     detect.assert_awaited_once()
+
+
+@pytest.mark.parametrize("sender", ["@human:example.org", "@peer:EXAMPLE.org"])
+async def test_untrusted_envelope_is_dropped_before_plugins_or_radio(
+    relay, monkeypatch, sender
+):
+    logger = MagicMock()
+    plugin = SimpleNamespace(
+        handle_room_message=AsyncMock(return_value=True), plugin_name="owner"
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.logger", logger)
+    monkeypatch.setattr("mmrelay.plugin_loader.load_plugins", lambda: [plugin])
+    await relay.deliver(await content(), sender)
+    relay.queue.assert_not_called()
+    plugin.handle_room_message.assert_not_awaited()
+    logger.warning.assert_called_once()
+    fmt, observed_sender, observed_room, observed_event_id = (
+        logger.warning.call_args.args
+    )
+    assert "matrix.trusted_relays" in fmt
+    assert observed_sender == sender
+    assert observed_room == ROOM
+    assert observed_event_id == "$incoming"
+
+
+@pytest.mark.parametrize(
+    "medre", [None, False, "invalid", {}, {"envelope": None}, {"envelope": {}}]
+)
+async def test_broken_medre_namespace_is_not_plain_radio_text(relay, medre):
+    await relay.deliver({"body": "User text", "medre": medre}, "@human:example.org")
+    relay.queue.assert_not_called()
+
+
+async def test_plain_matrix_user_message_remains_relayable(relay):
+    await relay.deliver({"body": "Ordinary user message"}, "@human:example.org")
+    relay.queue.assert_called_once()
+    assert relay.queue.call_args.kwargs["text"] == "Human: Ordinary user message"
+
+
+async def test_legacy_flat_metadata_without_medre_has_no_authority(relay):
+    await relay.deliver(
+        {
+            "body": "Visible human text",
+            "meshtastic_text": "HIDDEN",
+            "meshtastic_longname": "Forged Name",
+            "meshtastic_meshnet": "Local",
+        },
+        "@human:example.org",
+    )
+    relay.queue.assert_called_once()
+    assert relay.queue.call_args.kwargs["text"] == "Human: Visible human text"
+
+
+async def test_allowlisted_sender_without_medre_namespace_remains_ordinary(relay):
+    await relay.deliver({"body": "Human text"}, PEER)
+    relay.queue.assert_called_once()
+    assert relay.queue.call_args.kwargs["text"] == "Human: Human text"
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["source_transport_id", "schema_version", "missing_context", "missing_envelope"],
+)
+async def test_trusted_peer_broken_claim_is_dropped_not_downgraded(
+    relay, monkeypatch, fault
+):
+    logger = MagicMock()
+    monkeypatch.setattr("mmrelay.matrix_utils.logger", logger)
+    wire = await content()
+    if fault == "missing_context":
+        wire["medre"]["metadata"].pop("bridge_context")
+    elif fault == "missing_envelope":
+        wire["medre"].pop("envelope")
+    elif fault == "schema_version":
+        wire["medre"]["envelope"]["schema_version"] = True
+    else:
+        wire["medre"]["envelope"]["source_transport_id"] = "@forged:example.org"
+    await relay.deliver(wire)
+    relay.queue.assert_not_called()
+    logger.warning.assert_called_once()
+    assert "invalid/incoherent" in logger.warning.call_args.args[0]
+
+
+async def test_trusted_claim_validator_exception_drops_without_crashing(
+    relay, monkeypatch
+):
+    validator = MagicMock(side_effect=ValueError("untrusted wire details"))
+    monkeypatch.setattr("mmrelay.matrix_utils.trusted_peer_metadata", validator)
+    logger = MagicMock()
+    monkeypatch.setattr("mmrelay.matrix_utils.logger", logger)
+    await relay.deliver(await content())
+    relay.queue.assert_not_called()
+    validator.assert_called_once()
+    logger.warning.assert_called_once()
+    assert "untrusted wire details" not in str(logger.mock_calls)
+
+
+async def test_medre_claim_in_plugin_only_room_is_not_dispatched(relay, monkeypatch):
+    plugin = SimpleNamespace(
+        handles_unmapped_rooms=True,
+        get_unmapped_room_ids=lambda: [ROOM],
+        handle_room_message=AsyncMock(return_value=True),
+        plugin_name="owner",
+    )
+    monkeypatch.setattr("mmrelay.plugin_loader.load_plugins", lambda: [plugin])
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_rooms", [])
+    await relay.deliver(await content())
+    relay.queue.assert_not_called()
+    plugin.handle_room_message.assert_not_awaited()
+
+
+async def test_ordinary_message_in_plugin_only_room_still_dispatches(
+    relay, monkeypatch
+):
+    plugin = SimpleNamespace(
+        handles_unmapped_rooms=True,
+        get_unmapped_room_ids=lambda: [ROOM],
+        handle_room_message=AsyncMock(return_value=True),
+        plugin_name="owner",
+    )
+    monkeypatch.setattr("mmrelay.plugin_loader.load_plugins", lambda: [plugin])
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_rooms", [])
+    await relay.deliver({"body": "admin command"}, "@human:example.org")
+    relay.queue.assert_not_called()
+    plugin.handle_room_message.assert_awaited_once()
+
+
+async def test_untrusted_claim_cannot_suppress_its_security_warning(relay, monkeypatch):
+    from mmrelay.constants.formats import MATRIX_SUPPRESS_KEY
+
+    logger = MagicMock()
+    monkeypatch.setattr("mmrelay.matrix_utils.logger", logger)
+    await relay.deliver(
+        {"body": "claim", "medre": None, MATRIX_SUPPRESS_KEY: True},
+        "@human:example.org",
+    )
+    relay.queue.assert_not_called()
+    logger.warning.assert_called_once()
+    assert "matrix.trusted_relays" in logger.warning.call_args.args[0]
+
+
+async def test_untrusted_malformed_claim_drops_before_codec_failure(relay, monkeypatch):
+    codec = MagicMock(side_effect=ValueError("malformed envelope"))
+    monkeypatch.setattr("mmrelay.matrix_utils.canonicalize_matrix_event", codec)
+    await relay.deliver({"body": "authored", "medre": "invalid"}, "@human:example.org")
+    codec.assert_not_called()
+    relay.queue.assert_not_called()
+
+
+async def test_trusted_claim_codec_error_does_not_forward_plain_text(
+    relay, monkeypatch
+):
+    codec = MagicMock(side_effect=ValueError("malformed envelope"))
+    monkeypatch.setattr("mmrelay.matrix_utils.canonicalize_matrix_event", codec)
+    await relay.deliver(await content(), PEER)
+    codec.assert_called_once()
+    relay.queue.assert_not_called()
 
 
 async def test_plugin_can_claim_canonical_peer_message_before_radio_send(
@@ -397,9 +561,7 @@ async def test_plugin_can_claim_canonical_peer_message_before_radio_send(
     relay.queue.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    "scope", ["adapter", "channel", "missing_key", "relation_info"]
-)
+@pytest.mark.parametrize("scope", ["adapter", "channel", "relation_info"])
 async def test_peer_reaction_cannot_bind_conflicting_or_out_of_scope_target(
     relay, scope
 ):
@@ -411,15 +573,55 @@ async def test_peer_reaction_cannot_bind_conflicting_or_out_of_scope_target(
         relation["target_native_ref"]["adapter"] = "unrelated"
     elif scope == "channel":
         relation["target_native_ref"]["native_channel_id"] = "unrelated"
-    elif scope == "missing_key":
-        relation["key"] = None
     else:
         wire["medre"]["envelope"]["relation_info"] = "reply"
     await relay.deliver(wire)
+    if scope == "relation_info":
+        relay.queue.assert_not_called()
+        return
     relay.queue.assert_called_once()
     assert relay.queue.call_args.args[0] == relay.interface.sendText
     assert relay.queue.call_args.kwargs["text"].endswith("Visible reaction")
     assert "reply_id" not in relay.queue.call_args.kwargs
+
+
+@pytest.mark.parametrize("missing", ["key", "target", "relation"])
+async def test_trusted_reaction_with_missing_metadata_is_dropped(
+    relay, monkeypatch, missing
+):
+    logger = MagicMock()
+    monkeypatch.setattr("mmrelay.matrix_utils.logger", logger)
+    wire = await content(emoji=True, meshtastic_replyId=0, reaction_key="🔥")
+    context = wire["medre"]["metadata"]["bridge_context"]
+    if missing == "relation":
+        context["relations"] = []
+        wire["medre"]["envelope"]["relation_info"] = ""
+    else:
+        field = "target_native_ref" if missing == "target" else "key"
+        context["relations"][0][field] = None
+
+    await relay.deliver(wire)
+
+    relay.queue.assert_not_called()
+    logger.warning.assert_called_once()
+    assert "invalid/incoherent" in logger.warning.call_args.args[0]
+
+
+async def test_disabled_peer_reaction_does_not_relay_out_of_scope_fallback(
+    relay, monkeypatch
+):
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_interaction_settings",
+        lambda _: {"replies": True, "reactions": False},
+    )
+    wire = await content(emoji=True, meshtastic_replyId=0, reaction_key="🔥")
+    wire["medre"]["metadata"]["bridge_context"]["relations"][0]["target_native_ref"][
+        "native_channel_id"
+    ] = "other-channel"
+
+    await relay.deliver(wire)
+
+    relay.queue.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -501,7 +703,7 @@ async def test_thread_without_reply_marker_preserves_authored_quote(
 ):
     if codec_fails:
         monkeypatch.setattr(
-            "mmrelay.matrix.events.canonicalize_matrix_event",
+            "mmrelay.matrix_utils.canonicalize_matrix_event",
             MagicMock(side_effect=ValueError("codec failure")),
         )
     await relay.deliver(
@@ -525,7 +727,7 @@ async def test_thread_explicit_reply_retains_target_but_fallback_does_not(
     monkeypatch.setattr("mmrelay.matrix_utils.handle_matrix_reply", handler)
     if codec_fails:
         monkeypatch.setattr(
-            "mmrelay.matrix.events.canonicalize_matrix_event",
+            "mmrelay.matrix_utils.canonicalize_matrix_event",
             MagicMock(side_effect=ValueError("codec failure")),
         )
     relation = {

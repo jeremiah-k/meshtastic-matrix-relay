@@ -1196,12 +1196,7 @@ async def test_on_room_message_dict_keyed_matrix_rooms_uses_direct_room_lookup(
         "matrix_rooms": {mock_room.room_id: {"meshtastic_channel": 0}},
         "matrix": {"bot_user_id": TEST_BOT_USER_ID},
     }
-    mock_event.source = {
-        "content": {
-            "body": "Hello, world!",
-            MATRIX_SUPPRESS_KEY: True,
-        }
-    }
+    mock_event.source = {"content": {"body": "Hello, world!"}}
 
     with (
         patch("mmrelay.matrix_utils.config", test_config),
@@ -1216,10 +1211,17 @@ async def test_on_room_message_dict_keyed_matrix_rooms_uses_direct_room_lookup(
             return_value={"reactions": False, "replies": False},
         ) as mock_get_interaction_settings,
         patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False),
+        patch(
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            return_value=(None, None),
+        ) as get_radio,
     ):
         await on_room_message(mock_room, mock_event)
 
     mock_get_interaction_settings.assert_called_once_with(test_config)
+    assert (
+        get_radio.await_args.args[0] == test_config["matrix_rooms"][mock_room.room_id]
+    )
 
 
 async def test_on_room_message_ignore_bot(

@@ -7,6 +7,7 @@ on_room_member, and on_invite.
 import asyncio
 import inspect
 import time
+from collections.abc import Mapping
 from typing import Any, cast
 
 from nio import (
@@ -34,13 +35,52 @@ from nio.events.room_events import RoomMemberEvent
 
 import mmrelay.matrix_utils as facade
 from mmrelay.constants.formats import MATRIX_SUPPRESS_KEY
-from mmrelay.matrix.canonical_ingress import canonicalize_matrix_event
 from mmrelay.matrix.peer_context import (
+    PeerClaimWarningLimiter,
+    carries_medre_relay_claim,
     load_peer_relays,
     radio_packet_id,
-    trusted_peer_metadata,
 )
 from mmrelay.meshtastic.reaction_preview import reaction_preview
+
+_peer_claim_warnings = PeerClaimWarningLimiter()
+
+
+def _drop_medre_relay_claim(
+    sender: str, room_id: str, event_id: str, reason: str
+) -> None:
+    """Log only observed identity and failure reason, never untrusted content."""
+    if reason == "untrusted":
+        message = (
+            "Dropping MEDRE relay claim from untrusted Matrix sender %r in room %r (event %r). "
+            "Verify this is your peer bot before adding its exact MXID to "
+            "matrix.trusted_relays; claimed provenance is not authenticated."
+        )
+    elif reason == "unmapped":
+        message = (
+            "Dropping MEDRE relay claim from Matrix sender %r in unmapped room %r (event %r). "
+            "Peer relay traffic is only accepted in configured matrix_rooms."
+        )
+    else:
+        message = (
+            "Dropping invalid/incoherent MEDRE relay claim from trusted Matrix "
+            "sender %r in room %r (event %r). Check the peer's MEDRE version and provenance; "
+            "matrix.trusted_relays grants no authority to malformed claims."
+        )
+    # Warn once per sender/reason/5 minutes; each rejection remains visible
+    # at DEBUG for CI/auditing without flooding operational WARNING logs.
+    if _peer_claim_warnings.should_warn(sender, reason, time.monotonic()):
+        facade.logger.warning(message, sender, room_id, event_id)
+    else:
+        facade.logger.debug(
+            "Dropped repeated %s MEDRE relay claim from sender %r in room %r "
+            "(event %r)",
+            reason,
+            sender,
+            room_id,
+            event_id,
+        )
+
 
 __all__ = [
     "on_decryption_failure",
@@ -347,10 +387,6 @@ async def on_room_message(
                 room_config = room_conf
                 break
 
-    if not room_config:
-        await _dispatch_unmapped_room_message(room, event)
-        return
-
     if facade.config is None:
         facade.logger.error("No configuration available for Matrix message processing.")
         return
@@ -359,23 +395,47 @@ async def on_room_message(
     except ValueError as exc:
         facade.logger.error("Invalid peer relay configuration: %s", exc)
         return
-    interactions = facade.get_interaction_settings(facade.config)
-    storage_enabled = facade.message_storage_enabled(interactions)
     content = event.source.get("content", {})
+    if not isinstance(content, Mapping):
+        facade.logger.warning("Dropping Matrix event with non-mapping content")
+        return
+    # Reject attempts to use the reserved wire namespace before codec parsing:
+    # even a null/truncated/unsupported envelope must not turn into plain text.
+    claims_relay = carries_medre_relay_claim(content)
+    if claims_relay and event.sender not in peers:
+        _drop_medre_relay_claim(event.sender, room.room_id, event.event_id, "untrusted")
+        return
     if content.get(MATRIX_SUPPRESS_KEY):
         return
+    if not room_config:
+        if claims_relay:
+            _drop_medre_relay_claim(
+                event.sender, room.room_id, event.event_id, "unmapped"
+            )
+            return
+        await _dispatch_unmapped_room_message(room, event)
+        return
+
+    interactions = facade.get_interaction_settings(facade.config)
+    storage_enabled = facade.message_storage_enabled(interactions)
     local_meshnet_name = facade.get_meshtastic_config_value(
         facade.config, "meshnet_name", ""
     )
     canonical_event = None
     try:
-        canonical_event = canonicalize_matrix_event(
+        canonical_event = facade.canonicalize_matrix_event(
             room, event, reaction=isinstance(event, ReactionEvent)
         )
-    except Exception:  # noqa: BLE001 - preserve authored messages on codec failure
-        facade.logger.exception(
-            "Failed to canonicalize Matrix event; using native text"
-        )
+    except Exception as exc:  # noqa: BLE001 - isolate malformed remote claims
+        if claims_relay:
+            # The exception text can contain attacker-supplied content.
+            facade.logger.debug(
+                "Unable to decode MEDRE relay claim (%s)", type(exc).__name__
+            )
+        else:
+            facade.logger.exception(
+                "Failed to canonicalize Matrix event; using native text"
+            )
 
     # The native parser is also the failure path: flat peer fields are never read.
     native_relation = extract_matrix_relation(event.source)
@@ -389,17 +449,37 @@ async def on_room_message(
         if isinstance(canonical_body, str):
             text = canonical_body
     text = text.strip()
-    peer = (
-        trusted_peer_metadata(canonical_event, event.sender, facade.bot_user_id, peers)
-        if canonical_event is not None
-        else None
-    )
+    peer = None
+    if claims_relay and canonical_event is not None:
+        try:
+            peer = facade.trusted_peer_metadata(
+                canonical_event, event.sender, facade.bot_user_id, peers
+            )
+        except Exception as exc:  # noqa: BLE001 - isolate hostile Matrix metadata
+            # A malformed remote value must not abort the room event pump.
+            # Avoid logging the exception message, which may contain wire data.
+            facade.logger.debug(
+                "MEDRE claim validation failed with %s", type(exc).__name__
+            )
+    # An allowlisted sender can still send contradictory, broken, or unsupported
+    # metadata. A relay claim is all-or-nothing: never downgrade it to an
+    # ordinary user event, native relation, or plugin command.
+    if claims_relay and peer is None:
+        _drop_medre_relay_claim(event.sender, room.room_id, event.event_id, "invalid")
+        return
     longname = (peer.longname or peer.shortname or peer.sender_id) if peer else None
     shortname = peer.shortname if peer else None
     meshnet_name = peer.meshnet if peer else None
     portnum = peer.portnum if peer else None
-    if peer is not None and meshnet_name and meshnet_name == local_meshnet_name:
-        return
+    if peer is not None:
+        if meshnet_name and meshnet_name == local_meshnet_name:
+            return
+        if (
+            peer.relation is not None
+            and peer.relation.relation_type == "reaction"
+            and not interactions["reactions"]
+        ):
+            return
 
     is_reaction = isinstance(event, ReactionEvent)
     reaction_emoji = None

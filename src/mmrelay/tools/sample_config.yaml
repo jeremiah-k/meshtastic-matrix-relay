@@ -1,7 +1,9 @@
 matrix:
-  # Exact peer bot MXIDs whose canonical source metadata may be used in any
-  # mapped room. Messages from other senders still relay, but their metadata
-  # is not trusted.
+  # Exact, independently verified peer bot MXIDs; no wildcard/TOFU trust.
+  # An unlisted sender's MEDRE relay claim is dropped (with a log warning),
+  # not forwarded as ordinary text. Incoherent claims from listed bots are
+  # also dropped. Ordinary Matrix messages without MEDRE content still relay.
+  # Check the observed sender identity before adding a bot here.
   trusted_relays: []
   # Matrix authentication:
   # Run `mmrelay auth login` before starting MMRelay.

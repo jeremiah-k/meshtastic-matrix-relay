@@ -149,7 +149,7 @@ async def test_relay_preserves_canonical_quotes_and_legacy_codec_failure_behavio
         patch("mmrelay.matrix_utils.queue_message", return_value=True) as enqueue,
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
         patch(
-            "mmrelay.matrix.events.canonicalize_matrix_event",
+            "mmrelay.matrix_utils.canonicalize_matrix_event",
             wraps=canonicalize_matrix_event,
             side_effect=RuntimeError("codec failure") if codec_fails else None,
         ),
@@ -195,7 +195,7 @@ async def test_codec_failure_preserves_reply_target_and_sanitized_authored_body(
         patch("mmrelay.matrix_utils._get_msgs_to_keep_config", return_value=20),
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
         patch(
-            "mmrelay.matrix.events.canonicalize_matrix_event",
+            "mmrelay.matrix_utils.canonicalize_matrix_event",
             side_effect=RuntimeError("codec failure"),
         ),
         patch(
