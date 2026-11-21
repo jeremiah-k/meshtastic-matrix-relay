@@ -24,8 +24,8 @@ It **does not** replace MMRelay's transport sessions with a MEDRE daemon.
   devices are supported. Weather requests no longer require the sender to
   already exist in NodeDB.
 - **Updated release dependencies.** Python **3.12 or later** is required;
-  `mindroom-nio==1.4.2`, `mtjk==2.7.11.post14`, `medre==0.2.0` and
-  `medre-adapter-matrix==0.2.0` are pinned in the candidate manifest and lock.
+  the coordinated Mindroom-nio, mtjk and MEDRE package pins are recorded in
+  the release manifest and lockfile.
 
 For a step-by-step upgrade, including backups and rollback,
 see [Upgrading from 1.4.1 to 1.5.0](UPGRADING_1.5.md).
@@ -110,11 +110,11 @@ uncertain send.
 
 ## Packages and deployment images
 
-The candidate source uses **published indexed** dependencies, including
-`medre==0.2.0` and `medre-adapter-matrix==0.2.0`; earlier direct Git-source
-requirements are gone. Both `pyproject.toml` and `uv.lock` name the coordinated
-versions. A subsequent MEDRE release is not implicitly part of the qualified
-pair merely because it exists upstream.
+The candidate source uses **published indexed** dependencies; the earlier
+direct Git-source requirements for the MEDRE core and Matrix adapter are
+gone. Both `pyproject.toml` and `uv.lock` name the coordinated versions. A
+subsequent MEDRE release is not implicitly part of the qualified pair merely
+because it exists upstream.
 
 The Helm chart metadata, default image tag and Kustomize tag remain on
 **1.4.1** while the 1.5.0 image is unpublished. When it is published, select

@@ -10,7 +10,7 @@ session and transport; the shared room is the interoperability surface.
 ## Release contract and remaining qualification
 
 The implementation follows the approved canonical-only contract below.
-The core and adapter 0.2.0 packages are published; final MMRelay 1.5 runtime
+The core and adapter 0.2 packages are published; final MMRelay 1.5 runtime
 qualification and release artifacts remain pre-tag requirements:
 
 - Emit and consume canonical MEDRE peer metadata without flat `meshtastic_*`
@@ -141,7 +141,7 @@ lossless metadata exchange unless they explicitly support an embedding path.
   status, nor copy crypto keys/IVs into canonical metadata. The adapter owns
   the native schema; MEDRE core owns the canonical envelope.
 - No MEDRE pre-0.2 compatibility readers/migrations will be introduced. The
-  tagged 0.2.0 core and adapter releases establish the support
+  tagged 0.2 core and adapter releases establish the support
   baseline. MMRelay's existing historical message-map and E2EE-store behavior
   remains independent of MEDRE's experimental database formats.
 
@@ -180,12 +180,11 @@ lossless metadata exchange unless they explicitly support an embedding path.
 
 ## Published-package pins and distribution
 
-MMRelay 1.5.0 pins the published MEDRE packages from PyPI:
+MMRelay 1.5.0 pins the published MEDRE core and Matrix adapter packages
+from PyPI; the exact coordinated pair is recorded in `pyproject.toml` and
+`uv.lock`.
 
-- `medre==0.2.0`
-- `medre-adapter-matrix==0.2.0`
-
-The published 0.2.0 pair carries the bounded source facts, generic attribution,
+The published 0.2 line carries the bounded source facts, generic attribution,
 and explicit canonical reaction keys qualified during the integration
 campaign, and the adapter declares `medre>=0.2.0,<0.3.0`, which the index
 satisfies directly. The release-candidate Git pins and the direct-URL wheel
@@ -195,24 +194,20 @@ references. The adapter still declares the E2EE extra in its base
 dependencies, so an MMRelay 1.5 base install includes the Matrix crypto
 backend.
 
-Medre 0.2.1 (radio delivery-grant and refused-replay fixes) is published
-beyond this pin. Absorbing it before the 1.5.0 tag is a release decision
-that repeats the exact-pair qualification; either way the tagged manifest
-names exact indexed versions with a matching lockfile. Every deliberate pin
-change still requires runtime compatibility qualification and a lockfile
-update; a dependency's syntax alone is not proof of compatibility. Git/source
-installs remain supported alongside the indexed release; source selection
-belongs to deployment/development configuration rather than published direct
-requirements.
+Every deliberate pin change still requires runtime compatibility
+qualification and a lockfile update; a dependency's syntax alone is not proof
+of compatibility. Git/source installs remain supported alongside the indexed
+release; source selection belongs to deployment/development configuration
+rather than published direct requirements.
 
 ## Pre-tag gates
 
 1. The MEDRE core/Matrix/Meshtastic schema freezes and the compatibility
-   manifest landed with the upstream 0.2.0 release train, and the manifest
+   manifest landed with the upstream 0.2 release train, and the manifest
    pins sit at the merged adapter release revisions. MMRelay pins the
-   published 0.2.0 core and Matrix adapter from PyPI, and hosted CI is green
-   at that exact pair. Re-run the pair qualification if either package moves
-   again before the tag.
+   published core and Matrix adapter from PyPI, and hosted CI is green
+   at the manifest's exact pair. Re-run the pair qualification if either
+   package moves again before the tag.
 2. `uv.lock` resolves the two published packages from the PyPI registry and
    adds `msgspec` and `termaid`; confirm `uv lock --check` and regenerate
    after any pin change.
@@ -228,7 +223,7 @@ requirements.
    artifacts use index-resolvable requirements, with Git/fork/local source
    selections retained for development. A PyPI upload with direct Git
    `Requires-Dist` entries will be rejected.
-   The publish order was followed for 0.2.0 (MEDRE core first, then its
+   The publish order was followed for the 0.2 releases (MEDRE core first, then its
    adapters, then MMRelay's repin to the exact published versions). Inspect
    each wheel and sdist, verify its frozen schema bundle and manifest,
    and test a clean install using the index rather than local source overrides.
@@ -237,8 +232,8 @@ The **core radio-to-Matrix outbound content renderer** is MEDRE-backed and
 now emits canonical metadata rather than legacy flat keys,
 without moving delivery acknowledgements, identity, edit/delete authorization,
 plugin send APIs, or Matrix upload sessions into the MEDRE runtime. The
-schema-freeze PRs, the upstream 0.2.0 release train, and MMRelay's MEDRE
-adoption PR have all merged, and the 0.2.0 adapter pin supplies the renderer
+schema-freeze PRs, the upstream 0.2 release train, and MMRelay's MEDRE
+adoption PR have all merged, and the published adapter pin supplies the renderer
 API with the corrected native provenance projection.
 
 ## Native radio reaction keys
