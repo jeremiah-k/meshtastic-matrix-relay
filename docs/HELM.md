@@ -3,8 +3,7 @@
 > **Unreleased 1.5.0 instructions (staged on `docs/release-1.5`).** For a
 > running 1.4.1 deployment, use the
 > [1.4.1 documentation](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/1.4.1/docs/HELM.md)
-> or its installed release tag. The `1.5.0` image and tag examples below are for
-> after the corresponding artifacts have been published and verified.
+> or its installed release tag.
 
 This guide covers deploying MMRelay using the Helm chart in `deploy/helm/mmrelay/`.
 
@@ -30,15 +29,13 @@ only after it is published. For installations from 1.2.x or earlier, first compl
 ```bash
 git clone https://github.com/jeremiah-k/meshtastic-matrix-relay.git mmrelay
 cd mmrelay
-# Only after the 1.5.0 release tag is published:
-git checkout 1.5.0
+# To deploy a specific release instead, check out its tag before installing.
 ```
 
 ### 2. Create config.yaml
 
 ```bash
-# Keep the sample configuration aligned with the checked-out release.
-cp src/mmrelay/tools/sample_config.yaml config.yaml
+curl -Lo config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
 # Edit config.yaml with your settings
 ${EDITOR:-vi} config.yaml
 ```
@@ -62,12 +59,10 @@ kubectl create secret generic mmrelay-config \
 ```bash
 helm install mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
-  --create-namespace \
-  --set image.tag=1.5.0 \
-  --set image.digest=""
+  --create-namespace
 
-# The chart defaults still select 1.4.1 until the 1.5 image is released.
-# Never use this install command before the 1.5.0 image exists.
+# The chart's default image tag advances with each release; pin a verified
+# release tag or digest explicitly for repeatable installs.
 ```
 
 ### 6. Verify Deployment
@@ -86,7 +81,8 @@ The Helm chart is highly configurable. Key options include:
 ```yaml
 image:
   repository: ghcr.io/jeremiah-k/mmrelay
-  tag: 1.5.0
+  # tag: pin an exact release here; the chart default tracks the current
+  # stable release (see deploy/helm/mmrelay/values.yaml)
   pullPolicy: IfNotPresent
   # Pin by digest for production (immutable)
   digest: ""
@@ -100,7 +96,7 @@ image:
 helm upgrade mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
   --reuse-values \
-  --set image.tag=1.5.0 \
+  --set image.tag="<verified-release-tag>" \
   --set image.digest=""
 ```
 

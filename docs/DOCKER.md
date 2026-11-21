@@ -1,7 +1,7 @@
 # Docker Deployment
 
-> **Staged 1.5 instructions.** The versioned sample and 1.5.0 image examples
-> below require a published 1.5.0 release. For 1.4.1, use the
+> **Staged 1.5 instructions.** For a currently published 1.4.1 deployment,
+> use the
 > [1.4.1 Docker guide](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/1.4.1/docs/DOCKER.md).
 
 MMRelay supports Docker deployment with two image options and multiple deployment methods.
@@ -41,7 +41,7 @@ You need Docker with the Compose plugin installed on your system. Follow the [of
 ```bash
 # Create directory and download config
 mkdir -p ~/.mmrelay
-curl -Lo ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/1.5.0/src/mmrelay/tools/sample_config.yaml
+curl -Lo ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
 
 # Adjust permissions and edit the file
 chmod 600 ~/.mmrelay/config.yaml
@@ -51,10 +51,10 @@ nano ~/.mmrelay/config.yaml
 grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null || echo "MMRELAY_HOST_HOME=${HOME}" >> .env
 grep -q '^UID=' .env 2>/dev/null || echo "UID=$(id -u)" >> .env
 grep -q '^GID=' .env 2>/dev/null || echo "GID=$(id -g)" >> .env
-curl -o docker-compose.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/1.5.0/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml
+curl -o docker-compose.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml
 
-# Before pulling, edit the Compose image to ghcr.io/jeremiah-k/mmrelay:1.5.0
-# (or its verified digest). The sample may still use the mutable :latest tag.
+# Before pulling, edit the Compose image to a verified published release tag
+# or digest. The sample may still use the mutable :latest tag.
 ${EDITOR:-vi} docker-compose.yaml
 
 # Download the image and authenticate with the relay bot account
@@ -116,7 +116,7 @@ For users who prefer web-based Docker management:
 
    ```bash
    mkdir -p ~/.mmrelay
-   curl -o ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/1.5.0/src/mmrelay/tools/sample_config.yaml
+   curl -o ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
    chmod 600 ~/.mmrelay/config.yaml
    nano ~/.mmrelay/config.yaml
    ```
@@ -202,7 +202,7 @@ MMRelay uses a single configuration file: `~/.mmrelay/config.yaml`. All settings
 
 **Setup:**
 
-1. Download the sample config: `curl -Lo ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/1.5.0/src/mmrelay/tools/sample_config.yaml`
+1. Download the sample config: `curl -Lo ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml`
 2. Edit the file: `nano ~/.mmrelay/config.yaml`
 3. Configure your Matrix rooms, Meshtastic connection, and other settings
 
