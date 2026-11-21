@@ -522,10 +522,12 @@ INFO Matrix: Initial sync completed. Found X rooms.
 Preserve the Matrix credentials and **entire** E2EE store when upgrading from
 1.4.1. Stop the old process before copying or restoring that data, and do not
 reset the Matrix device just to resolve an SDK upgrade failure. Mixed encrypted
-and unencrypted rooms remain supported. On Linux/macOS, E2EE is disabled only
-when **both** `matrix.e2ee.enabled` and `matrix.encryption.enabled` are
-`false` or absent; either switch being `true` enables it. Check both settings
-before intentionally disabling encrypted-room support.
+and unencrypted rooms remain supported. The current switch is
+`matrix.e2ee.enabled`; configurations from older releases may still carry the
+legacy `matrix.encryption.enabled` key, and either key set to `true` enables
+E2EE. To disable encrypted-room support, set `matrix.e2ee.enabled: false` and
+remove any legacy `matrix.encryption.enabled` block rather than leaving it
+`true`.
 
 Follow the [1.5 upgrade checklist](UPGRADING_1.5.md) for backup and rollback
 instructions. Store migration is not a guarantee that a downgraded SDK can
