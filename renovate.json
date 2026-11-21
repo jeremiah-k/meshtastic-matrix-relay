@@ -62,12 +62,15 @@
       "enabled": false
     },
     {
-      "description": "medre core and adapters release in lockstep \u2014 adapters floor and ceiling the core version, so neither pin can move alone; update them as one unit with a single lockfile resolution",
+      "description": "medre core and adapters release in lockstep \u2014 adapters floor and ceiling the core version, so neither pin can move alone; update them as one unit with a single lockfile resolution, checked at most weekly",
       "matchPackageNames": [
         "medre",
         "medre-adapter-*"
       ],
-      "groupName": "medre family"
+      "groupName": "medre family",
+      "schedule": [
+        "0 6 * * 1"
+      ]
     }
   ],
   "rebaseWhen": "behind-base-branch"
