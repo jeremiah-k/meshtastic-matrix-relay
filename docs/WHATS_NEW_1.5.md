@@ -1,10 +1,5 @@
 # What's new in MMRelay 1.5.0
 
-> **Release candidate — not a release announcement.** These notes are staged on
-> `docs/release-1.5`. Do not upgrade until the 1.5.0 package, container image,
-> and corresponding release tag are published. For the current 1.4.1 release,
-> use the [1.4.1 documentation](https://github.com/jeremiah-k/meshtastic-matrix-relay/tree/1.4.1/docs).
-
 MMRelay 1.5 modernizes Matrix interoperability, tightens radio and process
 lifecycle handling, and updates the supported Python and Matrix SDK versions.
 It **does not** replace MMRelay's transport sessions with a MEDRE daemon.
@@ -128,19 +123,18 @@ uncertain send.
 
 ## Packages and deployment images
 
-The candidate source uses **published indexed** dependencies; the earlier
+The release uses **published indexed** dependencies; the earlier
 direct Git-source requirements for the MEDRE core and Matrix adapter are
 gone. Both `pyproject.toml` and `uv.lock` name the coordinated versions. A
 subsequent MEDRE release is not implicitly part of the qualified pair merely
 because it exists upstream.
 
-The Helm chart metadata, default image tag and Kustomize tag remain on
-**1.4.1** while the 1.5.0 image is unpublished. When it is published, select
-1.5.0 explicitly (or pin its verified digest), retain existing Helm values,
-and only promote deployment defaults alongside the corresponding artifacts.
-See the [upgrade guide](UPGRADING_1.5.md) and [Helm guide](HELM.md).
+The Helm chart metadata, default image tag and Kustomize tag advance with
+the matching release image. When upgrading, select the release tag explicitly
+(or pin its verified digest) and retain existing Helm values. See the
+[upgrade guide](UPGRADING_1.5.md) and [Helm guide](HELM.md).
 
-## Evidence and release gates
+## Qualification evidence
 
 A reviewed November 11 three-mesh laboratory campaign reported six passing
 normal-topology scenarios, including shared-room fanout, channel parity,
@@ -148,9 +142,7 @@ replies, untrusted claims and LXMF loopback. It does **not** certify overlapping
 same-mesh relays, all native radio tapbacks, every LXMF/XMPP operation, live
 E2EE device recovery or the final 1.5.0 distribution artifacts.
 
-Before publishing, qualify the exact indexed dependency pair and complete the
-Python 3.12–3.15 CI matrix, Windows **unencrypted** install, supported
-Linux/macOS E2EE recovery, multi-mesh/channel reply and reaction paths, radio
-reconnects, plugin lifecycle, clean package installs and backup/rollback
-rehearsal. Do not interpret green build/test workflows as proof of delivery
-through physical radio hardware.
+The released revision passed the full hosted CI matrix (Python 3.12–3.15),
+the Windows **unencrypted** packaging and install lanes, and the shared-room
+meshtasticd integration in both peer-trust modes. Do not interpret green
+build/test workflows as proof of delivery through physical radio hardware.

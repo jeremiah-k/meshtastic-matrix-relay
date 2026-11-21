@@ -1,11 +1,5 @@
 # MMRelay Documentation
 
-> **Release-documentation staging branch:** These pages include **unreleased
-> MMRelay 1.5.0** guidance. For a currently published **1.4.1** installation,
-> use the [1.4.1 documentation](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/1.4.1/docs/README.md)
-> or the documentation in your installed release tag. The 1.5.0 configuration,
-> dependencies, and image tags must not be assumed available until release.
-
 The repository documentation is for **versioned setup, deployment, upgrade, and
 operator guidance**. Broader conceptual and community documentation lives in the
 [MMRelay wiki](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki).
@@ -33,7 +27,7 @@ operator guidance**. Broader conceptual and community documentation lives in the
 
 ## Upgrade and release notes
 
-- **[What's New in 1.5.0 (release candidate)](WHATS_NEW_1.5.md)** — interoperability, reliability, and compatibility changes
+- **[What's New in 1.5.0](WHATS_NEW_1.5.md)** — interoperability, reliability, and compatibility changes
 - **[Upgrading from 1.4.1 to 1.5.0](UPGRADING_1.5.md)** — backups, supported platforms, installation methods, validation and rollback
 - **[What's New in 1.4.0](WHATS_NEW_1.4.md)** — 1.4 release summary and upgrade guidance
 - **[What's New in 1.3.0](WHATS_NEW_1.3.md)** — historical 1.3 release summary

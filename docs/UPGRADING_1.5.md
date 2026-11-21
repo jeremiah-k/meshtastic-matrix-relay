@@ -1,10 +1,5 @@
 # Upgrading MMRelay 1.4.1 to 1.5.0
 
-> **Staged instructions.** Follow this guide only after the 1.5.0 release
-> package or image is published and verified. Until then, 1.4.1 remains the
-> deployed release. The [1.5 release notes](WHATS_NEW_1.5.md) explain the
-> interoperability changes and unsupported configurations.
-
 This guide covers upgrading an existing relay **without losing its local
 configuration, Matrix identity, message mappings or plugin state**. For
 installations from 1.2.x or earlier, complete the [1.3 data migration](MIGRATION_1.3.md)
