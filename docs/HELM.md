@@ -57,12 +57,15 @@ kubectl create secret generic mmrelay-config \
 ### 5. Install Chart
 
 ```bash
+# Install only after the 1.5.0 image is published; the chart's staged
+# default remains 1.4.1 until release metadata is promoted.
 helm install mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
-  --create-namespace
+  --create-namespace \
+  --set image.tag="1.5.0" \
+  --set image.digest=""
 
-# The chart's default image tag advances with each release; pin a verified
-# release tag or digest explicitly for repeatable installs.
+# For an immutable image, use the verified tag-and-digest pair below.
 ```
 
 ### 6. Verify Deployment
@@ -106,11 +109,17 @@ helm upgrade mmrelay ./deploy/helm/mmrelay \
 helm upgrade mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
   --reuse-values \
-  --set image.digest=sha256:abc123... \
-  --set image.tag=""
+  --set image.tag="<verified-release-tag>" \
+  --set image.digest="sha256:<verified-image-digest>"
 ```
 
-> **Note**: Tags can be mutable. For production, pin a specific tag or digest.
+The current chart renders `repository:tag@digest`, so **keep `image.tag`
+nonempty even when a digest is set**. The digest selects the immutable image;
+the tag is still required for a valid reference. To switch back to tag-only,
+clear the old digest explicitly as shown above. Never reuse an older digest
+with a newer tag.
+
+> **Note**: Tags can be mutable. For production, use a verified image digest.
 
 ### Config Injection
 

@@ -154,24 +154,39 @@ helm upgrade mmrelay ./deploy/helm/mmrelay \
 `--reuse-values` protects existing `persistence.existingClaim`, secret names
 and non-default settings; explicitly clearing an **old** digest ensures the
 new tag is used. To pin an immutable digest, pass the **verified new digest**
-instead of the empty value. If chart values change shape, review a migration
-values file instead of relying on blind value reuse. See the [Helm guide](HELM.md).
+instead of the empty value, **while retaining a nonempty `image.tag`**: the
+current template renders `repository:tag@digest`. If chart values change
+shape, review a migration values file instead of relying on blind value reuse.
+See the [Helm guide](HELM.md).
 
 ### Kubernetes (static manifests / Kustomize)
 
-Back up the existing deployment manifests, namespace Secret and PVC. In a
-checkout of the **released 1.5.0 tag**, set
-`deploy/k8s/kustomization.yaml`'s `newTag` to the verified 1.5.0 image,
-or pin its verified image digest in your overlay. Keep the existing PVC and
-configuration Secret; review the rendered resources before applying:
+Back up your **existing** Deployment, Secret references and PVC. Do **not**
+apply a fresh release checkout's unmodified `deploy/k8s` base to an existing
+installation: its default PVC (`mmrelay-data`), Secret names and other settings
+may differ from the resources currently in use. Bring the released 1.5.0
+manifest changes into **your existing overlay or customized manifests** and
+update its image to the verified 1.5.0 tag or digest. Preserve the existing
+`persistentVolumeClaim.claimName`, Secret/ConfigMap names and keys, namespace,
+service account, environment variables, mounts, and other site settings.
+
+For a deployment managed by a Kustomize overlay:
 
 ```bash
-kubectl kustomize deploy/k8s
-kubectl apply -k deploy/k8s
+# Replace this with the path to your existing customized overlay.
+OVERLAY=/path/to/your/mmrelay-overlay
+kubectl get deployment mmrelay -n mmrelay -o yaml
+kubectl kustomize "$OVERLAY"
+kubectl diff -k "$OVERLAY" # Exit status 1 means differences were found.
+# Apply only after checking the rendered PVC/Secret references and image.
+kubectl apply -k "$OVERLAY"
 kubectl rollout status deployment/mmrelay -n mmrelay
 ```
 
-Adjust the namespace/deployment name to match your actual installation.
+For a directly maintained manifest, perform the equivalent comparison before
+`kubectl apply -f`. Never let a change of image inadvertently switch the
+relay to a different (possibly empty) persistent volume. Adjust the
+namespace/deployment name to match your actual installation.
 See the [Kubernetes guide](KUBERNETES.md).
 
 ### Windows installer
