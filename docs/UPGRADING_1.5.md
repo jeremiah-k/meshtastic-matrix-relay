@@ -6,9 +6,9 @@
 > interoperability changes and unsupported configurations.
 
 This guide covers upgrading an existing relay **without losing its local
-configuration, Matrix identity, message mappings or plugin state**. For installations from 1.2.x or earlier, complete the
-[1.3 data migration](MIGRATION_1.3.md) on a supported 1.4.1 installation
-**before** moving to 1.5.0.
+configuration, Matrix identity, message mappings or plugin state**. For
+installations from 1.2.x or earlier, complete the [1.3 data migration](MIGRATION_1.3.md)
+on a supported 1.4.1 installation **before** moving to 1.5.0.
 Do not run two MMRelay processes against the same radio connection or data home.
 
 ## 1. Check the target before changing anything
@@ -26,9 +26,14 @@ Do not run two MMRelay processes against the same radio connection or data home.
    the [loop-risk warning](WHATS_NEW_1.5.md#trusted-relay-metadata-is-explicit).
    Avoid overlapping relays on the same radio mesh without a separately
    tested loop-prevention plan. Never treat a claimed meshnet as proof.
-5. Record existing versions, effective data paths and the current configuration
-   using `mmrelay --version`, `mmrelay paths`, and `mmrelay config check`.
-   On container deployments, run these commands **inside the existing image**.
+5. Record the installed version, effective data home and **active config file**.
+   Run `mmrelay --version`, `mmrelay paths`, and `mmrelay config check` as the
+   **same OS user, with the same environment, working directory, and global
+   options** (`--home`, `--config`, if used) as the running service. An
+   interactive shell can otherwise report a different home or config file.
+   Inspect the actual service definition or launch command first. On container
+   deployments, run these checks **inside the existing container** with its
+   configured environment and mounts; do not infer host paths from `/data`.
 
 ## 2. Stop and back up the complete state
 
@@ -41,7 +46,7 @@ Back up the **complete selected data home**, including:
 
 | Path relative to data home | Purpose                                                      |
 | -------------------------- | ------------------------------------------------------------ |
-| `config.yaml`              | Room mapping, radio connection and trust configuration       |
+| `config.yaml` (if active)  | Room mapping, radio connection and trust configuration       |
 | `matrix/credentials.json`  | Matrix bot credentials and device identity                   |
 | `matrix/store/`            | Olm/Megolm keys, device and cross-signing state (if enabled) |
 | `database/`                | SQLite messages, node mappings and other persistent state    |
@@ -51,16 +56,34 @@ On native Linux/macOS the default home is `~/.mmrelay`; native Windows normally
 uses `%LOCALAPPDATA%\mmrelay`; in Docker/Helm/Kubernetes it is `/data` in the
 container, backed by the configured host mount or PVC. **These are defaults:**
 `MMRELAY_HOME`, `--home`, installer migration and container mounts may change
-them. Use `mmrelay paths` to find the actual home before stopping the relay.
-Protect backups like credentials—never publish them in issue reports or CI.
+them. Check `mmrelay paths` **with the service's settings** before stopping
+it, and identify the effective config file from `--config` or the actual
+config search path (which can include the service's working directory). If the
+active config is outside the selected data home, **back it up separately** and
+record the original absolute path and permissions. Include custom service
+units, Compose files, environment files, and deployment overlays in your
+upgrade backup. Protect backups like credentials—never publish them in issue
+reports or CI.
 
-For a native Linux/macOS instance using the default home, after stopping it:
+For a native Linux/macOS instance using the **default** `~/.mmrelay` home,
+after stopping it:
 
 ```bash
-# Backup is stored OUTSIDE the data home. Verify its contents before upgrading.
 umask 077
-tar -C "$HOME" -czf "mmrelay-1.4.1-backup-$(date +%Y%m%d).tar.gz" .mmrelay
+BACKUP_DIR="$HOME/mmrelay-backups" # Must be outside ~/.mmrelay
+mkdir -p "$BACKUP_DIR"
+chmod 700 "$BACKUP_DIR"
+tar -C "$HOME" -czf "$BACKUP_DIR/mmrelay-1.4.1-data-$(date +%Y%m%d-%H%M%S).tar.gz" .mmrelay
+
+# If your active config is outside ~/.mmrelay, copy it separately:
+# cp "/absolute/path/to/active/config.yaml" "$BACKUP_DIR/config.yaml"
+# chmod 600 "$BACKUP_DIR/config.yaml"
 ```
+
+For a custom data home, archive **that actual directory** to a secure
+location outside it; do not run the default-home command unchanged. Check
+that the archive and any separately backed-up configuration can be restored
+before upgrading.
 
 For Docker Compose, back up the host directory mounted to `/data` with the
 container stopped. For Helm/Kubernetes, export the **current** Helm values,
