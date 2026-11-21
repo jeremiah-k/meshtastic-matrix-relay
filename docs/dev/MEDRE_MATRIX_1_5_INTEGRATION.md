@@ -38,11 +38,6 @@ use them only after verifying the observed sender against the exact MXID
 allowlist and validating the canonical envelope and source context; this
 never proves cryptographic authorship of a radio packet.
 
-The coordinated MEDRE and Matrix schemas exclude `interop.mmrelay` from
-Matrix-native metadata. Runtime tests validate source-fact delivery and inbound
-authorization against the selected published packages; live shared-room, E2EE,
-hardware, and final MMRelay artifact qualification remain release gates.
-
 ## Canonical outbound source facts (implementation slice)
 
 The radio-to-Matrix core relay emits **no flat `meshtastic_*` content keys**.
