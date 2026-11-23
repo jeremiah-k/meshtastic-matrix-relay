@@ -136,8 +136,8 @@ verified digest) and keep your existing settings — the
 ## How 1.5.0 was tested
 
 - A laboratory campaign across three mesh networks covered shared-room
-  message fanout, replies and reactions, channel parity, and the handling
-  of untrusted and malformed relay messages.
+  message fanout, channel parity, replies, untrusted relay messages, and
+  an LXMF loopback.
 - The full hosted CI matrix (Python 3.12–3.15), the Windows unencrypted
   packaging and install paths, and a shared-room integration test in both
   peer-trust modes all pass.
