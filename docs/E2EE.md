@@ -15,12 +15,12 @@ MMRelay uses [**mindroom-nio**](https://github.com/mindroom-ai/mindroom-nio) as
 its Matrix SDK with **vodozemac** (a Rust cryptographic library) for E2EE.
 Vodozemac succeeds the deprecated libolm and provides precompiled wheels for
 many Linux/macOS Python versions. Wheel availability depends on the interpreter
-and architecture; source builds may require a Rust toolchain (notably macOS
-Python 3.15 with the locked vodozemac 0.10.0).
+and architecture; a source build requires a Rust toolchain. See
+[Requirements and platform support](#requirements-and-platform-support) for
+known gaps.
 
-MMRelay 1.5 declares `mindroom-nio` as a runtime dependency, and the MEDRE
-Matrix adapter uses the same provider. Do not replace it with `matrix-nio`:
-manual namespace substitution is not a supported 1.5 installation path.
+MMRelay declares `mindroom-nio` as a runtime dependency, and the MEDRE
+Matrix adapter uses the same provider. Do not replace it with `matrix-nio`.
 
 For encrypted sessions, MMRelay also enables mindroom-nio's rotated-device-key
 recovery policy. MMRelay uses trust on first use and never grants interactive
@@ -30,12 +30,12 @@ replace stale Olm keys without preserving trust that the old keys earned.
 ### Supported provider
 
 Use the declared `mindroom-nio` dependency. The optional `mmrelay[e2e]`
-extra installs its E2EE dependencies on supported platforms; the MEDRE
-Matrix adapter also depends on `mindroom-nio[e2e]`. **Do not install both
-`mindroom-nio` and `matrix-nio`** in the same environment: each owns the
-`nio` import namespace. Existing installations with both should be repaired
-using a clean environment and a backup of the Matrix store, not by changing
-the provider under a running relay.
+extra installs its E2EE dependencies on supported platforms. **Do not
+install both `mindroom-nio` and `matrix-nio`** in the same environment:
+they provide the `nio` import namespace and will conflict. Existing
+installations with both should be repaired using a clean environment and a
+backup of the Matrix store, not by changing the provider under a running
+relay.
 
 ## Index
 

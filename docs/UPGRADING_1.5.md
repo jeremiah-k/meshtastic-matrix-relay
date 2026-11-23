@@ -15,20 +15,21 @@ Do not run two MMRelay processes against the same radio connection or data home.
    Python 3.11 cannot install MMRelay 1.5.0. Do not replace the pinned
    `mindroom-nio` provider with `matrix-nio`.
 3. Check whether any Matrix room is encrypted. **Windows E2EE is unsupported**
-   in 1.5.0; Windows users can continue with unencrypted Matrix rooms. On
-   Linux/macOS, preserve the existing bot device and its complete E2EE store.
-4. If multiple relays share Matrix rooms, review `matrix.trusted_relays` and
-   the [loop-risk warning](WHATS_NEW_1.5.md#trusted-relay-metadata-is-explicit).
-   Avoid overlapping relays on the same radio mesh without a separately
-   tested loop-prevention plan. Never treat a claimed meshnet as proof.
-   **New fail-closed behavior:** An unlisted sender carrying `medre` relay
-   content is now **dropped** rather than silently forwarded as ordinary
-   text. A separate warning identifies malformed relay claims from an
-   allowlisted sender. Check the receiving relay's logs for the observed MXID
-   and `matrix.trusted_relays`; verify the peer bot account before adding it.
-   Ordinary Matrix users without `medre` content remain unaffected. If a
-   pre-1.5 relay sends no envelope, it remains indistinguishable from ordinary
-   Matrix text, so the topology warning still applies.
+   in 1.5.0; Windows users can continue with unencrypted Matrix rooms. For a
+   native Linux/macOS encrypted-room install, retain the `mmrelay[e2e]` extra
+   when upgrading and preserve the existing bot device and complete E2EE
+   store. The base package alone does not include the optional E2EE dependencies.
+4. If multiple MMRelay instances bridge the same Matrix room, **every
+   instance must run 1.5.0 or later and trust every other instance**.
+   Configure `matrix.trusted_relays` on each relay with the other bots'
+   exact Matrix user IDs: A must list B, and B must list A. Verify each
+   account before trusting it. Do not mix 1.4.x relays into this setup.
+   Relay claims from unlisted senders and invalid claims from trusted
+   peers are **dropped** with actionable warnings; ordinary Matrix
+   messages without relay claims remain unaffected. Avoid connecting
+   multiple relays to the same radio mesh without a separately tested
+   loop-prevention plan. See the
+   [shared-room guidance](WHATS_NEW_1.5.md#sharing-rooms-with-other-mmrelay-instances).
 5. Record the installed version, effective data home and **active config file**.
    Run `mmrelay --version`, `mmrelay paths`, and `mmrelay config check` as the
    **same OS user, with the same environment, working directory, and global

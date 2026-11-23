@@ -1,26 +1,48 @@
 # What's new in MMRelay 1.5.0
 
-MMRelay 1.5 modernizes Matrix interoperability, tightens radio and process
-lifecycle handling, and updates the supported Python and Matrix SDK versions.
-It **does not** replace MMRelay's transport sessions with a MEDRE daemon.
+MMRelay 1.5 adds shared-room interoperability metadata to radio messages
+sent to Matrix, tightens radio and process lifecycle handling, and requires
+Python 3.12 or later. The visible message text is unchanged. MMRelay still
+owns its Meshtastic and Matrix connections; its MEDRE dependencies are Python
+libraries, **not** a separate service to install or run.
+
+**Most installations need no config-file changes.** Configure trusted peer
+bots only if your Matrix room is also bridged by another MMRelay instance.
+Even without shared rooms, Matrix events claiming MEDRE relay metadata are
+subject to the trust check; ordinary Matrix text remains unaffected. See
+[Sharing rooms with other MMRelay instances](#sharing-rooms-with-other-mmrelay-instances).
+
+## About MEDRE
+
+[MEDRE](https://github.com/jeremiah-k/medre) is a separate, developing
+bridge project for connecting Meshtastic to other mesh networks and
+messaging services such as MeshCore, LXMF, and XMPP. For those connections,
+MEDRE is stable enough for testing; consult MEDRE's own documentation for
+the current support status. If you only bridge Meshtastic and Matrix,
+MMRelay on its own is the best option. MEDRE is still taking shape and does
+not have a plugin system yet.
+
+MMRelay uses MEDRE's published event format and Matrix adapter to attach
+interoperability metadata to radio messages posted to Matrix. This does
+not change the displayed text or start another Matrix or radio session.
+The required MEDRE Python packages install with MMRelay.
 
 ## Highlights
 
-- **Shared-room MEDRE interoperability.** Radio messages sent to Matrix use a
-  canonical MEDRE envelope and generic bridge context. Incoming canonical
-  messages from explicitly trusted peer relay bots can retain source names,
-  selected radio metadata and scoped replies/reactions. Other Matrix senders
-  remain ordinary Matrix users.
-- **More predictable runtime ownership.** Queue stop/restart, plugin scheduler
-  reloads, radio connection shutdown and delayed subscriptions are protected
-  against late callbacks and overlapping owners.
-- **Better radio identity and connection handling.** Packet sender IDs are
-  normalized consistently; stable serial device aliases and mapped character
+- **Shared-room interoperability.** Between MMRelay instances that trust
+  each other in a shared room, messages keep the sender name reported by
+  the peer relay, and replies and reactions still match up.
+- **More predictable shutdown and restart.** Radio reconnects, the outbound
+  message queue, plugin reloads, and delayed subscriptions are protected
+  against overlapping or late work.
+- **Better radio identity and connection handling.** Sender identities are
+  matched consistently; stable serial device aliases and mapped character
   devices are supported. Weather requests no longer require the sender to
-  already exist in NodeDB.
-- **Updated release dependencies.** Python **3.12 or later** is required;
-  the coordinated Mindroom-nio, mtjk and MEDRE package pins are recorded in
-  the release manifest and lockfile.
+  already exist in the node database.
+- **Updated dependencies.** Python **3.12 or later** is required, and the
+  Matrix SDK and related libraries are updated. Required MEDRE dependencies
+  install with MMRelay; **native Linux/macOS encrypted-room installs still
+  require the optional `mmrelay[e2e]` extra**.
 
 For a step-by-step upgrade, including backups and rollback,
 see [Upgrading from 1.4.1 to 1.5.0](UPGRADING_1.5.md).
@@ -29,93 +51,102 @@ see [Upgrading from 1.4.1 to 1.5.0](UPGRADING_1.5.md).
 
 ### Python, SDKs and encrypted rooms
 
-- **Python 3.11 is no longer supported.** MMRelay 1.4.1 is the last released
-  version supporting it. The 1.5 native package requires Python 3.12 or later.
-  For encrypted Matrix rooms on **macOS Python 3.15**, the locked vodozemac
-  0.10.0 has no prebuilt macOS 3.15 wheel and may need a Rust source build.
-  Prefer a Python version with an available wheel if native build tooling is
-  not installed; see the [E2EE guide](E2EE.md#requirements-and-platform-support).
-- MMRelay now uses a single `mindroom-nio` 1.x dependency path. Do not install
-  `matrix-nio` into the same environment or manually replace the selected SDK.
+- **Python 3.11 is no longer supported.** MMRelay 1.4.1 is the last
+  released version supporting it. For encrypted Matrix rooms on **macOS
+  Python 3.15**, the vodozemac version MMRelay uses has no prebuilt wheel
+  and may need a Rust source build. Prefer a Python version with an
+  available wheel if native build tooling is not installed; see the
+  [E2EE guide](E2EE.md#requirements-and-platform-support).
+- MMRelay uses a single `mindroom-nio` dependency path. Do not install
+  `matrix-nio` into the same environment or manually replace the selected
+  SDK.
 - **Windows Matrix E2EE is not supported in 1.5.0.** Native Windows and the
-  Windows installer can use unencrypted Matrix rooms and OAuth independently
-  of E2EE. Windows E2EE needs further upstream `mindroom-nio` work and is not
-  included in this release. Linux/macOS encrypted-room support remains.
+  Windows installer can use unencrypted Matrix rooms and OAuth
+  independently of E2EE. Linux/macOS encrypted-room support remains.
+- On native Linux/macOS, install `mmrelay[e2e]` to use encrypted Matrix
+  rooms; the base MMRelay package alone does not install the optional E2EE
+  dependencies. See the [E2EE guide](E2EE.md#supported-provider).
 - Preserve `matrix/credentials.json` and the **complete** `matrix/store/`
   directory with the same bot account/device. Don't delete stores or reset
   cross-signing merely to complete an upgrade.
 
-### Trusted relay metadata is explicit
+### Sharing rooms with other MMRelay instances
 
-For shared rooms bridged by more than one relay, configure the **exact** MXIDs
-of trusted peer bots in `matrix.trusted_relays`:
+These changes apply only when the same Matrix room is bridged by more than
+one MMRelay instance.
+
+**All MMRelay instances sharing a Matrix room must run 1.5.0 or later
+and trust each other.** Configure `matrix.trusted_relays` on **each** relay
+with the exact Matrix user ID of **every other** relay bot in that room.
+For two instances, configure both directions:
+
+On relay A (`@relay-a:example.org`):
 
 ```yaml
 matrix:
   trusted_relays:
-    - "@peer-relay:example.org"
+    - "@relay-b:example.org"
 ```
 
-The default is an empty allowlist. No wildcards, case folding, room-power
-shortcuts, or trust-on-first-use rules are accepted. A message containing the
-reserved `medre` Matrix-content namespace is a **relay claim**, even when its
-envelope is malformed or incomplete:
+On relay B (`@relay-b:example.org`):
 
-- **Unlisted Matrix sender:** drop the message before plugins or radio delivery.
-  A WARNING names the observed MXID and `matrix.trusted_relays`. Verify the
-  account is an actual peer relay **before** trusting it; this is equally
-  consistent with a missing allowlist entry or a forgery attempt.
-- **Allowlisted sender, invalid/incoherent envelope:** drop with a separate
-  WARNING. Check peer versions and provenance rather than adding a bypass.
-- **No `medre` namespace:** ordinary Matrix messages, including human messages,
-  retain normal behavior. A pre-1.5 bot that sends no canonical envelope cannot
-  be identified as a peer by this gate. Old flat `meshtastic_*` keys remain
-  inert and never grant provenance or override the visible authored body.
+```yaml
+matrix:
+  trusted_relays:
+    - "@relay-a:example.org"
+```
 
-Warnings repeat at most once per sender and failure reason every five minutes
-(per running process); repeated drops are recorded at DEBUG. Rejected messages
-are _always_ dropped. The logs do not expose message bodies or raw envelopes. Authenticated Matrix sender identity
-does not authenticate the claimed radio-origin identity.
+The list is empty by default, and entries must match exactly — no
+wildcards, no partial names. `mmrelay config check` rejects malformed
+entries.
 
-**Avoid radio echo loops:** Do not connect multiple relays to the same radio
-mesh and Matrix room until the topology has a separately qualified
-loop-prevention plan. Dropping untrusted MEDRE claims prevents that traffic
-from reaching the radio, but it cannot recognize non-envelope traffic from an
-older relay, or protect against all misconfigured trusted peers. The allowlist
-is **not** a general-purpose same-mesh loop guarantee.
+- A message that claims to come from a relay but whose sender is not listed
+  is **dropped**, with a log warning naming the sender's Matrix account.
+  Verify the account really is your peer relay before adding it.
+- A listed sender whose relay message is malformed is dropped too, with a
+  separate warning. Check the peer relay's version rather than looking for
+  a bypass.
+- Ordinary Matrix messages **without** the reserved MEDRE claim continue to
+  relay as before, including messages from human users. A user who sends a
+  MEDRE claim is subject to the same trust check as a peer bot.
+- **Do not mix older relay versions into a shared-room deployment.**
+  Upgrade every participating instance and configure mutual trust before
+  using the room for cross-mesh relaying.
 
-### Source attribution, replies and reactions
+If you see one of these warnings, use the **observed Matrix sender ID**
+in the log to check the peer account before updating `matrix.trusted_relays`.
+Warnings repeat at most once every five minutes **per sender and rejection
+reason** in a running process; further drops are logged at DEBUG. The
+rejection logs omit message bodies and raw envelopes. Every rejected claim
+is dropped, whether or not it generates another warning.
 
-- The canonical visible body is authoritative. Long/short radio names use
-  generic sender attribution; selected portnum and meshnet labels use bounded
-  `source.native_facts`. These are **adapter-reported claims**, not identity
-  proof or authorization to relay a packet.
-- Reply and reaction references retain adapter, room/channel and packet scope;
-  radio packet ID **0** is valid. Reactions require an **explicit, nonblank,
-  exact key**. Untargeted emotes remain ordinary authored messages.
-- Where available, the canonical envelope carries the native Meshtastic node
-  ID. Node IDs, including those derived from public keys on newer firmware,
-  can remain stable and **link activity across Matrix rooms and radio meshes**.
-  Treat them as privacy-relevant even when they are also broadcast over radio.
-- Peer bot metadata does not authenticate the original radio sender or prove
-  delivery. MMRelay still owns its Matrix authentication/E2EE, Meshtastic
-  connection, plugins, SQLite message mappings and retries.
+**Avoid message loops:** do not connect two relays to the same Meshtastic
+mesh and Matrix room unless you have separately tested how loops are
+prevented in your topology. Mutual trust is required for shared-room peer
+handling, **but it is not a general-purpose loop-prevention mechanism**;
+incorrect room or radio topology can still cause repeated traffic.
 
-For implementers, see the [MEDRE Matrix event contract](dev/MEDRE_MATRIX_1_5_INTEGRATION.md).
+**Radio identity and privacy:** Relay events may carry stable Meshtastic node
+IDs in Matrix event metadata. People and clients with access to the room can
+correlate those IDs across Matrix rooms and radio meshes, even if the IDs are
+also broadcast over radio. Treat them as privacy-relevant. Trusting a peer's
+Matrix bot account does **not** authenticate its claimed radio sender, verify
+that the displayed radio name is genuine, or prove delivery to a radio node.
 
 ## Additional improvements since 1.4.1
 
 - OAuth session renewal and device-signature handling preserve the active
-  Matrix session more carefully (the native OAuth flow remains experimental).
+  Matrix session more carefully (the native OAuth flow remains
+  experimental).
 - Serial configuration accepts stable Linux `/dev/serial/by-id/` and
-  `/dev/serial/by-path/` aliases, including explicitly mapped container
-  character devices.
-- Radio sender-node normalization reduces mismatched identity lookups.
-- Radio reconnects and shutdown, outbound queue ownership, and plugin lifecycle
-  are more defensive against overlapping workers and late callbacks.
-- Remote peer radio text is bounded **after** the sender prefix is added,
-  avoiding oversized UTF-8 payloads.
-- Node-name cache migration reports when no cache data could be carried over.
+  `/dev/serial/by-path/` aliases, including mapped container devices.
+- Radio sender identities are matched more consistently.
+- Radio reconnects and shutdown, the outbound message queue, and the plugin
+  lifecycle handle overlapping or late events more safely.
+- Long remote radio messages are trimmed after the sender prefix is added,
+  keeping outgoing radio payloads within size limits.
+- Node-name cache migration reports when no cache data could be carried
+  over.
 
 These are targeted fixes and safeguards, **not** guarantees of exactly-once
 radio delivery, crash-persistent queues, or seamless recovery from every
@@ -123,26 +154,22 @@ uncertain send.
 
 ## Packages and deployment images
 
-The release uses **published indexed** dependencies; the earlier
-direct Git-source requirements for the MEDRE core and Matrix adapter are
-gone. Both `pyproject.toml` and `uv.lock` name the coordinated versions. A
-subsequent MEDRE release is not implicitly part of the qualified pair merely
-because it exists upstream.
+The required MEDRE packages install automatically with MMRelay; there is
+no separate MEDRE service to run. When upgrading a container deployment,
+select the release image tag explicitly (or pin its verified digest) and
+keep your existing settings — the
+[upgrade guide](UPGRADING_1.5.md) walks through each method.
 
-The Helm chart metadata, default image tag and Kustomize tag advance with
-the matching release image. When upgrading, select the release tag explicitly
-(or pin its verified digest) and retain existing Helm values. See the
-[upgrade guide](UPGRADING_1.5.md) and [Helm guide](HELM.md).
+## How 1.5.0 was tested
 
-## Qualification evidence
+- A laboratory campaign across three mesh networks covered shared-room
+  message fanout, channel parity, replies, untrusted relay messages, and
+  an LXMF loopback.
+- The full hosted CI matrix (Python 3.12–3.15), the Windows unencrypted
+  packaging and install paths, and a shared-room integration test in both
+  peer-trust modes all pass.
 
-A reviewed November 11 three-mesh laboratory campaign reported six passing
-normal-topology scenarios, including shared-room fanout, channel parity,
-replies, untrusted claims and LXMF loopback. It does **not** certify overlapping
-same-mesh relays, all native radio tapbacks, every LXMF/XMPP operation, live
-E2EE device recovery or the final 1.5.0 distribution artifacts.
-
-The released revision passed the full hosted CI matrix (Python 3.12–3.15),
-the Windows **unencrypted** packaging and install lanes, and the shared-room
-meshtasticd integration in both peer-trust modes. Do not interpret green
-build/test workflows as proof of delivery through physical radio hardware.
+This testing does **not** certify running multiple relays on the same
+Meshtastic mesh, every native radio tapback, every LXMF/XMPP operation, or
+live E2EE recovery, and green CI cannot prove delivery over physical radio
+hardware.
