@@ -1,35 +1,36 @@
 # What's new in MMRelay 1.5.0
 
-MMRelay 1.5 changes how messages are formatted in Matrix rooms shared with
-other MMRelay instances, tightens radio and process lifecycle handling, and
-requires Python 3.12 or later. MMRelay still runs one Meshtastic connection
-and one Matrix session; the MEDRE support is a bundled library, not a
-separate service to install or run.
+MMRelay 1.5 adds shared-room interoperability metadata to radio messages
+sent to Matrix, tightens radio and process lifecycle handling, and requires
+Python 3.12 or later. The visible message text is unchanged. MMRelay still
+owns its Meshtastic and Matrix connections; its MEDRE dependencies are Python
+libraries, **not** a separate service to install or run.
 
-**Most installations need no configuration changes.** The shared-room
-changes matter only if one of your Matrix rooms is also bridged by another
-MMRelay instance — see
+**Most installations need no config-file changes.** Configure trusted peer
+bots only if your Matrix room is also bridged by another MMRelay instance.
+Even without shared rooms, Matrix events claiming MEDRE relay metadata are
+subject to the trust check; ordinary Matrix text remains unaffected. See
 [Sharing rooms with other MMRelay instances](#sharing-rooms-with-other-mmrelay-instances).
 
 ## About MEDRE
 
-[MEDRE](https://github.com/jeremiah-k/medre) is a companion project for
-bridging Meshtastic to other mesh networks and messaging services such as
-MeshCore, LXMF, and XMPP. If you want to make those connections, MEDRE is
-stable enough for testing. If you only bridge Meshtastic and Matrix,
-MMRelay on its own is the best option. MEDRE is still taking shape and does
-not have a plugin system yet.
+[MEDRE](https://github.com/jeremiah-k/medre) is a separate, developing
+bridge project for additional transports such as MeshCore, LXMF, and XMPP.
+Use MMRelay alone for Meshtastic-to-Matrix bridging; consult MEDRE's own
+documentation for other transport options and their support status.
 
-MMRelay uses the MEDRE message format for radio messages it posts to
-Matrix, with the format riding along as event metadata: the visible message
-text is unchanged, and the MEDRE packages install automatically with
-MMRelay.
+MMRelay uses MEDRE's published event format and Matrix adapter to attach
+interoperability metadata to radio messages posted to Matrix. This does
+not change the displayed text or start another Matrix or radio session.
+The required MEDRE Python packages install with MMRelay.
 
 ## Highlights
 
 - **Shared-room interoperability.** Between MMRelay instances that trust
-  each other in a shared room, messages keep the original sender's radio
-  name, and replies and reactions still match up on the receiving side.
+  each other in a shared room, peer-reported radio sender names can be
+  preserved, and replies and reactions retain their targets when the
+  relevant message mappings exist. Peer attribution is not independently
+  authenticated as the original radio sender.
 - **More predictable shutdown and restart.** Radio reconnects, the outbound
   message queue, plugin reloads, and delayed subscriptions are protected
   against overlapping or late work.
@@ -38,8 +39,9 @@ MMRelay.
   devices are supported. Weather requests no longer require the sender to
   already exist in the node database.
 - **Updated dependencies.** Python **3.12 or later** is required, and the
-  Matrix SDK and related libraries are updated. Dependencies install with
-  the package; nothing extra is needed.
+  Matrix SDK and related libraries are updated. Required MEDRE dependencies
+  install with MMRelay; **native Linux/macOS encrypted-room installs still
+  require the optional `mmrelay[e2e]` extra**.
 
 For a step-by-step upgrade, including backups and rollback,
 see [Upgrading from 1.4.1 to 1.5.0](UPGRADING_1.5.md).
@@ -60,6 +62,9 @@ see [Upgrading from 1.4.1 to 1.5.0](UPGRADING_1.5.md).
 - **Windows Matrix E2EE is not supported in 1.5.0.** Native Windows and the
   Windows installer can use unencrypted Matrix rooms and OAuth
   independently of E2EE. Linux/macOS encrypted-room support remains.
+- On native Linux/macOS, install `mmrelay[e2e]` to use encrypted Matrix
+  rooms; the base MMRelay package alone does not install the optional E2EE
+  dependencies. See the [E2EE guide](E2EE.md#supported-provider).
 - Preserve `matrix/credentials.json` and the **complete** `matrix/store/`
   directory with the same bot account/device. Don't delete stores or reset
   cross-signing merely to complete an upgrade.
@@ -69,13 +74,25 @@ see [Upgrading from 1.4.1 to 1.5.0](UPGRADING_1.5.md).
 These changes apply only when the same Matrix room is bridged by more than
 one MMRelay instance.
 
-Run 1.5.0 or later on **every** relay that shares the room, and list the
-exact Matrix user ID of each peer relay bot under `matrix.trusted_relays`:
+**All MMRelay instances sharing a Matrix room must run 1.5.0 or later
+and trust each other.** Configure `matrix.trusted_relays` on **each** relay
+with the exact Matrix user ID of **every other** relay bot in that room.
+For two instances, configure both directions:
+
+On relay A (`@relay-a:example.org`):
 
 ```yaml
 matrix:
   trusted_relays:
-    - "@peer-relay:example.org"
+    - "@relay-b:example.org"
+```
+
+On relay B (`@relay-b:example.org`):
+
+```yaml
+matrix:
+  trusted_relays:
+    - "@relay-a:example.org"
 ```
 
 The list is empty by default, and entries must match exactly — no
@@ -88,23 +105,32 @@ entries.
 - A listed sender whose relay message is malformed is dropped too, with a
   separate warning. Check the peer relay's version rather than looking for
   a bypass.
-- Ordinary Matrix users are unaffected: regular messages relay as before.
-- A relay still running 1.4 sends no relay-format messages, so it looks
-  like an ordinary Matrix user. A shared room only works as intended once
-  every relay in it is upgraded.
+- Ordinary Matrix messages **without** the reserved MEDRE claim relay as
+  before, including messages from human users. A user who sends a MEDRE
+  claim is subject to the same trust check as a peer bot.
+- **Do not mix older relay versions into a shared-room deployment.**
+  Upgrade every participating instance and configure mutual trust before
+  using the room for cross-mesh relaying.
 
-If you see one of these warnings, the sender's Matrix user ID in the log
-tells you what to allow or investigate. Warnings repeat at most every five
-minutes per sender; further drops of the same kind are logged at DEBUG.
-Rejected messages are always dropped, and the logs never contain message
-content.
+If you see one of these warnings, use the **observed Matrix sender ID**
+in the log to check the peer account before updating `matrix.trusted_relays`.
+Warnings repeat at most once every five minutes **per sender and rejection
+reason** in a running process; further drops are logged at DEBUG. The
+rejection logs omit message bodies and raw envelopes. Every rejected claim
+is dropped, whether or not it generates another warning.
 
 **Avoid message loops:** do not connect two relays to the same Meshtastic
 mesh and Matrix room unless you have separately tested how loops are
-prevented in your topology. Dropping untrusted relay messages keeps them
-off the radio, but it cannot recognize traffic from a relay that has not
-upgraded, and it cannot protect against every misconfiguration. The
-trusted-relay list is not a loop-prevention mechanism.
+prevented in your topology. Mutual trust is required for shared-room peer
+handling, **but it is not a general-purpose loop-prevention mechanism**;
+incorrect room or radio topology can still cause repeated traffic.
+
+**Radio identity and privacy:** Relay events may carry stable Meshtastic node
+IDs in Matrix event metadata. People and clients with access to the room can
+correlate those IDs across Matrix rooms and radio meshes, even if the IDs are
+also broadcast over radio. Treat them as privacy-relevant. Trusting a peer's
+Matrix bot account does **not** authenticate its claimed radio sender, verify
+that the displayed radio name is genuine, or prove delivery to a radio node.
 
 ## Additional improvements since 1.4.1
 
@@ -127,10 +153,10 @@ uncertain send.
 
 ## Packages and deployment images
 
-MMRelay installs its MEDRE dependencies from PyPI as part of a normal
-upgrade; there is nothing extra to install or run. When upgrading a
-container deployment, select the release image tag explicitly (or pin its
-verified digest) and keep your existing settings — the
+The required MEDRE packages install automatically with MMRelay; there is
+no separate MEDRE service to run. When upgrading a container deployment,
+select the release image tag explicitly (or pin its verified digest) and
+keep your existing settings — the
 [upgrade guide](UPGRADING_1.5.md) walks through each method.
 
 ## How 1.5.0 was tested
