@@ -27,8 +27,7 @@ boundary—see **[How MMRelay Works](https://github.com/jeremiah-k/meshtastic-ma
 - **[Getting started with Matrix](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Getting-Started-With-Matrix-&-MM-Relay)** — Matrix basics and account setup
 - **[E2EE setup](docs/E2EE.md)** — encrypted Matrix rooms and bot-device identity
 - **[Docker](docs/DOCKER.md)** · **[Helm](docs/HELM.md)** · **[Kubernetes](docs/KUBERNETES.md)** — deployment options
-- **[What's new in 1.5](docs/WHATS_NEW_1.5.md)** — release changes, support boundaries, and upgrade guidance
-- **[1.4.1 → 1.5.0 upgrade checklist](docs/UPGRADING_1.5.md)** — backup and validation steps
+- **[What's new in 1.5](docs/WHATS_NEW_1.5.md)** — release changes and what to check when upgrading
 - **[Documentation index](docs/README.md)** — all versioned project documentation
 
 ## Highlights
@@ -69,3 +68,13 @@ install third-party code only from sources you trust.
 - Project room: [#mmrelay:matrix.org](https://matrix.to/#/#mmrelay:matrix.org)
 - Meshnet Club space: [#meshnetclub:matrix.org](https://matrix.to/#/#meshnetclub:matrix.org)
 - Public relay room: [#mmrelay-relay-room:matrix.org](https://matrix.to/#/#mmrelay-relay-room:matrix.org)
+
+## About MEDRE
+
+[MEDRE](https://github.com/jeremiah-k/medre) is a separate bridge project that connects Matrix, Meshtastic, MeshCore, LXMF (Reticulum), XMPP, Chatmail (Delta Chat), and SimpleX Chat. Setup is more involved than MMRelay, but it is flexible: you choose which networks to bridge and how they route to each other. It is stable enough for testing if you want to reach one of those other networks.
+
+**If you only use Meshtastic and Matrix, stick with MMRelay.** You do not need to install or run MEDRE. MEDRE is still taking shape and does not have a plugin system yet.
+
+MMRelay and MEDRE can also share a Matrix room; see
+[Sharing rooms with other relay instances](docs/WHATS_NEW_1.5.md#sharing-rooms-with-other-relay-instances)
+for the extra configuration it requires.

@@ -19,17 +19,18 @@ Do not run two MMRelay processes against the same radio connection or data home.
    native Linux/macOS encrypted-room install, retain the `mmrelay[e2e]` extra
    when upgrading and preserve the existing bot device and complete E2EE
    store. The base package alone does not include the optional E2EE dependencies.
-4. If multiple MMRelay instances bridge the same Matrix room, **every
-   instance must run 1.5.0 or later and trust every other instance**.
-   Configure `matrix.trusted_relays` on each relay with the other bots'
-   exact Matrix user IDs: A must list B, and B must list A. Verify each
-   account before trusting it. Do not mix 1.4.x relays into this setup.
+4. If the same Matrix room is shared with another MMRelay instance or a
+   MEDRE bridge, **every MMRelay instance must run 1.5.0 or later and
+   trust every other relay**. Configure `matrix.trusted_relays` on each
+   relay with the other bots' exact Matrix user IDs: A must list B, and
+   B must list A. Verify each account before trusting it. Do not mix
+   1.4.x relays into this setup.
    Relay claims from unlisted senders and invalid claims from trusted
-   peers are **dropped** with actionable warnings; ordinary Matrix
-   messages without relay claims remain unaffected. Avoid connecting
+   peers are **dropped** with warnings that name the sender; ordinary
+   Matrix messages without relay claims remain unaffected. Avoid connecting
    multiple relays to the same radio mesh without a separately tested
    loop-prevention plan. See the
-   [shared-room guidance](WHATS_NEW_1.5.md#sharing-rooms-with-other-mmrelay-instances).
+   [shared-room guidance](WHATS_NEW_1.5.md#sharing-rooms-with-other-relay-instances).
 5. Record the installed version, effective data home and **active config file**.
    Run `mmrelay --version`, `mmrelay paths`, and `mmrelay config check` as the
    **same OS user, with the same environment, working directory, and global
