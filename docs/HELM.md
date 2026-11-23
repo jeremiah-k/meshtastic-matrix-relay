@@ -13,8 +13,9 @@ This guide covers deploying MMRelay using the Helm chart in `deploy/helm/mmrelay
 ## Before upgrading
 
 For an upgrade from 1.4.1, follow the [1.5 upgrade checklist](UPGRADING_1.5.md)
-and the [backup guidance](#backup-before-upgrade) below. For installations
-from 1.2.x or earlier, first complete the
+and the [backup guidance](#backup-before-upgrade) below. Use the 1.5.0 chart
+checkout with a verified 1.5.0 image; the chart's default tag is still 1.4.1.
+For installations from 1.2.x or earlier, first complete the
 [1.3 data migration](MIGRATION_1.3.md) on a supported 1.4.1 install.
 
 ## Quick Start
@@ -24,14 +25,14 @@ from 1.2.x or earlier, first complete the
 ```bash
 git clone https://github.com/jeremiah-k/meshtastic-matrix-relay.git mmrelay
 cd mmrelay
-# To deploy a specific release instead, check out its tag before installing.
+git checkout --detach 1.5.0
 ```
 
 ### 2. Create config.yaml
 
 ```bash
-curl -Lo config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
-# Edit config.yaml with your settings
+cp src/mmrelay/tools/sample_config.yaml ./config.yaml
+# Edit the sample from the same 1.5.0 checkout as the Helm chart.
 ${EDITOR:-vi} config.yaml
 ```
 
@@ -52,13 +53,15 @@ kubectl create secret generic mmrelay-config \
 ### 5. Install Chart
 
 ```bash
-# The chart's default image tag advances with each release; pin an exact
-# tag or verified digest for repeatable installs.
+# This checkout's chart defaults to image.tag=1.4.1. Explicitly select the
+# 1.5.0 image, after verifying it is available in the target registry.
 helm install mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
-  --create-namespace
+  --create-namespace \
+  --set image.tag=1.5.0 \
+  --set image.digest=""
 
-# For an immutable image, use the verified tag-and-digest pair below.
+# For an immutable deployment, use a verified 1.5.0 tag-and-digest pair.
 ```
 
 ### 6. Verify Deployment
@@ -77,8 +80,8 @@ The Helm chart is highly configurable. Key options include:
 ```yaml
 image:
   repository: ghcr.io/jeremiah-k/mmrelay
-  # tag: pin an exact release here; the chart default tracks the current
-  # stable release (see deploy/helm/mmrelay/values.yaml)
+  # tag: 1.5.0 for this guide; the bundled chart's default remains 1.4.1
+  # (see deploy/helm/mmrelay/values.yaml)
   pullPolicy: IfNotPresent
   # Pin by digest for production (immutable)
   digest: ""
