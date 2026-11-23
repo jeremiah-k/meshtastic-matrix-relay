@@ -1,37 +1,31 @@
 # What's new in MMRelay 1.5.0
 
-MMRelay 1.5 adds shared-room interoperability metadata to radio messages
-sent to Matrix, tightens radio and process lifecycle handling, and requires
-Python 3.12 or later. The visible message text is unchanged. MMRelay still
-owns its Meshtastic and Matrix connections; its MEDRE dependencies are Python
-libraries, **not** a separate service to install or run.
+MMRelay 1.5 lets rooms be shared with other relay instances, tightens radio
+and process lifecycle handling, and requires Python 3.12 or later.
 
-**Most installations need no config-file changes.** Configure trusted peer
-bots only if your Matrix room is also bridged by another MMRelay instance.
-Even without shared rooms, Matrix events claiming MEDRE relay metadata are
-subject to the trust check; ordinary Matrix text remains unaffected. See
-[Sharing rooms with other MMRelay instances](#sharing-rooms-with-other-mmrelay-instances).
+**Most installations need no changes.** Two cases need attention when
+upgrading:
+
+- **Python 3.11 is no longer supported.** This matters only if MMRelay runs
+  directly on Python 3.11; Docker images bring their own Python. See
+  [Python 3.11 is no longer supported](#python-311-is-no-longer-supported).
+- **A Matrix room shared with another MMRelay instance or a MEDRE bridge.**
+  Each instance needs a little extra configuration to trust the others. See
+  [Sharing rooms with other relay instances](#sharing-rooms-with-other-relay-instances).
 
 ## About MEDRE
 
-[MEDRE](https://github.com/jeremiah-k/medre) is a separate, developing
-bridge project for connecting Meshtastic to other mesh networks and
-messaging services such as MeshCore, LXMF, and XMPP. For those connections,
-MEDRE is stable enough for testing; consult MEDRE's own documentation for
-the current support status. If you only bridge Meshtastic and Matrix,
-MMRelay on its own is the best option. MEDRE is still taking shape and does
-not have a plugin system yet.
+[MEDRE](https://github.com/jeremiah-k/medre) is a separate bridge project that connects Matrix, Meshtastic, MeshCore, LXMF (Reticulum), XMPP, Chatmail (Delta Chat), and SimpleX Chat. Setup is more involved than MMRelay, but it is flexible: you choose which networks to bridge and how they route to each other. It is stable enough for testing if you want to reach one of those other networks.
 
-MMRelay uses MEDRE's published event format and Matrix adapter to attach
-interoperability metadata to radio messages posted to Matrix. This does
-not change the displayed text or start another Matrix or radio session.
-The required MEDRE Python packages install with MMRelay.
+**If you only use Meshtastic and Matrix, stick with MMRelay.** You do not need to install or run MEDRE. MEDRE is still taking shape and does not have a plugin system yet.
+
+MMRelay uses MEDRE's message format for radio messages it posts to Matrix, which is what lets the two share a room. The visible message text does not change, and the needed MEDRE packages install with MMRelay.
 
 ## Highlights
 
-- **Shared-room interoperability.** Between MMRelay instances that trust
-  each other in a shared room, messages keep the sender name reported by
-  the peer relay, and replies and reactions still match up.
+- **Shared rooms.** MMRelay instances that share a Matrix room can trust
+  each other, so messages keep the sender name reported by the peer and
+  replies and reactions still match up.
 - **More predictable shutdown and restart.** Radio reconnects, the outbound
   message queue, plugin reloads, and delayed subscriptions are protected
   against overlapping or late work.
@@ -40,45 +34,47 @@ The required MEDRE Python packages install with MMRelay.
   devices are supported. Weather requests no longer require the sender to
   already exist in the node database.
 - **Updated dependencies.** Python **3.12 or later** is required, and the
-  Matrix SDK and related libraries are updated. Required MEDRE dependencies
-  install with MMRelay; **native Linux/macOS encrypted-room installs still
-  require the optional `mmrelay[e2e]` extra**.
+  Matrix SDK and related libraries are updated.
 
 For a step-by-step upgrade, including backups and rollback,
 see [Upgrading from 1.4.1 to 1.5.0](UPGRADING_1.5.md).
 
 ## Changes requiring operator attention
 
-### Python, SDKs and encrypted rooms
+### Python 3.11 is no longer supported
 
-- **Python 3.11 is no longer supported.** MMRelay 1.4.1 is the last
-  released version supporting it. For encrypted Matrix rooms on **macOS
-  Python 3.15**, the vodozemac version MMRelay uses has no prebuilt wheel
-  and may need a Rust source build. Prefer a Python version with an
-  available wheel if native build tooling is not installed; see the
+MMRelay 1.5.0 requires Python 3.12 or later; MMRelay 1.4.1 is the last
+released version that runs on Python 3.11. Docker images bring their own
+Python, so this matters only where MMRelay is installed directly, such as
+with pipx on an older system. Upgrade Python before upgrading MMRelay, or
+stay on 1.4.1.
+
+If MMRelay is installed directly and uses encrypted Matrix rooms, also:
+
+- Keep the `mmrelay[e2e]` extra when upgrading. The base package alone does
+  not install the optional E2EE dependencies. See the
+  [E2EE guide](E2EE.md#supported-provider).
+- Keep `matrix/credentials.json` and the **complete** `matrix/store/`
+  directory with the same bot account and device. Don't delete stores or
+  reset cross-signing merely to complete an upgrade.
+- On **macOS Python 3.15**, the vodozemac version MMRelay uses has no
+  prebuilt wheel and may need a Rust source build. Prefer a Python version
+  with an available wheel if native build tooling is not installed; see the
   [E2EE guide](E2EE.md#requirements-and-platform-support).
-- MMRelay uses a single `mindroom-nio` dependency path. Do not install
-  `matrix-nio` into the same environment or manually replace the selected
-  SDK.
-- **Windows Matrix E2EE is not supported in 1.5.0.** Native Windows and the
-  Windows installer can use unencrypted Matrix rooms and OAuth
-  independently of E2EE. Linux/macOS encrypted-room support remains.
-- On native Linux/macOS, install `mmrelay[e2e]` to use encrypted Matrix
-  rooms; the base MMRelay package alone does not install the optional E2EE
-  dependencies. See the [E2EE guide](E2EE.md#supported-provider).
-- Preserve `matrix/credentials.json` and the **complete** `matrix/store/`
-  directory with the same bot account/device. Don't delete stores or reset
-  cross-signing merely to complete an upgrade.
+- Do not install `matrix-nio` alongside `mindroom-nio`; MMRelay uses
+  `mindroom-nio` only.
+- **Windows:** Matrix E2EE is not supported in 1.5.0. Unencrypted rooms and
+  OAuth are unaffected.
 
-### Sharing rooms with other MMRelay instances
+### Sharing rooms with other relay instances
 
 These changes apply only when the same Matrix room is bridged by more than
-one MMRelay instance.
+one relay, whether MMRelay instances or a MEDRE bridge.
 
-**All MMRelay instances sharing a Matrix room must run 1.5.0 or later
-and trust each other.** Configure `matrix.trusted_relays` on **each** relay
-with the exact Matrix user ID of **every other** relay bot in that room.
-For two instances, configure both directions:
+**Every MMRelay instance sharing a Matrix room must run 1.5.0 or later and
+trust every other relay in it.** Configure `matrix.trusted_relays` on
+**each** relay with the exact Matrix user ID of **every other** relay bot
+in that room. For two instances, configure both directions:
 
 On relay A (`@relay-a:example.org`):
 
