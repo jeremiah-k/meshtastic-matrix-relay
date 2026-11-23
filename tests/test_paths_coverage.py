@@ -315,7 +315,10 @@ def test_plugin_data_dir_prefers_discovered_community_plugin() -> None:
 
 def test_e2ee_not_supported_error_message() -> None:
     """E2EENotSupportedError should expose its canonical message."""
-    assert str(E2EENotSupportedError()) == "E2EE not supported on Windows"
+    assert (
+        str(E2EENotSupportedError())
+        == "E2EE store directory is not supported on this platform"
+    )
 
 
 def test_get_legacy_env_vars_and_deprecation_window(
@@ -655,12 +658,26 @@ def test_score_home_nonexistent() -> None:
 
 
 def test_get_e2ee_store_dir_on_windows() -> None:
-    """get_e2ee_store_dir should raise E2EENotSupportedError on Windows."""
-    from mmrelay.paths import E2EENotSupportedError, get_e2ee_store_dir
+    """get_e2ee_store_dir resolves a real store path on Windows (vodozemac support)."""
+    from mmrelay.constants.app import STORE_DIRNAME
+    from mmrelay.paths import get_e2ee_store_dir
 
     with patch("mmrelay.paths.sys.platform", "win32"):
-        with pytest.raises(E2EENotSupportedError):
-            get_e2ee_store_dir()
+        store_dir = get_e2ee_store_dir()
+
+    assert isinstance(store_dir, Path)
+    assert store_dir.name == STORE_DIRNAME
+    assert not str(store_dir).startswith("N/A")
+
+
+def test_get_e2ee_store_dir_uses_matrix_dir() -> None:
+    """get_e2ee_store_dir lives under the matrix directory on every platform."""
+    from mmrelay.constants.app import STORE_DIRNAME
+    from mmrelay.paths import get_e2ee_store_dir, get_matrix_dir
+
+    store_dir = get_e2ee_store_dir()
+
+    assert store_dir == get_matrix_dir() / STORE_DIRNAME
 
 
 def test_validate_plugin_name_empty() -> None:

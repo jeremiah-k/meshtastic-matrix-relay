@@ -5,7 +5,6 @@ These tests verify that each migration component type can be rolled back correct
 including proper handling of sidecar files and subdirectories.
 """
 
-import sys
 from pathlib import Path
 
 import pytest
@@ -353,9 +352,8 @@ class TestRollbackLogsMigration:
 class TestRollbackStoreMigration:
     """Test rollback of E2EE store directory migration."""
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="E2EE not supported on Windows")
     def test_rollback_store_migration(self, new_home_with_gpx_plugin: Path) -> None:
-        """Test rollback of E2EE store directory from backup (Unix/macOS only)."""
+        """Test rollback of E2EE store directory from backup."""
         new_home = new_home_with_gpx_plugin
 
         # Create backup directory and store backup
