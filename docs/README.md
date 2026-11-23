@@ -8,6 +8,7 @@ operator guidance**. Broader conceptual and community documentation lives in the
 
 - **[How MMRelay Works](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/How-MMRelay-Works)** — meshnet, relay node, channel/room mapping, message flow, and identity boundary
 - **[Getting Started with Matrix](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Getting-Started-With-Matrix-&-MM-Relay)** — Matrix basics for new MMRelay operators
+- **[MEDRE](https://github.com/jeremiah-k/medre)** — companion bridge project behind MMRelay's shared-room message format, for connecting Meshtastic to other mesh networks and messaging services
 
 ## Install and deploy
 
@@ -54,7 +55,7 @@ container mounts are used. The deployment guides document those cases.
 - **[Windows Installer Build Guide](dev/INNO_SETUP_GUIDE.md)** — installer maintenance
 - **[BLE Compatibility Notes](dev/BLE_DUAL_LIBRARY_COMPATIBILITY.md)** — BLE library compatibility design
 - **[Historical Matrix Compatibility Plan](dev/MATRIX_DUAL_LIBRARY_COMPATIBILITY_PLAN.md)** — prior dual-provider design (not a 1.5 installation procedure)
-- **[MEDRE Matrix ingress](dev/MEDRE_MATRIX_1_5_INTEGRATION.md)** — 1.5 canonical Matrix event boundary and published package pins
+- **[MEDRE Matrix event contract](dev/MEDRE_MATRIX_1_5_INTEGRATION.md)** — 1.5 canonical Matrix event boundary and published package pins
 - **[mindroom-nio compatibility](dev/MINDROOM_NIO_UPGRADE.md)** — supported SDK pin, ordinary-client contracts, and live-validation requirements
 - **[Historical v1.3 migration guide](MIGRATION_1.3.md)** — reference for older data layouts, not required for new installs
 - **[Archived implementation notes](dev/archive/)** — historical design and migration material
