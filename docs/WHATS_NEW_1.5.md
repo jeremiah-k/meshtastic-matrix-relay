@@ -15,9 +15,12 @@ subject to the trust check; ordinary Matrix text remains unaffected. See
 ## About MEDRE
 
 [MEDRE](https://github.com/jeremiah-k/medre) is a separate, developing
-bridge project for additional transports such as MeshCore, LXMF, and XMPP.
-Use MMRelay alone for Meshtastic-to-Matrix bridging; consult MEDRE's own
-documentation for other transport options and their support status.
+bridge project for connecting Meshtastic to other mesh networks and
+messaging services such as MeshCore, LXMF, and XMPP. For those connections,
+MEDRE is stable enough for testing; consult MEDRE's own documentation for
+the current support status. If you only bridge Meshtastic and Matrix,
+MMRelay on its own is the best option. MEDRE is still taking shape and does
+not have a plugin system yet.
 
 MMRelay uses MEDRE's published event format and Matrix adapter to attach
 interoperability metadata to radio messages posted to Matrix. This does
