@@ -30,10 +30,8 @@ The required MEDRE Python packages install with MMRelay.
 ## Highlights
 
 - **Shared-room interoperability.** Between MMRelay instances that trust
-  each other in a shared room, peer-reported radio sender names can be
-  preserved, and replies and reactions retain their targets when the
-  relevant message mappings exist. Peer attribution is not independently
-  authenticated as the original radio sender.
+  each other in a shared room, messages keep the sender name reported by
+  the peer relay, and replies and reactions still match up.
 - **More predictable shutdown and restart.** Radio reconnects, the outbound
   message queue, plugin reloads, and delayed subscriptions are protected
   against overlapping or late work.
