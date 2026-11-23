@@ -8,7 +8,7 @@ operator guidance**. Broader conceptual and community documentation lives in the
 
 - **[How MMRelay Works](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/How-MMRelay-Works)** — meshnet, relay node, channel/room mapping, message flow, and identity boundary
 - **[Getting Started with Matrix](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Getting-Started-With-Matrix-&-MM-Relay)** — Matrix basics for new MMRelay operators
-- **[MEDRE](https://github.com/jeremiah-k/medre)** — companion bridge project behind MMRelay's shared-room message format, for connecting Meshtastic to other mesh networks and messaging services
+- **[MEDRE](https://github.com/jeremiah-k/medre)** — a separate, more flexible bridge that connects Matrix, Meshtastic, MeshCore, LXMF (Reticulum), XMPP, Chatmail, and SimpleX Chat; setup is more involved, and it can exchange messages with MMRelay through a shared Matrix room. **If you only use Meshtastic and Matrix, stick with MMRelay**; no MEDRE install is needed
 
 ## Install and deploy
 
