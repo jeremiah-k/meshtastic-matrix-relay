@@ -13,8 +13,8 @@ This guide covers deploying MMRelay using the Helm chart in `deploy/helm/mmrelay
 ## Before upgrading
 
 For an upgrade from 1.4.1, follow the [1.5 upgrade checklist](UPGRADING_1.5.md)
-and the [backup guidance](#backup-before-upgrade) below. Deploy the 1.5 image
-only after it is published. For installations from 1.2.x or earlier, first complete the
+and the [backup guidance](#backup-before-upgrade) below. For installations
+from 1.2.x or earlier, first complete the
 [1.3 data migration](MIGRATION_1.3.md) on a supported 1.4.1 install.
 
 ## Quick Start
