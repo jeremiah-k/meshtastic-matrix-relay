@@ -108,9 +108,9 @@ entries.
 - A listed sender whose relay message is malformed is dropped too, with a
   separate warning. Check the peer relay's version rather than looking for
   a bypass.
-- Ordinary Matrix messages **without** the reserved MEDRE claim relay as
-  before, including messages from human users. A user who sends a MEDRE
-  claim is subject to the same trust check as a peer bot.
+- Ordinary Matrix messages **without** the reserved MEDRE claim continue to
+  relay as before, including messages from human users. A user who sends a
+  MEDRE claim is subject to the same trust check as a peer bot.
 - **Do not mix older relay versions into a shared-room deployment.**
   Upgrade every participating instance and configure mutual trust before
   using the room for cross-mesh relaying.
