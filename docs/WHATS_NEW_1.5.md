@@ -15,11 +15,14 @@ upgrading:
 
 ## About MEDRE
 
-[MEDRE](https://github.com/jeremiah-k/medre) is a separate bridge project that connects Matrix, Meshtastic, MeshCore, LXMF (Reticulum), XMPP, Chatmail (Delta Chat), and SimpleX Chat. Setup is more involved than MMRelay, but it is flexible: you choose which networks to bridge and how they route to each other. It is stable enough for testing if you want to reach one of those other networks.
-
-**If you only use Meshtastic and Matrix, stick with MMRelay.** You do not need to install or run MEDRE. MEDRE is still taking shape and does not have a plugin system yet.
-
-MMRelay uses MEDRE's message format for radio messages it posts to Matrix, which is what lets the two share a room. The visible message text does not change, and the needed MEDRE packages install with MMRelay.
+[MEDRE](https://github.com/jeremiah-k/medre) is a separate bridge project
+that can also share a Matrix room with MMRelay. MMRelay uses MEDRE's message
+format for radio messages it posts to Matrix, which is what lets the two
+share a room: the visible message text does not change, and the needed MEDRE
+packages install with MMRelay. The full introduction lives in
+[About MEDRE](https://github.com/jeremiah-k/meshtastic-matrix-relay#about-medre)
+in the README, and shared-room setup in
+[Sharing Rooms with Other Relays](SHARED_ROOMS.md).
 
 ## Highlights
 
@@ -68,66 +71,18 @@ If MMRelay is installed directly and uses encrypted Matrix rooms, also:
 
 ### Sharing rooms with other relay instances
 
-These changes apply only when the same Matrix room is bridged by more than
-one relay, whether MMRelay instances or a MEDRE bridge.
+A Matrix room can be bridged by more than one relay, whether MMRelay
+instances or a MEDRE bridge. Every MMRelay instance sharing a room must run
+1.5.0 or later and trust every other relay in it: configure
+`matrix.trusted_relays` on **each** relay with the exact Matrix user ID of
+**every other** relay bot in that room. Relay claims from unlisted senders
+and invalid claims from trusted peers are dropped with warnings; ordinary
+Matrix messages without relay claims are unaffected.
 
-**Every MMRelay instance sharing a Matrix room must run 1.5.0 or later and
-trust every other relay in it.** Configure `matrix.trusted_relays` on
-**each** relay with the exact Matrix user ID of **every other** relay bot
-in that room. For two instances, configure both directions:
-
-On relay A (`@relay-a:example.org`):
-
-```yaml
-matrix:
-  trusted_relays:
-    - "@relay-b:example.org"
-```
-
-On relay B (`@relay-b:example.org`):
-
-```yaml
-matrix:
-  trusted_relays:
-    - "@relay-a:example.org"
-```
-
-The list is empty by default, and entries must match exactly — no
-wildcards, no partial names. `mmrelay config check` rejects malformed
-entries.
-
-- A message that claims to come from a relay but whose sender is not listed
-  is **dropped**, with a log warning naming the sender's Matrix account.
-  Verify the account really is your peer relay before adding it.
-- A listed sender whose relay message is malformed is dropped too, with a
-  separate warning. Check the peer relay's version rather than looking for
-  a bypass.
-- Ordinary Matrix messages **without** the reserved MEDRE claim continue to
-  relay as before, including messages from human users. A user who sends a
-  MEDRE claim is subject to the same trust check as a peer bot.
-- **Do not mix older relay versions into a shared-room deployment.**
-  Upgrade every participating instance and configure mutual trust before
-  using the room for cross-mesh relaying.
-
-If you see one of these warnings, use the **observed Matrix sender ID**
-in the log to check the peer account before updating `matrix.trusted_relays`.
-Warnings repeat at most once every five minutes **per sender and rejection
-reason** in a running process; further drops are logged at DEBUG. The
-rejection logs omit message bodies and raw envelopes. Every rejected claim
-is dropped, whether or not it generates another warning.
-
-**Avoid message loops:** do not connect two relays to the same Meshtastic
-mesh and Matrix room unless you have separately tested how loops are
-prevented in your topology. Mutual trust is required for shared-room peer
-handling, **but it is not a general-purpose loop-prevention mechanism**;
-incorrect room or radio topology can still cause repeated traffic.
-
-**Radio identity and privacy:** Relay events may carry stable Meshtastic node
-IDs in Matrix event metadata. People and clients with access to the room can
-correlate those IDs across Matrix rooms and radio meshes, even if the IDs are
-also broadcast over radio. Treat them as privacy-relevant. Trusting a peer's
-Matrix bot account does **not** authenticate its claimed radio sender, verify
-that the displayed radio name is genuine, or prove delivery to a radio node.
+The full how-to — trust configuration examples, the warnings you may see,
+loop guidance, privacy notes, and moving an account between MMRelay and
+MEDRE — lives in
+[Sharing Rooms with Other Relays](SHARED_ROOMS.md).
 
 ## Additional improvements since 1.4.1
 

@@ -21,6 +21,9 @@ known gaps.
 
 MMRelay declares `mindroom-nio` as a runtime dependency, and the MEDRE
 Matrix adapter uses the same provider. Do not replace it with `matrix-nio`.
+The shared SDK and store layout also let a bot account move between an
+MMRelay and a MEDRE installation; see
+[Sharing Rooms with Other Relays](SHARED_ROOMS.md#moving-an-account-between-mmrelay-and-medre).
 
 For encrypted sessions, MMRelay also enables mindroom-nio's rotated-device-key
 recovery policy. MMRelay uses trust on first use and never grants interactive

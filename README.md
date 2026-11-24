@@ -76,5 +76,5 @@ install third-party code only from sources you trust.
 **If you only use Meshtastic and Matrix, stick with MMRelay.** You do not need to install or run MEDRE. MEDRE is still taking shape and does not have a plugin system yet.
 
 MMRelay and MEDRE can also share a Matrix room; see
-[Sharing rooms with other relay instances](docs/WHATS_NEW_1.5.md#sharing-rooms-with-other-relay-instances)
-for the extra configuration it requires.
+[Sharing Rooms with Other Relays](docs/SHARED_ROOMS.md)
+for the trust configuration and deployment rules it requires.

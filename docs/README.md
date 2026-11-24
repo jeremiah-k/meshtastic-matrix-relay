@@ -21,6 +21,7 @@ operator guidance**. Broader conceptual and community documentation lives in the
 ## Configure and operate
 
 - **[E2EE Guide](E2EE.md)** — encrypted rooms, device identity, and cross-signing recovery
+- **[Sharing Rooms with Other Relays](SHARED_ROOMS.md)** — trust configuration for rooms shared with other MMRelay instances or MEDRE, loop guidance, and privacy notes
 - **[Native Matrix OAuth (experimental)](MATRIX_OAUTH.md)** — dedicated device sessions, browser approval, token renewal, and draft limitations
 - **[Advanced Configuration](ADVANCED_CONFIGURATION.md)** — message formatting, packet routing, health checks, debug logging, and environment overrides
 - **[Mesh Beacons](MESH_BEACON.md)** — capture invitations, recall join URLs, and render QR codes
