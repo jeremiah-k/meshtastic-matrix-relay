@@ -6,6 +6,9 @@ MEDRE and MMRelay share Matrix rooms. This boundary makes MMRelay use
 MEDRE's standardized event contract for those shared rooms instead of its
 legacy hand-rolled body and reply parsing. MMRelay keeps its own Matrix
 session and transport; the shared room is the interoperability surface.
+The operator-facing setup for shared rooms lives in
+[Sharing Rooms with Other Relays](../SHARED_ROOMS.md); this document is the
+developer boundary contract.
 
 ## Release contract and remaining qualification
 
