@@ -487,37 +487,7 @@ async def reconnect(*, _owner: object | None = None) -> None:
                 facade.logger.info(
                     f"Reconnection attempt starting in {backoff_time} seconds..."
                 )
-
-                # Show reconnection countdown with Rich (if not in a service)
-                if not facade.is_running_as_service():
-                    try:
-                        from rich.progress import (
-                            BarColumn,
-                            Progress,
-                            TextColumn,
-                            TimeRemainingColumn,
-                        )
-                    except ImportError:
-                        facade.logger.debug(
-                            "Rich not available; falling back to simple reconnection delay"
-                        )
-                        await facade.asyncio.sleep(backoff_time)
-                    else:
-                        with Progress(
-                            TextColumn("[cyan]Meshtastic: Reconnecting in"),
-                            BarColumn(),
-                            TextColumn("[cyan]{task.percentage:.0f}%"),
-                            TimeRemainingColumn(),
-                            transient=True,
-                        ) as progress:
-                            task = progress.add_task("Waiting", total=backoff_time)
-                            for _ in range(backoff_time):
-                                if facade.shutting_down:
-                                    break
-                                await facade.asyncio.sleep(1)
-                                progress.update(task, advance=1)
-                else:
-                    await facade.asyncio.sleep(backoff_time)
+                await facade.asyncio.sleep(backoff_time)
                 if facade.shutting_down:
                     facade.logger.debug(
                         "Shutdown in progress. Aborting reconnection attempts."
