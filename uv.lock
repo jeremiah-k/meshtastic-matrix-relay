@@ -1392,7 +1392,7 @@ requires-dist = [
     { name = "medre-adapter-matrix", specifier = "==0.2.0" },
     { name = "mindroom-nio", specifier = "==1.4.2" },
     { name = "mindroom-nio", extras = ["e2e"], marker = "extra == 'e2e'", specifier = "==1.4.2" },
-    { name = "mtjk", specifier = "==2.7.11.post14" },
+    { name = "mtjk", git = "https://github.com/jeremiah-k/mtjk.git?rev=develop" },
     { name = "mypy", marker = "extra == 'dev'", specifier = "==2.4.1" },
     { name = "nh3", specifier = "==0.3.8" },
     { name = "pillow", specifier = "==13.0.0" },
@@ -1487,7 +1487,7 @@ wheels = [
 [[package]]
 name = "mtjk"
 version = "2.7.11.post14"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/jeremiah-k/mtjk.git?rev=develop#614be1c5701bbe495042676393f3420bf6a785d4" }
 dependencies = [
     { name = "argcomplete" },
     { name = "bleak" },
@@ -1504,10 +1504,6 @@ dependencies = [
     { name = "tabulate" },
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
     { name = "wcwidth" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/1b/84/b12fc2321a30dbc54cf813f1aaa76235577eabb6bffd136c757ffa3e5062/mtjk-2.7.11.post14.tar.gz", hash = "sha256:01150a92291d242fd80fe7236429977d4058f5b08299cbe47ccc65f45d55be3f", size = 1707285, upload-time = "2026-11-10T02:51:38.388Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f0/91/0602348717355241c1f589984cd6c7024a7162c1d971ff1c34a28fcbdc2b/mtjk-2.7.11.post14-py3-none-any.whl", hash = "sha256:5d9a71f3a254a777f1db3ac688c3b888d5eb8be74540cda28c6297e5516c96bd", size = 1922195, upload-time = "2026-11-10T02:51:36.48Z" },
 ]
 
 [[package]]
