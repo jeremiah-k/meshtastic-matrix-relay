@@ -12,10 +12,8 @@ Tests the Meshtastic client functionality including:
 
 import asyncio
 import contextlib
-import sys
 import threading
 import time
-import types
 import unittest
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
@@ -604,11 +602,6 @@ def _mark_shutdown(*_args, **_kwargs) -> None:
     mu.shutting_down = True
 
 
-class _DummyColumn:
-    def __init__(self, *args, **kwargs):
-        pass
-
-
 class _FailedExecutorLoop:
     def __init__(self, future):
         self._future = future
@@ -963,23 +956,9 @@ class TestReconnectFailureBackoff:
 
 
 @pytest.mark.asyncio
-async def test_reconnect_rich_progress_breaks_on_shutdown():
-    mock_progress_instance = MagicMock()
-    mock_progress_class = MagicMock()
-    mock_progress_class.return_value.__enter__.return_value = mock_progress_instance
-
-    fake_rich = types.ModuleType("rich")
-    fake_progress = types.ModuleType("rich.progress")
-    fake_progress.Progress = mock_progress_class
-    fake_progress.BarColumn = _DummyColumn
-    fake_progress.TextColumn = _DummyColumn
-    fake_progress.TimeRemainingColumn = _DummyColumn
-    fake_rich.progress = fake_progress
-
+async def test_reconnect_breaks_on_shutdown_during_backoff():
     with (
-        patch.dict(sys.modules, {"rich": fake_rich, "rich.progress": fake_progress}),
         patch("mmrelay.meshtastic_utils.DEFAULT_BACKOFF_TIME", 1),
-        patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=False),
         patch(
             "mmrelay.meshtastic_utils.asyncio.sleep",
             new_callable=AsyncMock,
@@ -991,7 +970,6 @@ async def test_reconnect_rich_progress_breaks_on_shutdown():
         await reconnect()
 
     mock_connect.assert_not_called()
-    mock_progress_instance.update.assert_called_once()
     mock_logger.debug.assert_any_call(
         "Shutdown in progress. Aborting reconnection attempts."
     )

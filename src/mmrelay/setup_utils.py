@@ -15,7 +15,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
 
 from mmrelay.constants.app import (
     APP_NAME,
@@ -24,7 +23,6 @@ from mmrelay.constants.app import (
     SYSTEMD_SERVICE_FILENAME,
     SYSTEMD_USER_DIR,
 )
-from mmrelay.constants.database import PROGRESS_COMPLETE, PROGRESS_TOTAL_STEPS
 from mmrelay.constants.migration import DEFAULT_SERVICE_ARGS_SUFFIX
 from mmrelay.constants.network import SYSTEMCTL_FALLBACK
 from mmrelay.log_utils import get_logger
@@ -223,66 +221,14 @@ def wait_for_service_start() -> None:
     """
     Wait up to ten seconds for the per-user mmrelay systemd service to become active.
 
-    When running in an interactive environment this may display a spinner and elapsed-time indicator; in non-interactive contexts it performs the same timed checks without UI. The function exits early if the service becomes active (checks allow early exit beginning after approximately five seconds).
+    The function exits early if the service becomes active (checks allow early exit beginning after approximately five seconds).
     """
     import time
 
-    from mmrelay.runtime_utils import is_running_as_service
-
-    progress_cls: type[Any] | None = None
-    spinner_cls: type[Any] | None = None
-    text_cls: type[Any] | None = None
-    elapsed_cls: type[Any] | None = None
-    running_as_service = is_running_as_service()
-    if not running_as_service:
-        try:
-            from rich.progress import Progress as rich_progress
-            from rich.progress import SpinnerColumn as rich_spinner
-            from rich.progress import TextColumn as rich_text
-            from rich.progress import TimeElapsedColumn as rich_elapsed
-
-            progress_cls = rich_progress
-            spinner_cls = rich_spinner
-            text_cls = rich_text
-            elapsed_cls = rich_elapsed
-        except ImportError:
-            running_as_service = True
-
-    # Create a Rich progress display with spinner and elapsed time
-    if (
-        not running_as_service
-        and progress_cls is not None
-        and spinner_cls is not None
-        and text_cls is not None
-        and elapsed_cls is not None
-    ):
-        with progress_cls(
-            spinner_cls(),
-            text_cls("[bold green]Starting mmrelay service..."),
-            elapsed_cls(),
-            transient=True,
-        ) as progress:
-            # Add a task that will run for approximately 10 seconds
-            task = progress.add_task("Starting", total=PROGRESS_TOTAL_STEPS)
-
-            # Update progress over ~10 seconds
-            step = max(1, PROGRESS_TOTAL_STEPS // 10)
-            for i in range(10):
-                time.sleep(1)
-                progress.update(
-                    task, completed=min(PROGRESS_TOTAL_STEPS, step * (i + 1))
-                )
-
-                # Check if service is active after 5 seconds to potentially finish early
-                if i >= 5 and is_service_active():
-                    progress.update(task, completed=PROGRESS_COMPLETE)
-                    break
-    else:
-        # Simple fallback when running as service
-        for i in range(10):
-            time.sleep(1)
-            if i >= 5 and is_service_active():
-                break
+    for i in range(10):
+        time.sleep(1)
+        if i >= 5 and is_service_active():
+            break
 
 
 def read_service_file() -> str | None:
